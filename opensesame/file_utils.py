@@ -29,7 +29,7 @@ except ImportError:
     torch_cache_home = os.path.expanduser(
         os.getenv('TORCH_HOME', os.path.join(
             os.getenv('XDG_CACHE_HOME', '~/.cache'), 'torch')))
-default_cache_path = os.path.join(torch_cache_home, 'pytorch_pretrained_bert')
+default_cache_path = os.path.join(torch_cache_home, 'opensesame')
 
 try:
     from urllib.parse import urlparse
@@ -38,10 +38,10 @@ except ImportError:
 
 try:
     from pathlib import Path
-    PYTORCH_PRETRAINED_BERT_CACHE = Path(
-        os.getenv('PYTORCH_PRETRAINED_BERT_CACHE', default_cache_path))
+    OPENSESAME_CACHE = Path(
+        os.getenv('OPENSESAME_CACHE', default_cache_path))
 except (AttributeError, ImportError):
-    PYTORCH_PRETRAINED_BERT_CACHE = os.getenv('PYTORCH_PRETRAINED_BERT_CACHE',
+    OPENSESAME_CACHE = os.getenv('OPENSESAME_CACHE',
                                               default_cache_path)
 
 CONFIG_NAME = "config.json"
@@ -74,7 +74,7 @@ def filename_to_url(filename, cache_dir=None):
     Raise ``EnvironmentError`` if `filename` or its stored metadata do not exist.
     """
     if cache_dir is None:
-        cache_dir = PYTORCH_PRETRAINED_BERT_CACHE
+        cache_dir = OPENSESAME_CACHE
     if sys.version_info[0] == 3 and isinstance(cache_dir, Path):
         cache_dir = str(cache_dir)
 
@@ -102,7 +102,7 @@ def cached_path(url_or_filename, cache_dir=None):
     make sure the file exists and then return the path.
     """
     if cache_dir is None:
-        cache_dir = PYTORCH_PRETRAINED_BERT_CACHE
+        cache_dir = OPENSESAME_CACHE
     if sys.version_info[0] == 3 and isinstance(url_or_filename, Path):
         url_or_filename = str(url_or_filename)
     if sys.version_info[0] == 3 and isinstance(cache_dir, Path):
@@ -191,7 +191,7 @@ def get_from_cache(url, cache_dir=None):
     If it's not there, download it. Then return the path to the cached file.
     """
     if cache_dir is None:
-        cache_dir = PYTORCH_PRETRAINED_BERT_CACHE
+        cache_dir = OPENSESAME_CACHE
     if sys.version_info[0] == 3 and isinstance(cache_dir, Path):
         cache_dir = str(cache_dir)
 

@@ -37,16 +37,16 @@ from io import open
 from setuptools import find_packages, setup
 
 setup(
-    name="pytorch_pretrained_bert",
-    version="0.6.2",
-    author="Thomas Wolf, Victor Sanh, Tim Rault, Google AI Language Team Authors, Open AI team Authors",
-    author_email="thomas@huggingface.co",
-    description="PyTorch version of Google AI BERT model with script to load Google pre-trained models",
+    name="opensesame",
+    version="0.1",
+    author="Malte Pietsch, Timo Moeller, Branden Chan, Huggingface Team Authors, Google AI Language Team Authors, Open AI team Authors",
+    author_email="malte.pietsch@deepset.ai",
+    description="Toolkit for pretraining, finetuning and evaluating transformer based language models",
     long_description=open("README.md", "r", encoding='utf-8').read(),
     long_description_content_type="text/markdown",
-    keywords='BERT NLP deep learning google',
+    keywords='BERT NLP deep learning languagemodel transformer',
     license='Apache',
-    url="https://github.com/huggingface/pytorch-pretrained-BERT",
+    url="https://gitlab.com/deepset-ai/ml/lm/opensesame",
     packages=find_packages(exclude=["*.tests", "*.tests.*",
                                     "tests.*", "tests"]),
     install_requires=['torch>=0.4.1',

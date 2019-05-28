@@ -34,10 +34,10 @@ from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
 
-from pytorch_pretrained_bert.file_utils import PYTORCH_PRETRAINED_BERT_CACHE, WEIGHTS_NAME, CONFIG_NAME
-from pytorch_pretrained_bert.modeling import BertForQuestionAnswering, BertConfig
-from pytorch_pretrained_bert.optimization import BertAdam, WarmupLinearSchedule
-from pytorch_pretrained_bert.tokenization import (BasicTokenizer,
+from opensesame.file_utils import OPENSESAME_CACHE, WEIGHTS_NAME, CONFIG_NAME
+from opensesame.models.bert.modeling import BertForQuestionAnswering, BertConfig
+from opensesame.models.bert.optimization import BertAdam, WarmupLinearSchedule
+from opensesame.models.bert.tokenization import (BasicTokenizer,
                                                   BertTokenizer,
                                                   whitespace_tokenize)
 
@@ -906,7 +906,7 @@ def main():
 
     # Prepare model
     model = BertForQuestionAnswering.from_pretrained(args.bert_model,
-                cache_dir=os.path.join(str(PYTORCH_PRETRAINED_BERT_CACHE), 'distributed_{}'.format(args.local_rank)))
+                cache_dir=os.path.join(str(OPENSESAME_CACHE), 'distributed_{}'.format(args.local_rank)))
 
     if args.fp16:
         model.half()

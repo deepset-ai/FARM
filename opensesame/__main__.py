@@ -32,7 +32,7 @@ def main():
                 TF_CHECKPOINT = sys.argv.pop()
                 convert_tf_checkpoint_to_pytorch(TF_CHECKPOINT, TF_CONFIG, PYTORCH_DUMP_OUTPUT)
         elif sys.argv[1] == "convert_openai_checkpoint":
-            from .convert_openai_checkpoint_to_pytorch import convert_openai_checkpoint_to_pytorch
+            from .models.openai.convert_openai_checkpoint_to_pytorch import convert_openai_checkpoint_to_pytorch
             OPENAI_GPT_CHECKPOINT_FOLDER_PATH = sys.argv[2]
             PYTORCH_DUMP_OUTPUT = sys.argv[3]
             if len(sys.argv) == 5:
