@@ -14,55 +14,18 @@ from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
 
 from torch.nn import CrossEntropyLoss, MSELoss
-from scipy.stats import pearsonr, spearmanr
-from sklearn.metrics import matthews_corrcoef, f1_score, classification_report
+from sklearn.metrics import classification_report
 
 from opensesame.file_utils import OPENSESAME_CACHE, WEIGHTS_NAME, CONFIG_NAME, read_config
 from opensesame.models.bert.modeling import BertForSequenceClassification
 from opensesame.models.bert.tokenization import BertTokenizer
 from opensesame.models.bert.optimization import BertAdam, WarmupLinearSchedule
 from opensesame.data_handler.seq_classification import featurize_samples, get_data_loader
+from opensesame.metrics import compute_metrics
+
 
 logger = logging.getLogger(__name__)
 
-
-#TODO move these functions to a metrics.py in the package
-def simple_accuracy(preds, labels):
-    return (preds == labels).mean()
-
-
-def acc_and_f1(preds, labels):
-    acc = simple_accuracy(preds, labels)
-    f1 = f1_score(y_true=labels, y_pred=preds)
-    return {
-        "acc": acc,
-        "f1": f1,
-        "acc_and_f1": (acc + f1) / 2,
-    }
-
-
-def pearson_and_spearman(preds, labels):
-    pearson_corr = pearsonr(preds, labels)[0]
-    spearman_corr = spearmanr(preds, labels)[0]
-    return {
-        "pearson": pearson_corr,
-        "spearmanr": spearman_corr,
-        "corr": (pearson_corr + spearman_corr) / 2,
-    }
-
-
-def compute_metrics(metric, preds, labels):
-    assert len(preds) == len(labels)
-    if metric == "mcc":
-        return {"mcc": matthews_corrcoef(labels, preds)}
-    elif metric == "acc":
-        return {"acc": simple_accuracy(preds, labels)}
-    elif metric == "acc_f1":
-        return acc_and_f1(preds, labels)
-    elif metric == "pear_spear":
-        return pearson_and_spearman(preds, labels)
-    else:
-        raise KeyError(metric)
 
 def train(model, optimizer, train_examples, dev_examples, label_list, device,
           tokenizer, output_mode, num_train_optimization_steps,

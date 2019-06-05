@@ -38,7 +38,7 @@
     },
 
     "do_train": {
-      "value": null,
+      "value": true,
       "default": false,
       "desc": "Whether to run training."
     },
@@ -80,7 +80,7 @@
     },
 
     "no_cuda":  {
-      "value": null,
+      "value": true,
       "default": false,
       "desc": "Whether not to use CUDA when available."
     },
