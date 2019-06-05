@@ -17,7 +17,7 @@ from torch.nn import CrossEntropyLoss, MSELoss
 from sklearn.metrics import classification_report
 
 from opensesame.file_utils import OPENSESAME_CACHE, WEIGHTS_NAME, CONFIG_NAME, read_config
-from opensesame.models.bert.modeling import BertForSequenceClassification
+from opensesame.models.bert.modeling import BertForSequenceClassification, BertForTokenClassification
 from opensesame.models.bert.tokenization import BertTokenizer
 from opensesame.models.bert.optimization import BertAdam, WarmupLinearSchedule
 from opensesame.data_handler.seq_classification import featurize_samples, get_data_loader
@@ -33,8 +33,6 @@ def train(model, optimizer, train_examples, dev_examples, label_list, device,
 
     # Begin train loop
     global_step = 0
-    nb_tr_steps = 0
-    tr_loss = 0
 
     # TODO: Should this if statement be here?
     if args.do_train:
@@ -46,7 +44,6 @@ def train(model, optimizer, train_examples, dev_examples, label_list, device,
         else:
             train_sampler = DistributedSampler
 
-        dev_sampler = SequentialSampler
 
         train_data_loader, train_dataset = get_data_loader(train_examples, label_list,
                                                            train_sampler, args.train_batch_size,
@@ -62,7 +59,7 @@ def train(model, optimizer, train_examples, dev_examples, label_list, device,
                 batch = tuple(t.to(device) for t in batch)
                 input_ids, input_mask, segment_ids, label_ids = batch
 
-                # define a new function to compute loss values for both output_modes
+                # TODO define a new function to compute loss values for all output_modes
                 logits = model(input_ids, segment_ids, input_mask, labels=None)
 
                 if output_mode == "classification":
@@ -77,10 +74,14 @@ def train(model, optimizer, train_examples, dev_examples, label_list, device,
                     else:
                         loss_fct = CrossEntropyLoss()
                     loss = loss_fct(logits.view(-1, num_labels), label_ids.view(-1))
-
                 elif output_mode == "regression":
                     loss_fct = MSELoss()
                     loss = loss_fct(logits.view(-1), label_ids.view(-1))
+                elif output_mode == "ner":
+                    loss_fct = CrossEntropyLoss()
+                    loss = loss_fct(logits.view(-1, num_labels), label_ids.view(-1))
+                else:
+                    raise NotImplementedError
 
                 if n_gpu > 1:
                     loss = loss.mean() # mean() to average on multi-gpu.
@@ -112,6 +113,7 @@ def train(model, optimizer, train_examples, dev_examples, label_list, device,
 
 
     return model
+
 
 def evaluation(model, eval_examples, label_list, tokenizer, output_mode, device, num_labels, metric, args):
     # TODO: If this is false, this function does nothing
@@ -222,22 +224,32 @@ def save_model(model, tokenizer, args):
     model_to_save.config.to_json_file(output_config_file)
     tokenizer.save_vocabulary(args.output_dir)
 
+
 def load_model(model_dir, do_lower_case, num_labels):
     # Load a trained model and vocabulary that you have fine-tuned
     model = BertForSequenceClassification.from_pretrained(model_dir, num_labels=num_labels)
     tokenizer = BertTokenizer.from_pretrained(model_dir, do_lower_case=do_lower_case)
     return model, tokenizer
 
-def initialize_model(device, num_labels, n_gpu, args):
+
+def initialize_model(device, num_labels, n_gpu, cache_dir, bert_model, local_rank, fp16, downstream_task):
     # Prepare model
-    cache_dir = args.cache_dir if args.cache_dir else os.path.join(str(OPENSESAME_CACHE), 'distributed_{}'.format(args.local_rank))
-    model = BertForSequenceClassification.from_pretrained(args.bert_model,
+    cache_dir = cache_dir if cache_dir else os.path.join(str(OPENSESAME_CACHE), 'distributed_{}'.format(local_rank))
+    if downstream_task == "seq_classification":
+        model = BertForSequenceClassification.from_pretrained(bert_model,
+                  cache_dir=cache_dir,
+                  num_labels=num_labels)
+    elif downstream_task == "ner":
+        model = BertForTokenClassification.from_pretrained(bert_model,
               cache_dir=cache_dir,
-              num_labels=num_labels)
-    if args.fp16:
+              num_labels = num_labels)
+
+    else:
+        raise NotImplementedError
+    if fp16:
         model.half()
     model.to(device)
-    if args.local_rank != -1:
+    if local_rank != -1:
         try:
             from apex.parallel import DistributedDataParallel as DDP
         except ImportError:
@@ -248,7 +260,8 @@ def initialize_model(device, num_labels, n_gpu, args):
         model = torch.nn.DataParallel(model)
     return model
 
-def run_seq_classification(args, processor, output_mode, metric):
+
+def run_model(args, downstream_task, processor, output_mode, metric):
     # Basic init and input validation
     logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                         datefmt = '%m/%d/%Y %H:%M:%S',
@@ -308,7 +321,9 @@ def run_seq_classification(args, processor, output_mode, metric):
         if args.local_rank != -1:
             num_train_optimization_steps = num_train_optimization_steps // torch.distributed.get_world_size()
 
-        model = initialize_model(device, num_labels, n_gpu, args)
+        model = initialize_model(device=device, num_labels=num_labels, n_gpu=n_gpu, cache_dir=args.cache_dir,
+                                 bert_model=args.bert_model, local_rank=args.local_rank, fp16=args.fp16,
+                                 downstream_task=downstream_task)
 
         optimizer, warmup_linear = initialize_optimizer(model, args, num_train_optimization_steps)
 
