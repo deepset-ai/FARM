@@ -3,6 +3,9 @@ from .general import DataProcessor, _truncate_seq_pair
 import logging
 import os
 from sklearn.model_selection import train_test_split
+import torch
+from torch.utils.data import (DataLoader,
+                              TensorDataset)
 logger = logging.getLogger(__name__)
 
 # Functions specific to handle seq. classification data, but shared across different datasets
@@ -37,6 +40,37 @@ class InputFeatures(object):
         self.segment_ids = segment_ids
         self.label_id = label_id
 
+def get_data_loader(examples, label_list, sampler, batch_size, args, tokenizer, output_mode):
+    # TO DO: This should be a function that takes a processor and returns a dataloader
+    # Can this be moved to data_handler/general.py?
+    logger.info("  Num examples = %d", len(examples))
+    logger.info("  Batch size = %d", batch_size)
+    all_input_ids, all_input_mask, all_segment_ids, all_label_ids = featurize_samples(examples,
+                                                                                      label_list,
+                                                                                      args,
+                                                                                      tokenizer,
+                                                                                      output_mode)
+
+    dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
+    # Run prediction for full data
+    data_sampler = sampler(dataset)
+    data_loader = DataLoader(dataset, sampler=data_sampler, batch_size=batch_size)
+    return data_loader, dataset
+
+def featurize_samples(samples, label_list, args, tokenizer, output_mode):
+
+    features = convert_examples_to_features(
+        samples, label_list, args.max_seq_length, tokenizer, output_mode)
+    all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
+    all_input_mask = torch.tensor([f.input_mask for f in features], dtype=torch.long)
+    all_segment_ids = torch.tensor([f.segment_ids for f in features], dtype=torch.long)
+
+    if output_mode == "classification":
+        all_label_ids = torch.tensor([f.label_id for f in features], dtype=torch.long)
+    elif output_mode == "regression":
+        all_label_ids = torch.tensor([f.label_id for f in features], dtype=torch.float)
+
+    return all_input_ids, all_input_mask, all_segment_ids, all_label_ids
 
 def convert_examples_to_features(examples, label_list, max_seq_length,
                                  tokenizer, output_mode):
@@ -104,6 +138,7 @@ def convert_examples_to_features(examples, label_list, max_seq_length,
         assert len(input_mask) == max_seq_length
         assert len(segment_ids) == max_seq_length
 
+        # TODO: label_map seems to map in the wrong direction for germeval
         if output_mode == "classification":
             label_id = label_map[example.label]
         elif output_mode == "regression":
@@ -133,6 +168,38 @@ def convert_examples_to_features(examples, label_list, max_seq_length,
 ###################################
 # Dataset specific DataProcessors
 ###################################
+
+class GNADProcessor(DataProcessor):
+    """Processor for the GNAD data set."""
+
+    def get_train_examples(self, data_dir):
+        """See base class."""
+        logger.info("LOOKING AT {}".format(os.path.join(data_dir, "train.csv")))
+        return self._create_examples(
+            self._read_tsv(os.path.join(data_dir, "train.csv"), delimiter=";"), "train")
+
+    def get_dev_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(
+            self._read_tsv(os.path.join(data_dir, "dev.csv"), delimiter=";"), "dev")
+
+    def get_labels(self):
+        """See base class."""
+        return ["Web", "Sport", "International", "Panorama", "Wissenschaft", "Wirtschaft", "Kultur", "Etat", "Inland"]
+
+    def _create_examples(self, lines, set_type):
+        """Creates examples for the training and dev sets."""
+        examples = []
+        for (i, line) in enumerate(lines):
+            guid = "%s-%s" % (set_type, i)
+            text_a = line[1]
+            text_b = ""
+            label = line[0]
+            examples.append(
+                InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
+        return examples
+
+
 class MrpcProcessor(DataProcessor):
     """Processor for the MRPC data set (GLUE version)."""
 

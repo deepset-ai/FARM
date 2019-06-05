@@ -2,7 +2,7 @@
   "general": {
 
     "data_dir": {
-      "value": "data/germeval",
+      "value": "data/gnad",
       "default": null,
       "desc": "The input data dir. Should contain the .tsv files (or other data files) for the task."
     },
@@ -15,7 +15,7 @@
 
     "task_name": {
       "value": null,
-      "default": "germeval18",
+      "default": "gnad",
       "desc": "The name of the task to train."
     },
 
@@ -38,7 +38,7 @@
     },
 
     "do_train": {
-      "value": null,
+      "value": true,
       "default": false,
       "desc": "Whether to run training."
     },
@@ -56,7 +56,7 @@
     },
 
     "train_batch_size": {
-      "value": 64,
+      "value": 8,
       "default": 32,
       "desc": "Total batch size for training."
     },
@@ -80,7 +80,7 @@
     },
 
     "no_cuda":  {
-      "value": null,
+      "value": true,
       "default": false,
       "desc": "Whether not to use CUDA when available."
     },
@@ -128,10 +128,11 @@
     },
 
     "eval_every":  {
-      "value": null,
+      "value": 2,
       "default": 30,
       "desc": "Steps per training loop required for evaluation on dev set. Only used when do_eval set to true."
     },
+
     "eval_batch_size": {
       "value": 8,
       "default": 32,
@@ -140,16 +141,10 @@
   },
 
   "task": {
-    "balance_classes":  {
-      "value": true,
+      "balance_classes":  {
+      "value": false,
       "default": false,
       "desc": "Balance classes for binary classification using CrossEntropyLoss function. Original train set from GermEval18 is skewed."
-    },
-
-    "dev_size":  {
-      "value": 0.2,
-      "default": 0,
-      "desc": "Split a dev set from the training set using dev_size as proportion."
     }
   }
 }

@@ -1,5 +1,9 @@
 import csv
 import sys
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 
 class DataProcessor(object):
@@ -18,10 +22,10 @@ class DataProcessor(object):
         raise NotImplementedError()
 
     @classmethod
-    def _read_tsv(cls, input_file, quotechar=None):
+    def _read_tsv(cls, input_file, quotechar=None, delimiter="\t"):
         """Reads a tab separated value file."""
         with open(input_file, "r", encoding="utf-8") as f:
-            reader = csv.reader(f, delimiter="\t", quotechar=quotechar)
+            reader = csv.reader(f, delimiter=delimiter, quotechar=quotechar)
             lines = []
             for line in reader:
                 if sys.version_info[0] == 2:
