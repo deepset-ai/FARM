@@ -2,6 +2,7 @@ from __future__ import absolute_import, division, print_function
 
 import logging
 import os
+from collections import Counter
 
 import warnings
 import numpy as np
@@ -103,11 +104,12 @@ def train(model, optimizer, train_examples, dev_examples, label_list, device,
 
                 if output_mode == "classification":
                     if "balance_classes" in args.__dict__ and args.balance_classes:
-                        # TODO: This section currently seems wrong - countPos returns tensor of shape [1]
-                        all_label_ids = torch.Tensor([x[3] for x in train_dataset])
-                        countAll = len(all_label_ids)
-                        countPos = sum(all_label_ids)
-                        w = torch.tensor([[countPos / countAll, 1. - (countPos / countAll)]])
+                        # TODO: Validate that fix now also balances correctly for multiclass
+                        all_label_ids = [x[3].item() for x in train_dataset]
+                        class_counts = Counter(all_label_ids)
+                        ratios = [1 - (c / len(all_label_ids)) for c in class_counts.values()]
+                        w = torch.tensor([c / (sum(ratios)) for c in ratios])
+                        logger.info("Using weighted loss with weigts: {}".format(w))
                         loss_fct = CrossEntropyLoss(weight=w.to(device))
                     else:
                         loss_fct = CrossEntropyLoss()
