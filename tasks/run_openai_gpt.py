@@ -44,6 +44,8 @@ from opensesame import (OpenAIGPTDoubleHeadsModel, OpenAIGPTTokenizer,
 
 ROCSTORIES_URL = "https://s3.amazonaws.com/datasets.huggingface.co/ROCStories.tar.gz"
 
+#TODO refactor for opensesame!
+
 logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt = '%m/%d/%Y %H:%M:%S',
                     level = logging.INFO)

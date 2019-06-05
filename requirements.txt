@@ -8,3 +8,6 @@ boto3
 requests
 # For OpenAI GPT
 regex
+# Scipy & sklearn for stats in run_classifier
+scipy
+sklearn

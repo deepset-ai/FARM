@@ -35,6 +35,8 @@ logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(messa
                     level = logging.INFO)
 logger = logging.getLogger(__name__)
 
+#TODO refactor for opensesame!
+
 def main():
     parser = argparse.ArgumentParser(description='PyTorch Transformer Language Model')
     parser.add_argument('--model_name', type=str, default='transfo-xl-wt103',
