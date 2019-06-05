@@ -17,7 +17,7 @@
 
 
 from opensesame.data_handler.seq_classification import GermEval18SentimentProcessor
-from opensesame.models.bert.training import run_seq_classification
+from opensesame.models.bert.training import run_model
 import argparse
 from opensesame.file_utils import read_config
 
@@ -35,7 +35,8 @@ def main():
     processor = GermEval18SentimentProcessor(args.data_dir, args.dev_size, args.seed)
     output_mode = "classification"
 
-    run_seq_classification(args, processor, output_mode, metric)
+    run_model(args=args, downstream_task="seq_classification", processor=processor, output_mode=output_mode,
+              metric=metric)
 
 
 if __name__ == "__main__":

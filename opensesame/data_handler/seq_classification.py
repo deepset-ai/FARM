@@ -1,4 +1,4 @@
-from .general import DataProcessor, _truncate_seq_pair
+from .general import DataProcessor, _truncate_seq_pair, InputExample, InputFeatures
 
 import logging
 import os
@@ -9,36 +9,6 @@ from torch.utils.data import (DataLoader,
 logger = logging.getLogger(__name__)
 
 # Functions specific to handle seq. classification data, but shared across different datasets
-
-class InputExample(object):
-    """A single training/test example for simple sequence classification."""
-
-    def __init__(self, guid, text_a, text_b=None, label=None):
-        """Constructs a InputExample.
-
-        Args:
-            guid: Unique id for the example.
-            text_a: string. The untokenized text of the first sequence. For single
-            sequence tasks, only this sequence must be specified.
-            text_b: (Optional) string. The untokenized text of the second sequence.
-            Only must be specified for sequence pair tasks.
-            label: (Optional) string. The label of the example. This should be
-            specified for train and dev examples, but not for test examples.
-        """
-        self.guid = guid
-        self.text_a = text_a
-        self.text_b = text_b
-        self.label = label
-
-
-class InputFeatures(object):
-    """A single set of features of data."""
-
-    def __init__(self, input_ids, input_mask, segment_ids, label_id):
-        self.input_ids = input_ids
-        self.input_mask = input_mask
-        self.segment_ids = segment_ids
-        self.label_id = label_id
 
 def get_data_loader(examples, label_list, sampler, batch_size, args, tokenizer, output_mode):
     # TO DO: This should be a function that takes a processor and returns a dataloader
@@ -57,6 +27,7 @@ def get_data_loader(examples, label_list, sampler, batch_size, args, tokenizer, 
     data_loader = DataLoader(dataset, sampler=data_sampler, batch_size=batch_size)
     return data_loader, dataset
 
+
 def featurize_samples(samples, label_list, args, tokenizer, output_mode):
 
     features = convert_examples_to_features(
@@ -71,6 +42,7 @@ def featurize_samples(samples, label_list, args, tokenizer, output_mode):
         all_label_ids = torch.tensor([f.label_id for f in features], dtype=torch.float)
 
     return all_input_ids, all_input_mask, all_segment_ids, all_label_ids
+
 
 def convert_examples_to_features(examples, label_list, max_seq_length,
                                  tokenizer, output_mode):
@@ -138,7 +110,6 @@ def convert_examples_to_features(examples, label_list, max_seq_length,
         assert len(input_mask) == max_seq_length
         assert len(segment_ids) == max_seq_length
 
-        # TODO: label_map seems to map in the wrong direction for germeval
         if output_mode == "classification":
             label_id = label_map[example.label]
         elif output_mode == "regression":
