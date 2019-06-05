@@ -48,6 +48,7 @@ else:
 
 logger = logging.getLogger(__name__)
 
+#TODO refactor for opensesame!
 
 class SquadExample(object):
     """

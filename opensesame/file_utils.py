@@ -277,3 +277,31 @@ def get_file_extension(path, dot=True, lower=True):
     ext = os.path.splitext(path)[1]
     ext = ext if dot else ext[1:]
     return ext.lower() if lower else ext
+
+
+# Allow retrieval of config args with dot notation
+class Struct:
+    def __init__(self, **entries):
+        self.__dict__.update(entries)
+
+
+def read_config(path):
+    if path:
+        with open(path) as json_data_file:
+            conf_args = json.load(json_data_file)
+    else:
+        raise ValueError("No config provided for classifier")
+
+    if not conf_args["general"]["do_train"]["value"] and not conf_args["general"]["do_eval"]["value"]:
+        raise ValueError("at least do_train or do_eval should be set true")
+
+    # Merge the different config sections, if task section exists
+    all_args = dict(conf_args["general"], **conf_args["task"]) if "task" in conf_args else conf_args["general"]
+
+    def getArgValue(arg):
+        return arg["value"] if arg["value"] else arg["default"]
+
+    args = {k: getArgValue(v) for k, v in all_args.items()}
+    args = Struct(**args)
+
+    return args

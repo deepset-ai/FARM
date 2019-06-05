@@ -17,12 +17,15 @@
 
 from __future__ import absolute_import, division, print_function
 
+import warnings
+
 import argparse
 import csv
 import logging
 import os
 import random
 import sys
+import json
 
 import numpy as np
 import torch
@@ -33,16 +36,16 @@ from tqdm import tqdm, trange
 
 from torch.nn import CrossEntropyLoss, MSELoss
 from scipy.stats import pearsonr, spearmanr
-from sklearn.metrics import matthews_corrcoef, f1_score
+from sklearn.metrics import matthews_corrcoef, f1_score, classification_report
 
-from opensesame.file_utils import OPENSESAME_CACHE, WEIGHTS_NAME, CONFIG_NAME
+from opensesame.file_utils import OPENSESAME_CACHE, WEIGHTS_NAME, CONFIG_NAME, read_config
 from opensesame.models.bert.modeling import BertForSequenceClassification, BertConfig
 from opensesame.models.bert.tokenization import BertTokenizer
 from opensesame.models.bert.optimization import BertAdam, WarmupLinearSchedule
 
 from opensesame.data_handler.seq_classification import convert_examples_to_features, ColaProcessor, \
     MnliMismatchedProcessor, MnliProcessor, MrpcProcessor, QnliProcessor, QqpProcessor, RteProcessor, StsbProcessor, \
-    WnliProcessor, Sst2Processor
+    WnliProcessor, Sst2Processor, GermEval18SentimentProcessor
 logger = logging.getLogger(__name__)
 
 
@@ -93,106 +96,23 @@ def compute_metrics(task_name, preds, labels):
         return {"acc": simple_accuracy(preds, labels)}
     elif task_name == "wnli":
         return {"acc": simple_accuracy(preds, labels)}
+    elif task_name == "germeval18":
+        return acc_and_f1(preds, labels)
     else:
         raise KeyError(task_name)
+
+
 
 #TODO refactor this huge train loop so it can be re-used by other doc classifier scripts (short term) and even other down-stream tasks (mid term)
 def main():
 
-    #TODO add parsing from config file to overwrite defaults in commandline args
-
+    # get params from config file
     parser = argparse.ArgumentParser()
+    parser.add_argument("-c", "--conf_file",
+                        help="Specify config file", metavar="FILE")
+    cli_args, remaining_argv = parser.parse_known_args()
+    args = read_config(cli_args.conf_file)
 
-    ## Required parameters
-    parser.add_argument("--data_dir",
-                        default=None,
-                        type=str,
-                        required=True,
-                        help="The input data dir. Should contain the .tsv files (or other data files) for the task.")
-    parser.add_argument("--bert_model", default=None, type=str, required=True,
-                        help="Bert pre-trained model selected in the list: bert-base-uncased, "
-                        "bert-large-uncased, bert-base-cased, bert-large-cased, bert-base-multilingual-uncased, "
-                        "bert-base-multilingual-cased, bert-base-chinese.")
-    parser.add_argument("--task_name",
-                        default=None,
-                        type=str,
-                        required=True,
-                        help="The name of the task to train.")
-    parser.add_argument("--output_dir",
-                        default=None,
-                        type=str,
-                        required=True,
-                        help="The output directory where the model predictions and checkpoints will be written.")
-
-    ## Other parameters
-    parser.add_argument("--cache_dir",
-                        default="",
-                        type=str,
-                        help="Where do you want to store the pre-trained models downloaded from s3")
-    parser.add_argument("--max_seq_length",
-                        default=128,
-                        type=int,
-                        help="The maximum total input sequence length after WordPiece tokenization. \n"
-                             "Sequences longer than this will be truncated, and sequences shorter \n"
-                             "than this will be padded.")
-    parser.add_argument("--do_train",
-                        action='store_true',
-                        help="Whether to run training.")
-    parser.add_argument("--do_eval",
-                        action='store_true',
-                        help="Whether to run eval on the dev set.")
-    parser.add_argument("--do_lower_case",
-                        action='store_true',
-                        help="Set this flag if you are using an uncased model.")
-    parser.add_argument("--train_batch_size",
-                        default=32,
-                        type=int,
-                        help="Total batch size for training.")
-    parser.add_argument("--eval_batch_size",
-                        default=8,
-                        type=int,
-                        help="Total batch size for eval.")
-    parser.add_argument("--learning_rate",
-                        default=5e-5,
-                        type=float,
-                        help="The initial learning rate for Adam.")
-    parser.add_argument("--num_train_epochs",
-                        default=3.0,
-                        type=float,
-                        help="Total number of training epochs to perform.")
-    parser.add_argument("--warmup_proportion",
-                        default=0.1,
-                        type=float,
-                        help="Proportion of training to perform linear learning rate warmup for. "
-                             "E.g., 0.1 = 10%% of training.")
-    parser.add_argument("--no_cuda",
-                        action='store_true',
-                        help="Whether not to use CUDA when available")
-    parser.add_argument("--local_rank",
-                        type=int,
-                        default=-1,
-                        help="local_rank for distributed training on gpus")
-    parser.add_argument('--seed',
-                        type=int,
-                        default=42,
-                        help="random seed for initialization")
-    parser.add_argument('--gradient_accumulation_steps',
-                        type=int,
-                        default=1,
-                        help="Number of updates steps to accumulate before performing a backward/update pass.")
-    parser.add_argument('--fp16',
-                        action='store_true',
-                        help="Whether to use 16-bit float precision instead of 32-bit")
-    parser.add_argument('--loss_scale',
-                        type=float, default=0,
-                        help="Loss scaling to improve fp16 numeric stability. Only used when fp16 set to True.\n"
-                             "0 (default value): dynamic loss scaling.\n"
-                             "Positive power of 2: static loss scaling value.\n")
-    parser.add_argument('--server_ip', type=str, default='', help="Can be used for distant debugging.")
-    parser.add_argument('--server_port', type=str, default='', help="Can be used for distant debugging.")
-    args = parser.parse_args()
-
-    #TODO option to write arguments to model_config and log it as artifact in mlflow
 
     if args.server_ip and args.server_port:
         # Distant debugging - see https://code.visualstudio.com/docs/python/debugging#_attach-to-a-local-script
@@ -212,6 +132,8 @@ def main():
         "qnli": QnliProcessor,
         "rte": RteProcessor,
         "wnli": WnliProcessor,
+        "germeval18": GermEval18SentimentProcessor
+
     }
 
     output_modes = {
@@ -224,6 +146,7 @@ def main():
         "qnli": "classification",
         "rte": "classification",
         "wnli": "classification",
+        "germeval18": "classification"
     }
 
     if args.local_rank == -1 or args.no_cuda:
@@ -268,7 +191,11 @@ def main():
     if task_name not in processors:
         raise ValueError("Task not found: %s" % (task_name))
 
-    processor = processors[task_name]()
+    if task_name == "germeval18":
+        processor = processors[task_name](args.data_dir, args.dev_size, args.seed)
+    else:
+        processor = processors[task_name]()
+
     output_mode = output_modes[task_name]
 
     label_list = processor.get_labels()
@@ -361,6 +288,25 @@ def main():
             train_sampler = DistributedSampler(train_data)
         train_dataloader = DataLoader(train_data, sampler=train_sampler, batch_size=args.train_batch_size)
 
+        # TODO move this into separate function. Probably we can use ONE method for train_dataloader and eval_dataloader
+        # In => Tensordataset + type=eval/train + sampler=seq/random ... ; Out: DataLoader
+        if args.eval_every:
+            dev_eval_examples = processor.get_dev_examples(args.data_dir)
+            dev_eval_features = convert_examples_to_features(
+                dev_eval_examples, label_list, args.max_seq_length, tokenizer, output_mode)
+            all_dev_input_ids = torch.tensor([f.input_ids for f in dev_eval_features], dtype=torch.long)
+            all_dev_input_mask = torch.tensor([f.input_mask for f in dev_eval_features], dtype=torch.long)
+            all_dev_segment_ids = torch.tensor([f.segment_ids for f in dev_eval_features], dtype=torch.long)
+
+            if output_mode == "classification":
+                all_dev_label_ids = torch.tensor([f.label_id for f in dev_eval_features], dtype=torch.long)
+            elif output_mode == "regression":
+                all_dev_label_ids = torch.tensor([f.label_id for f in dev_eval_features], dtype=torch.float)
+
+            dev_eval_data = TensorDataset(all_dev_input_ids, all_dev_input_mask, all_dev_segment_ids, all_dev_label_ids)
+            eval_sampler = SequentialSampler(dev_eval_data)
+            eval_dataloader = DataLoader(dev_eval_data, sampler=eval_sampler, batch_size=args.eval_batch_size)
+
         model.train()
         for _ in trange(int(args.num_train_epochs), desc="Epoch"):
             tr_loss = 0
@@ -372,8 +318,16 @@ def main():
                 # define a new function to compute loss values for both output_modes
                 logits = model(input_ids, segment_ids, input_mask, labels=None)
 
+                # TODO integrate this balanced classes part into Branden's train methods
                 if output_mode == "classification":
-                    loss_fct = CrossEntropyLoss()
+                    if "balance_classes" in args and args.balance_classes:
+                        countAll = len(all_label_ids)
+                        countPos = sum(all_label_ids)
+                        w = torch.tensor([[countPos / countAll, 1. - (countPos / countAll)]])
+                        loss_fct = CrossEntropyLoss(weight=w.to(device))
+                    else:
+                        loss_fct = CrossEntropyLoss()
+                # TODO END
                     loss = loss_fct(logits.view(-1, num_labels), label_ids.view(-1))
                 elif output_mode == "regression":
                     loss_fct = MSELoss()
@@ -403,6 +357,60 @@ def main():
                     optimizer.zero_grad()
                     global_step += 1
 
+                #TODO we need to integrate this eval during training in Branden's train method
+                if (args.eval_every and (global_step % args.eval_every == 1)):
+                    model.eval()
+                    dev_eval_loss = 0
+                    nb_dev_eval_steps = 0
+                    dev_preds = []
+
+                    for input_ids, input_mask, segment_ids, label_ids in tqdm(eval_dataloader, desc="Evaluating"):
+                        input_ids = input_ids.to(device)
+                        input_mask = input_mask.to(device)
+                        segment_ids = segment_ids.to(device)
+                        label_ids = label_ids.to(device)
+
+                        with torch.no_grad():
+                            logits = model(input_ids, segment_ids, input_mask, labels=None)
+
+                        # create eval loss and other metric required by the task
+                        if output_mode == "classification":
+                            loss_fct = CrossEntropyLoss()
+                            tmp_eval_loss = loss_fct(logits.view(-1, num_labels), label_ids.view(-1))
+                        elif output_mode == "regression":
+                            loss_fct = MSELoss()
+                            tmp_eval_loss = loss_fct(logits.view(-1), label_ids.view(-1))
+
+                        dev_eval_loss += tmp_eval_loss.mean().item()
+                        nb_dev_eval_steps += 1
+                        if len(dev_preds) == 0:
+                            dev_preds.append(logits.detach().cpu().numpy())
+                        else:
+                            dev_preds[0] = np.append(
+                                dev_preds[0], logits.detach().cpu().numpy(), axis=0)
+
+                    dev_eval_loss = dev_eval_loss / nb_dev_eval_steps
+                    dev_preds = dev_preds[0]
+                    if output_mode == "classification":
+                        dev_preds = np.argmax(dev_preds, axis=1)
+                    elif output_mode == "regression":
+                        dev_preds = np.squeeze(dev_preds)
+                    result = compute_metrics(task_name, dev_preds, all_dev_label_ids.numpy())
+                    loss = tr_loss / global_step if args.do_train else None
+
+                    result['eval_loss'] = dev_eval_loss
+                    result['global_step'] = global_step
+                    result['loss'] = loss
+
+                    report = classification_report(dev_preds, all_dev_label_ids.numpy(), digits=4)
+                    output_eval_file = os.path.join(args.output_dir, "eval_results.txt")
+                    with open(output_eval_file, "w") as writer:
+                        logger.info("***** Eval results *****")
+                        logger.info("\n%s", report)
+                        writer.write(report)
+                    model.train(True)
+                    # TODO END
+
     if args.do_train and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
         # Save a trained model, configuration and tokenizer
         model_to_save = model.module if hasattr(model, 'module') else model  # Only save the model it-self
@@ -423,7 +431,13 @@ def main():
     model.to(device)
 
     if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
-        eval_examples = processor.get_dev_examples(args.data_dir)
+        # TODO integrate this in Branden's code: use test set if available, otherwise dev set. Or we make this explicit as a setting per task.
+        if os.path.isfile(args.data_dir + "/test.tsv"):
+            eval_examples = processor.get_test_examples(args.data_dir)
+        else:
+            warnings.warn("Test set not found, evaluation performed on dev set.")
+            eval_examples = processor.get_dev_examples(args.data_dir)
+        # TODO END
         eval_features = convert_examples_to_features(
             eval_examples, label_list, args.max_seq_length, tokenizer, output_mode)
         logger.info("***** Running evaluation *****")
@@ -485,13 +499,14 @@ def main():
         result['eval_loss'] = eval_loss
         result['global_step'] = global_step
         result['loss'] = loss
-
+        #TODO this is a nicer report than the standard one => integrate in Branden's eval method
+        report = classification_report(preds, all_label_ids.numpy(), digits=4)
         output_eval_file = os.path.join(args.output_dir, "eval_results.txt")
         with open(output_eval_file, "w") as writer:
             logger.info("***** Eval results *****")
-            for key in sorted(result.keys()):
-                logger.info("  %s = %s", key, str(result[key]))
-                writer.write("%s = %s\n" % (key, str(result[key])))
+            logger.info("\n%s", report)
+            writer.write(report)
+        # TODO END
 
         # hack for MNLI-MM
         if task_name == "mnli":

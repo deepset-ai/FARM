@@ -42,6 +42,7 @@ logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(messa
                     level = logging.INFO)
 logger = logging.getLogger(__name__)
 
+#TODO refactor for opensesame!
 
 class SwagExample(object):
     """A single training/test example for the SWAG dataset."""
