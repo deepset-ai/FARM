@@ -8,7 +8,7 @@
     },
 
     "bert_model": {
-      "value": "bert-base-multilingual-cased",
+      "value": "bert-base-cased-de-v0-1",
       "default": null,
       "desc": "Bert pre-trained model selected in the list: bert-base-uncased, bert-large-uncased, bert-base-cased, bert-large-cased, bert-base-multilingual-uncased, bert-base-multilingual-cased, bert-base-chinese."
     },
