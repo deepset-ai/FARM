@@ -1,5 +1,6 @@
 from sklearn.metrics import matthews_corrcoef, f1_score
 from scipy.stats import pearsonr, spearmanr
+from seqeval.metrics import f1_score as seq_f1_score
 
 
 def simple_accuracy(preds, labels):
@@ -36,5 +37,7 @@ def compute_metrics(metric, preds, labels):
         return acc_and_f1(preds, labels)
     elif metric == "pear_spear":
         return pearson_and_spearman(preds, labels)
+    elif metric == "seq_f1":
+        return {"seq_f1": seq_f1_score(labels, preds)}
     else:
         raise KeyError(metric)

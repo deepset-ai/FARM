@@ -80,7 +80,7 @@
     },
 
     "no_cuda":  {
-      "value": true,
+      "value": false,
       "default": false,
       "desc": "Whether not to use CUDA when available."
     },

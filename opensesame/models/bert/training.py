@@ -125,6 +125,7 @@ def evaluation(model, eval_examples, label_list, tokenizer, output_mode, device,
     eval_loss = 0
     nb_eval_steps = 0
     preds = []
+    y_true = []
 
     for input_ids, input_mask, segment_ids, label_ids in tqdm(eval_data_loader, desc="Evaluating"):
         input_ids = input_ids.to(device)
@@ -149,23 +150,28 @@ def evaluation(model, eval_examples, label_list, tokenizer, output_mode, device,
         # TODO: Loss for ner is calculated in the same way as during train i.e. predictions on non-initial subtokens are included
         eval_loss += tmp_eval_loss.mean().item()
         nb_eval_steps += 1
-        if len(preds) == 0:
-            preds.append(logits.detach().cpu().numpy())
-        else:
-            preds[0] = np.append(
-                preds[0], logits.detach().cpu().numpy(), axis=0)
 
         if output_mode == "ner":
-            preds, all_label_ids = ignore_subword_tokens(logits, input_mask, label_map, label_ids)
+            batch_preds, batch_y_true = ignore_subword_tokens(logits, input_mask, label_map, label_ids)
+            preds += batch_preds
+            y_true += batch_y_true
+        else:
+            # TODO: Figure out what this is for
+            if len(preds) == 0:
+                preds.append(logits.detach().cpu().numpy())
+            else:
+                preds[0] = np.append(
+                    preds[0], logits.detach().cpu().numpy(), axis=0)
+            preds = preds[0]
+            y_true = eval_dataset.tensors[3]
+
 
     eval_loss = eval_loss / nb_eval_steps
-    preds = preds[0]
     if output_mode == "classification":
         preds = np.argmax(preds, axis=1)
     elif output_mode == "regression":
         preds = np.squeeze(preds)
-    all_label_ids = eval_dataset.tensors[3]
-    result = compute_metrics(metric, preds, all_label_ids.numpy())
+    result = compute_metrics(metric, preds, y_true)
 
     result['eval_loss'] = eval_loss
 
@@ -174,11 +180,11 @@ def evaluation(model, eval_examples, label_list, tokenizer, output_mode, device,
 
     if output_mode == "ner":
         dev_f1_labels = ["B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-OTH", "I-OTH"]
-        f1 = f1_score(all_label_ids, preds, labels=dev_f1_labels, average='micro')
+        f1 = f1_score(y_true, preds, labels=dev_f1_labels, average='micro')
         logger.info("F1 Score: {}".format(f1))
-        report = token_classification_report(preds, all_label_ids, digits=4)
+        report = token_classification_report(preds, y_true, digits=4)
     else:
-        report = classification_report(preds, all_label_ids.numpy(), digits=4)
+        report = classification_report(preds, y_true.numpy(), digits=4)
     logger.info("\n%s", report)
 
     if report_output_dir:
@@ -277,6 +283,7 @@ def ignore_subword_tokens(logits, input_mask, label_map, label_ids):
     preds = []
     logits = torch.argmax(F.log_softmax(logits, dim=2), dim=2)
     logits = logits.detach().cpu().numpy()
+    label_ids = label_ids.to('cpu').numpy()
 
     for i, mask in enumerate(input_mask):
         temp_1 = []
@@ -285,7 +292,7 @@ def ignore_subword_tokens(logits, input_mask, label_map, label_ids):
             if j == 0:
                 continue
             if m:
-                if label_map[label_ids[i][j]] != "X":
+                if label_map[label_ids[i][j].item()] != "X":
                     temp_1.append(label_map[label_ids[i][j]])
                     temp_2.append(label_map[logits[i][j]])
             else:

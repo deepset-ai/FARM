@@ -31,7 +31,7 @@ def main():
     cli_args, remaining_argv = parser.parse_known_args()
     args = read_config(cli_args.conf_file)
 
-    metric = "acc"
+    metric = "seq_f1"
     processor = ConllProcessor()
     output_mode = "ner"
     prediction_head = "simple_ner"
