@@ -35,7 +35,7 @@ def main():
     processor = GermEval18SentimentProcessor(args.data_dir, args.dev_size, args.seed)
     output_mode = "classification"
 
-    run_model(args=args, downstream_task="seq_classification", processor=processor, output_mode=output_mode,
+    run_model(args=args, prediction_head="seq_classification", processor=processor, output_mode=output_mode,
               metric=metric)
 
 

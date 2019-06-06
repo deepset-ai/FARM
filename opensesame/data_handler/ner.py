@@ -1,6 +1,9 @@
 import os
+import logging
 
-from opensesame.data_handler.general import DataProcessor, InputExample
+from opensesame.data_handler.general import DataProcessor, InputExample, InputFeatures
+
+logger = logging.getLogger(__name__)
 
 
 class ConllProcessor(DataProcessor):
@@ -22,7 +25,7 @@ class ConllProcessor(DataProcessor):
             self._read_tsv(os.path.join(data_dir, "test.txt")), "test")
 
     def get_labels(self):
-        return ["O", "B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "X", "B-OTH", "I-OTH",
+        return ["[PAD]","O", "B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "X", "B-OTH", "I-OTH",
                 "[CLS]", "[SEP]"]
 
     def _create_examples(self, lines, set_type):
@@ -77,7 +80,7 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
 
     #TODO factor out common parts of this function and the one for other tasks (e.g. classification)
 
-    label_map = {label: i for i, label in enumerate(label_list, 1)}
+    label_map = {label: i for i, label in enumerate(label_list)} # changed numbering to start from 0 after adding an additional padding label to label_Map!
 
     features = []
     for (ex_index, example) in enumerate(examples):
@@ -121,6 +124,7 @@ def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer
         assert len(input_mask) == max_seq_length
         assert len(segment_ids) == max_seq_length
         assert len(label_ids) == max_seq_length
+        assert max(label_ids) < len(label_list)
 
         if ex_index < 5:
             logger.info("*** Example ***")

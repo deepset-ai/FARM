@@ -1,8 +1,14 @@
 import csv
 import sys
 import logging
+import torch
+from torch.utils.data import (DataLoader,
+                              TensorDataset)
+
 
 logger = logging.getLogger(__name__)
+
+
 
 class InputExample(object):
     """A single training/test example for simple sequence classification."""
@@ -33,6 +39,46 @@ class InputFeatures(object):
         self.input_mask = input_mask
         self.segment_ids = segment_ids
         self.label_id = label_id
+
+
+def featurize_samples(samples, label_list, max_seq_length, tokenizer, output_mode):
+    """ Convert examples to proper tensors for TensorDataset"""
+    if output_mode in ("classification", "regression"):
+        from opensesame.data_handler import seq_classification
+        features = seq_classification.convert_examples_to_features(
+            samples, label_list, max_seq_length, tokenizer, output_mode)
+    if output_mode == "ner":
+        from opensesame.data_handler import ner
+        features = ner.convert_examples_to_features(samples, label_list, max_seq_length, tokenizer)
+
+    all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
+    all_input_mask = torch.tensor([f.input_mask for f in features], dtype=torch.long)
+    all_segment_ids = torch.tensor([f.segment_ids for f in features], dtype=torch.long)
+
+    if output_mode in ("ner","classification"):
+        all_label_ids = torch.tensor([f.label_id for f in features], dtype=torch.long)
+    elif output_mode == "regression":
+        all_label_ids = torch.tensor([f.label_id for f in features], dtype=torch.float)
+    else:
+        raise NotImplementedError
+    return all_input_ids, all_input_mask, all_segment_ids, all_label_ids
+
+
+def get_data_loader(examples, label_list, sampler, batch_size, max_seq_length, tokenizer, output_mode):
+    # TODO: This should be a function that takes a processor and returns a dataloader
+    logger.info("  Num examples = %d", len(examples))
+    logger.info("  Batch size = %d", batch_size)
+    all_input_ids, all_input_mask, all_segment_ids, all_label_ids = featurize_samples(examples,
+                                                                                      label_list,
+                                                                                      max_seq_length,
+                                                                                      tokenizer,
+                                                                                      output_mode)
+
+    dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
+    # Run prediction for full data
+    data_sampler = sampler(dataset)
+    data_loader = DataLoader(dataset, sampler=data_sampler, batch_size=batch_size)
+    return data_loader, dataset
 
 
 class DataProcessor(object):

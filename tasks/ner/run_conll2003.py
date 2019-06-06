@@ -33,7 +33,8 @@ def main():
 
     metric = "acc"
     processor = ConllProcessor()
-    output_mode = "classification"
+    output_mode = "ner"
+    prediction_head = "simple_ner"
 
     #TODO:
     # To implement: most custom code added in the train / eval loops in https://gitlab.com/deepset-ai/ml/bert-NER-pytorch/blob/master/run_ner.py
@@ -44,7 +45,7 @@ def main():
     # - training
     # - saving/loading
     # - eval
-    run_model(args=args, downstream_task="ner", processor=processor, output_mode=output_mode, metric=metric)
+    run_model(args=args, prediction_head=prediction_head, processor=processor, output_mode=output_mode, metric=metric)
 
 
 if __name__ == "__main__":

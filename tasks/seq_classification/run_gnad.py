@@ -17,7 +17,7 @@ def main():
     processor = GNADProcessor()
     output_mode = "classification"
 
-    run_model(args=args, downstream_task="seq_classification", processor=processor, output_mode=output_mode,
+    run_model(args=args, prediction_head="seq_classification", processor=processor, output_mode=output_mode,
               metric=metric)
 
 if __name__ == "__main__":

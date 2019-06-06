@@ -20,7 +20,7 @@ from opensesame.file_utils import OPENSESAME_CACHE, WEIGHTS_NAME, CONFIG_NAME, r
 from opensesame.models.bert.modeling import BertForSequenceClassification, BertForTokenClassification
 from opensesame.models.bert.tokenization import BertTokenizer
 from opensesame.models.bert.optimization import BertAdam, WarmupLinearSchedule
-from opensesame.data_handler.seq_classification import featurize_samples, get_data_loader
+from opensesame.data_handler.general import get_data_loader
 from opensesame.metrics import compute_metrics
 
 
@@ -138,6 +138,9 @@ def evaluation(model, eval_examples, label_list, tokenizer, output_mode, device,
         elif output_mode == "regression":
             loss_fct = MSELoss()
             tmp_eval_loss = loss_fct(logits.view(-1), label_ids.view(-1))
+        elif output_mode == "ner":
+            loss_fct = CrossEntropyLoss()
+            tmp_eval_loss = loss_fct(logits.view(-1, num_labels), label_ids.view(-1))
 
         eval_loss += tmp_eval_loss.mean().item()
         nb_eval_steps += 1
@@ -224,18 +227,20 @@ def load_model(model_dir, do_lower_case, num_labels):
     return model, tokenizer
 
 
-def initialize_model(device, num_labels, n_gpu, cache_dir, bert_model, local_rank, fp16, downstream_task):
+def initialize_model(bert_model, prediction_head, num_labels, device, n_gpu, cache_dir, local_rank, fp16):
     # Prepare model
     cache_dir = cache_dir if cache_dir else os.path.join(str(OPENSESAME_CACHE), 'distributed_{}'.format(local_rank))
-    if downstream_task == "seq_classification":
+    if prediction_head == "seq_classification":
         model = BertForSequenceClassification.from_pretrained(bert_model,
                   cache_dir=cache_dir,
                   num_labels=num_labels)
-    elif downstream_task == "ner":
+    elif prediction_head == "simple_ner":
         model = BertForTokenClassification.from_pretrained(bert_model,
               cache_dir=cache_dir,
               num_labels=num_labels)
-
+    elif prediction_head == "crf_ner":
+        #TODO
+        raise NotImplementedError
     else:
         raise NotImplementedError
     if fp16:
@@ -253,7 +258,7 @@ def initialize_model(device, num_labels, n_gpu, cache_dir, bert_model, local_ran
     return model
 
 
-def run_model(args, downstream_task, processor, output_mode, metric):
+def run_model(args, prediction_head, processor, output_mode, metric):
     # Basic init and input validation
     logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                         datefmt = '%m/%d/%Y %H:%M:%S',
@@ -313,9 +318,9 @@ def run_model(args, downstream_task, processor, output_mode, metric):
         if args.local_rank != -1:
             num_train_optimization_steps = num_train_optimization_steps // torch.distributed.get_world_size()
 
-        model = initialize_model(device=device, num_labels=num_labels, n_gpu=n_gpu, cache_dir=args.cache_dir,
-                                 bert_model=args.bert_model, local_rank=args.local_rank, fp16=args.fp16,
-                                 downstream_task=downstream_task)
+        model = initialize_model(bert_model=args.bert_model, prediction_head=prediction_head, device=device,
+                                 num_labels=num_labels, n_gpu=n_gpu, cache_dir=args.cache_dir,
+                                 local_rank=args.local_rank, fp16=args.fp16)
 
         optimizer, warmup_linear = initialize_optimizer(model, args.learning_rate, args.warmup_proportion,
                                                         args.loss_scale, args.fp16, num_train_optimization_steps)
