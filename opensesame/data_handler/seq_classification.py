@@ -10,14 +10,14 @@ logger = logging.getLogger(__name__)
 
 # Functions specific to handle seq. classification data, but shared across different datasets
 
-def get_data_loader(examples, label_list, sampler, batch_size, args, tokenizer, output_mode):
+def get_data_loader(examples, label_list, sampler, batch_size, max_seq_length, tokenizer, output_mode):
     # TO DO: This should be a function that takes a processor and returns a dataloader
     # Can this be moved to data_handler/general.py?
     logger.info("  Num examples = %d", len(examples))
     logger.info("  Batch size = %d", batch_size)
     all_input_ids, all_input_mask, all_segment_ids, all_label_ids = featurize_samples(examples,
                                                                                       label_list,
-                                                                                      args,
+                                                                                      max_seq_length,
                                                                                       tokenizer,
                                                                                       output_mode)
 
@@ -28,10 +28,10 @@ def get_data_loader(examples, label_list, sampler, batch_size, args, tokenizer, 
     return data_loader, dataset
 
 
-def featurize_samples(samples, label_list, args, tokenizer, output_mode):
+def featurize_samples(samples, label_list, max_seq_length, tokenizer, output_mode):
 
     features = convert_examples_to_features(
-        samples, label_list, args.max_seq_length, tokenizer, output_mode)
+        samples, label_list, max_seq_length, tokenizer, output_mode)
     all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
     all_input_mask = torch.tensor([f.input_mask for f in features], dtype=torch.long)
     all_segment_ids = torch.tensor([f.segment_ids for f in features], dtype=torch.long)

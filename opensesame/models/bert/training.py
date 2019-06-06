@@ -28,188 +28,180 @@ logger = logging.getLogger(__name__)
 
 
 def train(model, optimizer, train_examples, dev_examples, label_list, device,
-          tokenizer, output_mode, num_train_optimization_steps,
-          n_gpu, num_labels, warmup_linear, args, metric):
+          tokenizer, output_mode, n_gpu, num_labels, warmup_linear, args, metric):
 
     # Begin train loop
     global_step = 0
+    logger.info("***** Loading train data ******")
+    if args.local_rank == -1:
+        train_sampler = RandomSampler
+    else:
+        train_sampler = DistributedSampler
 
-    # TODO: Should this if statement be here?
-    if args.do_train:
+    train_data_loader, train_dataset = get_data_loader(train_examples, label_list,
+                                                       train_sampler, args.train_batch_size,
+                                                       args.max_seq_length, tokenizer, output_mode)
+    logger.info("***** Running training *****")
+    model.train()
+    for _ in trange(int(args.num_train_epochs), desc="Epoch"):
+        tr_loss = 0
+        nb_tr_examples, nb_tr_steps = 0, 0
+        for step, batch in enumerate(tqdm(train_data_loader, desc="Iteration")):
+            batch = tuple(t.to(device) for t in batch)
+            input_ids, input_mask, segment_ids, label_ids = batch
 
-        logger.info("***** Loading train data ******")
+            # TODO define a new function to compute loss values for all output_modes
+            logits = model(input_ids, segment_ids, input_mask, labels=None)
 
-        if args.local_rank == -1:
-            train_sampler = RandomSampler
-        else:
-            train_sampler = DistributedSampler
-
-
-        train_data_loader, train_dataset = get_data_loader(train_examples, label_list,
-                                                           train_sampler, args.train_batch_size,
-                                                           args, tokenizer, output_mode)
-
-        logger.info("***** Running training *****")
-
-        model.train()
-        for _ in trange(int(args.num_train_epochs), desc="Epoch"):
-            tr_loss = 0
-            nb_tr_examples, nb_tr_steps = 0, 0
-            for step, batch in enumerate(tqdm(train_data_loader, desc="Iteration")):
-                batch = tuple(t.to(device) for t in batch)
-                input_ids, input_mask, segment_ids, label_ids = batch
-
-                # TODO define a new function to compute loss values for all output_modes
-                logits = model(input_ids, segment_ids, input_mask, labels=None)
-
-                if output_mode == "classification":
-                    if "balance_classes" in args.__dict__ and args.balance_classes:
-                        # TODO: Validate that fix now also balances correctly for multiclass
-                        all_label_ids = [x[3].item() for x in train_dataset]
-                        class_counts = Counter(all_label_ids)
-                        ratios = [1 - (c / len(all_label_ids)) for c in class_counts.values()]
-                        w = torch.tensor([c / (sum(ratios)) for c in ratios])
-                        logger.info("Using weighted loss with weigts: {}".format(w))
-                        loss_fct = CrossEntropyLoss(weight=w.to(device))
-                    else:
-                        loss_fct = CrossEntropyLoss()
-                    loss = loss_fct(logits.view(-1, num_labels), label_ids.view(-1))
-                elif output_mode == "regression":
-                    loss_fct = MSELoss()
-                    loss = loss_fct(logits.view(-1), label_ids.view(-1))
-                elif output_mode == "ner":
+            if output_mode == "classification":
+                if "balance_classes" in args.__dict__ and args.balance_classes:
+                    # TODO: Validate that fix now also balances correctly for multiclass
+                    all_label_ids = [x[3].item() for x in train_dataset]
+                    class_counts = Counter(all_label_ids)
+                    ratios = [1 - (c / len(all_label_ids)) for c in class_counts.values()]
+                    w = torch.tensor([c / (sum(ratios)) for c in ratios])
+                    logger.info("Using weighted loss for balancing classes. Weights: {}".format(w))
+                    loss_fct = CrossEntropyLoss(weight=w.to(device))
+                else:
                     loss_fct = CrossEntropyLoss()
-                    loss = loss_fct(logits.view(-1, num_labels), label_ids.view(-1))
-                else:
-                    raise NotImplementedError
+                loss = loss_fct(logits.view(-1, num_labels), label_ids.view(-1))
+            elif output_mode == "regression":
+                loss_fct = MSELoss()
+                loss = loss_fct(logits.view(-1), label_ids.view(-1))
+            elif output_mode == "ner":
+                loss_fct = CrossEntropyLoss()
+                loss = loss_fct(logits.view(-1, num_labels), label_ids.view(-1))
+            else:
+                raise NotImplementedError
 
-                if n_gpu > 1:
-                    loss = loss.mean() # mean() to average on multi-gpu.
-                if args.gradient_accumulation_steps > 1:
-                    loss = loss / args.gradient_accumulation_steps
+            if n_gpu > 1:
+                loss = loss.mean() # mean() to average on multi-gpu.
+            if args.gradient_accumulation_steps > 1:
+                loss = loss / args.gradient_accumulation_steps
 
+            if args.fp16:
+                optimizer.backward(loss)
+            else:
+                loss.backward()
+
+            tr_loss += loss.item()
+            nb_tr_examples += input_ids.size(0)
+            nb_tr_steps += 1
+            if (step + 1) % args.gradient_accumulation_steps == 0:
                 if args.fp16:
-                    optimizer.backward(loss)
-                else:
-                    loss.backward()
+                    # modify learning rate with special warm up BERT uses
+                    # if args.fp16 is False, BertAdam is used that handles this automatically
+                    lr_this_step = args.learning_rate * warmup_linear.get_lr(global_step, args.warmup_proportion)
+                    for param_group in optimizer.param_groups:
+                        param_group['lr'] = lr_this_step
+                optimizer.step()
+                optimizer.zero_grad()
+                global_step += 1
 
-                tr_loss += loss.item()
-                nb_tr_examples += input_ids.size(0)
-                nb_tr_steps += 1
-                if (step + 1) % args.gradient_accumulation_steps == 0:
-                    if args.fp16:
-                        # modify learning rate with special warm up BERT uses
-                        # if args.fp16 is False, BertAdam is used that handles this automatically
-                        lr_this_step = args.learning_rate * warmup_linear.get_lr(global_step, args.warmup_proportion)
-                        for param_group in optimizer.param_groups:
-                            param_group['lr'] = lr_this_step
-                    optimizer.step()
-                    optimizer.zero_grad()
-                    global_step += 1
-
-                # Perform evaluation
-                if (args.eval_every and (global_step % args.eval_every == 1)):
-                    evaluation(model, dev_examples, label_list, tokenizer, output_mode, device, num_labels, metric, args)
-
-
+            # Perform evaluation
+            if (args.eval_every and (global_step % args.eval_every == 1)):
+                logger.info("Eval after step: {}".format(global_step))
+                evaluation(model, dev_examples, label_list, tokenizer, output_mode, device, num_labels,
+                           metric, args.eval_batch_size, args.max_seq_length)
     return model
 
 
-def evaluation(model, eval_examples, label_list, tokenizer, output_mode, device, num_labels, metric, args):
-    # TODO: If this is false, this function does nothing
-    # TODO: need to differentiate between args.do_eval for standalone eval and eval within the trianing loop
-    if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
+def evaluation(model, eval_examples, label_list, tokenizer, output_mode, device, num_labels, metric,
+               eval_batch_size, max_seq_length, report_output_dir=None):
+    # TODO: need to differentiate between args.do_eval for standalone eval and eval within the training loop
+    logger.info("***** Loading eval data ******")
 
-        logger.info("***** Loading eval data ******")
+    eval_sampler = SequentialSampler
+    eval_data_loader, eval_dataset = get_data_loader(eval_examples, label_list, eval_sampler, eval_batch_size,
+                                                     max_seq_length, tokenizer, output_mode)
 
-        eval_sampler = SequentialSampler
-        eval_data_loader, eval_dataset = get_data_loader(eval_examples, label_list, eval_sampler, args.eval_batch_size, args, tokenizer, output_mode)
+    logger.info("***** Running evaluation *****")
 
-        logger.info("***** Running evaluation *****")
+    model.eval()
+    eval_loss = 0
+    nb_eval_steps = 0
+    preds = []
 
-        model.eval()
-        eval_loss = 0
-        nb_eval_steps = 0
-        preds = []
+    for input_ids, input_mask, segment_ids, label_ids in tqdm(eval_data_loader, desc="Evaluating"):
+        input_ids = input_ids.to(device)
+        input_mask = input_mask.to(device)
+        segment_ids = segment_ids.to(device)
+        label_ids = label_ids.to(device)
 
-        for input_ids, input_mask, segment_ids, label_ids in tqdm(eval_data_loader, desc="Evaluating"):
-            input_ids = input_ids.to(device)
-            input_mask = input_mask.to(device)
-            segment_ids = segment_ids.to(device)
-            label_ids = label_ids.to(device)
+        with torch.no_grad():
+            logits = model(input_ids, segment_ids, input_mask, labels=None)
 
-            with torch.no_grad():
-                logits = model(input_ids, segment_ids, input_mask, labels=None)
-
-            # create eval loss and other metric required by the task
-            if output_mode == "classification":
-                loss_fct = CrossEntropyLoss()
-                tmp_eval_loss = loss_fct(logits.view(-1, num_labels), label_ids.view(-1))
-            elif output_mode == "regression":
-                loss_fct = MSELoss()
-                tmp_eval_loss = loss_fct(logits.view(-1), label_ids.view(-1))
-
-            eval_loss += tmp_eval_loss.mean().item()
-            nb_eval_steps += 1
-            if len(preds) == 0:
-                preds.append(logits.detach().cpu().numpy())
-            else:
-                preds[0] = np.append(
-                    preds[0], logits.detach().cpu().numpy(), axis=0)
-
-        eval_loss = eval_loss / nb_eval_steps
-        preds = preds[0]
+        # create eval loss and other metric required by the task
         if output_mode == "classification":
-            preds = np.argmax(preds, axis=1)
+            loss_fct = CrossEntropyLoss()
+            tmp_eval_loss = loss_fct(logits.view(-1, num_labels), label_ids.view(-1))
         elif output_mode == "regression":
-            preds = np.squeeze(preds)
-        all_label_ids = eval_dataset.tensors[3]
-        result = compute_metrics(metric, preds, all_label_ids.numpy())
+            loss_fct = MSELoss()
+            tmp_eval_loss = loss_fct(logits.view(-1), label_ids.view(-1))
 
-        result['eval_loss'] = eval_loss
+        eval_loss += tmp_eval_loss.mean().item()
+        nb_eval_steps += 1
+        if len(preds) == 0:
+            preds.append(logits.detach().cpu().numpy())
+        else:
+            preds[0] = np.append(
+                preds[0], logits.detach().cpu().numpy(), axis=0)
 
-        report = classification_report(preds, all_label_ids.numpy(), digits=4)
-        output_eval_file = os.path.join(args.output_dir, "eval_results.txt")
+    eval_loss = eval_loss / nb_eval_steps
+    preds = preds[0]
+    if output_mode == "classification":
+        preds = np.argmax(preds, axis=1)
+    elif output_mode == "regression":
+        preds = np.squeeze(preds)
+    all_label_ids = eval_dataset.tensors[3]
+    result = compute_metrics(metric, preds, all_label_ids.numpy())
+
+    result['eval_loss'] = eval_loss
+
+    # TODO report currently only works for classification
+    report = classification_report(preds, all_label_ids.numpy(), digits=4)
+    logger.info("***** Eval results *****")
+    logger.info("\n%s", report)
+
+    if report_output_dir:
+        output_eval_file = os.path.join(report_output_dir, "eval_results.txt")
         with open(output_eval_file, "w") as writer:
-            logger.info("***** Eval results *****")
-            logger.info("\n%s", report)
             writer.write(report)
 
 
-def initialize_optimizer(model, args, num_train_optimization_steps):
+def initialize_optimizer(model, learning_rate, warmup_proportion, loss_scale, fp16, num_train_optimization_steps):
     # Prepare optimizer
-    if args.do_train:
-        param_optimizer = list(model.named_parameters())
-        no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
-        optimizer_grouped_parameters = [
-            {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay': 0.01},
-            {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
-            ]
-        if args.fp16:
-            try:
-                from apex.optimizers import FP16_Optimizer
-                from apex.optimizers import FusedAdam
-            except ImportError:
-                raise ImportError("Please install apex from https://www.github.com/nvidia/apex to use distributed and fp16 training.")
+    param_optimizer = list(model.named_parameters())
+    no_decay = ['bias', 'LayerNorm.bias', 'LayerNorm.weight']
+    optimizer_grouped_parameters = [
+        {'params': [p for n, p in param_optimizer if not any(nd in n for nd in no_decay)], 'weight_decay': 0.01},
+        {'params': [p for n, p in param_optimizer if any(nd in n for nd in no_decay)], 'weight_decay': 0.0}
+        ]
+    if fp16:
+        try:
+            from apex.optimizers import FP16_Optimizer
+            from apex.optimizers import FusedAdam
+        except ImportError:
+            raise ImportError("Please install apex from https://www.github.com/nvidia/apex to use distributed and fp16 training.")
 
-            optimizer = FusedAdam(optimizer_grouped_parameters,
-                                  lr=args.learning_rate,
-                                  bias_correction=False,
-                                  max_grad_norm=1.0)
-            if args.loss_scale == 0:
-                optimizer = FP16_Optimizer(optimizer, dynamic_loss_scale=True)
-            else:
-                optimizer = FP16_Optimizer(optimizer, static_loss_scale=args.loss_scale)
-            warmup_linear = WarmupLinearSchedule(warmup=args.warmup_proportion,
-                                                 t_total=num_train_optimization_steps)
-            return optimizer, warmup_linear
-
+        optimizer = FusedAdam(optimizer_grouped_parameters,
+                              lr=learning_rate,
+                              bias_correction=False,
+                              max_grad_norm=1.0)
+        if loss_scale == 0:
+            optimizer = FP16_Optimizer(optimizer, dynamic_loss_scale=True)
         else:
-            optimizer = BertAdam(optimizer_grouped_parameters,
-                                 lr=args.learning_rate,
-                                 warmup=args.warmup_proportion,
-                                 t_total=num_train_optimization_steps)
-            return optimizer, None
+            optimizer = FP16_Optimizer(optimizer, static_loss_scale=loss_scale)
+        warmup_linear = WarmupLinearSchedule(warmup=warmup_proportion,
+                                             t_total=num_train_optimization_steps)
+        return optimizer, warmup_linear
+
+    else:
+        optimizer = BertAdam(optimizer_grouped_parameters,
+                             lr=learning_rate,
+                             warmup=warmup_proportion,
+                             t_total=num_train_optimization_steps)
+        return optimizer, None
 
 
 def save_model(model, tokenizer, args):
@@ -242,7 +234,7 @@ def initialize_model(device, num_labels, n_gpu, cache_dir, bert_model, local_ran
     elif downstream_task == "ner":
         model = BertForTokenClassification.from_pretrained(bert_model,
               cache_dir=cache_dir,
-              num_labels = num_labels)
+              num_labels=num_labels)
 
     else:
         raise NotImplementedError
@@ -325,11 +317,11 @@ def run_model(args, downstream_task, processor, output_mode, metric):
                                  bert_model=args.bert_model, local_rank=args.local_rank, fp16=args.fp16,
                                  downstream_task=downstream_task)
 
-        optimizer, warmup_linear = initialize_optimizer(model, args, num_train_optimization_steps)
+        optimizer, warmup_linear = initialize_optimizer(model, args.learning_rate, args.warmup_proportion,
+                                                        args.loss_scale, args.fp16, num_train_optimization_steps)
 
         model = train(model, optimizer, train_examples, eval_examples, label_list, device,
-                      tokenizer, output_mode, num_train_optimization_steps,
-                      n_gpu, num_labels, warmup_linear, args, metric)
+                      tokenizer, output_mode, n_gpu, num_labels, warmup_linear, args, metric)
 
     # Saving and loading the model
     if args.do_train and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
@@ -338,7 +330,9 @@ def run_model(args, downstream_task, processor, output_mode, metric):
     else:
         output_dir = args.bert_model
     model, tokenizer = load_model(output_dir, args.do_lower_case, num_labels)
+    model.to(device)
 
     # Evaluation
-    model.to(device)
-    evaluation(model, eval_examples, label_list, tokenizer, output_mode, device, num_labels, metric, args)
+    if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
+        evaluation(model, eval_examples, label_list, tokenizer, output_mode, device, num_labels, metric,
+                   args.eval_batch_size, args.max_seq_length, args.output_dir)
