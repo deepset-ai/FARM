@@ -133,9 +133,24 @@
       "desc": "Steps per training loop required for evaluation on dev set. Only used when do_eval set to true."
     },
     "eval_batch_size": {
-      "value": 8,
+      "value": 64,
       "default": 32,
       "desc": "Total batch size for eval."
+    },
+      "mlflow_url": {
+      "value": "http://80.158.39.167:5000/",
+      "default": null,
+      "desc": "Mlflow server for tracking experiments (e.g. http://80.123.45.167:5000/)"
+    },
+      "mlflow_experiment": {
+      "value": "BERT-NER-Test-Chin",
+      "default": null,
+      "desc": "Experiment name used for mlflow"
+    },
+      "mlflow_run_name": {
+      "value": "debug: first test_conll_opensesame",
+      "default": null,
+      "desc": "Name of the particular run for mlflow"
     }
   },
 

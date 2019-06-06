@@ -36,6 +36,7 @@ def main():
     output_mode = "ner"
     prediction_head = "simple_ner"
 
+
     #TODO:
     # To implement: most custom code added in the train / eval loops in https://gitlab.com/deepset-ai/ml/bert-NER-pytorch/blob/master/run_ner.py
     # !!To validate!!: Check if all stages in the pipeline work correctly:

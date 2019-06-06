@@ -18,6 +18,7 @@ import torch.nn.functional as F
 from sklearn.metrics import classification_report
 from seqeval.metrics import classification_report as token_classification_report
 from seqeval.metrics import f1_score
+from mlflow import log_metric, log_param, log_artifact, set_tracking_uri, set_experiment, start_run
 
 from opensesame.file_utils import OPENSESAME_CACHE, WEIGHTS_NAME, CONFIG_NAME, read_config
 from opensesame.models.bert.modeling import BertForSequenceClassification, BertForTokenClassification
@@ -179,9 +180,10 @@ def evaluation(model, eval_examples, label_list, tokenizer, output_mode, device,
     logger.info("***** Eval results *****")
 
     if output_mode == "ner":
-        dev_f1_labels = ["B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-OTH", "I-OTH"]
-        f1 = f1_score(y_true, preds, labels=dev_f1_labels, average='micro')
+        f1 = f1_score(y_true, preds, average='micro')
         logger.info("F1 Score: {}".format(f1))
+        #TODO differentiate between dev and test
+        log_metric("Dev F1", f1)
         report = token_classification_report(preds, y_true, digits=4)
     else:
         report = classification_report(preds, y_true.numpy(), digits=4)
@@ -241,9 +243,14 @@ def save_model(model, tokenizer, args):
     tokenizer.save_vocabulary(args.output_dir)
 
 
-def load_model(model_dir, do_lower_case, num_labels):
+def load_model(model_dir, prediction_head, do_lower_case, num_labels):
     # Load a trained model and vocabulary that you have fine-tuned
-    model = BertForSequenceClassification.from_pretrained(model_dir, num_labels=num_labels)
+    if prediction_head == "seq_classification":
+        model = BertForSequenceClassification.from_pretrained(model_dir, num_labels=num_labels)
+    elif prediction_head == "simple_ner":
+        model = BertForTokenClassification.from_pretrained(model_dir, num_labels=num_labels)
+    else:
+        raise NotImplementedError
     tokenizer = BertTokenizer.from_pretrained(model_dir, do_lower_case=do_lower_case)
     return model, tokenizer
 
@@ -305,10 +312,15 @@ def ignore_subword_tokens(logits, input_mask, label_map, label_ids):
 
 def run_model(args, prediction_head, processor, output_mode, metric):
     # Basic init and input validation
-    # TODO: Add MLFlow logging
     logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                         datefmt = '%m/%d/%Y %H:%M:%S',
                         level = logging.INFO if args.local_rank in [-1, 0] else logging.WARN)
+    if args.mlflow_url:
+        set_tracking_uri(args.mlflow_url)
+        set_experiment(args.mlflow_experiment)
+        start_run(run_name=args.mlflow_run_name)
+        for key in args.__dict__:
+            log_param(key, args.__dict__[key])
 
     if not args.do_train and not args.do_eval:
         raise ValueError("At least one of `do_train` or `do_eval` must be True.")
@@ -351,10 +363,10 @@ def run_model(args, prediction_head, processor, output_mode, metric):
     train_examples = processor.get_train_examples(args.data_dir)
     # TODO: How about the case when we want to run evaluation on test at the end but want to run
     #  evaluation on dev during training?
-    if os.path.isfile(args.data_dir + "/test.tsv"):
+    try:
         eval_examples = processor.get_test_examples(args.data_dir)
-    else:
-        warnings.warn("Test set not found, evaluation performed on dev set.")
+    except:
+        logger.warning("Test set not found, evaluation performed on dev set.")
         eval_examples = processor.get_dev_examples(args.data_dir)
 
     if args.do_train:
@@ -380,7 +392,7 @@ def run_model(args, prediction_head, processor, output_mode, metric):
         output_dir = args.output_dir
     else:
         output_dir = args.bert_model
-    model, tokenizer = load_model(output_dir, args.do_lower_case, num_labels)
+    model, tokenizer = load_model(output_dir, prediction_head, args.do_lower_case, num_labels)
     model.to(device)
 
     # Evaluation
