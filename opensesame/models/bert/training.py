@@ -14,7 +14,10 @@ from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
 
 from torch.nn import CrossEntropyLoss, MSELoss
+import torch.nn.functional as F
 from sklearn.metrics import classification_report
+from seqeval.metrics import classification_report as token_classification_report
+from seqeval.metrics import f1_score
 
 from opensesame.file_utils import OPENSESAME_CACHE, WEIGHTS_NAME, CONFIG_NAME, read_config
 from opensesame.models.bert.modeling import BertForSequenceClassification, BertForTokenClassification
@@ -51,9 +54,9 @@ def train(model, optimizer, train_examples, dev_examples, label_list, device,
             input_ids, input_mask, segment_ids, label_ids = batch
 
             # TODO define a new function to compute loss values for all output_modes
-            logits = model(input_ids, segment_ids, input_mask, labels=None)
 
             if output_mode == "classification":
+                logits = model(input_ids, segment_ids, input_mask, labels=None)
                 if "balance_classes" in args.__dict__ and args.balance_classes:
                     # TODO: Validate that fix now also balances correctly for multiclass
                     all_label_ids = [x[3].item() for x in train_dataset]
@@ -66,11 +69,11 @@ def train(model, optimizer, train_examples, dev_examples, label_list, device,
                     loss_fct = CrossEntropyLoss()
                 loss = loss_fct(logits.view(-1, num_labels), label_ids.view(-1))
             elif output_mode == "regression":
+                logits = model(input_ids, segment_ids, input_mask, labels=None)
                 loss_fct = MSELoss()
                 loss = loss_fct(logits.view(-1), label_ids.view(-1))
             elif output_mode == "ner":
-                loss_fct = CrossEntropyLoss()
-                loss = loss_fct(logits.view(-1, num_labels), label_ids.view(-1))
+                loss = model(input_ids, segment_ids, input_mask, labels=label_ids)
             else:
                 raise NotImplementedError
 
@@ -114,6 +117,7 @@ def evaluation(model, eval_examples, label_list, tokenizer, output_mode, device,
     eval_sampler = SequentialSampler
     eval_data_loader, eval_dataset = get_data_loader(eval_examples, label_list, eval_sampler, eval_batch_size,
                                                      max_seq_length, tokenizer, output_mode)
+    label_map = {i: label for i, label in enumerate(label_list)}
 
     logger.info("***** Running evaluation *****")
 
@@ -142,6 +146,7 @@ def evaluation(model, eval_examples, label_list, tokenizer, output_mode, device,
             loss_fct = CrossEntropyLoss()
             tmp_eval_loss = loss_fct(logits.view(-1, num_labels), label_ids.view(-1))
 
+        # TODO: Loss for ner is calculated in the same way as during train i.e. predictions on non-initial subtokens are included
         eval_loss += tmp_eval_loss.mean().item()
         nb_eval_steps += 1
         if len(preds) == 0:
@@ -149,6 +154,9 @@ def evaluation(model, eval_examples, label_list, tokenizer, output_mode, device,
         else:
             preds[0] = np.append(
                 preds[0], logits.detach().cpu().numpy(), axis=0)
+
+        if output_mode == "ner":
+            preds, all_label_ids = ignore_subword_tokens(logits, input_mask, label_map, label_ids)
 
     eval_loss = eval_loss / nb_eval_steps
     preds = preds[0]
@@ -162,8 +170,15 @@ def evaluation(model, eval_examples, label_list, tokenizer, output_mode, device,
     result['eval_loss'] = eval_loss
 
     # TODO report currently only works for classification
-    report = classification_report(preds, all_label_ids.numpy(), digits=4)
     logger.info("***** Eval results *****")
+
+    if output_mode == "ner":
+        dev_f1_labels = ["B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-OTH", "I-OTH"]
+        f1 = f1_score(all_label_ids, preds, labels=dev_f1_labels, average='micro')
+        logger.info("F1 Score: {}".format(f1))
+        report = token_classification_report(preds, all_label_ids, digits=4)
+    else:
+        report = classification_report(preds, all_label_ids.numpy(), digits=4)
     logger.info("\n%s", report)
 
     if report_output_dir:
@@ -257,9 +272,33 @@ def initialize_model(bert_model, prediction_head, num_labels, device, n_gpu, cac
         model = torch.nn.DataParallel(model)
     return model
 
+def ignore_subword_tokens(logits, input_mask, label_map, label_ids):
+    all_label_ids = []
+    preds = []
+    logits = torch.argmax(F.log_softmax(logits, dim=2), dim=2)
+    logits = logits.detach().cpu().numpy()
+
+    for i, mask in enumerate(input_mask):
+        temp_1 = []
+        temp_2 = []
+        for j, m in enumerate(mask):
+            if j == 0:
+                continue
+            if m:
+                if label_map[label_ids[i][j]] != "X":
+                    temp_1.append(label_map[label_ids[i][j]])
+                    temp_2.append(label_map[logits[i][j]])
+            else:
+                temp_1.pop()
+                temp_2.pop()
+                break
+        all_label_ids.append(temp_1)
+        preds.append(temp_2)
+    return all_label_ids, preds
 
 def run_model(args, prediction_head, processor, output_mode, metric):
     # Basic init and input validation
+    # TODO: Add MLFlow logging
     logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                         datefmt = '%m/%d/%Y %H:%M:%S',
                         level = logging.INFO if args.local_rank in [-1, 0] else logging.WARN)

@@ -2,7 +2,7 @@
   "general": {
 
     "data_dir": {
-      "value": "data/CoNLL2003",
+      "value": "data/conll03",
       "default": null,
       "desc": "The input data dir. Should contain the .tsv files (or other data files) for the task."
     },
