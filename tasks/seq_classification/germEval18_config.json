@@ -2,7 +2,7 @@
   "general": {
 
     "data_dir": {
-      "value": "data/germeval",
+      "value": "../../data/germeval18",
       "default": null,
       "desc": "The input data dir. Should contain the .tsv files (or other data files) for the task."
     },
@@ -11,12 +11,6 @@
       "value": "bert-base-cased-de-v0-1",
       "default": null,
       "desc": "Bert pre-trained model selected in the list: bert-base-uncased, bert-large-uncased, bert-base-cased, bert-large-cased, bert-base-multilingual-uncased, bert-base-multilingual-cased, bert-base-chinese."
-    },
-
-    "task_name": {
-      "value": null,
-      "default": "germeval18",
-      "desc": "The name of the task to train."
     },
 
     "output_dir": {
@@ -33,19 +27,19 @@
 
     "max_seq_length": {
       "value": null,
-      "default": 128,
-      "desc": "The maximum total input sequence length after WordPiece tokenization. Sequences longer than this will be truncated, and sequences shorter than this will be padded."
+      "default": 150,
+      "desc": "The maximum total input sequence length after WordPiece tokenization. 128 was too short for some texts"
     },
 
     "do_train": {
       "value": true,
-      "default": false,
+      "default": true,
       "desc": "Whether to run training."
     },
 
     "do_eval": {
       "value": true,
-      "default": false,
+      "default": true,
       "desc": "Whether to run eval on the dev set."
     },
 
@@ -56,7 +50,7 @@
     },
 
     "train_batch_size": {
-      "value": 64,
+      "value": 32,
       "default": 32,
       "desc": "Total batch size for training."
     },
@@ -69,7 +63,7 @@
 
     "num_train_epochs":  {
       "value": null,
-      "default": 3.0,
+      "default": 6.0,
       "desc": "Total number of training epochs to perform."
     },
 
@@ -128,14 +122,29 @@
     },
 
     "eval_every":  {
-      "value": null,
+      "value": 30,
       "default": 30,
-      "desc": "Steps per training loop required for evaluation on dev set. Only used when do_eval set to true."
+      "desc": "Steps per training loop (batches) required for evaluation on dev set. Set to 0 when you do not want to do evaluation on dev set during training."
     },
     "eval_batch_size": {
-      "value": 8,
+      "value": 32,
       "default": 32,
       "desc": "Total batch size for eval."
+    },
+      "mlflow_url": {
+      "value": "http://80.158.39.167:5000/",
+      "default": null,
+      "desc": "Mlflow server for tracking experiments (e.g. http://80.123.45.167:5000/)"
+    },
+      "mlflow_experiment": {
+      "value": "BERT_EVAL_germeval18",
+      "default": null,
+      "desc": "Experiment name used for mlflow"
+    },
+      "mlflow_run_name": {
+      "value": "Multilingual BERT baseline",
+      "default": null,
+      "desc": "Name of the particular run for mlflow"
     }
   },
 
@@ -143,11 +152,11 @@
     "balance_classes":  {
       "value": true,
       "default": false,
-      "desc": "Balance classes for binary classification using CrossEntropyLoss function. Original train set from GermEval18 is skewed."
+      "desc": "Balance classes using weighted CrossEntropyLoss. Original train set from GermEval18 is skewed and the final evaluation is macro averaged."
     },
 
     "dev_size":  {
-      "value": 0.2,
+      "value": 0.1,
       "default": 0,
       "desc": "Split a dev set from the training set using dev_size as proportion."
     }

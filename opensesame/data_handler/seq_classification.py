@@ -436,9 +436,8 @@ class WnliProcessor(DataProcessor):
                 InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
         return examples
 
-class GermEval18SentimentProcessor(DataProcessor):
-    """Processor for the GermEval 18 Sentiment Classification Task (Coarse 1)."""
-
+class GermEval18coarseProcessor(DataProcessor):
+    """Processor for the GermEval 18 Sentiment Classification Task (Coarse)."""
     def __init__(self, data_dir, dev_size, seed):
         self.train_examples, self.dev_examples = train_test_split(self._create_examples(
             self._read_tsv(os.path.join(data_dir, "train.tsv")), "train"), test_size=dev_size, random_state=seed)
@@ -469,6 +468,42 @@ class GermEval18SentimentProcessor(DataProcessor):
             guid = "%s-%s" % (set_type, i)
             text_a = line[0]
             label = line[1]
+            examples.append(
+                InputExample(guid=guid, text_a=text_a, text_b=None, label=label))
+        return examples
+
+class GermEval18fineProcessor(DataProcessor):
+    """Processor for the GermEval 18 Sentiment Classification Task (Fine grained)."""
+    def __init__(self, data_dir, dev_size, seed):
+        self.train_examples, self.dev_examples = train_test_split(self._create_examples(
+            self._read_tsv(os.path.join(data_dir, "train.tsv")), "train"), test_size=dev_size, random_state=seed)
+
+    def get_train_examples(self, data_dir):
+        """See base class."""
+        return self.train_examples
+
+    def get_dev_examples(self, data_dir):
+        """See base class."""
+        return self.dev_examples
+
+    def get_test_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(
+            self._read_tsv(os.path.join(data_dir, "test.tsv")), "test")
+
+    def get_labels(self):
+        """See base class."""
+        return ['OTHER', 'INSULT', 'PROFANITY', 'ABUSE']
+
+    def _create_examples(self, lines, set_type):
+        """Creates examples for the training and dev sets."""
+        examples = []
+        for (i, line) in enumerate(lines):
+            if i == 0:
+                continue
+            guid = "%s-%s" % (set_type, i)
+            text_a = line[0]
+            label = line[2]
             examples.append(
                 InputExample(guid=guid, text_a=text_a, text_b=None, label=label))
         return examples
