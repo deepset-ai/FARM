@@ -100,18 +100,19 @@ def train(model, optimizer, train_examples, dev_examples, label_list, device,
                         param_group['lr'] = lr_this_step
                 optimizer.step()
                 optimizer.zero_grad()
+                #TODO we might wanna move this increment to after the evaluation
                 global_step += 1
 
             # Perform evaluation
             if (args.eval_every and (global_step % args.eval_every == 1)):
                 logger.info("Eval after step: {}".format(global_step))
                 evaluation(model, dev_examples, label_list, tokenizer, output_mode, device, num_labels,
-                           metric, args.eval_batch_size, args.max_seq_length, "dev")
+                           metric, args.eval_batch_size, args.max_seq_length, "dev", global_step=global_step)
     return model
 
 
 def evaluation(model, eval_examples, label_list, tokenizer, output_mode, device, num_labels, metric,
-               eval_batch_size, max_seq_length, data_type, report_output_dir=None):
+               eval_batch_size, max_seq_length, data_type, report_output_dir=None, global_step=None):
     # TODO: need to differentiate between args.do_eval for standalone eval and eval within the training loop
     logger.info("***** Loading eval data ******")
 
@@ -177,8 +178,8 @@ def evaluation(model, eval_examples, label_list, tokenizer, output_mode, device,
     elif output_mode == "regression":
         preds = np.squeeze(preds)
     result = compute_metrics(metric, preds, y_true)
-
     result['eval_loss'] = eval_loss
+
 
     # TODO report currently only works for classification
     logger.info("***** Eval results *****")
@@ -186,17 +187,16 @@ def evaluation(model, eval_examples, label_list, tokenizer, output_mode, device,
     if output_mode == "ner":
         f1 = f1_score(y_true, preds, average='micro')
         logger.info("F1 Score: {}".format(f1))
-        #TODO differentiate between dev and test
-        if data_type == "dev":
-            log_metric("Dev F1", f1)
-        elif data_type == "test":
-            log_metric("Test F1", f1)
-        else:
-            raise ValueError
+        result["F1"] = f1
         report = token_classification_report(preds, y_true, digits=4)
     else:
         report = classification_report(preds, y_true.numpy(), digits=4)
     logger.info("\n%s", report)
+
+    # Log to mlflow
+    #TODO make it optional
+    for metric_name, metric_val in result.items():
+        log_metric("{} {}".format(data_type, metric_name), metric_val, step=global_step)
 
     if report_output_dir:
         output_eval_file = os.path.join(report_output_dir, "eval_results.txt")
