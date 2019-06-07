@@ -299,7 +299,7 @@ def read_config(path):
     all_args = dict(conf_args["general"], **conf_args["task"]) if "task" in conf_args else conf_args["general"]
 
     def getArgValue(arg):
-        return arg["value"] if arg["value"] else arg["default"]
+        return arg["value"] if(arg["value"] is not None) else arg["default"]
 
     args = {k: getArgValue(v) for k, v in all_args.items()}
     args = Struct(**args)
