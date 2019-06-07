@@ -126,7 +126,7 @@ def evaluation(model, eval_examples, label_list, tokenizer, output_mode, device,
     eval_loss = 0
     nb_eval_steps = 0
     preds = []
-    y_true = []
+    y_true_ner = []
 
     for input_ids, input_mask, segment_ids, label_ids in tqdm(eval_data_loader, desc="Evaluating"):
         input_ids = input_ids.to(device)
@@ -150,22 +150,26 @@ def evaluation(model, eval_examples, label_list, tokenizer, output_mode, device,
 
         # TODO: Loss for ner is calculated in the same way as during train i.e. predictions on non-initial subtokens are included
         eval_loss += tmp_eval_loss.mean().item()
-        nb_eval_steps += 1
+
 
         if output_mode == "ner":
             batch_preds, batch_y_true = ignore_subword_tokens(logits, input_mask, label_map, label_ids)
             preds += batch_preds
-            y_true += batch_y_true
+            y_true_ner += batch_y_true
         else:
-            # TODO: Figure out what this is for
-            if len(preds) == 0:
-                preds.append(logits.detach().cpu().numpy())
+            if nb_eval_steps == 0:
+                #overwrite preds of type list to handle multidimensional data better
+                preds = logits.detach().cpu().numpy()
             else:
-                preds[0] = np.append(
-                    preds[0], logits.detach().cpu().numpy(), axis=0)
-            preds = preds[0]
-            y_true = eval_dataset.tensors[3]
+                preds = np.concatenate((preds, logits.detach().cpu().numpy()), axis=0)
 
+        nb_eval_steps += 1
+        # end of eval batch loop
+
+    if output_mode == "ner":
+        y_true = y_true_ner
+    else:
+        y_true = eval_dataset.tensors[3]
 
     eval_loss = eval_loss / nb_eval_steps
     if output_mode == "classification":
