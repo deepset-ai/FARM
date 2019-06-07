@@ -106,12 +106,12 @@ def train(model, optimizer, train_examples, dev_examples, label_list, device,
             if (args.eval_every and (global_step % args.eval_every == 1)):
                 logger.info("Eval after step: {}".format(global_step))
                 evaluation(model, dev_examples, label_list, tokenizer, output_mode, device, num_labels,
-                           metric, args.eval_batch_size, args.max_seq_length)
+                           metric, args.eval_batch_size, args.max_seq_length, "dev")
     return model
 
 
 def evaluation(model, eval_examples, label_list, tokenizer, output_mode, device, num_labels, metric,
-               eval_batch_size, max_seq_length, report_output_dir=None):
+               eval_batch_size, max_seq_length, data_type, report_output_dir=None):
     # TODO: need to differentiate between args.do_eval for standalone eval and eval within the training loop
     logger.info("***** Loading eval data ******")
 
@@ -183,7 +183,12 @@ def evaluation(model, eval_examples, label_list, tokenizer, output_mode, device,
         f1 = f1_score(y_true, preds, average='micro')
         logger.info("F1 Score: {}".format(f1))
         #TODO differentiate between dev and test
-        log_metric("Dev F1", f1)
+        if data_type == "dev":
+            log_metric("Dev F1", f1)
+        elif data_type == "test":
+            log_metric("Test F1", f1)
+        else:
+            raise ValueError
         report = token_classification_report(preds, y_true, digits=4)
     else:
         report = classification_report(preds, y_true.numpy(), digits=4)
@@ -325,8 +330,8 @@ def run_model(args, prediction_head, processor, output_mode, metric):
     if not args.do_train and not args.do_eval:
         raise ValueError("At least one of `do_train` or `do_eval` must be True.")
 
-    if os.path.exists(args.output_dir) and os.listdir(args.output_dir) and args.do_train:
-        raise ValueError("Output directory ({}) already exists and is not empty.".format(args.output_dir))
+    # if os.path.exists(args.output_dir) and os.listdir(args.output_dir) and args.do_train:
+    #     raise ValueError("Output directory ({}) already exists and is not empty.".format(args.output_dir))
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
 
@@ -361,13 +366,18 @@ def run_model(args, prediction_head, processor, output_mode, metric):
 
     # Load examples
     train_examples = processor.get_train_examples(args.data_dir)
+    dev_evamples = processor.get_dev_examples(args.data_dir)
     # TODO: How about the case when we want to run evaluation on test at the end but want to run
     #  evaluation on dev during training?
     try:
-        eval_examples = processor.get_test_examples(args.data_dir)
+        test_examples = processor.get_test_examples(args.data_dir)
     except:
-        logger.warning("Test set not found, evaluation performed on dev set.")
-        eval_examples = processor.get_dev_examples(args.data_dir)
+        logger.warning("Test set not found, evaluation during training and afterwards will both be performed on dev set.")
+        test_examples = dev_evamples
+    if args.mlflow_url:
+        log_param("num_train_examples", len(train_examples))
+        log_param("num_dev_examples", len(dev_evamples))
+        log_param("num_test_examples", len(test_examples))
 
     if args.do_train:
 
@@ -383,7 +393,7 @@ def run_model(args, prediction_head, processor, output_mode, metric):
         optimizer, warmup_linear = initialize_optimizer(model, args.learning_rate, args.warmup_proportion,
                                                         args.loss_scale, args.fp16, num_train_optimization_steps)
 
-        model = train(model, optimizer, train_examples, eval_examples, label_list, device,
+        model = train(model, optimizer, train_examples, dev_evamples, label_list, device,
                       tokenizer, output_mode, n_gpu, num_labels, warmup_linear, args, metric)
 
     # Saving and loading the model
@@ -397,5 +407,5 @@ def run_model(args, prediction_head, processor, output_mode, metric):
 
     # Evaluation
     if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
-        evaluation(model, eval_examples, label_list, tokenizer, output_mode, device, num_labels, metric,
-                   args.eval_batch_size, args.max_seq_length, args.output_dir)
+        evaluation(model, test_examples, label_list, tokenizer, output_mode, device, num_labels, metric,
+                   args.eval_batch_size, args.max_seq_length, "test", args.output_dir)
