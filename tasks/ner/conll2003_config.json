@@ -8,7 +8,7 @@
     },
 
     "bert_model": {
-      "value": "bert-base-cased-de-v0-1",
+      "value": "bert-base-multilingual-cased",
       "default": null,
       "desc": "Bert pre-trained model selected in the list: bert-base-cased-de-v0-1, bert-base-uncased, bert-large-uncased, bert-base-cased, bert-large-cased, bert-base-multilingual-uncased, bert-base-multilingual-cased, bert-base-chinese."
     },
@@ -69,7 +69,7 @@
 
     "num_train_epochs":  {
       "value": null,
-      "default": 10.0,
+      "default": 5.0,
       "desc": "Total number of training epochs to perform."
     },
 
@@ -126,14 +126,13 @@
       "default": "",
       "desc": "Can be used for distant debugging."
     },
-
     "eval_every":  {
       "value": null,
-      "default": 30,
+      "default": 60,
       "desc": "Steps per training loop required for evaluation on dev set. Only used when do_eval set to true."
     },
     "eval_batch_size": {
-      "value": 32,
+      "value": 64,
       "default": 32,
       "desc": "Total batch size for eval."
     },
@@ -143,12 +142,12 @@
       "desc": "Mlflow server for tracking experiments (e.g. http://80.123.45.167:5000/)"
     },
       "mlflow_experiment": {
-      "value": "bert-ner-spacefix",
+      "value": "BERT_EVAL_conll2003_de",
       "default": null,
       "desc": "Experiment name used for mlflow"
     },
       "mlflow_run_name": {
-      "value": "german bert conll2003 - reproduce w/ opensesame",
+      "value": "Multilingual BERT baseline",
       "default": null,
       "desc": "Name of the particular run for mlflow"
     }
