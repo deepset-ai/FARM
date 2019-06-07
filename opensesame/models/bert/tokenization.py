@@ -35,6 +35,11 @@ PRETRAINED_VOCAB_ARCHIVE_MAP = {
     'bert-base-multilingual-cased': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-multilingual-cased-vocab.txt",
     'bert-base-chinese': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-chinese-vocab.txt",
     'bert-base-cased-de-v0-1': "s3://int-models-bert/bert-base-cased-de-v0-1/vocab.txt",
+    'bert-base-cased-de-1a-end': "s3://int-models-bert/bert-base-cased-de-1a-end/vocab.txt",
+    'bert-base-cased-de-1b-end': "s3://int-models-bert/bert-base-cased-de-1b-end/vocab.txt",
+    'bert-base-cased-de-1b-best': "s3://int-models-bert/bert-base-cased-de-1b-end/vocab.txt",
+    'bert-base-cased-de-2a-end': "s3://int-models-bert/bert-base-cased-de-2a-end/vocab.txt",
+    'bert-base-cased-de-2b-end': "s3://int-models-bert/bert-base-cased-de-2b-end/vocab.txt",
 }
 PRETRAINED_VOCAB_POSITIONAL_EMBEDDINGS_SIZE_MAP = {
     'bert-base-uncased': 512,
@@ -45,6 +50,11 @@ PRETRAINED_VOCAB_POSITIONAL_EMBEDDINGS_SIZE_MAP = {
     'bert-base-multilingual-cased': 512,
     'bert-base-chinese': 512,
     'bert-base-cased-de-v0-1': 512,
+    'bert-base-cased-de-1a-end': 512,
+    'bert-base-cased-de-1b-end': 512,
+    'bert-base-cased-de-1b-best': 512,
+    'bert-base-cased-de-2a-end': 512,
+    'bert-base-cased-de-2b-end': 512,
 }
 VOCAB_NAME = 'vocab.txt'
 

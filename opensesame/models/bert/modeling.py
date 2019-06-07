@@ -45,6 +45,11 @@ PRETRAINED_MODEL_ARCHIVE_MAP = {
     'bert-base-multilingual-cased': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-multilingual-cased.tar.gz",
     'bert-base-chinese': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-chinese.tar.gz",
     'bert-base-cased-de-v0-1': "s3://int-models-bert/bert-base-cased-de-v0-1/bert-base-cased-de-v0-1.tar.gz",
+    'bert-base-cased-de-1a-end': "s3://int-models-bert/bert-base-cased-de-1a-end/bert-base-cased-de-1a-end.tar.gz",
+    'bert-base-cased-de-1b-end': "s3://int-models-bert/bert-base-cased-de-1b-end/bert-base-cased-de-1b-end.tar.gz",
+    'bert-base-cased-de-1b-best': "s3://int-models-bert/bert-base-cased-de-1b-best/bert-base-cased-de-1b-best.tar.gz",
+    'bert-base-cased-de-2a-end': "s3://int-models-bert/bert-base-cased-de-2a-end/bert-base-cased-de-2a-end.tar.gz",
+    'bert-base-cased-de-2b-end': "s3://int-models-bert/bert-base-cased-de-2b-end/bert-base-cased-de-2b-end.tar.gz",
 }
 BERT_CONFIG_NAME = 'bert_config.json'
 TF_WEIGHTS_NAME = 'model.ckpt'
@@ -591,7 +596,11 @@ class BertPreTrainedModel(nn.Module):
             logger.info("extracting archive file {} to temp dir {}".format(
                 resolved_archive_file, tempdir))
             with tarfile.open(resolved_archive_file, 'r:gz') as archive:
-                archive.extractall(tempdir)
+                for member in archive.getmembers():
+                    if member.isreg():  # skip if the TarInfo is not files
+                        member.name = os.path.basename(member.name)  # remove the path by reset it
+                        archive.extract(member, tempdir)  # extract
+                #archive.extractall(tempdir)
             serialization_dir = tempdir
         # Load config
         config_file = os.path.join(serialization_dir, CONFIG_NAME)

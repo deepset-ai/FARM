@@ -8,7 +8,7 @@
     },
 
     "bert_model": {
-      "value": "bert-base-multilingual-cased",
+      "value": "bert-base-cased-de-2a-end",
       "default": null,
       "desc": "Bert pre-trained model selected in the list: bert-base-cased-de-v0-1, bert-base-uncased, bert-large-uncased, bert-base-cased, bert-large-cased, bert-base-multilingual-uncased, bert-base-multilingual-cased, bert-base-chinese."
     },
@@ -147,7 +147,7 @@
       "desc": "Experiment name used for mlflow"
     },
       "mlflow_run_name": {
-      "value": "Multilingual BERT baseline",
+      "value": "BERT-de-2a-end",
       "default": null,
       "desc": "Name of the particular run for mlflow"
     }

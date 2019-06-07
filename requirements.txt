@@ -13,4 +13,4 @@ scipy
 sklearn
 # Metrics or logging related
 seqeval
-mlflow
+mlflow=1.0.0
