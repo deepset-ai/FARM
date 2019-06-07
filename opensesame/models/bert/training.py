@@ -400,14 +400,12 @@ def run_model(args, prediction_head, processor, output_mode, metric):
         model = train(model, optimizer, train_examples, dev_evamples, label_list, device,
                       tokenizer, output_mode, n_gpu, num_labels, warmup_linear, args, metric)
 
-    # Saving and loading the model
+    # Saving or loading the model
     if args.do_train and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
         save_model(model, tokenizer, args)
-        output_dir = args.output_dir
     else:
-        output_dir = args.bert_model
-    model, tokenizer = load_model(output_dir, prediction_head, args.do_lower_case, num_labels)
-    model.to(device)
+        model, tokenizer_unused = load_model(args.bert_model, prediction_head, args.do_lower_case, num_labels)
+        model.to(device)
 
     # Evaluation
     if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
