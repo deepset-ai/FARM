@@ -93,10 +93,10 @@ def featurize_samples(samples, label_list, max_seq_length, tokenizer, output_mod
     return all_input_ids, all_input_mask, all_segment_ids, all_label_ids
 
 
-def get_data_loader(examples, label_list, sampler, batch_size, max_seq_length, tokenizer, output_mode):
+def get_data_loader(examples, label_list, sampler, batch_size, max_seq_length, tokenizer, output_mode,
+                    mlflow_logging=False):
     # TODO: This should be a function that takes a processor and returns a dataloader
     logger.info("  Num examples = %d", len(examples))
-    logger.info("  Batch size = %d", batch_size)
     all_input_ids, all_input_mask, all_segment_ids, all_label_ids = featurize_samples(examples,
                                                                                       label_list,
                                                                                       max_seq_length,
