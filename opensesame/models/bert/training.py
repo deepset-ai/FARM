@@ -401,9 +401,13 @@ def run_model(args, prediction_head, processor, output_mode, metric):
                       tokenizer, output_mode, n_gpu, num_labels, warmup_linear, args, metric)
 
     # Saving or loading the model
+    # TODO check why the previous version of this code could eval on the test set, and not overwrite the model with a blank one
+    # TODO look at commit hash ef47440e5eb901ebd8e0b5ad7a5911811ce352e0
     if args.do_train and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
+        # TODO save model with proper naming
         save_model(model, tokenizer, args)
     else:
+        # TODO load model with trained prediction head
         model, tokenizer_unused = load_model(args.bert_model, prediction_head, args.do_lower_case, num_labels)
         model.to(device)
 
