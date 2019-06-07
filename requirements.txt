@@ -11,3 +11,6 @@ regex
 # Scipy & sklearn for stats in run_classifier
 scipy
 sklearn
+# Metrics or logging related
+seqeval
+mlflow

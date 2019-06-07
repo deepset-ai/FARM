@@ -4,7 +4,9 @@ from seqeval.metrics import f1_score as seq_f1_score
 
 
 def simple_accuracy(preds, labels):
-    return (preds == labels).mean()
+    return {
+        "acc" :(preds == labels).mean()
+    }
 
 
 def acc_and_f1(preds, labels):
@@ -14,6 +16,11 @@ def acc_and_f1(preds, labels):
         "acc": acc,
         "f1": f1,
         "acc_and_f1": (acc + f1) / 2,
+    }
+
+def f1_macro(preds,labels):
+    return {
+        "f1_macro" : f1_score(y_true=labels,y_pred=preds,average="macro")
     }
 
 
@@ -39,5 +46,7 @@ def compute_metrics(metric, preds, labels):
         return pearson_and_spearman(preds, labels)
     elif metric == "seq_f1":
         return {"seq_f1": seq_f1_score(labels, preds)}
+    elif metric == "f1_macro":
+        return f1_macro(preds, labels)
     else:
         raise KeyError(metric)

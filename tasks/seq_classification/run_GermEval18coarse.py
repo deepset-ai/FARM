@@ -16,7 +16,7 @@
 """BERT finetuning runner."""
 
 
-from opensesame.data_handler.seq_classification import GermEval18SentimentProcessor
+from opensesame.data_handler.seq_classification import GermEval18coarseProcessor
 from opensesame.models.bert.training import run_model
 import argparse
 from opensesame.file_utils import read_config
@@ -24,15 +24,16 @@ from opensesame.file_utils import read_config
 
 
 def main():
-
     parser = argparse.ArgumentParser()
-    parser.add_argument("-c", "--conf_file",
-                        help="Specify config file", metavar="FILE")
+    parser.add_argument("-c",
+                        "--conf_file",
+                        help="Specify config file",
+                        metavar="FILE",
+                        default="germEval18_config.json")
     cli_args, remaining_argv = parser.parse_known_args()
     args = read_config(cli_args.conf_file)
-
-    metric = "acc"
-    processor = GermEval18SentimentProcessor(args.data_dir, args.dev_size, args.seed)
+    metric = "f1_macro"
+    processor = GermEval18coarseProcessor(args.data_dir, args.dev_size, args.seed)
     output_mode = "classification"
 
     run_model(args=args, prediction_head="seq_classification", processor=processor, output_mode=output_mode,
