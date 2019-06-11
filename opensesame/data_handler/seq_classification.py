@@ -120,6 +120,11 @@ class GNADProcessor(DataProcessor):
         return self._create_examples(
             self._read_tsv(os.path.join(data_dir, "dev.csv"), delimiter=";"), "dev")
 
+    def get_test_examples(self, data_dir):
+        """See base class."""
+        return self._create_examples(
+            self._read_tsv(os.path.join(data_dir, "test.csv"), delimiter=";"), "dev")
+
     def get_labels(self):
         """See base class."""
         return ["Web", "Sport", "International", "Panorama", "Wissenschaft", "Wirtschaft", "Kultur", "Etat", "Inland"]
@@ -129,7 +134,7 @@ class GNADProcessor(DataProcessor):
         examples = []
         for (i, line) in enumerate(lines):
             guid = "%s-%s" % (set_type, i)
-            text_a = line[1]
+            text_a = " ".join(line[1:])
             text_b = ""
             label = line[0]
             examples.append(
