@@ -46,7 +46,7 @@ PRETRAINED_MODEL_ARCHIVE_MAP = {
     'bert-base-chinese': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-chinese.tar.gz",
     'bert-base-cased-de-v0-1': "s3://int-models-bert/bert-base-cased-de-v0-1/bert-base-cased-de-v0-1.tar.gz",
     'bert-base-cased-de-1a-start': "s3://int-models-bert/bert-base-cased-de-1a-start/bert-base-cased-de-1a-start.tar.gz",
-    'bert-base-cased-de-1a-10k': "s3://int-models-bert/bert-base-cased-de-1a-20k/bert-base-cased-de-1a-10k.tar.gz",
+    'bert-base-cased-de-1a-10k': "s3://int-models-bert/bert-base-cased-de-1a-10k/bert-base-cased-de-1a-10k.tar.gz",
     'bert-base-cased-de-1a-20k': "s3://int-models-bert/bert-base-cased-de-1a-20k/bert-base-cased-de-1a-20k.tar.gz",
     'bert-base-cased-de-1a-50k': "s3://int-models-bert/bert-base-cased-de-1a-50k/bert-base-cased-de-1a-50k.tar.gz",
     'bert-base-cased-de-1a-end': "s3://int-models-bert/bert-base-cased-de-1a-end/bert-base-cased-de-1a-end.tar.gz",
