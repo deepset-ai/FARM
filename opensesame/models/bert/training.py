@@ -16,6 +16,7 @@ from tqdm import tqdm, trange
 from torch.nn import CrossEntropyLoss, MSELoss
 import torch.nn.functional as F
 from sklearn.metrics import classification_report
+from sklearn.utils.class_weight import compute_class_weight
 from seqeval.metrics import classification_report as token_classification_report
 from seqeval.metrics import f1_score
 from mlflow import log_metric, log_param, log_artifact, set_tracking_uri, set_experiment, start_run
@@ -59,11 +60,8 @@ def train(model, optimizer, train_examples, dev_examples, label_list, device,
             if output_mode == "classification":
                 logits = model(input_ids, segment_ids, input_mask, labels=None)
                 if "balance_classes" in args.__dict__ and args.balance_classes:
-                    # TODO: Validate that fix now also balances correctly for multiclass
                     all_label_ids = [x[3].item() for x in train_dataset]
-                    class_counts = Counter(all_label_ids)
-                    ratios = [1 - (c / len(all_label_ids)) for c in class_counts.values()]
-                    w = torch.tensor([c / (sum(ratios)) for c in ratios])
+                    w = torch.tensor(list(compute_class_weight("balanced",np.unique(all_label_ids),all_label_ids)))
                     logger.info("Using weighted loss for balancing classes. Weights: {}".format(w))
                     loss_fct = CrossEntropyLoss(weight=w.to(device))
                 else:
@@ -400,16 +398,14 @@ def run_model(args, prediction_head, processor, output_mode, metric):
         model = train(model, optimizer, train_examples, dev_evamples, label_list, device,
                       tokenizer, output_mode, n_gpu, num_labels, warmup_linear, args, metric)
 
-    # Saving or loading the model
-    # TODO check why the previous version of this code could eval on the test set, and not overwrite the model with a blank one
-    # TODO look at commit hash ef47440e5eb901ebd8e0b5ad7a5911811ce352e0
+    # Saving and loading the model
     if args.do_train and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
-        # TODO save model with proper naming
         save_model(model, tokenizer, args)
+        output_dir = args.output_dir
     else:
-        # TODO load model with trained prediction head
-        model, tokenizer_unused = load_model(args.bert_model, prediction_head, args.do_lower_case, num_labels)
-        model.to(device)
+        output_dir = args.bert_model
+    model, tokenizer = load_model(output_dir, prediction_head, args.do_lower_case, num_labels)
+    model.to(device)
 
     # Evaluation
     if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):

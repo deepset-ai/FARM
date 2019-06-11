@@ -44,7 +44,7 @@
     },
 
     "train_batch_size": {
-      "value": 32,
+      "value": 128,
       "default": 32,
       "desc": "Total batch size for training."
     },
@@ -116,13 +116,13 @@
     },
 
     "eval_every":  {
-      "value": 30,
+      "value": 10,
       "default": 30,
       "desc": "Steps per training loop (batches) required for evaluation on dev set. Set to 0 when you do not want to do evaluation on dev set during training."
     },
 
     "eval_batch_size": {
-      "value": 32,
+      "value": 128,
       "default": 32,
       "desc": "Total batch size for eval."
     },
@@ -134,19 +134,19 @@
     },
 
       "mlflow_experiment": {
-      "value": "BERT_EVAL_germeval18coarse",
+      "value": "BERT_EVAL_germeval18fine",
       "default": null,
       "desc": "Experiment name used for mlflow"
     },
 
     "bert_model": {
-      "value": "bert-base-multilingual-cased",
+      "value": "bert-base-multilingual-uncased",
       "default": null,
       "desc": "Bert pre-trained model selected in the list: bert-base-uncased, bert-large-uncased, bert-base-cased, bert-large-cased, bert-base-multilingual-uncased, bert-base-multilingual-cased, bert-base-chinese."
     },
 
       "mlflow_run_name": {
-      "value": "Multilingual BERT cased baseline",
+      "value": "tm bert-base-multilingual-uncased",
       "default": null,
       "desc": "Name of the particular run for mlflow"
     }
