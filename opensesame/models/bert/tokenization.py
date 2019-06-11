@@ -176,11 +176,15 @@ class BertTokenizer(object):
                                "`do_lower_case` to False. We are setting `do_lower_case=False` for you but "
                                "you may want to check this behavior.")
                 kwargs['do_lower_case'] = False
-            elif '-cased' not in pretrained_model_name_or_path and not kwargs.get('do_lower_case', True):
+            elif '-uncased' in pretrained_model_name_or_path and kwargs.get('do_lower_case', False):
                 logger.warning("The pre-trained model you are loading is an uncased model but you have set "
                                "`do_lower_case` to False. We are setting `do_lower_case=True` for you "
                                "but you may want to check this behavior.")
                 kwargs['do_lower_case'] = True
+            else:
+                logger.warning("You do not have casing information in the model specification. Make sure the "
+                               "'do_lower_case' argument is set correctly. If set wrongly it does not throw errors,"
+                               "but performance will drop a lot.")
         else:
             vocab_file = pretrained_model_name_or_path
         if os.path.isdir(vocab_file):
