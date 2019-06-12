@@ -8,9 +8,9 @@
     },
 
     "bert_model": {
-      "value": "bert-base-cased-de-2a-end",
+      "value": "bert-base-cased-de-1a-end",
       "default": null,
-      "desc": "Bert pre-trained model selected in the list: bert-base-cased-de-v0-1, bert-base-uncased, bert-large-uncased, bert-base-cased, bert-large-cased, bert-base-multilingual-uncased, bert-base-multilingual-cased, bert-base-chinese."
+      "desc": "Bert pre-trained model selected in the list: bert-base-cased-de-v0-1, bert-base-cased-de-1a-end, bert-base-uncased, bert-large-uncased, bert-base-cased, bert-large-cased, bert-base-multilingual-uncased, bert-base-multilingual-cased, bert-base-chinese."
     },
 
     "task_name": {
@@ -147,7 +147,7 @@
       "desc": "Experiment name used for mlflow"
     },
       "mlflow_run_name": {
-      "value": "BERT-de-2a-end",
+      "value": "1a-end",
       "default": null,
       "desc": "Name of the particular run for mlflow"
     }

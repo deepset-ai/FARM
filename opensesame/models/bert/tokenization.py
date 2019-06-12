@@ -35,11 +35,16 @@ PRETRAINED_VOCAB_ARCHIVE_MAP = {
     'bert-base-multilingual-cased': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-multilingual-cased-vocab.txt",
     'bert-base-chinese': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-chinese-vocab.txt",
     'bert-base-cased-de-v0-1': "s3://int-models-bert/bert-base-cased-de-v0-1/vocab.txt",
+    'bert-base-cased-de-1a-start': "s3://int-models-bert/bert-base-cased-de-1a-start/vocab.txt",
+    'bert-base-cased-de-1a-10k': "s3://int-models-bert/bert-base-cased-de-1a-10k/vocab.txt",
+    'bert-base-cased-de-1a-20k': "s3://int-models-bert/bert-base-cased-de-1a-20k/vocab.txt",
+    'bert-base-cased-de-1a-50k': "s3://int-models-bert/bert-base-cased-de-1a-50k/vocab.txt",
     'bert-base-cased-de-1a-end': "s3://int-models-bert/bert-base-cased-de-1a-end/vocab.txt",
     'bert-base-cased-de-1b-end': "s3://int-models-bert/bert-base-cased-de-1b-end/vocab.txt",
     'bert-base-cased-de-1b-best': "s3://int-models-bert/bert-base-cased-de-1b-end/vocab.txt",
     'bert-base-cased-de-2a-end': "s3://int-models-bert/bert-base-cased-de-2a-end/vocab.txt",
     'bert-base-cased-de-2b-end': "s3://int-models-bert/bert-base-cased-de-2b-end/vocab.txt",
+
 }
 PRETRAINED_VOCAB_POSITIONAL_EMBEDDINGS_SIZE_MAP = {
     'bert-base-uncased': 512,
@@ -50,12 +55,17 @@ PRETRAINED_VOCAB_POSITIONAL_EMBEDDINGS_SIZE_MAP = {
     'bert-base-multilingual-cased': 512,
     'bert-base-chinese': 512,
     'bert-base-cased-de-v0-1': 512,
+    'bert-base-cased-de-1a-start': 512,
+    'bert-base-cased-de-1a-10k': 512,
+    'bert-base-cased-de-1a-20k': 512,
+    'bert-base-cased-de-1a-50k': 512,
     'bert-base-cased-de-1a-end': 512,
     'bert-base-cased-de-1b-end': 512,
     'bert-base-cased-de-1b-best': 512,
     'bert-base-cased-de-2a-end': 512,
     'bert-base-cased-de-2b-end': 512,
 }
+
 VOCAB_NAME = 'vocab.txt'
 
 
@@ -174,11 +184,15 @@ class BertTokenizer(object):
                                "`do_lower_case` to False. We are setting `do_lower_case=False` for you but "
                                "you may want to check this behavior.")
                 kwargs['do_lower_case'] = False
-            elif '-cased' not in pretrained_model_name_or_path and not kwargs.get('do_lower_case', True):
+            elif '-uncased' in pretrained_model_name_or_path and kwargs.get('do_lower_case', False):
                 logger.warning("The pre-trained model you are loading is an uncased model but you have set "
                                "`do_lower_case` to False. We are setting `do_lower_case=True` for you "
                                "but you may want to check this behavior.")
                 kwargs['do_lower_case'] = True
+            else:
+                logger.warning("You do not have casing information in the model specification. Make sure the "
+                               "'do_lower_case' argument is set correctly. If set wrongly it does not throw errors,"
+                               "but performance will drop a lot.")
         else:
             vocab_file = pretrained_model_name_or_path
         if os.path.isdir(vocab_file):

@@ -16,6 +16,7 @@ from tqdm import tqdm, trange
 from torch.nn import CrossEntropyLoss, MSELoss
 import torch.nn.functional as F
 from sklearn.metrics import classification_report
+from sklearn.utils.class_weight import compute_class_weight
 from seqeval.metrics import classification_report as token_classification_report
 from seqeval.metrics import f1_score
 from mlflow import log_metric, log_param, log_artifact, set_tracking_uri, set_experiment, start_run
@@ -59,11 +60,8 @@ def train(model, optimizer, train_examples, dev_examples, label_list, device,
             if output_mode == "classification":
                 logits = model(input_ids, segment_ids, input_mask, labels=None)
                 if "balance_classes" in args.__dict__ and args.balance_classes:
-                    # TODO: Validate that fix now also balances correctly for multiclass
                     all_label_ids = [x[3].item() for x in train_dataset]
-                    class_counts = Counter(all_label_ids)
-                    ratios = [1 - (c / len(all_label_ids)) for c in class_counts.values()]
-                    w = torch.tensor([c / (sum(ratios)) for c in ratios])
+                    w = torch.tensor(list(compute_class_weight("balanced",np.unique(all_label_ids),all_label_ids)))
                     logger.info("Using weighted loss for balancing classes. Weights: {}".format(w))
                     loss_fct = CrossEntropyLoss(weight=w.to(device))
                 else:

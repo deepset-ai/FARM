@@ -8,7 +8,7 @@
     },
 
     "bert_model": {
-      "value": "bert-base-multilingual-cased",
+      "value": "bert-base-cased-de-1b-end",
       "default": null,
       "desc": "Bert pre-trained model selected in the list: bert-base-uncased, bert-large-uncased, bert-base-cased, bert-large-cased, bert-base-multilingual-uncased, bert-base-multilingual-cased, bert-base-chinese."
     },
@@ -33,7 +33,7 @@
 
     "max_seq_length": {
       "value": null,
-      "default": 128,
+      "default": 512,
       "desc": "The maximum total input sequence length after WordPiece tokenization. Sequences longer than this will be truncated, and sequences shorter than this will be padded."
     },
 
@@ -50,13 +50,13 @@
     },
 
     "do_lower_case": {
-      "value": null,
+      "value": false,
       "default": false,
       "desc": "Set this flag if you are using an uncased model."
     },
 
     "train_batch_size": {
-      "value": 8,
+      "value": 64,
       "default": 32,
       "desc": "Total batch size for training."
     },
@@ -69,7 +69,7 @@
 
     "num_train_epochs":  {
       "value": null,
-      "default": 3.0,
+      "default": 5.0,
       "desc": "Total number of training epochs to perform."
     },
 
@@ -80,7 +80,7 @@
     },
 
     "no_cuda":  {
-      "value": true,
+      "value": false,
       "default": false,
       "desc": "Whether not to use CUDA when available."
     },
@@ -128,15 +128,32 @@
     },
 
     "eval_every":  {
-      "value": 2,
+      "value": 30,
       "default": 30,
       "desc": "Steps per training loop required for evaluation on dev set. Only used when do_eval set to true."
     },
 
     "eval_batch_size": {
-      "value": 8,
+      "value": 64,
       "default": 32,
       "desc": "Total batch size for eval."
+    },
+
+      "mlflow_url": {
+      "value": "http://80.158.39.167:5000/",
+      "default": null,
+      "desc": "Mlflow server for tracking experiments (e.g. http://80.123.45.167:5000/)"
+    },
+
+    "mlflow_experiment": {
+      "value": "BERT_EVAL_gnad",
+      "default": null,
+      "desc": "Experiment name used for mlflow"
+    },
+      "mlflow_run_name": {
+      "value": "1b-end",
+      "default": null,
+      "desc": "Name of the particular run for mlflow"
     }
   },
 
