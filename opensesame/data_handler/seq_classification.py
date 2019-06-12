@@ -108,22 +108,22 @@ def convert_examples_to_features(examples, label_list, max_seq_length,
 
 class GNADProcessor(DataProcessor):
     """Processor for the GNAD data set."""
+    def __init__(self, data_dir, dev_size, seed):
+        self.train_examples, self.dev_examples = train_test_split(self._create_examples(
+            self._read_tsv(os.path.join(data_dir, "train.csv"), delimiter=";"), "train"), test_size=dev_size, random_state=seed)
 
     def get_train_examples(self, data_dir):
         """See base class."""
-        logger.info("LOOKING AT {}".format(os.path.join(data_dir, "train.csv")))
-        return self._create_examples(
-            self._read_tsv(os.path.join(data_dir, "train.csv"), delimiter=";"), "train")
+        return self.train_examples
 
     def get_dev_examples(self, data_dir):
         """See base class."""
-        return self._create_examples(
-            self._read_tsv(os.path.join(data_dir, "dev.csv"), delimiter=";"), "dev")
+        return self.dev_examples
 
     def get_test_examples(self, data_dir):
         """See base class."""
         return self._create_examples(
-            self._read_tsv(os.path.join(data_dir, "test.csv"), delimiter=";"), "dev")
+            self._read_tsv(os.path.join(data_dir, "test.csv"), delimiter=";"), "test")
 
     def get_labels(self):
         """See base class."""

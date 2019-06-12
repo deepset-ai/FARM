@@ -2,15 +2,9 @@
   "general": {
 
     "data_dir": {
-      "value": "data/gnad",
+      "value": "../../data/gnad",
       "default": null,
       "desc": "The input data dir. Should contain the .tsv files (or other data files) for the task."
-    },
-
-    "bert_model": {
-      "value": "bert-base-cased-de-1b-end",
-      "default": null,
-      "desc": "Bert pre-trained model selected in the list: bert-base-uncased, bert-large-uncased, bert-base-cased, bert-large-cased, bert-base-multilingual-uncased, bert-base-multilingual-cased, bert-base-chinese."
     },
 
     "task_name": {
@@ -50,13 +44,13 @@
     },
 
     "do_lower_case": {
-      "value": false,
+      "value": true,
       "default": false,
       "desc": "Set this flag if you are using an uncased model."
     },
 
     "train_batch_size": {
-      "value": 64,
+      "value": 32,
       "default": 32,
       "desc": "Total batch size for training."
     },
@@ -68,8 +62,8 @@
     },
 
     "num_train_epochs":  {
-      "value": null,
-      "default": 5.0,
+      "value": 2,
+      "default": 2.0,
       "desc": "Total number of training epochs to perform."
     },
 
@@ -134,7 +128,7 @@
     },
 
     "eval_batch_size": {
-      "value": 64,
+      "value": 32,
       "default": 32,
       "desc": "Total batch size for eval."
     },
@@ -150,10 +144,20 @@
       "default": null,
       "desc": "Experiment name used for mlflow"
     },
+    "bert_model": {
+      "value": "bert-base-cased-de-1a-end",
+      "default": null,
+      "desc": "Bert pre-trained model selected in the list: bert-base-uncased, bert-large-uncased, bert-base-cased, bert-large-cased, bert-base-multilingual-uncased, bert-base-multilingual-cased, bert-base-chinese."
+    },
       "mlflow_run_name": {
-      "value": "1b-end",
+      "value": "tm bert-base-cased-de-1a-end",
       "default": null,
       "desc": "Name of the particular run for mlflow"
+    },
+    "mlflow_nested": {
+      "value": true,
+      "default": false,
+      "desc": "Nesting is needed when doing multiple runs inside a loop (uses same mlflow runID)"
     }
   },
 
@@ -162,6 +166,11 @@
       "value": false,
       "default": false,
       "desc": "Balance classes for binary classification using CrossEntropyLoss function. Original train set from GermEval18 is skewed."
+    },
+    "dev_size":  {
+      "value": 0.1,
+      "default": 0.1,
+      "desc": "Split a dev set from the training set using dev_size as proportion."
     }
   }
 }
