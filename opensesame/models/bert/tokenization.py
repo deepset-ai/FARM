@@ -189,7 +189,7 @@ class BertTokenizer(object):
                                "`do_lower_case` to False. We are setting `do_lower_case=True` for you "
                                "but you may want to check this behavior.")
                 kwargs['do_lower_case'] = True
-            else:
+            elif '-uncased' not in pretrained_model_name_or_path and '-cased'  not in pretrained_model_name_or_path:
                 logger.warning("You do not have casing information in the model specification. Make sure the "
                                "'do_lower_case' argument is set correctly. If set wrongly it does not throw errors,"
                                "but performance will drop a lot.")

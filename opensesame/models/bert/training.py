@@ -325,7 +325,7 @@ def run_model(args, prediction_head, processor, output_mode, metric):
     if args.mlflow_url:
         set_tracking_uri(args.mlflow_url)
         set_experiment(args.mlflow_experiment)
-        start_run(run_name=args.mlflow_run_name)
+        start_run(run_name=args.mlflow_run_name, nested=args.mlflow_nested)
         for key in args.__dict__:
             log_param(key, args.__dict__[key])
 
