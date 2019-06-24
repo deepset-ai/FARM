@@ -27,7 +27,8 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("-c", "--conf_file",
-                        help="Specify config file", metavar="FILE")
+                        help="Specify config file", metavar="FILE",
+                        default="conll2003_config.json")
     cli_args, remaining_argv = parser.parse_known_args()
     args = read_config(cli_args.conf_file)
 

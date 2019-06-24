@@ -2,13 +2,13 @@
   "general": {
 
     "data_dir": {
-      "value": "data/conll03",
+      "value": "../../data/conll03",
       "default": null,
       "desc": "The input data dir. Should contain the .tsv files (or other data files) for the task."
     },
 
     "bert_model": {
-      "value": "bert-base-cased-de-1a-end",
+      "value": "bert-base-cased-de-2b-end",
       "default": null,
       "desc": "Bert pre-trained model selected in the list: bert-base-cased-de-v0-1, bert-base-cased-de-1a-end, bert-base-uncased, bert-large-uncased, bert-base-cased, bert-large-cased, bert-base-multilingual-uncased, bert-base-multilingual-cased, bert-base-chinese."
     },
@@ -69,7 +69,7 @@
 
     "num_train_epochs":  {
       "value": null,
-      "default": 5.0,
+      "default": 1.0,
       "desc": "Total number of training epochs to perform."
     },
 
@@ -80,7 +80,7 @@
     },
 
     "no_cuda":  {
-      "value": false,
+      "value": true,
       "default": false,
       "desc": "Whether not to use CUDA when available."
     },
@@ -142,7 +142,7 @@
       "desc": "Mlflow server for tracking experiments (e.g. http://80.123.45.167:5000/)"
     },
       "mlflow_experiment": {
-      "value": "BERT_EVAL_conll2003_de",
+      "value": "tm_experiment",
       "default": null,
       "desc": "Experiment name used for mlflow"
     },
@@ -154,6 +154,16 @@
   },
 
   "task": {
+    "balance_classes": {
+      "value": false,
+      "default": false,
+      "desc": "balancing"
+    },
+    "mlflow_nested": {
+      "value": false,
+      "default": false,
+      "desc": "nesting"
+    }
 
   }
 }

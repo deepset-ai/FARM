@@ -2,15 +2,8 @@ from __future__ import absolute_import, division, print_function
 
 import logging
 import os
-from collections import Counter
-
-import warnings
 import numpy as np
-import random
 import torch
-from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler,
-                              TensorDataset)
-from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
 
 from torch.nn import CrossEntropyLoss, MSELoss
@@ -25,59 +18,49 @@ from opensesame.file_utils import OPENSESAME_CACHE, WEIGHTS_NAME, CONFIG_NAME, r
 from opensesame.models.bert.modeling import BertForSequenceClassification, BertForTokenClassification
 from opensesame.models.bert.tokenization import BertTokenizer
 from opensesame.models.bert.optimization import BertAdam, WarmupLinearSchedule
-from opensesame.data_handler.general import get_data_loader
+from opensesame.data_handler.general import BertDataBunch
 from opensesame.metrics import compute_metrics
-
+from opensesame.utils import set_all_seeds, initialize_device_settings
 
 logger = logging.getLogger(__name__)
 
+class WrappedDataParallel(torch.nn.DataParallel):
+    """
+    Hack to get attributes of underlying class in parallel mode. See: https://pytorch.org/tutorials/beginner/former_torchies/parallelism_tutorial.html#dataparallel
 
-def train(model, optimizer, train_examples, dev_examples, label_list, device,
-          tokenizer, output_mode, n_gpu, num_labels, warmup_linear, args, metric):
+    Gets into recursion errors. Workaround see: https://discuss.pytorch.org/t/access-att-of-model-wrapped-within-torch-nn-dataparallel-maximum-recursion-depth-exceeded/46975
+    """
+    def __getattr__(self, name):
+        try:
+            return super().__getattr__(name)
+        except AttributeError:
+            return getattr(self.module, name)
+
+
+def train(model, optimizer, data_bunch, device, output_mode, n_gpu, warmup_linear, args, metric):
+#TODO get rid of "args" here
 
     # Begin train loop
     global_step = 0
-    logger.info("***** Loading train data ******")
-    if args.local_rank == -1:
-        train_sampler = RandomSampler
-    else:
-        train_sampler = DistributedSampler
-
-    train_data_loader, train_dataset = get_data_loader(train_examples, label_list,
-                                                       train_sampler, args.train_batch_size,
-                                                       args.max_seq_length, tokenizer, output_mode)
     logger.info("***** Running training *****")
     model.train()
     for _ in trange(int(args.num_train_epochs), desc="Epoch"):
         tr_loss = 0
         nb_tr_examples, nb_tr_steps = 0, 0
-        for step, batch in enumerate(tqdm(train_data_loader, desc="Iteration")):
+        for step, batch in enumerate(tqdm(data_bunch.train_data_loader, desc="Iteration")):
+            # get loss for single batch
             batch = tuple(t.to(device) for t in batch)
             input_ids, input_mask, segment_ids, label_ids = batch
 
-            # TODO define a new function to compute loss values for all output_modes
+            loss = model(input_ids = input_ids,
+                         token_type_ids = segment_ids,
+                         attention_mask = input_mask,
+                         labels = label_ids)
 
-            if output_mode == "classification":
-                logits = model(input_ids, segment_ids, input_mask, labels=None)
-                if "balance_classes" in args.__dict__ and args.balance_classes:
-                    all_label_ids = [x[3].item() for x in train_dataset]
-                    w = torch.tensor(list(compute_class_weight("balanced",np.unique(all_label_ids),all_label_ids)))
-                    logger.info("Using weighted loss for balancing classes. Weights: {}".format(w))
-                    loss_fct = CrossEntropyLoss(weight=w.to(device))
-                else:
-                    loss_fct = CrossEntropyLoss()
-                loss = loss_fct(logits.view(-1, num_labels), label_ids.view(-1))
-            elif output_mode == "regression":
-                logits = model(input_ids, segment_ids, input_mask, labels=None)
-                loss_fct = MSELoss()
-                loss = loss_fct(logits.view(-1), label_ids.view(-1))
-            elif output_mode == "ner":
-                loss = model(input_ids, segment_ids, input_mask, labels=label_ids)
-            else:
-                raise NotImplementedError
 
+            # adjust loss for multi-gpu and distributed calculations
             if n_gpu > 1:
-                loss = loss.mean() # mean() to average on multi-gpu.
+                loss = loss.mean()  # mean() to average on multi-gpu.
             if args.gradient_accumulation_steps > 1:
                 loss = loss / args.gradient_accumulation_steps
 
@@ -98,28 +81,20 @@ def train(model, optimizer, train_examples, dev_examples, label_list, device,
                         param_group['lr'] = lr_this_step
                 optimizer.step()
                 optimizer.zero_grad()
-                #TODO we might wanna move this increment to after the evaluation
-                global_step += 1
 
             # Perform evaluation
             if (args.eval_every and (global_step % args.eval_every == 1)):
                 logger.info("Eval after step: {}".format(global_step))
-                evaluation(model, dev_examples, label_list, tokenizer, output_mode, device, num_labels,
-                           metric, args.eval_batch_size, args.max_seq_length, "dev", global_step=global_step)
+                evaluation(model=model, data_bunch=data_bunch, output_mode=output_mode, device=device,
+                           metric=metric, data_type="dev", global_step=global_step, n_gpu=n_gpu)
+
+            global_step += 1
     return model
 
 
-def evaluation(model, eval_examples, label_list, tokenizer, output_mode, device, num_labels, metric,
-               eval_batch_size, max_seq_length, data_type, report_output_dir=None, global_step=None):
+def evaluation(model, data_bunch, output_mode, device, metric, data_type, report_output_dir=None, global_step=None, n_gpu = None):
     # TODO: need to differentiate between args.do_eval for standalone eval and eval within the training loop
-    logger.info("***** Loading eval data ******")
-
-    eval_sampler = SequentialSampler
-    eval_data_loader, eval_dataset = get_data_loader(eval_examples, label_list, eval_sampler, eval_batch_size,
-                                                     max_seq_length, tokenizer, output_mode)
-    label_map = {i: label for i, label in enumerate(label_list)}
-
-    logger.info("***** Running evaluation *****")
+    label_map = {i: label for i, label in enumerate(data_bunch.label_list)}
 
     model.eval()
     eval_loss = 0
@@ -127,29 +102,33 @@ def evaluation(model, eval_examples, label_list, tokenizer, output_mode, device,
     preds = []
     y_true_ner = []
 
-    for input_ids, input_mask, segment_ids, label_ids in tqdm(eval_data_loader, desc="Evaluating"):
+    # TODO: This could get confusing since sometimes test == dev. No test shouldnt be dev!!
+    # Can this be handled elsewhere?
+    if data_type=="dev":
+        logger.info("***** Running evaluation on dev *****")
+        data_loader = data_bunch.dev_data_loader
+        dataset = data_bunch.dev_dataset
+    elif data_type=="test":
+        logger.info("***** Running evaluation on test *****")
+        data_loader = data_bunch.test_data_loader
+        dataset = data_bunch.test_dataset
+
+    for input_ids, input_mask, segment_ids, label_ids in tqdm(data_loader, desc="Evaluating"):
         input_ids = input_ids.to(device)
         input_mask = input_mask.to(device)
         segment_ids = segment_ids.to(device)
         label_ids = label_ids.to(device)
 
         with torch.no_grad():
-            logits = model(input_ids, segment_ids, input_mask, labels=None)
+            logits = model(input_ids = input_ids,
+                           token_type_ids = segment_ids,
+                           attention_mask = input_mask,
+                           labels = None)
+            tmp_eval_loss = model.logits_to_loss(logits=logits,
+                                                     labels=label_ids,
+                                                     attention_mask=input_mask)
 
-        # create eval loss and other metric required by the task
-        if output_mode == "classification":
-            loss_fct = CrossEntropyLoss()
-            tmp_eval_loss = loss_fct(logits.view(-1, num_labels), label_ids.view(-1))
-        elif output_mode == "regression":
-            loss_fct = MSELoss()
-            tmp_eval_loss = loss_fct(logits.view(-1), label_ids.view(-1))
-        elif output_mode == "ner":
-            loss_fct = CrossEntropyLoss()
-            tmp_eval_loss = loss_fct(logits.view(-1, num_labels), label_ids.view(-1))
-
-        # TODO: Loss for ner is calculated in the same way as during train i.e. predictions on non-initial subtokens are included
         eval_loss += tmp_eval_loss.mean().item()
-
 
         if output_mode == "ner":
             batch_preds, batch_y_true = ignore_subword_tokens(logits, input_mask, label_map, label_ids)
@@ -157,7 +136,7 @@ def evaluation(model, eval_examples, label_list, tokenizer, output_mode, device,
             y_true_ner += batch_y_true
         else:
             if nb_eval_steps == 0:
-                #overwrite preds of type list to handle multidimensional data better
+                #overwrite preds of type list (instantiated above) to handle multidimensional data better
                 preds = logits.detach().cpu().numpy()
             else:
                 preds = np.concatenate((preds, logits.detach().cpu().numpy()), axis=0)
@@ -168,7 +147,7 @@ def evaluation(model, eval_examples, label_list, tokenizer, output_mode, device,
     if output_mode == "ner":
         y_true = y_true_ner
     else:
-        y_true = eval_dataset.tensors[3]
+        y_true = dataset.tensors[3]
 
     eval_loss = eval_loss / nb_eval_steps
     if output_mode == "classification":
@@ -179,7 +158,7 @@ def evaluation(model, eval_examples, label_list, tokenizer, output_mode, device,
     result['eval_loss'] = eval_loss
 
 
-    # TODO report currently only works for classification
+    # TODO report currently only works for classification + NER, does it work for regression?
     logger.info("***** Eval results *****")
 
     if output_mode == "ner":
@@ -262,13 +241,15 @@ def load_model(model_dir, prediction_head, do_lower_case, num_labels):
     return model, tokenizer
 
 
-def initialize_model(bert_model, prediction_head, num_labels, device, n_gpu, cache_dir, local_rank, fp16):
+def initialize_model(bert_model, prediction_head, num_labels, device, n_gpu, cache_dir, local_rank, fp16, balanced_weights=None):
     # Prepare model
     cache_dir = cache_dir if cache_dir else os.path.join(str(OPENSESAME_CACHE), 'distributed_{}'.format(local_rank))
     if prediction_head == "seq_classification":
         model = BertForSequenceClassification.from_pretrained(bert_model,
-                  cache_dir=cache_dir,
-                  num_labels=num_labels)
+                                                              cache_dir=cache_dir,
+                                                              num_labels=num_labels,
+                                                              balanced_weights=balanced_weights
+                                                              )
     elif prediction_head == "simple_ner":
         model = BertForTokenClassification.from_pretrained(bert_model,
               cache_dir=cache_dir,
@@ -278,18 +259,20 @@ def initialize_model(bert_model, prediction_head, num_labels, device, n_gpu, cac
         raise NotImplementedError
     else:
         raise NotImplementedError
+
     if fp16:
         model.half()
     model.to(device)
     if local_rank != -1:
         try:
+            #TODO check for dataparallel problems, as in WrappedDataParallel
             from apex.parallel import DistributedDataParallel as DDP
         except ImportError:
             raise ImportError("Please install apex from https://www.github.com/nvidia/apex to use distributed and fp16 training.")
 
         model = DDP(model)
     elif n_gpu > 1:
-        model = torch.nn.DataParallel(model)
+        model = WrappedDataParallel(model)
     return model
 
 def ignore_subword_tokens(logits, input_mask, label_map, label_ids):
@@ -317,11 +300,26 @@ def ignore_subword_tokens(logits, input_mask, label_map, label_ids):
         preds.append(temp_2)
     return all_label_ids, preds
 
+def calculate_optimization_steps(n_examples, batch_size, grad_acc_steps, n_epochs, local_rank):
+    optimization_steps = int(n_examples / batch_size / grad_acc_steps) * n_epochs
+    if local_rank != -1:
+        optimization_steps = optimization_steps // torch.distributed.get_world_size()
+    return optimization_steps
+
+def balanced_class_weights(dataset):
+    all_label_ids = [x[3].item() for x in dataset]
+    weights = list(compute_class_weight("balanced", np.unique(all_label_ids), all_label_ids))
+    logger.info("Using weighted loss for balancing classes. Weights: {}".format(weights))
+    return weights
+
+
 def run_model(args, prediction_head, processor, output_mode, metric):
     # Basic init and input validation
+    # TODO: Is there a better place to put this?
     logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                         datefmt = '%m/%d/%Y %H:%M:%S',
                         level = logging.INFO if args.local_rank in [-1, 0] else logging.WARN)
+
     if args.mlflow_url:
         set_tracking_uri(args.mlflow_url)
         set_experiment(args.mlflow_experiment)
@@ -332,71 +330,50 @@ def run_model(args, prediction_head, processor, output_mode, metric):
     if not args.do_train and not args.do_eval:
         raise ValueError("At least one of `do_train` or `do_eval` must be True.")
 
+    if args.gradient_accumulation_steps < 1:
+        raise ValueError("Invalid gradient_accumulation_steps parameter: {}, should be >= 1".format(
+                            args.gradient_accumulation_steps))
+
     # if os.path.exists(args.output_dir) and os.listdir(args.output_dir) and args.do_train:
     #     raise ValueError("Output directory ({}) already exists and is not empty.".format(args.output_dir))
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
 
     # Init device and distributed settings
-    if args.local_rank == -1 or args.no_cuda:
-        device = torch.device("cuda" if torch.cuda.is_available() and not args.no_cuda else "cpu")
-        n_gpu = torch.cuda.device_count()
-    else:
-        torch.cuda.set_device(args.local_rank)
-        device = torch.device("cuda", args.local_rank)
-        n_gpu = 1
-        # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
-        torch.distributed.init_process_group(backend='nccl')
-    logger.info("device: {} n_gpu: {}, distributed training: {}, 16-bits training: {}".format(
-        device, n_gpu, bool(args.local_rank != -1), args.fp16))
-    if args.gradient_accumulation_steps < 1:
-        raise ValueError("Invalid gradient_accumulation_steps parameter: {}, should be >= 1".format(
-                            args.gradient_accumulation_steps))
-
+    device, n_gpu = initialize_device_settings(no_cuda=args.no_cuda, local_rank=args.local_rank, fp16=args.fp16)
     args.train_batch_size = args.train_batch_size // args.gradient_accumulation_steps
+    set_all_seeds(args.seed)
 
-    random.seed(args.seed)
-    np.random.seed(args.seed)
-    torch.manual_seed(args.seed)
-    if n_gpu > 0:
-        torch.cuda.manual_seed_all(args.seed)
-
-    label_list = processor.get_labels()
-    num_labels = len(label_list)
-
+    # Prepare Data
     tokenizer = BertTokenizer.from_pretrained(args.bert_model, do_lower_case=args.do_lower_case)
+    data_bunch = BertDataBunch(args.data_dir, processor, output_mode, tokenizer, args.train_batch_size,
+                               args.max_seq_length, local_rank=args.local_rank)
 
-    # Load examples
-    train_examples = processor.get_train_examples(args.data_dir)
-    dev_evamples = processor.get_dev_examples(args.data_dir)
-    # TODO: How about the case when we want to run evaluation on test at the end but want to run
-    #  evaluation on dev during training?
-    try:
-        test_examples = processor.get_test_examples(args.data_dir)
-    except:
-        logger.warning("Test set not found, evaluation during training and afterwards will both be performed on dev set.")
-        test_examples = dev_evamples
-    if args.mlflow_url:
-        log_param("num_train_examples", len(train_examples))
-        log_param("num_dev_examples", len(dev_evamples))
-        log_param("num_test_examples", len(test_examples))
-
+    # Training
     if args.do_train:
 
-        num_train_optimization_steps = int(
-            len(train_examples) / args.train_batch_size / args.gradient_accumulation_steps) * args.num_train_epochs
-        if args.local_rank != -1:
-            num_train_optimization_steps = num_train_optimization_steps // torch.distributed.get_world_size()
+        num_train_optimization_steps = calculate_optimization_steps(data_bunch.num_train_examples,
+                                                                      args.train_batch_size,
+                                                                      args.gradient_accumulation_steps,
+                                                                      args.num_train_epochs,
+                                                                      args.local_rank)
 
+        # Compute class weighting to balance uneven class distribution
+        weights = None
+        if args.balance_classes:
+            weights = balanced_class_weights(data_bunch.train_dataset)
+
+        # Init model
         model = initialize_model(bert_model=args.bert_model, prediction_head=prediction_head, device=device,
-                                 num_labels=num_labels, n_gpu=n_gpu, cache_dir=args.cache_dir,
-                                 local_rank=args.local_rank, fp16=args.fp16)
+                                 num_labels=data_bunch.num_labels, n_gpu=n_gpu, cache_dir=args.cache_dir,
+                                 local_rank=args.local_rank, fp16=args.fp16, balanced_weights=weights)
 
+        # Init optimizer
         optimizer, warmup_linear = initialize_optimizer(model, args.learning_rate, args.warmup_proportion,
                                                         args.loss_scale, args.fp16, num_train_optimization_steps)
-
-        model = train(model, optimizer, train_examples, dev_evamples, label_list, device,
-                      tokenizer, output_mode, n_gpu, num_labels, warmup_linear, args, metric)
+        # Run actual training
+        model = train(model=model, optimizer=optimizer, data_bunch=data_bunch, device=device, output_mode=output_mode,
+                      n_gpu=n_gpu,warmup_linear= warmup_linear, args=args, metric=metric)
 
     # Saving and loading the model
     if args.do_train and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
@@ -404,10 +381,10 @@ def run_model(args, prediction_head, processor, output_mode, metric):
         output_dir = args.output_dir
     else:
         output_dir = args.bert_model
-    model, tokenizer = load_model(output_dir, prediction_head, args.do_lower_case, num_labels)
+    model, tokenizer = load_model(output_dir, prediction_head, args.do_lower_case, data_bunch.num_labels)
     model.to(device)
 
     # Evaluation
     if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
-        evaluation(model, test_examples, label_list, tokenizer, output_mode, device, num_labels, metric,
-                   args.eval_batch_size, args.max_seq_length, "test", args.output_dir)
+        evaluation(model=model, data_bunch=data_bunch, output_mode=output_mode, device=device,
+                   metric=metric, data_type="test", report_output_dir=args.output_dir, n_gpu=n_gpu)
