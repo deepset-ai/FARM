@@ -44,7 +44,7 @@
     },
 
     "train_batch_size": {
-      "value": 128,
+      "value": 32,
       "default": 32,
       "desc": "Total batch size for training."
     },
@@ -68,7 +68,7 @@
     },
 
     "no_cuda":  {
-      "value": false,
+      "value": true,
       "default": false,
       "desc": "Whether not to use CUDA when available."
     },
@@ -122,7 +122,7 @@
     },
 
     "eval_batch_size": {
-      "value": 128,
+      "value": 32,
       "default": 32,
       "desc": "Total batch size for eval."
     },
@@ -134,21 +134,26 @@
     },
 
       "mlflow_experiment": {
-      "value": "BERT_EVAL_germeval18fine",
+      "value": "tm_experiment",
       "default": null,
       "desc": "Experiment name used for mlflow"
     },
 
     "bert_model": {
-      "value": "bert-base-multilingual-uncased",
+      "value": "bert-base-cased-de-2b-end",
       "default": null,
       "desc": "Bert pre-trained model selected in the list: bert-base-uncased, bert-large-uncased, bert-base-cased, bert-large-cased, bert-base-multilingual-uncased, bert-base-multilingual-cased, bert-base-chinese."
     },
 
       "mlflow_run_name": {
-      "value": "tm bert-base-multilingual-uncased",
+      "value": "tm germeval coarse testing",
       "default": null,
       "desc": "Name of the particular run for mlflow"
+    },
+    "mlflow_nested":  {
+      "value": true,
+      "default": true,
+      "desc": "Nesting mlflow experiemtns"
     }
   },
 

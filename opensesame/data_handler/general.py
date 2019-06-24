@@ -2,8 +2,7 @@ import csv
 import sys
 import logging
 import torch
-from torch.utils.data import (DataLoader,
-                              TensorDataset)
+from torch.utils.data import (DataLoader,RandomSampler, SequentialSampler, DistributedSampler, TensorDataset)
 
 
 logger = logging.getLogger(__name__)
@@ -92,9 +91,7 @@ def featurize_samples(samples, label_list, max_seq_length, tokenizer, output_mod
         raise NotImplementedError
     return all_input_ids, all_input_mask, all_segment_ids, all_label_ids
 
-
-def get_data_loader(examples, label_list, sampler, batch_size, max_seq_length, tokenizer, output_mode,
-                    mlflow_logging=False):
+def get_dataset(examples, label_list, tokenizer, max_seq_length, output_mode):
     # TODO: This should be a function that takes a processor and returns a dataloader
     logger.info("  Num examples = %d", len(examples))
     all_input_ids, all_input_mask, all_segment_ids, all_label_ids = featurize_samples(examples,
@@ -104,10 +101,8 @@ def get_data_loader(examples, label_list, sampler, batch_size, max_seq_length, t
                                                                                       output_mode)
 
     dataset = TensorDataset(all_input_ids, all_input_mask, all_segment_ids, all_label_ids)
-    # Run prediction for full data
-    data_sampler = sampler(dataset)
-    data_loader = DataLoader(dataset, sampler=data_sampler, batch_size=batch_size)
-    return data_loader, dataset
+    return dataset
+
 
 
 class DataProcessor(object):
@@ -152,3 +147,71 @@ def _truncate_seq_pair(tokens_a, tokens_b, max_length):
             tokens_a.pop()
         else:
             tokens_b.pop()
+
+
+class BertDataBunch(object):
+
+    def __init__(self, data_dir, processor, output_mode, tokenizer, train_batch_size, max_seq_length, local_rank=-1):
+
+        self.data_dir = data_dir
+        self.tokenizer = tokenizer
+        self.processor = processor
+        self.max_seq_length = max_seq_length
+        self.batch_size = train_batch_size
+        self.local_rank = local_rank
+        self.output_mode = output_mode # TODO: this is bad naming. we should switch to prediction_head or downstream_task?
+        self.label_list = self.processor.get_labels()
+        self.num_labels = len(self.label_list)
+        self.test_is_dev = False
+
+        # init all dataloaders
+        self.init_train_data()
+        self.init_dev_data()
+        self.init_test_data()
+
+    def init_train_data(self):
+        logger.info("***** Loading train data ******")
+        train_examples = self.processor.get_train_examples(self.data_dir)
+        self.num_train_examples = len(train_examples)
+
+        if self.local_rank == -1:
+            train_sampler = RandomSampler
+        else:
+            train_sampler = DistributedSampler
+
+        self.train_dataset = get_dataset(train_examples, self.label_list, self.tokenizer, self.max_seq_length, self.output_mode)
+        train_sampler = train_sampler(self.train_dataset)
+        self.train_data_loader = DataLoader(self.train_dataset, sampler=train_sampler, batch_size=self.batch_size)
+
+
+    def init_dev_data(self):
+        logger.info("***** Loading dev data ******")
+        dev_examples = self.processor.get_dev_examples(self.data_dir)
+        self.num_dev_evamples = len(dev_examples)
+
+        dev_sampler = SequentialSampler
+
+        self.dev_dataset = get_dataset(dev_examples, self.label_list, self.tokenizer, self.max_seq_length, self.output_mode)
+        dev_sampler = dev_sampler(self.dev_dataset)
+        self.dev_data_loader = DataLoader(self.dev_dataset, sampler=dev_sampler, batch_size=self.batch_size)
+
+    def init_test_data(self):
+        logger.info("***** Loading test data ******")
+        try:
+            test_examples = self.processor.get_test_examples(self.data_dir)
+            self.num_test_examples = len(test_examples)
+
+            test_sampler = SequentialSampler
+
+            self.test_dataset = get_dataset(test_examples, self.label_list, self.tokenizer, self.max_seq_length,
+                                           self.output_mode)
+            test_sampler = test_sampler(self.test_dataset)
+            self.test_data_loader = DataLoader(self.test_dataset, sampler=test_sampler, batch_size=self.batch_size)
+
+        except:
+            logger.warning(
+                "Test set not found, evaluation during training and afterwards will both be performed on dev set.")
+            self.test_data_loader = self.dev_data_loader
+            self.num_test_examples = self.num_dev_examples
+            self.test_is_dev = True
+

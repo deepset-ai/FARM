@@ -14,3 +14,4 @@ sklearn
 # Metrics or logging related
 seqeval
 mlflow==1.0.0
+pytorch-pretrained-bert==0.6.2
