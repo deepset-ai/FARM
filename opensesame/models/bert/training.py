@@ -37,7 +37,180 @@ class WrappedDataParallel(torch.nn.DataParallel):
             return getattr(self.module, name)
 
 
-def train(model, optimizer, data_bunch, device, output_mode, n_gpu, warmup_linear, args, metric):
+class Trainer:
+    def __init__(self, optimizer, data_bunch, epochs, n_gpu, grad_acc_steps, fp16, learning_rate, warmup_linear, warmup_proportion, device, evaluate_every=100):
+        self.data_bunch = data_bunch
+        self.epochs = int(epochs)
+        self.evaluator_dev = Evaluator(data_bunch.dev_data_loader, data_bunch.)
+        self.evaluator_test = Evaluator(data_bunch.test_data_loader)
+        self.optimizer = optimizer
+        self.evaluate_every = evaluate_every
+        self.n_gpu = n_gpu
+        self.grad_acc_steps = grad_acc_steps
+        self.fp16 = fp16
+        self.learning_rate = learning_rate
+        self.warmup_linear = warmup_linear
+        self.global_step = 0
+        self.data_loader_train = data_bunch.train_data_loader
+        self.device = device
+
+    def train(self, model):
+        logger.info("***** Running training *****")
+        model.train()
+        for epoch_curr in trange(self.epochs, desc="Epoch"):
+            for step, batch in enumerate(tqdm(self.data_loader_train, desc="Iteration")):
+
+                # TODO: Can this be handled by Dataloader somehow?
+                # Move batch of samples to device
+                batch = tuple(t.to(self.device) for t in batch)
+                input_ids, input_mask, segment_ids, label_ids = batch
+
+                # Forward pass through model
+                loss = model.forward_loss(input_ids=input_ids,
+                                          token_type_ids=segment_ids,
+                                          attention_mask=input_mask,
+                                          labels=label_ids)
+                self.backward_propagate(loss, step)
+
+                # Perform evaluation
+                if self.global_step % self.evaluate_every == 1:
+                    logger.info("Eval after step: {}".format(self.global_step))
+                    self.evaluator_dev.eval(model)
+
+                    # evaluation(model=model, data_bunch=self.data_bunch, output_mode=, device=device,
+                    #            metric="acc", data_type="dev", global_step=self.global_step)
+
+                self.global_step += 1
+        return model
+
+    def backward_propagate(self, loss, step):
+        loss = self.adjust_loss(loss)
+        if self.fp16:
+            self.optimizer.backward(loss)
+        else:
+            loss.backward()
+
+        if (step + 1) % self.grad_acc_steps == 0:
+            if self.fp16:
+                # modify learning rate with special warm up BERT uses
+                # if args.fp16 is False, BertAdam is used that handles this automatically
+                lr_this_step = self.learning_rate * self.warmup_linear.get_lr(self.global_step, self.warmup_proportion)
+                for param_group in self.optimizer.param_groups:
+                    param_group['lr'] = lr_this_step
+            self.optimizer.step()
+            self.optimizer.zero_grad()
+
+    def adjust_loss(self, loss):
+        # adjust loss for multi-gpu and distributed calculations
+        if self.n_gpu > 1:
+            loss = loss.mean()  # mean() to average on multi-gpu.
+        if self.grad_acc_steps > 1:
+            loss = loss / self.grad_acc_steps
+        return loss
+
+
+class Evaluator:
+    def __init__(self, data_loader, label_list):
+        self.data_loader = data_loader
+        label_map = {i: label for i, label in enumerate(label_list)}
+
+
+    def eval(self, model):
+
+
+
+
+
+
+def evaluation_old(model, data_bunch, output_mode, device, metric, data_type, report_output_dir=None,
+                   global_step=None, n_gpu=None):
+    # TODO: need to differentiate between args.do_eval for standalone eval and eval within the training loop
+    label_map = {i: label for i, label in enumerate(data_bunch.label_list)}
+
+    model.eval()
+    eval_loss = 0
+    nb_eval_steps = 0
+    preds = []
+    y_true_ner = []
+
+    # TODO: This could get confusing since sometimes test == dev. No test shouldnt be dev!!
+    # Can this be handled elsewhere?
+    if data_type == "dev":
+        logger.info("***** Running evaluation on dev *****")
+        data_loader = data_bunch.dev_data_loader
+        dataset = data_bunch.dev_dataset
+    elif data_type == "test":
+        logger.info("***** Running evaluation on test *****")
+        data_loader = data_bunch.test_data_loader
+        dataset = data_bunch.test_dataset
+
+    for input_ids, input_mask, segment_ids, label_ids in tqdm(data_loader, desc="Evaluating"):
+        input_ids = input_ids.to(device)
+        input_mask = input_mask.to(device)
+        segment_ids = segment_ids.to(device)
+        label_ids = label_ids.to(device)
+
+        with torch.no_grad():
+            logits = model(input_ids=input_ids,
+                           token_type_ids=segment_ids,
+                           attention_mask=input_mask,
+                           labels=None)
+            tmp_eval_loss = model.logits_to_loss(logits=logits,
+                                                 labels=label_ids,
+                                                 attention_mask=input_mask)
+
+        eval_loss += tmp_eval_loss.mean().item()
+
+        if output_mode == "ner":
+            batch_preds, batch_y_true = ignore_subword_tokens(logits, input_mask, label_map, label_ids)
+            preds += batch_preds
+            y_true_ner += batch_y_true
+        else:
+            if nb_eval_steps == 0:
+                # overwrite preds of type list (instantiated above) to handle multidimensional data better
+                preds = logits.detach().cpu().numpy()
+            else:
+                preds = np.concatenate((preds, logits.detach().cpu().numpy()), axis=0)
+
+        nb_eval_steps += 1
+        # end of eval batch loop
+
+    if output_mode == "ner":
+        y_true = y_true_ner
+    else:
+        y_true = dataset.tensors[3]
+
+    eval_loss = eval_loss / nb_eval_steps
+    if output_mode == "classification":
+        preds = np.argmax(preds, axis=1)
+    elif output_mode == "regression":
+        preds = np.squeeze(preds)
+    result = compute_metrics(metric, preds, y_true)
+    result['eval_loss'] = eval_loss
+
+    # TODO report currently only works for classification + NER, does it work for regression?
+    logger.info("***** Eval results *****")
+
+    if output_mode == "ner":
+        f1 = f1_score(y_true, preds, average='micro')
+        logger.info("F1 Score: {}".format(f1))
+        result["F1"] = f1
+        report = token_classification_report(preds, y_true, digits=4)
+    else:
+        report = classification_report(preds, y_true.numpy(), digits=4)
+    logger.info("\n%s", report)
+
+    # Log to mlflow
+    # TODO make it optional
+    for metric_name, metric_val in result.items():
+        log_metric("{} {}".format(data_type, metric_name), metric_val, step=global_step)
+
+    if report_output_dir:
+        output_eval_file = os.path.join(report_output_dir, "eval_results.txt")
+        with open(output_eval_file, "w") as writer:
+            writer.write(report)
+
+def train_old(model, optimizer, data_bunch, device, output_mode, n_gpu, warmup_linear, args, metric):
 #TODO get rid of "args" here
 
     # Begin train loop
@@ -90,95 +263,6 @@ def train(model, optimizer, data_bunch, device, output_mode, n_gpu, warmup_linea
 
             global_step += 1
     return model
-
-
-def evaluation(model, data_bunch, output_mode, device, metric, data_type, report_output_dir=None, global_step=None, n_gpu = None):
-    # TODO: need to differentiate between args.do_eval for standalone eval and eval within the training loop
-    label_map = {i: label for i, label in enumerate(data_bunch.label_list)}
-
-    model.eval()
-    eval_loss = 0
-    nb_eval_steps = 0
-    preds = []
-    y_true_ner = []
-
-    # TODO: This could get confusing since sometimes test == dev. No test shouldnt be dev!!
-    # Can this be handled elsewhere?
-    if data_type=="dev":
-        logger.info("***** Running evaluation on dev *****")
-        data_loader = data_bunch.dev_data_loader
-        dataset = data_bunch.dev_dataset
-    elif data_type=="test":
-        logger.info("***** Running evaluation on test *****")
-        data_loader = data_bunch.test_data_loader
-        dataset = data_bunch.test_dataset
-
-    for input_ids, input_mask, segment_ids, label_ids in tqdm(data_loader, desc="Evaluating"):
-        input_ids = input_ids.to(device)
-        input_mask = input_mask.to(device)
-        segment_ids = segment_ids.to(device)
-        label_ids = label_ids.to(device)
-
-        with torch.no_grad():
-            logits = model(input_ids = input_ids,
-                           token_type_ids = segment_ids,
-                           attention_mask = input_mask,
-                           labels = None)
-            tmp_eval_loss = model.logits_to_loss(logits=logits,
-                                                     labels=label_ids,
-                                                     attention_mask=input_mask)
-
-        eval_loss += tmp_eval_loss.mean().item()
-
-        if output_mode == "ner":
-            batch_preds, batch_y_true = ignore_subword_tokens(logits, input_mask, label_map, label_ids)
-            preds += batch_preds
-            y_true_ner += batch_y_true
-        else:
-            if nb_eval_steps == 0:
-                #overwrite preds of type list (instantiated above) to handle multidimensional data better
-                preds = logits.detach().cpu().numpy()
-            else:
-                preds = np.concatenate((preds, logits.detach().cpu().numpy()), axis=0)
-
-        nb_eval_steps += 1
-        # end of eval batch loop
-
-    if output_mode == "ner":
-        y_true = y_true_ner
-    else:
-        y_true = dataset.tensors[3]
-
-    eval_loss = eval_loss / nb_eval_steps
-    if output_mode == "classification":
-        preds = np.argmax(preds, axis=1)
-    elif output_mode == "regression":
-        preds = np.squeeze(preds)
-    result = compute_metrics(metric, preds, y_true)
-    result['eval_loss'] = eval_loss
-
-
-    # TODO report currently only works for classification + NER, does it work for regression?
-    logger.info("***** Eval results *****")
-
-    if output_mode == "ner":
-        f1 = f1_score(y_true, preds, average='micro')
-        logger.info("F1 Score: {}".format(f1))
-        result["F1"] = f1
-        report = token_classification_report(preds, y_true, digits=4)
-    else:
-        report = classification_report(preds, y_true.numpy(), digits=4)
-    logger.info("\n%s", report)
-
-    # Log to mlflow
-    #TODO make it optional
-    for metric_name, metric_val in result.items():
-        log_metric("{} {}".format(data_type, metric_name), metric_val, step=global_step)
-
-    if report_output_dir:
-        output_eval_file = os.path.join(report_output_dir, "eval_results.txt")
-        with open(output_eval_file, "w") as writer:
-            writer.write(report)
 
 
 def initialize_optimizer(model, learning_rate, warmup_proportion, loss_scale, fp16, num_train_optimization_steps):
@@ -358,22 +442,47 @@ def run_model(args, prediction_head, processor, output_mode, metric):
                                                                       args.num_train_epochs,
                                                                       args.local_rank)
 
+        # TODO: This should be an attribute within data_bunch
         # Compute class weighting to balance uneven class distribution
         weights = None
         if args.balance_classes:
             weights = balanced_class_weights(data_bunch.train_dataset)
 
         # Init model
-        model = initialize_model(bert_model=args.bert_model, prediction_head=prediction_head, device=device,
-                                 num_labels=data_bunch.num_labels, n_gpu=n_gpu, cache_dir=args.cache_dir,
-                                 local_rank=args.local_rank, fp16=args.fp16, balanced_weights=weights)
+        model = initialize_model(bert_model=args.bert_model,
+                                 prediction_head=prediction_head,
+                                 device=device,
+                                 num_labels=data_bunch.num_labels,
+                                 n_gpu=n_gpu,
+                                 cache_dir=args.cache_dir,
+                                 local_rank=args.local_rank,
+                                 fp16=args.fp16,
+                                 balanced_weights=weights)
 
         # Init optimizer
-        optimizer, warmup_linear = initialize_optimizer(model, args.learning_rate, args.warmup_proportion,
-                                                        args.loss_scale, args.fp16, num_train_optimization_steps)
+        # TODO: warmup linear is sometimes NONE depending on fp16 - is there a neater way to handle this?
+        optimizer, warmup_linear = initialize_optimizer(model=model,
+                                                        learning_rate=args.learning_rate,
+                                                        warmup_proportion=args.warmup_proportion,
+                                                        loss_scale=args.loss_scale,
+                                                        fp16=args.fp16,
+                                                        num_train_optimization_steps=num_train_optimization_steps)
         # Run actual training
-        model = train(model=model, optimizer=optimizer, data_bunch=data_bunch, device=device, output_mode=output_mode,
-                      n_gpu=n_gpu,warmup_linear= warmup_linear, args=args, metric=metric)
+        # model = train(model=model, optimizer=optimizer, data_bunch=data_bunch, device=device, output_mode=output_mode,
+        #               n_gpu=n_gpu,warmup_linear= warmup_linear, args=args, metric=metric)
+
+        trainer = Trainer(optimizer=optimizer,
+                          data_bunch=data_bunch,
+                          epochs=args.num_train_epochs,
+                          n_gpu=n_gpu,
+                          grad_acc_steps=args.gradient_accumulation_steps,
+                          fp16=args.fp16,
+                          learning_rate=args.learning_rate,
+                          warmup_linear=warmup_linear,
+                          warmup_proportion=args.warmup_proportion,
+                          evaluate_every=args.eval_every,
+                          device=device)
+        model = trainer.train(model)
 
     # Saving and loading the model
     if args.do_train and (args.local_rank == -1 or torch.distributed.get_rank() == 0):

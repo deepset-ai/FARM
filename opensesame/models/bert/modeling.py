@@ -565,14 +565,18 @@ class BertForSequenceClassification(BertPreTrainedModel):
         _, pooled_output = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output).view(-1, self.num_labels)
-        if labels is not None:
-            loss = self.loss_fct(logits, labels.view(-1))
-            return loss
-        else:
-            return logits
+        return logits
 
     def logits_to_loss(self, logits, labels, attention_mask = None):
         return self.loss_fct(logits, labels.view(-1))
+
+    def forward_loss(self, input_ids, token_type_ids=None, attention_mask=None, labels=None):
+        logits = self.forward(input_ids=input_ids,
+                              token_type_ids=token_type_ids,
+                              attention_mask=attention_mask)
+        reshaped_labels = labels.view(-1)
+        loss = self.loss_fct(logits, reshaped_labels)
+        return loss
 
 
 #TODO update documentation here!
