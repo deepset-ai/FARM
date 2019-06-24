@@ -110,16 +110,56 @@ class Trainer:
 
 
 class Evaluator:
-    def __init__(self, data_loader, label_list):
-        self.data_loader = data_loader
-        label_map = {i: label for i, label in enumerate(label_list)}
+    def __init__(self, data_loader, dataset, label_list, device, metric, eval_type):
 
+        self.data_loader = data_loader
+        self.label_map = {i: label for i, label in enumerate(label_list)}
+        self.loss_all = []
+        self.logits_all = []
+        self.preds_all = []
+        self.Y_all = dataset.tensors[3]
+        self.device = device
+        # Where should metric be defined? When dataset loaded? In config?
+        self.metric = metric
+
+        if eval_type == "token_classification":
+            self.classification_report = token_classification_report
+        elif eval_type == "sequence_classification":
+            self.classification_report = classification_report
+        else:
+            raise NotImplementedError
 
     def eval(self, model):
+        """ This model is currently written idealistically from the high level so that it is clean
+        but might not function when performing NER """
+        model.eval()
+        for step, batch in enumerate(tqdm(self.data_loader, desc="Evaluating")):
+            batch = tuple(t.to(self.device) for t in batch)
+            input_ids, input_mask, segment_ids, label_ids = batch
+
+            with torch.no_grad():
+                logits = model(input_ids=input_ids,
+                               token_type_ids=segment_ids,
+                               attention_mask=input_mask)
+                loss = model.logits_to_loss(logits=logits,
+                                             labels=label_ids)
+                preds = model.logits_to_preds(logits)
 
 
+            self.loss_all += list(loss.numpy())
+            self.logits_all += list(logits.numpy())
+            self.preds_all += list(preds.numpy())
 
 
+        logger.info("***** Eval results *****")
+
+        loss_total = np.sum(self.loss_all)
+        loss_eval = np.mean(self.loss_all)
+
+        result = {"loss_eval": loss_eval}
+        result[self.metric] = compute_metrics(self.metric, self.preds_all, self.Y_all)
+        report = self.classification_report(self.preds_all, self.Y_all, digits=4)
+        logger.info("\n%s", report)
 
 
 def evaluation_old(model, data_bunch, output_mode, device, metric, data_type, report_output_dir=None,

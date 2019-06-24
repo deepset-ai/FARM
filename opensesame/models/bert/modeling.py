@@ -567,7 +567,7 @@ class BertForSequenceClassification(BertPreTrainedModel):
         logits = self.classifier(pooled_output).view(-1, self.num_labels)
         return logits
 
-    def logits_to_loss(self, logits, labels, attention_mask = None):
+    def logits_to_loss(self, logits, labels):
         return self.loss_fct(logits, labels.view(-1))
 
     def forward_loss(self, input_ids, token_type_ids=None, attention_mask=None, labels=None):
