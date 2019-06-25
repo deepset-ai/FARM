@@ -44,7 +44,7 @@
     },
 
     "train_batch_size": {
-      "value": 32,
+      "value": 64,
       "default": 32,
       "desc": "Total batch size for training."
     },

@@ -561,7 +561,7 @@ class BertForSequenceClassification(BertPreTrainedModel):
         self.loss_fct = CrossEntropyLoss(weight=self.balanced_weights, reduction="none")
         self.apply(self.init_bert_weights)
 
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels = None):
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None):
         _, pooled_output = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output).view(-1, self.num_labels)
@@ -575,13 +575,13 @@ class BertForSequenceClassification(BertPreTrainedModel):
         # preds = np.argmax(logits, axis=1)
         return preds
 
-    def forward_loss(self, input_ids, token_type_ids=None, attention_mask=None, labels=None):
-        logits = self.forward(input_ids=input_ids,
-                              token_type_ids=token_type_ids,
-                              attention_mask=attention_mask)
-        reshaped_labels = labels.view(-1)
-        loss = self.loss_fct(logits, reshaped_labels)
-        return loss
+    # def forward_loss(self, input_ids, token_type_ids=None, attention_mask=None, labels=None):
+    #     logits = self.forward(input_ids=input_ids,
+    #                           token_type_ids=token_type_ids,
+    #                           attention_mask=attention_mask)
+    #     reshaped_labels = labels.view(-1)
+    #     loss = self.loss_fct(logits, reshaped_labels)
+    #     return loss
 
 
 #TODO update documentation here!

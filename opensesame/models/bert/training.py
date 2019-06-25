@@ -80,10 +80,11 @@ class Trainer:
                 input_ids, input_mask, segment_ids, label_ids = batch
 
                 # Forward pass through model
-                loss = model.forward_loss(input_ids=input_ids,
+                logits = model.forward(input_ids=input_ids,
                                           token_type_ids=segment_ids,
-                                          attention_mask=input_mask,
-                                          labels=label_ids)
+                                          attention_mask=input_mask)
+                loss = model.logits_to_loss(logits=logits,
+                                            labels=label_ids)
                 self.backward_propagate(loss, step)
 
                 # Perform evaluation
