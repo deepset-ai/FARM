@@ -165,9 +165,9 @@ class Evaluator:
             input_ids, input_mask, segment_ids, label_ids = batch
 
             with torch.no_grad():
-                logits = model(input_ids=input_ids,
-                               token_type_ids=segment_ids,
-                               attention_mask=input_mask)
+                logits = model.forward(input_ids=input_ids,
+                                       token_type_ids=segment_ids,
+                                       attention_mask=input_mask)
                 loss = model.logits_to_loss(logits=logits,
                                              labels=label_ids)
                 preds = model.logits_to_preds(logits)

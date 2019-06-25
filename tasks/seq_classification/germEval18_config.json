@@ -56,7 +56,7 @@
     },
 
     "num_train_epochs":  {
-      "value": null,
+      "value": 1,
       "default": 6.0,
       "desc": "Total number of training epochs to perform."
     },
