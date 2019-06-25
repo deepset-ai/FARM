@@ -28,7 +28,7 @@
   "parameter": {
     "model":            {"value": "bert-base-cased-de-2b-end","default": null, "desc": "Bert pre-trained model selected in the list: bert-base-uncased, bert-large-uncased, bert-base-cased, bert-large-cased, bert-base-multilingual-uncased, bert-base-multilingual-cased, bert-base-chinese."},
     "lower_case":       {"value": null,                       "default": false,"desc": "Set to true if you are using an uncased model."},
-    "max_seq_length":   {"value": 150,                        "default": 128,  "desc": "The maximum total input sequence length after WordPiece tokenization. 128 was too short for some texts"},
+    "max_seq_length":   {"value": [150,120],                        "default": 128,  "desc": "The maximum total input sequence length after WordPiece tokenization. 128 was too short for some texts"},
     "balance_classes":  {"value": null,"default": true,"desc": "Balance classes using weighted CrossEntropyLoss. Original train set from GermEval18 is skewed and the final evaluation is macro averaged, so we need to balance for optimal performance.."},
 
     "learning_rate":      {"value": null,"default": 2e-5,"desc": "The initial learning rate for Adam."},

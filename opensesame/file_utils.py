@@ -302,13 +302,15 @@ def read_config(path, flattend= False):
     # flatten last part of config, take either value or default as value
     for gk,gv in conf_args.items():
         for k,v in gv.items():
+            if(isinstance(v,dict)):
+                logger.error("Config is too deeply nested, at %s" %str(v))
             conf_args[gk][k] = getArgValue(v)
 
     # DotMap for making nested dictionary accessible through dot notation
     if(flattend):
         flat_args = dict(conf_args["general"],**conf_args["task"], **conf_args["parameter"], **conf_args["logging"])
-        args = DotMap(flat_args,_dynamic=False)
+        args = DotMap(flat_args, _dynamic=False)
     else:
-        args = DotMap(conf_args,_dynamic=False)
+        args = DotMap(conf_args, _dynamic=False)
 
     return args
