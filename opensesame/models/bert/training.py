@@ -41,23 +41,20 @@ class Trainer:
     def __init__(self,
                  optimizer,
                  data_bunch,
+                 evaluator_dev,
+                 evaluator_test,
                  epochs,
                  n_gpu,
                  grad_acc_steps,
                  fp16,
                  learning_rate,
                  warmup_linear,
-                 warmup_proportion,
                  device,
-                 metric,
-                 output_mode,
-                 token_level,
                  evaluate_every=100):
         self.data_bunch = data_bunch
+        self.evaluator_dev = evaluator_dev
+        self.evaluator_test = evaluator_test
         self.epochs = int(epochs)
-        # TODO BC: I think for the sake of arguments being passed around, the evaluators should be initialized outside the Trainer
-        self.evaluator_dev = Evaluator(data_bunch.dev_data_loader, data_bunch.label_list, device, metric, output_mode, token_level)
-        self.evaluator_test = Evaluator(data_bunch.test_data_loader, data_bunch.label_list, device, metric, output_mode, token_level)
         self.optimizer = optimizer
         self.evaluate_every = evaluate_every
         self.n_gpu = n_gpu
@@ -88,11 +85,17 @@ class Trainer:
 
                 # Perform evaluation
                 if self.global_step % self.evaluate_every == 1:
-                    logger.info("Eval after step: {}".format(self.global_step))
-                    self.evaluator_dev.eval(model)
+                    result = self.evaluator_dev.eval(model)
+                    self.print_dev(result, self.global_step)
 
                 self.global_step += 1
         return model
+
+    def evaluate_on_test(self, model):
+        result = self.evaluator_test.eval(model)
+        logger.info("***** Test Eval Results *****")
+        logger.info(result["report"])
+
 
     def backward_propagate(self, loss, step):
         loss = self._adjust_loss(loss)
@@ -111,6 +114,7 @@ class Trainer:
             self.optimizer.step()
             self.optimizer.zero_grad()
 
+
     def _adjust_loss(self, loss):
         # TODO: These 2 lines are added because the CrossEntropy function in SEqClassifier was given the parameter reduction=None
         if self.n_gpu == 1:
@@ -121,6 +125,12 @@ class Trainer:
         if self.grad_acc_steps > 1:
             loss = loss / self.grad_acc_steps
         return loss
+
+
+    @staticmethod
+    def print_dev(result, step):
+        logger.info("***** Dev Eval Results After Steps: {} *****".format(step))
+        logger.info(result["report"])
 
 
 class Evaluator:
@@ -145,8 +155,6 @@ class Evaluator:
             raise NotImplementedError
 
     def eval(self, model):
-        """ This model is currently written idealistically from the high level so that it is clean
-        but might not function when performing NER """
         model.eval()
 
         for step, batch in enumerate(tqdm(self.data_loader, desc="Evaluating")):
@@ -167,158 +175,11 @@ class Evaluator:
             self.preds_all += list(preds.cpu().numpy())
             self.Y_all += list(label_ids.cpu().numpy())
 
-
-        logger.info("***** Eval results *****")
-
         loss_eval = np.mean(self.loss_all)
         result = {"loss_eval": loss_eval}
         result[self.metric] = compute_metrics(self.metric, self.preds_all, self.Y_all)
-        report = self.classification_report(self.preds_all, self.Y_all, digits=4)
-        logger.info("\n%s", report)
-
-
-def evaluation_old(model, data_bunch, output_mode, device, metric, data_type, report_output_dir=None,
-                   global_step=None, n_gpu=None):
-    # TODO: need to differentiate between args.do_eval for standalone eval and eval within the training loop
-    label_map = {i: label for i, label in enumerate(data_bunch.label_list)}
-
-    model.eval()
-    eval_loss = 0
-    nb_eval_steps = 0
-    preds = []
-    y_true_ner = []
-
-    # TODO: This could get confusing since sometimes test == dev. No test shouldnt be dev!!
-    # Can this be handled elsewhere?
-    if data_type == "dev":
-        logger.info("***** Running evaluation on dev *****")
-        data_loader = data_bunch.dev_data_loader
-        dataset = data_bunch.dev_dataset
-    elif data_type == "test":
-        logger.info("***** Running evaluation on test *****")
-        data_loader = data_bunch.test_data_loader
-        dataset = data_bunch.test_dataset
-
-    for input_ids, input_mask, segment_ids, label_ids in tqdm(data_loader, desc="Evaluating"):
-        input_ids = input_ids.to(device)
-        input_mask = input_mask.to(device)
-        segment_ids = segment_ids.to(device)
-        label_ids = label_ids.to(device)
-
-        with torch.no_grad():
-            logits = model(input_ids=input_ids,
-                           token_type_ids=segment_ids,
-                           attention_mask=input_mask,
-                           labels=None)
-            tmp_eval_loss = model.logits_to_loss(logits=logits,
-                                                 labels=label_ids,
-                                                 attention_mask=input_mask)
-
-        eval_loss += tmp_eval_loss.mean().item()
-
-        if output_mode == "ner":
-            batch_preds, batch_y_true = ignore_subword_tokens(logits, input_mask, label_map, label_ids)
-            preds += batch_preds
-            y_true_ner += batch_y_true
-        else:
-            if nb_eval_steps == 0:
-                # overwrite preds of type list (instantiated above) to handle multidimensional data better
-                preds = logits.detach().cpu().numpy()
-            else:
-                preds = np.concatenate((preds, logits.detach().cpu().numpy()), axis=0)
-
-        nb_eval_steps += 1
-        # end of eval batch loop
-
-    if output_mode == "ner":
-        y_true = y_true_ner
-    else:
-        y_true = dataset.tensors[3]
-
-    eval_loss = eval_loss / nb_eval_steps
-    if output_mode == "classification":
-        preds = np.argmax(preds, axis=1)
-    elif output_mode == "regression":
-        preds = np.squeeze(preds)
-    result = compute_metrics(metric, preds, y_true)
-    result['eval_loss'] = eval_loss
-
-    # TODO report currently only works for classification + NER, does it work for regression?
-    logger.info("***** Eval results *****")
-
-    if output_mode == "ner":
-        f1 = f1_score(y_true, preds, average='micro')
-        logger.info("F1 Score: {}".format(f1))
-        result["F1"] = f1
-        report = token_classification_report(preds, y_true, digits=4)
-    else:
-        report = classification_report(preds, y_true.numpy(), digits=4)
-    logger.info("\n%s", report)
-
-    # Log to mlflow
-    # TODO make it optional
-    for metric_name, metric_val in result.items():
-        log_metric("{} {}".format(data_type, metric_name), metric_val, step=global_step)
-
-    if report_output_dir:
-        output_eval_file = os.path.join(report_output_dir, "eval_results.txt")
-        with open(output_eval_file, "w") as writer:
-            writer.write(report)
-
-def train_old(model, optimizer, data_bunch, device, output_mode, n_gpu, warmup_linear, args, metric):
-#TODO get rid of "args" here
-
-    # Begin train loop
-    global_step = 0
-    logger.info("***** Running training *****")
-    model.train()
-    for _ in trange(int(args.num_train_epochs), desc="Epoch"):
-        tr_loss = 0
-        nb_tr_examples, nb_tr_steps = 0, 0
-        for step, batch in enumerate(tqdm(data_bunch.train_data_loader, desc="Iteration")):
-            # get loss for single batch
-            batch = tuple(t.to(device) for t in batch)
-            input_ids, input_mask, segment_ids, label_ids = batch
-
-            loss = model(input_ids = input_ids,
-                         token_type_ids = segment_ids,
-                         attention_mask = input_mask,
-                         labels = label_ids)
-
-
-            # adjust loss for multi-gpu and distributed calculations
-            if n_gpu > 1:
-                loss = loss.mean()  # mean() to average on multi-gpu.
-            if args.gradient_accumulation_steps > 1:
-                loss = loss / args.gradient_accumulation_steps
-
-            if args.fp16:
-                optimizer.backward(loss)
-            else:
-                loss.backward()
-
-            tr_loss += loss.item()
-            nb_tr_examples += input_ids.size(0)
-            nb_tr_steps += 1
-            if (step + 1) % args.gradient_accumulation_steps == 0:
-                if args.fp16:
-                    # modify learning rate with special warm up BERT uses
-                    # if args.fp16 is False, BertAdam is used that handles this automatically
-                    lr_this_step = args.learning_rate * warmup_linear.get_lr(global_step, args.warmup_proportion)
-                    for param_group in optimizer.param_groups:
-                        param_group['lr'] = lr_this_step
-                optimizer.step()
-                optimizer.zero_grad()
-
-            # Perform evaluation
-            if (args.eval_every and (global_step % args.eval_every == 1)):
-                logger.info("Eval after step: {}".format(global_step))
-                evaluation_old(model=model, data_bunch=data_bunch, output_mode=output_mode, device=device,
-                           metric=metric, data_type="dev", global_step=global_step, n_gpu=n_gpu)
-
-            global_step += 1
-    return model
-
+        result["report"] = self.classification_report(self.preds_all, self.Y_all, digits=4)
+        return result
 
 def initialize_optimizer(model, learning_rate, warmup_proportion, loss_scale, fp16, num_train_optimization_steps):
     # Prepare optimizer
@@ -452,6 +313,7 @@ def balanced_class_weights(dataset):
     return weights
 
 
+# TODO: I think this might deserve its own module - it taps into so many parts of the code
 def run_model(args, prediction_head, processor, output_mode, metric, token_level):
     # Basic init and input validation
     # TODO: Is there a better place to put this?
@@ -511,6 +373,7 @@ def run_model(args, prediction_head, processor, output_mode, metric, token_level
         if args.balance_classes:
             weights = balanced_class_weights(data_bunch.train_dataset)
 
+
         # Init model
         model = initialize_model(bert_model=args.bert_model,
                                  prediction_head=prediction_head,
@@ -530,36 +393,46 @@ def run_model(args, prediction_head, processor, output_mode, metric, token_level
                                                         loss_scale=args.loss_scale,
                                                         fp16=args.fp16,
                                                         num_train_optimization_steps=num_train_optimization_steps)
-        # Run actual training
-        # model = train(model=model, optimizer=optimizer, data_bunch=data_bunch, device=device, output_mode=output_mode,
-        #               n_gpu=n_gpu,warmup_linear= warmup_linear, args=args, metric=metric)
+
+        evaluator_dev = Evaluator(data_loader=data_bunch.dev_data_loader,
+                                  label_list=data_bunch.label_list,
+                                  device=device,
+                                  metric=metric,
+                                  output_mode=output_mode,
+                                  token_level=token_level)
+
+        evaluator_test = Evaluator(data_bunch.test_data_loader,
+                                   label_list=data_bunch.label_list,
+                                   device=device,
+                                   metric=metric,
+                                   output_mode=output_mode,
+                                   token_level=token_level)
 
         trainer = Trainer(optimizer=optimizer,
                           data_bunch=data_bunch,
+                          evaluator_dev=evaluator_dev,
+                          evaluator_test=evaluator_test,
                           epochs=args.num_train_epochs,
                           n_gpu=n_gpu,
                           grad_acc_steps=args.gradient_accumulation_steps,
                           fp16=args.fp16,
                           learning_rate=args.learning_rate,
                           warmup_linear=warmup_linear,
-                          warmup_proportion=args.warmup_proportion,
                           evaluate_every=args.eval_every,
-                          device=device,
-                          metric=metric,
-                          output_mode=output_mode,
-                          token_level=token_level)
+                          device=device)
         model = trainer.train(model)
 
-    # Saving and loading the model
-    if args.do_train and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
-        save_model(model, tokenizer, args)
-        output_dir = args.output_dir
-    else:
-        output_dir = args.bert_model
-    model, tokenizer = load_model(output_dir, prediction_head, args.do_lower_case, data_bunch.num_labels)
-    model.to(device)
-    #
-    # # Evaluation
-    # if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
-    #     evaluation_old(model=model, data_bunch=data_bunch, output_mode=output_mode, device=device,
-    #                metric=metric, data_type="test", report_output_dir=args.output_dir, n_gpu=n_gpu)
+
+    # TODO: Model Saving and Loading
+    # # Saving and loading the model
+    # if args.do_train and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
+    #     save_model(model, tokenizer, args)
+    #     output_dir = args.output_dir
+    # else:
+    #     output_dir = args.bert_model
+    # model, tokenizer = load_model(output_dir, prediction_head, args.do_lower_case, data_bunch.num_labels)
+    # model.to(device)
+
+    # Test set Evaluation
+    if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
+        trainer.evaluate_on_test(model)
