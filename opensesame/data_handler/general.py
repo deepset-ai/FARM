@@ -75,9 +75,11 @@ def featurize_samples(samples, label_list, max_seq_length, tokenizer, output_mod
         from opensesame.data_handler import seq_classification
         features = seq_classification.convert_examples_to_features(
             samples, label_list, max_seq_length, tokenizer, output_mode)
-    if output_mode == "ner":
+    elif output_mode == "ner":
         from opensesame.data_handler import ner
         features = ner.convert_examples_to_features(samples, label_list, max_seq_length, tokenizer)
+    else:
+        raise Exception
 
     all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
     all_input_mask = torch.tensor([f.input_mask for f in features], dtype=torch.long)

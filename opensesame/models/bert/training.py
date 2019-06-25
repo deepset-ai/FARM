@@ -38,11 +38,26 @@ class WrappedDataParallel(torch.nn.DataParallel):
 
 
 class Trainer:
-    def __init__(self, optimizer, data_bunch, epochs, n_gpu, grad_acc_steps, fp16, learning_rate, warmup_linear, warmup_proportion, device, evaluate_every=100):
+    def __init__(self,
+                 optimizer,
+                 data_bunch,
+                 epochs,
+                 n_gpu,
+                 grad_acc_steps,
+                 fp16,
+                 learning_rate,
+                 warmup_linear,
+                 warmup_proportion,
+                 device,
+                 metric,
+                 output_mode,
+                 token_level,
+                 evaluate_every=100):
         self.data_bunch = data_bunch
         self.epochs = int(epochs)
-        self.evaluator_dev = Evaluator(data_bunch.dev_data_loader, data_bunch.)
-        self.evaluator_test = Evaluator(data_bunch.test_data_loader)
+        # TODO BC: I think for the sake of arguments being passed around, the evaluators should be initialized outside the Trainer
+        self.evaluator_dev = Evaluator(data_bunch.dev_data_loader, data_bunch.label_list, device, metric, output_mode, token_level)
+        self.evaluator_test = Evaluator(data_bunch.test_data_loader, data_bunch.label_list, device, metric, output_mode, token_level)
         self.optimizer = optimizer
         self.evaluate_every = evaluate_every
         self.n_gpu = n_gpu
@@ -57,10 +72,9 @@ class Trainer:
     def train(self, model):
         logger.info("***** Running training *****")
         model.train()
-        for epoch_curr in trange(self.epochs, desc="Epoch"):
+        for _ in trange(self.epochs, desc="Epoch"):
             for step, batch in enumerate(tqdm(self.data_loader_train, desc="Iteration")):
 
-                # TODO: Can this be handled by Dataloader somehow?
                 # Move batch of samples to device
                 batch = tuple(t.to(self.device) for t in batch)
                 input_ids, input_mask, segment_ids, label_ids = batch
@@ -77,14 +91,11 @@ class Trainer:
                     logger.info("Eval after step: {}".format(self.global_step))
                     self.evaluator_dev.eval(model)
 
-                    # evaluation(model=model, data_bunch=self.data_bunch, output_mode=, device=device,
-                    #            metric="acc", data_type="dev", global_step=self.global_step)
-
                 self.global_step += 1
         return model
 
     def backward_propagate(self, loss, step):
-        loss = self.adjust_loss(loss)
+        loss = self._adjust_loss(loss)
         if self.fp16:
             self.optimizer.backward(loss)
         else:
@@ -100,7 +111,10 @@ class Trainer:
             self.optimizer.step()
             self.optimizer.zero_grad()
 
-    def adjust_loss(self, loss):
+    def _adjust_loss(self, loss):
+        # TODO: These 2 lines are added because the CrossEntropy function in SEqClassifier was given the parameter reduction=None
+        if self.n_gpu == 1:
+            loss = loss.mean()
         # adjust loss for multi-gpu and distributed calculations
         if self.n_gpu > 1:
             loss = loss.mean()  # mean() to average on multi-gpu.
@@ -110,22 +124,23 @@ class Trainer:
 
 
 class Evaluator:
-    def __init__(self, data_loader, dataset, label_list, device, metric, eval_type):
+    def __init__(self, data_loader, label_list, device, metric, output_mode, token_level):
 
         self.data_loader = data_loader
         self.label_map = {i: label for i, label in enumerate(label_list)}
         self.loss_all = []
         self.logits_all = []
         self.preds_all = []
-        self.Y_all = dataset.tensors[3]
+        self.Y_all = []
         self.device = device
         # Where should metric be defined? When dataset loaded? In config?
         self.metric = metric
 
-        if eval_type == "token_classification":
-            self.classification_report = token_classification_report
-        elif eval_type == "sequence_classification":
-            self.classification_report = classification_report
+        if output_mode == "classification":
+            if token_level:
+                self.classification_report = token_classification_report
+            else:
+                self.classification_report = classification_report
         else:
             raise NotImplementedError
 
@@ -133,6 +148,7 @@ class Evaluator:
         """ This model is currently written idealistically from the high level so that it is clean
         but might not function when performing NER """
         model.eval()
+
         for step, batch in enumerate(tqdm(self.data_loader, desc="Evaluating")):
             batch = tuple(t.to(self.device) for t in batch)
             input_ids, input_mask, segment_ids, label_ids = batch
@@ -146,16 +162,15 @@ class Evaluator:
                 preds = model.logits_to_preds(logits)
 
 
-            self.loss_all += list(loss.numpy())
-            self.logits_all += list(logits.numpy())
-            self.preds_all += list(preds.numpy())
+            self.loss_all += list(loss.cpu().numpy())
+            self.logits_all += list(logits.cpu().numpy())
+            self.preds_all += list(preds.cpu().numpy())
+            self.Y_all += list(label_ids.cpu().numpy())
 
 
         logger.info("***** Eval results *****")
 
-        loss_total = np.sum(self.loss_all)
         loss_eval = np.mean(self.loss_all)
-
         result = {"loss_eval": loss_eval}
         result[self.metric] = compute_metrics(self.metric, self.preds_all, self.Y_all)
         report = self.classification_report(self.preds_all, self.Y_all, digits=4)
@@ -298,7 +313,7 @@ def train_old(model, optimizer, data_bunch, device, output_mode, n_gpu, warmup_l
             # Perform evaluation
             if (args.eval_every and (global_step % args.eval_every == 1)):
                 logger.info("Eval after step: {}".format(global_step))
-                evaluation(model=model, data_bunch=data_bunch, output_mode=output_mode, device=device,
+                evaluation_old(model=model, data_bunch=data_bunch, output_mode=output_mode, device=device,
                            metric=metric, data_type="dev", global_step=global_step, n_gpu=n_gpu)
 
             global_step += 1
@@ -437,7 +452,7 @@ def balanced_class_weights(dataset):
     return weights
 
 
-def run_model(args, prediction_head, processor, output_mode, metric):
+def run_model(args, prediction_head, processor, output_mode, metric, token_level):
     # Basic init and input validation
     # TODO: Is there a better place to put this?
     logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
@@ -464,18 +479,26 @@ def run_model(args, prediction_head, processor, output_mode, metric):
         os.makedirs(args.output_dir)
 
     # Init device and distributed settings
-    device, n_gpu = initialize_device_settings(no_cuda=args.no_cuda, local_rank=args.local_rank, fp16=args.fp16)
+    device, n_gpu = initialize_device_settings(no_cuda=args.no_cuda,
+                                               local_rank=args.local_rank,
+                                               fp16=args.fp16)
     args.train_batch_size = args.train_batch_size // args.gradient_accumulation_steps
     set_all_seeds(args.seed)
 
     # Prepare Data
-    tokenizer = BertTokenizer.from_pretrained(args.bert_model, do_lower_case=args.do_lower_case)
-    data_bunch = BertDataBunch(args.data_dir, processor, output_mode, tokenizer, args.train_batch_size,
-                               args.max_seq_length, local_rank=args.local_rank)
+    tokenizer = BertTokenizer.from_pretrained(args.bert_model,
+                                              do_lower_case=args.do_lower_case)
+    data_bunch = BertDataBunch(args.data_dir,
+                               processor,
+                               output_mode,
+                               tokenizer,
+                               args.train_batch_size,
+                               args.max_seq_length,
+                               local_rank=args.local_rank)
 
     # Training
     if args.do_train:
-
+        # Maybe should be in initialize optimizer though that would be very many arguments
         num_train_optimization_steps = calculate_optimization_steps(data_bunch.num_train_examples,
                                                                       args.train_batch_size,
                                                                       args.gradient_accumulation_steps,
@@ -521,7 +544,10 @@ def run_model(args, prediction_head, processor, output_mode, metric):
                           warmup_linear=warmup_linear,
                           warmup_proportion=args.warmup_proportion,
                           evaluate_every=args.eval_every,
-                          device=device)
+                          device=device,
+                          metric=metric,
+                          output_mode=output_mode,
+                          token_level=token_level)
         model = trainer.train(model)
 
     # Saving and loading the model
@@ -532,8 +558,8 @@ def run_model(args, prediction_head, processor, output_mode, metric):
         output_dir = args.bert_model
     model, tokenizer = load_model(output_dir, prediction_head, args.do_lower_case, data_bunch.num_labels)
     model.to(device)
-
-    # Evaluation
-    if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
-        evaluation(model=model, data_bunch=data_bunch, output_mode=output_mode, device=device,
-                   metric=metric, data_type="test", report_output_dir=args.output_dir, n_gpu=n_gpu)
+    #
+    # # Evaluation
+    # if args.do_eval and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
+    #     evaluation_old(model=model, data_bunch=data_bunch, output_mode=output_mode, device=device,
+    #                metric=metric, data_type="test", report_output_dir=args.output_dir, n_gpu=n_gpu)

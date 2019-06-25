@@ -558,7 +558,7 @@ class BertForSequenceClassification(BertPreTrainedModel):
             self.balanced_weights = torch.nn.Parameter(torch.tensor(balanced_weights),requires_grad=False)
         else:
             self.balanced_weights = None
-        self.loss_fct = CrossEntropyLoss(weight=self.balanced_weights)
+        self.loss_fct = CrossEntropyLoss(weight=self.balanced_weights, reduction="none")
         self.apply(self.init_bert_weights)
 
     def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels = None):
@@ -569,6 +569,11 @@ class BertForSequenceClassification(BertPreTrainedModel):
 
     def logits_to_loss(self, logits, labels):
         return self.loss_fct(logits, labels.view(-1))
+
+    def logits_to_preds(self, logits):
+        preds = logits.argmax(1)
+        # preds = np.argmax(logits, axis=1)
+        return preds
 
     def forward_loss(self, input_ids, token_type_ids=None, attention_mask=None, labels=None):
         logits = self.forward(input_ids=input_ids,
@@ -719,6 +724,7 @@ class BertForTokenClassification(BertPreTrainedModel):
         self.bert = BertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, num_labels)
+        # TODO: In the other models, CrossEntropyLoss is expected to return per sample loss (using the reduction = none argument)
         self.loss_fct = CrossEntropyLoss()
         self.apply(self.init_bert_weights)
 
