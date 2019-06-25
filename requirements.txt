@@ -14,4 +14,7 @@ sklearn
 # Metrics or logging related
 seqeval
 mlflow==1.0.0
+# huggingface reprository
 pytorch-pretrained-bert==0.6.2
+# accessing dictionary elements with dot notation
+dotmap==1.3.0

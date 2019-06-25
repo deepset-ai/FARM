@@ -38,7 +38,6 @@ class ConllProcessor(DataProcessor):
             examples.append(InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
         return examples
 
-    #TODO check that this method is correctly overwriting the parent class method and returns correct data from file
     @classmethod
     def _read_tsv(cls, input_file, quotechar=None):
         """Reads a tab separated value file."""

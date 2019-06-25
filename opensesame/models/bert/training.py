@@ -265,7 +265,7 @@ def initialize_model(bert_model, prediction_head, num_labels, device, n_gpu, cac
     model.to(device)
     if local_rank != -1:
         try:
-            #TODO check for dataparallel problems, as in WrappedDataParallel
+            #TODO check for dataparallel problems. DDP could produce similar problems as mentioned in Class WrappedDataParallel workaround
             from apex.parallel import DistributedDataParallel as DDP
         except ImportError:
             raise ImportError("Please install apex from https://www.github.com/nvidia/apex to use distributed and fp16 training.")
@@ -340,12 +340,12 @@ def run_model(args, prediction_head, processor, output_mode, metric):
         os.makedirs(args.output_dir)
 
     # Init device and distributed settings
-    device, n_gpu = initialize_device_settings(no_cuda=args.no_cuda, local_rank=args.local_rank, fp16=args.fp16)
+    device, n_gpu = initialize_device_settings(use_cuda=args.cuda, local_rank=args.local_rank, fp16=args.fp16)
     args.train_batch_size = args.train_batch_size // args.gradient_accumulation_steps
     set_all_seeds(args.seed)
 
     # Prepare Data
-    tokenizer = BertTokenizer.from_pretrained(args.bert_model, do_lower_case=args.do_lower_case)
+    tokenizer = BertTokenizer.from_pretrained(args.model, do_lower_case=args.lower_case)
     data_bunch = BertDataBunch(args.data_dir, processor, output_mode, tokenizer, args.train_batch_size,
                                args.max_seq_length, local_rank=args.local_rank)
 
@@ -364,7 +364,7 @@ def run_model(args, prediction_head, processor, output_mode, metric):
             weights = balanced_class_weights(data_bunch.train_dataset)
 
         # Init model
-        model = initialize_model(bert_model=args.bert_model, prediction_head=prediction_head, device=device,
+        model = initialize_model(bert_model=args.model, prediction_head=prediction_head, device=device,
                                  num_labels=data_bunch.num_labels, n_gpu=n_gpu, cache_dir=args.cache_dir,
                                  local_rank=args.local_rank, fp16=args.fp16, balanced_weights=weights)
 
@@ -380,8 +380,8 @@ def run_model(args, prediction_head, processor, output_mode, metric):
         save_model(model, tokenizer, args)
         output_dir = args.output_dir
     else:
-        output_dir = args.bert_model
-    model, tokenizer = load_model(output_dir, prediction_head, args.do_lower_case, data_bunch.num_labels)
+        output_dir = args.model
+    model, tokenizer = load_model(output_dir, prediction_head, args.lower_case, data_bunch.num_labels)
     model.to(device)
 
     # Evaluation
