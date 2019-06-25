@@ -18,7 +18,7 @@ from opensesame.file_utils import OPENSESAME_CACHE, WEIGHTS_NAME, CONFIG_NAME, r
 from opensesame.models.bert.modeling import BertForSequenceClassification, BertForTokenClassification
 from opensesame.models.bert.tokenization import BertTokenizer
 from opensesame.models.bert.optimization import BertAdam, WarmupLinearSchedule
-from opensesame.data_handler.general import BertDataBunch
+from opensesame.data_handler.general import BertDataBunch, NewDataBunch
 from opensesame.metrics import compute_metrics
 from opensesame.utils import set_all_seeds, initialize_device_settings
 
@@ -63,7 +63,7 @@ class Trainer:
         self.learning_rate = learning_rate
         self.warmup_linear = warmup_linear
         self.global_step = 0
-        self.data_loader_train = data_bunch.train_data_loader
+        self.data_loader_train = data_bunch.get_data_loader("train")
         self.device = device
 
     def train(self, model):
@@ -353,18 +353,25 @@ def run_model(args, prediction_head, processor, output_mode, metric, token_level
     # Prepare Data
     tokenizer = BertTokenizer.from_pretrained(args.bert_model,
                                               do_lower_case=args.do_lower_case)
-    data_bunch = BertDataBunch(args.data_dir,
-                               processor,
-                               output_mode,
-                               tokenizer,
-                               args.train_batch_size,
-                               args.max_seq_length,
-                               local_rank=args.local_rank)
+    # data_bunch = BertDataBunch(args.data_dir,
+    #                            processor,
+    #                            output_mode,
+    #                            tokenizer,
+    #                            args.train_batch_size,
+    #                            args.max_seq_length,
+    #                            local_rank=args.local_rank)
+
+    data_bunch = NewDataBunch.load(args.data_dir,
+                                   processor,
+                                   tokenizer,
+                                   args.train_batch_size,
+                                   args.max_seq_length,
+                                   local_rank=args.local_rank)
 
     # Training
     if args.do_train:
         # Maybe should be in initialize optimizer though that would be very many arguments
-        num_train_optimization_steps = calculate_optimization_steps(data_bunch.num_train_examples,
+        num_train_optimization_steps = calculate_optimization_steps(data_bunch.n_samples("train"),
                                                                       args.train_batch_size,
                                                                       args.gradient_accumulation_steps,
                                                                       args.num_train_epochs,
@@ -397,14 +404,14 @@ def run_model(args, prediction_head, processor, output_mode, metric, token_level
                                                         fp16=args.fp16,
                                                         num_train_optimization_steps=num_train_optimization_steps)
 
-        evaluator_dev = Evaluator(data_loader=data_bunch.dev_data_loader,
+        evaluator_dev = Evaluator(data_loader=data_bunch.get_data_loader("dev"),
                                   label_list=data_bunch.label_list,
                                   device=device,
                                   metric=metric,
                                   output_mode=output_mode,
                                   token_level=token_level)
 
-        evaluator_test = Evaluator(data_bunch.test_data_loader,
+        evaluator_test = Evaluator(data_loader=data_bunch.get_data_loader("test"),
                                    label_list=data_bunch.label_list,
                                    device=device,
                                    metric=metric,
