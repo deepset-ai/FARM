@@ -112,12 +112,14 @@ class Trainer:
             self.optimizer.zero_grad()
 
     def _adjust_loss(self, loss):
-        # TODO: These 2 lines are added because the CrossEntropy function in SEqClassifier was given the parameter reduction=None
-        if self.n_gpu == 1:
-            loss = loss.mean()
-        # adjust loss for multi-gpu and distributed calculations
-        if self.n_gpu > 1:
-            loss = loss.mean()  # mean() to average on multi-gpu.
+        # TODO: These 2 lines are added because the CrossEntropy function in SEqClassifier was given the parameter
+        # reduction=None
+        loss = loss.mean()
+        # if self.n_gpu == 1:
+        #     loss = loss.mean()
+        # # adjust loss for multi-gpu and distributed calculations
+        # if self.n_gpu > 1:
+        #     loss = loss.mean()  # mean() to average on multi-gpu.
         if self.grad_acc_steps > 1:
             loss = loss / self.grad_acc_steps
         return loss
