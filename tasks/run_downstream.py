@@ -65,7 +65,7 @@ def unnestConfig(config, flattened=False):
                     tempconfig[nestedKeys[k]] = mesh[k][i] #get ith val of correct param value
                 unnestedConfig.append(tempconfig)
         else:
-            unnestedConfig = config
+            unnestedConfig = [config]
     else:
         #TODO work on unflattend config,
         # guess we need to have nestedkeys as a list of single keys. e.g. ["paramters","learning_rate"] and use deep_dict_access()
@@ -101,9 +101,9 @@ def main():
 
     configList = unnestConfig(args,flattened=True)
     for conf in configList:
-        #run_model(args=conf, prediction_head=args.prediction_head, processor=processor, output_mode=args.output_mode,metric=args.metric)
-        print(conf)
-        muh =1
+        run_model(args=conf, prediction_head=args.prediction_head, processor=processor, output_mode=args.output_mode,metric=args.metric)
+        #print(conf)
+
 
 
 if __name__ == "__main__":
