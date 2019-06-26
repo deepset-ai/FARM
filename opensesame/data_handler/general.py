@@ -3,7 +3,8 @@ import sys
 import logging
 import torch
 from torch.utils.data import (DataLoader, RandomSampler, SequentialSampler, DistributedSampler, TensorDataset)
-import os
+from sklearn.utils.class_weight import compute_class_weight
+import numpy as np
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +107,6 @@ def get_dataset(examples, label_list, tokenizer, max_seq_length, output_mode):
     return dataset
 
 
-
 class DataProcessor(object):
     """Base class for data converters for sequence classification data sets."""
 
@@ -169,37 +169,35 @@ class NewDataBunch(object):
     # TODO BC: Currently I like this structure for the DataBunch but not sure about argument passing etc
     # One weakness of this functional approach is that function arguments are fixed and hard to refer back to original definition
     def __init__(self,
-                 pairs_to_examples_fn,
+                 data_processor,
                  examples_to_features_fn,
-                 tokenizer,
-                 label_list,
-                 file_to_pairs_fn=None):
+                 tokenizer):
 
-        self.file_to_pairs = file_to_pairs_fn
-        self.pairs_to_examples = pairs_to_examples_fn
-        self.examples_to_features = convert_examples_to_features
+        self.data_processor = data_processor
+        self.pairs_to_examples = data_processor._create_examples
+        self.examples_to_features = examples_to_features_fn
         self.features_to_dataset = covert_features_to_dataset
         self.dataset_to_dataloader = covert_dataset_to_dataloader
 
         self.loaders = {}
         self.counts = {}
+        self.class_weights = {}
         self.tokenizer = tokenizer
-        self.label_list = label_list
-        self.num_labels = len(label_list)
+        self.label_list = self.data_processor.get_labels()
+        self.num_labels = len(self.label_list)
+
 
     @classmethod
     def load(cls,
              data_dir,
-             processor,
+             data_processor,
              tokenizer,
              batch_size,
              max_seq_len,
              local_rank=-1):
-        db = cls(file_to_pairs_fn=processor._read_tsv,
-                 pairs_to_examples_fn=processor._create_examples,
+        db = cls(data_processor=data_processor,
                  examples_to_features_fn=convert_examples_to_features,
-                 tokenizer=tokenizer,
-                 label_list=processor.get_labels())
+                 tokenizer=tokenizer)
         if local_rank == -1:
             train_sampler = RandomSampler
         else:
@@ -215,16 +213,33 @@ class NewDataBunch(object):
         return db
 
     def init_data(self, dir, dataset_name, sampler, batch_size, max_seq_len):
-        filepath = os.path.join(dir, dataset_name + ".csv")
-        label_text_pairs = self.file_to_pairs(filepath, delimiter=";")
-        example_objects = self.pairs_to_examples(label_text_pairs, dataset_name)
+
+        # TODO: I currently don't like that you have to tweak this and also the examples_to_features function to
+        # adapt to your dataset. These two parts should be coupled together
+        if dataset_name == "train":
+            example_objects = self.data_processor.get_train_examples(dir)
+        elif dataset_name == "dev":
+            example_objects = self.data_processor.get_dev_examples(dir)
+        elif dataset_name == "test":
+            example_objects = self.data_processor.get_test_examples(dir)
+        else:
+            raise Exception
+
         self.counts[dataset_name] = len(example_objects)
         feature_objects = self.examples_to_features(example_objects,
                                                     self.label_list, max_seq_len,
                                                     self.tokenizer,
                                                     output_mode="classification")
         dataset = self.features_to_dataset(feature_objects)
-        data_loader = self.dataset_to_dataloader(dataset, sampler, batch_size)
+        labels = [x[3].item() for x in dataset]
+        class_weights = list(compute_class_weight("balanced",
+                                            np.unique(labels),
+                                            labels))
+        self.class_weights[dataset_name] = class_weights
+
+        data_loader = self.dataset_to_dataloader(dataset,
+                                                 sampler,
+                                                 batch_size)
         self.loaders[dataset_name] = data_loader
 
     def inference(self, input_sentences):
@@ -233,6 +248,9 @@ class NewDataBunch(object):
         feature_objects = self.examples_to_features(example_objects)
         dataset = self.wrap_in_dataset(feature_objects)
         return self.wrap_in_dataloader(dataset, SequentialSampler)
+
+    def get_class_weights(self, dataset):
+        return self.class_weights[dataset]
 
     def get_data_loader(self, dataset):
         return self.loaders[dataset]

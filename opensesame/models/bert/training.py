@@ -9,7 +9,6 @@ from tqdm import tqdm, trange
 from torch.nn import CrossEntropyLoss, MSELoss
 import torch.nn.functional as F
 from sklearn.metrics import classification_report
-from sklearn.utils.class_weight import compute_class_weight
 from seqeval.metrics import classification_report as token_classification_report
 from seqeval.metrics import f1_score
 from mlflow import log_metric, log_param, log_artifact, set_tracking_uri, set_experiment, start_run
@@ -181,8 +180,15 @@ class Evaluator:
         loss_eval = np.mean(self.loss_all)
         result = {"loss_eval": loss_eval}
         result[self.metric] = compute_metrics(self.metric, self.preds_all, self.Y_all)
-        result["report"] = self.classification_report(self.preds_all, self.Y_all, digits=4)
+        result["report"] = self.classification_report(self.Y_all, self.preds_all, digits=4)
+        self.reset_state()
         return result
+
+    def reset_state(self):
+        self.loss_all = []
+        self.logits_all = []
+        self.preds_all = []
+        self.Y_all = []
 
 def initialize_optimizer(model, learning_rate, warmup_proportion, loss_scale, fp16, num_train_optimization_steps):
     # Prepare optimizer
@@ -309,12 +315,6 @@ def calculate_optimization_steps(n_examples, batch_size, grad_acc_steps, n_epoch
         optimization_steps = optimization_steps // torch.distributed.get_world_size()
     return optimization_steps
 
-def balanced_class_weights(dataset):
-    all_label_ids = [x[3].item() for x in dataset]
-    weights = list(compute_class_weight("balanced", np.unique(all_label_ids), all_label_ids))
-    logger.info("Using weighted loss for balancing classes. Weights: {}".format(weights))
-    return weights
-
 
 # TODO: I think this might deserve its own module - it taps into so many parts of the code
 def run_model(args, prediction_head, processor, output_mode, metric, token_level):
@@ -367,6 +367,8 @@ def run_model(args, prediction_head, processor, output_mode, metric, token_level
                                    args.train_batch_size,
                                    args.max_seq_length,
                                    local_rank=args.local_rank)
+    weights = data_bunch.get_class_weights("train")
+
 
     # Training
     if args.do_train:
@@ -376,12 +378,6 @@ def run_model(args, prediction_head, processor, output_mode, metric, token_level
                                                                       args.gradient_accumulation_steps,
                                                                       args.num_train_epochs,
                                                                       args.local_rank)
-
-        # TODO: This should be an attribute within data_bunch
-        # Compute class weighting to balance uneven class distribution
-        weights = None
-        if args.balance_classes:
-            weights = balanced_class_weights(data_bunch.train_dataset)
 
 
         # Init model

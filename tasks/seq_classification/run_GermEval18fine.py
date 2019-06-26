@@ -36,7 +36,13 @@ def main():
     processor = GermEval18fineProcessor(args.data_dir, args.dev_size, args.seed)
     output_mode = "classification"
 
-    run_model(args=args, prediction_head="seq_classification", processor=processor, output_mode=output_mode,
+
+    token_level = False
+
+
+    # TODO: I really don't like variables for eval like output_mode
+    run_model(args=args, prediction_head="seq_classification", processor=processor, output_mode="classification",
+              token_level=token_level,
               metric=metric)
 
 
