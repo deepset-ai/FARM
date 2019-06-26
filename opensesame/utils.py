@@ -3,7 +3,9 @@ import numpy as np
 import torch
 import logging
 
-from mlflow import log_metrics, log_params, set_tracking_uri, set_experiment, start_run
+from mlflow import log_metrics, log_params, set_tracking_uri, set_experiment, start_run, log_artifacts
+from tensorboardX import SummaryWriter
+
 logger = logging.getLogger(__name__)
 
 
@@ -40,27 +42,27 @@ class BaseMLLogger:
     This class can be extended to implement custom logging backends like MLFlow, Tensorboard, or Sacred.
     """
 
-    def __init__(self, experiment_name, uri):
+    def __init__(self, experiment_name, uri, **kwargs):
         self.experiment_name = experiment_name
         self.uri = uri
 
     def init_experiment(self, tracking_uri):
         raise NotImplementedError()
 
-    @staticmethod
-    def init_trail(trail_name, nested=True):
+    @classmethod
+    def init_trail(cls, trail_name, nested=True):
         raise NotImplementedError()
 
-    @staticmethod
-    def write_metrics(metrics, step):
+    @classmethod
+    def write_metrics(cls, metrics, step):
         raise NotImplementedError()
 
-    @staticmethod
-    def add_artifacts(self):
+    @classmethod
+    def add_artifacts(cls, self):
         raise NotImplementedError()
 
-    @staticmethod
-    def write_params(params):
+    @classmethod
+    def write_params(cls, params):
         raise NotImplementedError()
 
 
@@ -73,14 +75,38 @@ class MLFlowLogger(BaseMLLogger):
         set_experiment(self.experiment_name)
         set_tracking_uri(tracking_uri)
 
-    @staticmethod
-    def init_trail(trail_name, nested=True):
+    @classmethod
+    def init_trail(cls, trail_name, nested=True):
         start_run(run_name=trail_name, nested=nested)
 
-    @staticmethod
-    def write_metrics(metrics, step):
+    @classmethod
+    def write_metrics(cls, metrics, step):
         log_metrics(metrics, step=step)
 
-    @staticmethod
-    def write_params(params):
+    @classmethod
+    def write_params(cls, params):
         log_params(params)
+
+    @classmethod
+    def add_artifacts(cls, dir_path, artifact_path=None):
+        log_artifacts(dir_path, artifact_path)
+
+
+class TensorBoardLogger(BaseMLLogger):
+    """
+    PyTorch TensorBoard Logger
+    """
+
+    def __init__(self, **kwargs):
+        TensorBoardLogger.summary_writer = SummaryWriter()
+        super().__init__(**kwargs)
+
+    @classmethod
+    def write_metrics(cls, metrics, step):
+        for key, value in metrics.items():
+            TensorBoardLogger.summary_writer.add_scalar(tag=key, scalar_value=value, global_step=step)
+
+    @classmethod
+    def write_params(cls, params):
+        for key, value in params.items():
+            TensorBoardLogger.summary_writer.add_text(tag=key, text_string=str(value))
