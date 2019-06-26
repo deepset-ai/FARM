@@ -183,12 +183,6 @@ class Evaluator:
             self.preds_all += list(to_numpy(preds))
             self.Y_all += list(to_numpy(label_ids))
 
-            try:
-                self.preds_all += list(preds.cpu().numpy())
-                self.Y_all += list(label_ids.cpu().numpy())
-            except AttributeError:
-
-
 
         loss_eval = np.mean(self.loss_all)
         result = {"loss_eval": loss_eval}
