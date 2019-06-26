@@ -171,7 +171,7 @@ def evaluation(model, data_bunch, output_mode, device, metric, data_type, report
 
     # Log to mlflow
     #TODO make it optional
-    metrics = [{f"{data_type} {metric_name}": metric_val} for metric_name, metric_val in result.items()]
+    metrics = {f"{data_type} {metric_name}": metric_val for metric_name, metric_val in result.items()}
     MLFlowLogger.write_metrics(metrics, step=global_step)
 
     if report_output_dir:
