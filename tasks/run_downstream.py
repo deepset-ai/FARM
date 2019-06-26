@@ -1,6 +1,4 @@
 # coding=utf-8
-# Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team.
-# Copyright (c) 2018, NVIDIA CORPORATION.  All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -74,14 +72,13 @@ def unnestConfig(config, flattened=False):
     return unnestedConfig
 
 
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-c",
                         "--conf_file",
                         help="Specify config file",
                         metavar="FILE",
-                        default="seq_classification/germEval18_config.json")
+                        default="seq_classification/gnad_config.json")
     cli_args, remaining_argv = parser.parse_known_args()
     args = read_config(cli_args.conf_file,flattend=True)
     configList = unnestConfig(args, flattened=True)
@@ -103,11 +100,6 @@ def main():
 
     for args in configList:
         run_model(args=args, prediction_head=args.prediction_head, processor=processor, output_mode=args.output_mode,metric=args.metric)
-
-
-
-
-
 
 if __name__ == "__main__":
     main()
