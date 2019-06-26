@@ -75,7 +75,7 @@ def readfile(filename):
     return data
 
 
-def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer):
+def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer, **kwargs):
     """Loads a data file into a list of `InputBatch`s."""
 
     #TODO factor out common parts of this function and the one for other tasks (e.g. classification)

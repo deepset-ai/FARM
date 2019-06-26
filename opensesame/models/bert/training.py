@@ -18,6 +18,7 @@ from opensesame.models.bert.modeling import BertForSequenceClassification, BertF
 from opensesame.models.bert.tokenization import BertTokenizer
 from opensesame.models.bert.optimization import BertAdam, WarmupLinearSchedule
 from opensesame.data_handler.general import BertDataBunch, NewDataBunch
+from opensesame.data_handler.ner import convert_examples_to_features as convert_examples_to_features_ner
 from opensesame.metrics import compute_metrics
 from opensesame.utils import set_all_seeds, initialize_device_settings
 
@@ -148,7 +149,7 @@ class Evaluator:
         # Where should metric be defined? When dataset loaded? In config?
         self.metric = metric
 
-        if output_mode == "classification":
+        if output_mode in ["classification", "ner"]:
             if token_level:
                 self.classification_report = token_classification_report
             else:
@@ -168,14 +169,26 @@ class Evaluator:
                                        token_type_ids=segment_ids,
                                        attention_mask=input_mask)
                 loss = model.logits_to_loss(logits=logits,
-                                             labels=label_ids)
-                preds = model.logits_to_preds(logits)
+                                            labels=label_ids,
+                                            attention_mask=input_mask)
+                label_ids, preds = model.logits_to_preds(logits=logits,
+                                                      input_mask=input_mask,
+                                                      label_map=self.label_map,
+                                                      label_ids=label_ids)
 
 
-            self.loss_all += list(loss.cpu().numpy())
-            self.logits_all += list(logits.cpu().numpy())
-            self.preds_all += list(preds.cpu().numpy())
-            self.Y_all += list(label_ids.cpu().numpy())
+            # TODO: define a cast to numpy function
+            self.loss_all += list(to_numpy(loss))
+            self.logits_all += list(to_numpy(logits))
+            self.preds_all += list(to_numpy(preds))
+            self.Y_all += list(to_numpy(label_ids))
+
+            try:
+                self.preds_all += list(preds.cpu().numpy())
+                self.Y_all += list(label_ids.cpu().numpy())
+            except AttributeError:
+
+
 
         loss_eval = np.mean(self.loss_all)
         result = {"loss_eval": loss_eval}
@@ -189,6 +202,12 @@ class Evaluator:
         self.logits_all = []
         self.preds_all = []
         self.Y_all = []
+
+def to_numpy(container):
+    try:
+        return container.cpu().numpy()
+    except AttributeError:
+        return container
 
 def initialize_optimizer(model, learning_rate, warmup_proportion, loss_scale, fp16, num_train_optimization_steps):
     # Prepare optimizer
@@ -284,31 +303,6 @@ def initialize_model(bert_model, prediction_head, num_labels, device, n_gpu, cac
         model = WrappedDataParallel(model)
     return model
 
-def ignore_subword_tokens(logits, input_mask, label_map, label_ids):
-    all_label_ids = []
-    preds = []
-    logits = torch.argmax(F.log_softmax(logits, dim=2), dim=2)
-    logits = logits.detach().cpu().numpy()
-    label_ids = label_ids.to('cpu').numpy()
-
-    for i, mask in enumerate(input_mask):
-        temp_1 = []
-        temp_2 = []
-        for j, m in enumerate(mask):
-            if j == 0:
-                continue
-            if m:
-                if label_map[label_ids[i][j].item()] != "X":
-                    temp_1.append(label_map[label_ids[i][j]])
-                    temp_2.append(label_map[logits[i][j]])
-            else:
-                temp_1.pop()
-                temp_2.pop()
-                break
-        all_label_ids.append(temp_1)
-        preds.append(temp_2)
-    return all_label_ids, preds
-
 def calculate_optimization_steps(n_examples, batch_size, grad_acc_steps, n_epochs, local_rank):
     optimization_steps = int(n_examples / batch_size / grad_acc_steps) * n_epochs
     if local_rank != -1:
@@ -366,6 +360,7 @@ def run_model(args, prediction_head, processor, output_mode, metric, token_level
                                    tokenizer,
                                    args.train_batch_size,
                                    args.max_seq_length,
+                                   convert_examples_to_features_ner,
                                    local_rank=args.local_rank)
     weights = data_bunch.get_class_weights("train")
 

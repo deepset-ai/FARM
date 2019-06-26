@@ -47,8 +47,8 @@ def main():
     # - training
     # - saving/loading
     # - eval
-    run_model(args=args, prediction_head=prediction_head, processor=processor, output_mode=output_mode, metric=metric)
-
+    token_level = True
+    run_model(args=args, prediction_head=prediction_head, processor=processor, output_mode=output_mode, metric=metric, token_level=token_level)
 
 if __name__ == "__main__":
     main()

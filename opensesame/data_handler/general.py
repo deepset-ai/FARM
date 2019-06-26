@@ -194,9 +194,11 @@ class NewDataBunch(object):
              tokenizer,
              batch_size,
              max_seq_len,
+             examples_to_features_fn,
              local_rank=-1):
+        """ NEED TO THINK OF THE RIGHT WAY TO CHOOSE CONVERT FEATURES FN"""
         db = cls(data_processor=data_processor,
-                 examples_to_features_fn=convert_examples_to_features,
+                 examples_to_features_fn=examples_to_features_fn,
                  tokenizer=tokenizer)
         if local_rank == -1:
             train_sampler = RandomSampler
@@ -231,11 +233,15 @@ class NewDataBunch(object):
                                                     self.tokenizer,
                                                     output_mode="classification")
         dataset = self.features_to_dataset(feature_objects)
-        labels = [x[3].item() for x in dataset]
-        class_weights = list(compute_class_weight("balanced",
-                                            np.unique(labels),
-                                            labels))
-        self.class_weights[dataset_name] = class_weights
+
+        try:
+            labels = [x[3].item() for x in dataset]
+            class_weights = list(compute_class_weight("balanced",
+                                                np.unique(labels),
+                                                labels))
+            self.class_weights[dataset_name] = class_weights
+        except ValueError:
+            logger.info("Class weighting not available for token level tasks such as NER")
 
         data_loader = self.dataset_to_dataloader(dataset,
                                                  sampler,
@@ -250,7 +256,11 @@ class NewDataBunch(object):
         return self.wrap_in_dataloader(dataset, SequentialSampler)
 
     def get_class_weights(self, dataset):
-        return self.class_weights[dataset]
+        try:
+            return self.class_weights[dataset]
+        except KeyError:
+            logger.warning("Class weights not available for {} dataset. This is perhaps due to the "
+                           "fact that class weighting is currently not implemented for token level tasks like NER")
 
     def get_data_loader(self, dataset):
         return self.loaders[dataset]
