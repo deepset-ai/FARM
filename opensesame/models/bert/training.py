@@ -12,7 +12,6 @@ from sklearn.metrics import classification_report
 from sklearn.utils.class_weight import compute_class_weight
 from seqeval.metrics import classification_report as token_classification_report
 from seqeval.metrics import f1_score
-from mlflow import log_metric, log_param, log_artifact, set_tracking_uri, set_experiment, start_run
 
 from opensesame.file_utils import OPENSESAME_CACHE, WEIGHTS_NAME, CONFIG_NAME, read_config
 from opensesame.models.bert.modeling import BertForSequenceClassification, BertForTokenClassification
@@ -20,7 +19,7 @@ from opensesame.models.bert.tokenization import BertTokenizer
 from opensesame.models.bert.optimization import BertAdam, WarmupLinearSchedule
 from opensesame.data_handler.general import BertDataBunch
 from opensesame.metrics import compute_metrics
-from opensesame.utils import set_all_seeds, initialize_device_settings
+from opensesame.utils import set_all_seeds, initialize_device_settings, MLFlowLogger
 
 logger = logging.getLogger(__name__)
 
@@ -172,8 +171,8 @@ def evaluation(model, data_bunch, output_mode, device, metric, data_type, report
 
     # Log to mlflow
     #TODO make it optional
-    for metric_name, metric_val in result.items():
-        log_metric("{} {}".format(data_type, metric_name), metric_val, step=global_step)
+    metrics = [{f"{data_type} {metric_name}": metric_val} for metric_name, metric_val in result.items()]
+    MLFlowLogger.write_metrics(metrics, step=global_step)
 
     if report_output_dir:
         output_eval_file = os.path.join(report_output_dir, "eval_results.txt")
@@ -321,11 +320,10 @@ def run_model(args, prediction_head, processor, output_mode, metric):
                         level = logging.INFO if args.local_rank in [-1, 0] else logging.WARN)
 
     if args.mlflow_url:
-        set_tracking_uri(args.mlflow_url)
-        set_experiment(args.mlflow_experiment)
-        start_run(run_name=args.mlflow_run_name, nested=args.mlflow_nested)
-        for key in args.__dict__:
-            log_param(key, args.__dict__[key])
+        MLFlowLogger(experiment_name=args.mlflow_experiment, uri=args.mlflow_url)
+        MLFlowLogger.init_trail(trail_name=args.mlflow_run_name, nested=args.mlflow_nested)
+        params = {key: args.__dict__[key] for key in args.__dict__}
+        MLFlowLogger.write_params(params)
 
     if not args.do_train and not args.do_eval:
         raise ValueError("At least one of `do_train` or `do_eval` must be True.")
