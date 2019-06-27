@@ -89,7 +89,7 @@ class Trainer:
                     self.print_dev(result, self.global_step)
                     # Log to mlflow
                     #TODO make it optional
-                    metrics = {f"{data_type} {metric_name}": metric_val for metric_name, metric_val in result.items()}
+                    metrics = {f"dev {metric_name}": metric_val for metric_name, metric_val in result.items()}
                     MLFlowLogger.write_metrics(metrics, step=self.global_step)
 
                 self.global_step += 1
@@ -138,6 +138,9 @@ class Trainer:
         logger.info("***** Dev Eval Results After Steps: {} *****".format(step))
         logger.info(result["report"])
 
+def evaluation(model, data_bunch, output_mode, device, metric, data_type, report_output_dir=None, global_step=None, n_gpu = None):
+    # TODO: need to differentiate between args.do_eval for standalone eval and eval within the training loop
+    label_map = {i: label for i, label in enumerate(data_bunch.label_list)}
 
 class Evaluator:
     def __init__(self, data_loader, label_list, device, metric, output_mode, token_level):
@@ -192,7 +195,7 @@ class Evaluator:
         result = {"loss_eval": loss_eval}
         result[self.metric] = compute_metrics(self.metric, self.preds_all, self.Y_all)
         result["report"] = self.classification_report(self.Y_all, self.preds_all, digits=4)
-        
+
         self.reset_state()
         return result
 
@@ -339,6 +342,7 @@ def run_model(args, prediction_head, processor, output_mode, metric, token_level
     device, n_gpu = initialize_device_settings(no_cuda=args.no_cuda,
                                                local_rank=args.local_rank,
                                                fp16=args.fp16)
+    device, n_gpu = initialize_device_settings(use_cuda=args.cuda, local_rank=args.local_rank, fp16=args.fp16)
     args.train_batch_size = args.train_batch_size // args.gradient_accumulation_steps
     set_all_seeds(args.seed)
 
@@ -374,7 +378,7 @@ def run_model(args, prediction_head, processor, output_mode, metric, token_level
 
 
         # Init model
-        model = initialize_model(bert_model=args.bert_model,
+        model = initialize_model(bert_model=args.model,
                                  prediction_head=prediction_head,
                                  device=device,
                                  num_labels=data_bunch.num_labels,
@@ -421,6 +425,14 @@ def run_model(args, prediction_head, processor, output_mode, metric, token_level
                           device=device)
         model = trainer.train(model)
 
+    # Saving and loading the model
+    if args.do_train and (args.local_rank == -1 or torch.distributed.get_rank() == 0):
+        save_model(model, tokenizer, args)
+        output_dir = args.output_dir
+    else:
+        output_dir = args.model
+    model, tokenizer = load_model(output_dir, prediction_head, args.lower_case, data_bunch.num_labels)
+    model.to(device)
 
     # TODO: Model Saving and Loading
     # # Saving and loading the model

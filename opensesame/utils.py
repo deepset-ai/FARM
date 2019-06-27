@@ -17,10 +17,13 @@ def set_all_seeds(seed, n_gpu=0):
         torch.cuda.manual_seed_all(seed)
 
 
-def initialize_device_settings(no_cuda, local_rank, fp16):
-    if local_rank == -1 or no_cuda:
-        device = torch.device("cuda" if torch.cuda.is_available() and not no_cuda else "cpu")
-        if(device == torch.device("cpu")):
+def initialize_device_settings(use_cuda, local_rank, fp16):
+    if(not use_cuda):
+        device = torch.device("cpu")
+        n_gpu = 0
+    elif local_rank == -1:
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        if(not torch.cuda.is_available()):
             n_gpu = 0
         else:
             n_gpu = torch.cuda.device_count()

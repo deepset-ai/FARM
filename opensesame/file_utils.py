@@ -21,6 +21,7 @@ import boto3
 import requests
 from botocore.exceptions import ClientError
 from tqdm import tqdm
+from dotmap import DotMap
 
 try:
     from torch.hub import _get_torch_home
@@ -285,23 +286,31 @@ class Struct:
         self.__dict__.update(entries)
 
 
-def read_config(path):
+
+def read_config(path, flattend= False):
     if path:
         with open(path) as json_data_file:
             conf_args = json.load(json_data_file)
     else:
         raise ValueError("No config provided for classifier")
 
-    if not conf_args["general"]["do_train"]["value"] and not conf_args["general"]["do_eval"]["value"]:
-        raise ValueError("at least do_train or do_eval should be set true")
-
-    # Merge the different config sections, if task section exists
-    all_args = dict(conf_args["general"], **conf_args["task"]) if "task" in conf_args else conf_args["general"]
-
     def getArgValue(arg):
+        if("value" not in arg):
+            logger.error("Only depth 2 config files supported. Failed to convert: %s" %str(arg))
         return arg["value"] if(arg["value"] is not None) else arg["default"]
 
-    args = {k: getArgValue(v) for k, v in all_args.items()}
-    args = Struct(**args)
+    # flatten last part of config, take either value or default as value
+    for gk,gv in conf_args.items():
+        for k,v in gv.items():
+            if(isinstance(v,dict)):
+                logger.error("Config is too deeply nested, at %s" %str(v))
+            conf_args[gk][k] = getArgValue(v)
+
+    # DotMap for making nested dictionary accessible through dot notation
+    if(flattend):
+        flat_args = dict(conf_args["general"],**conf_args["task"], **conf_args["parameter"], **conf_args["logging"])
+        args = DotMap(flat_args, _dynamic=False)
+    else:
+        args = DotMap(conf_args, _dynamic=False)
 
     return args
