@@ -558,21 +558,30 @@ class BertForSequenceClassification(BertPreTrainedModel):
             self.balanced_weights = torch.nn.Parameter(torch.tensor(balanced_weights),requires_grad=False)
         else:
             self.balanced_weights = None
-        self.loss_fct = CrossEntropyLoss(weight=self.balanced_weights)
+        self.loss_fct = CrossEntropyLoss(weight=self.balanced_weights, reduction="none")
         self.apply(self.init_bert_weights)
 
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels = None):
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None):
         _, pooled_output = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
         pooled_output = self.dropout(pooled_output)
         logits = self.classifier(pooled_output).view(-1, self.num_labels)
-        if labels is not None:
-            loss = self.loss_fct(logits, labels.view(-1))
-            return loss
-        else:
-            return logits
+        return logits
 
-    def logits_to_loss(self, logits, labels, attention_mask = None):
+    def logits_to_loss(self, logits, labels):
         return self.loss_fct(logits, labels.view(-1))
+
+    def logits_to_preds(self, logits, **kwargs):
+        preds = logits.argmax(1)
+        # preds = np.argmax(logits, axis=1)
+        return preds
+
+    # def forward_loss(self, input_ids, token_type_ids=None, attention_mask=None, labels=None):
+    #     logits = self.forward(input_ids=input_ids,
+    #                           token_type_ids=token_type_ids,
+    #                           attention_mask=attention_mask)
+    #     reshaped_labels = labels.view(-1)
+    #     loss = self.loss_fct(logits, reshaped_labels)
+    #     return loss
 
 
 #TODO update documentation here!
@@ -715,7 +724,8 @@ class BertForTokenClassification(BertPreTrainedModel):
         self.bert = BertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, num_labels)
-        self.loss_fct = CrossEntropyLoss()
+        # TODO: In the other models, CrossEntropyLoss is expected to return per sample loss (using the reduction = none argument)
+        self.loss_fct = CrossEntropyLoss(reduction="none")
         self.apply(self.init_bert_weights)
 
     def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None):
@@ -746,6 +756,36 @@ class BertForTokenClassification(BertPreTrainedModel):
         else:
             loss = self.loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
         return loss
+
+    def logits_to_preds(self, logits, input_mask, label_map, label_ids):
+        labels, batch_preds = self.ignore_subword_tokens(logits, input_mask, label_map, label_ids)
+        return labels, batch_preds
+
+    @staticmethod
+    def ignore_subword_tokens(logits, input_mask, label_map, label_ids):
+        all_label_ids = []
+        preds = []
+        logits = torch.argmax(logits, dim=2)
+        logits = logits.detach().cpu().numpy()
+        label_ids = label_ids.to('cpu').numpy()
+
+        for i, mask in enumerate(input_mask):
+            temp_1 = []
+            temp_2 = []
+            for j, m in enumerate(mask):
+                if j == 0:
+                    continue
+                if m:
+                    if label_map[label_ids[i][j].item()] != "X":
+                        temp_1.append(label_map[label_ids[i][j]])
+                        temp_2.append(label_map[logits[i][j]])
+                else:
+                    temp_1.pop()
+                    temp_2.pop()
+                    break
+            all_label_ids.append(temp_1)
+            preds.append(temp_2)
+        return all_label_ids, preds
 
 
 class BertForQuestionAnswering(BertPreTrainedModel):

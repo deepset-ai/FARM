@@ -1,13 +1,17 @@
 from sklearn.metrics import matthews_corrcoef, f1_score
 from scipy.stats import pearsonr, spearmanr
 from seqeval.metrics import f1_score as seq_f1_score
+import numpy as np
 
 
 def simple_accuracy(preds, labels):
     # TODO: THIS HACKY TRY CATCH IS FOR GNAD
     try:
+        preds = np.array(preds)
+        labels = np.array(labels)
+        correct = preds = labels
         return {
-            "acc" :(preds == labels).mean()
+            "acc" :correct.mean()
         }
     except TypeError:
         return (preds == labels.numpy()).mean()

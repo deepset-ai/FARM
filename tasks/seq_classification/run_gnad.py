@@ -17,7 +17,7 @@ def main():
 
     metric = "acc"
     processor = GNADProcessor(data_dir=args.data_dir,dev_size=args.dev_size,seed=args.seed)
-    output_mode = "classification"
+    token_level = False
 
 
     models = ["bert-base-multilingual-uncased"]
@@ -26,7 +26,9 @@ def main():
     for model in models:
         args.bert_model = model
         args.mlflow_run_name = "tm " + model
-        run_model(args=args, prediction_head="seq_classification", processor=processor, output_mode=output_mode,
+
+        #TODO: I really don't like variables for eval like output_mode
+        run_model(args=args, prediction_head="seq_classification", processor=processor, output_mode="classification", token_level=token_level,
                   metric=metric)
 
 
