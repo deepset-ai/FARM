@@ -11,7 +11,6 @@ import torch.nn.functional as F
 from sklearn.metrics import classification_report
 from seqeval.metrics import classification_report as token_classification_report
 from seqeval.metrics import f1_score
-from mlflow import log_metric, log_param, log_artifact, set_tracking_uri, set_experiment, start_run
 
 from opensesame.file_utils import OPENSESAME_CACHE, WEIGHTS_NAME, CONFIG_NAME, read_config
 from opensesame.models.bert.modeling import BertForSequenceClassification, BertForTokenClassification
@@ -20,7 +19,7 @@ from opensesame.models.bert.optimization import BertAdam, WarmupLinearSchedule
 from opensesame.data_handler.general import BertDataBunch, NewDataBunch
 from opensesame.data_handler.ner import convert_examples_to_features as convert_examples_to_features_ner
 from opensesame.metrics import compute_metrics
-from opensesame.utils import set_all_seeds, initialize_device_settings
+from opensesame.utils import set_all_seeds, initialize_device_settings, MLFlowLogger
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +87,10 @@ class Trainer:
                 if self.global_step % self.evaluate_every == 1:
                     result = self.evaluator_dev.eval(model)
                     self.print_dev(result, self.global_step)
+                    # Log to mlflow
+                    #TODO make it optional
+                    metrics = {f"{data_type} {metric_name}": metric_val for metric_name, metric_val in result.items()}
+                    MLFlowLogger.write_metrics(metrics, step=self.global_step)
 
                 self.global_step += 1
         return model
@@ -157,6 +160,7 @@ class Evaluator:
         else:
             raise NotImplementedError
 
+
     def eval(self, model):
         model.eval()
 
@@ -188,6 +192,7 @@ class Evaluator:
         result = {"loss_eval": loss_eval}
         result[self.metric] = compute_metrics(self.metric, self.preds_all, self.Y_all)
         result["report"] = self.classification_report(self.Y_all, self.preds_all, digits=4)
+        
         self.reset_state()
         return result
 
@@ -313,11 +318,10 @@ def run_model(args, prediction_head, processor, output_mode, metric, token_level
                         level = logging.INFO if args.local_rank in [-1, 0] else logging.WARN)
 
     if args.mlflow_url:
-        set_tracking_uri(args.mlflow_url)
-        set_experiment(args.mlflow_experiment)
-        start_run(run_name=args.mlflow_run_name, nested=args.mlflow_nested)
-        for key in args.__dict__:
-            log_param(key, args.__dict__[key])
+        MLFlowLogger(experiment_name=args.mlflow_experiment, uri=args.mlflow_url)
+        MLFlowLogger.init_trail(trail_name=args.mlflow_run_name, nested=args.mlflow_nested)
+        params = {key: args.__dict__[key] for key in args.__dict__}
+        MLFlowLogger.write_params(params)
 
     if not args.do_train and not args.do_eval:
         raise ValueError("At least one of `do_train` or `do_eval` must be True.")
