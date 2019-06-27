@@ -25,30 +25,35 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    config_files = ["ner/conll2003_de_config.json",
-                    "ner/germEval14_config.json",
-                    "seq_classification/germEval18_config.json",
-                    "seq_classification/gnad_config.json"]
+    # config_files = ["ner/conll2003_de_config.json",
+                    # "ner/germEval14_config.json",
+                    # "seq_classification/germEval18_config.json",
+                    # "seq_classification/gnad_config.json"]
+
+    config_files = ["seq_classification/gnad_config.json"]
 
 
     for conf_file in config_files:
         args = read_config(conf_file,flattend=True)
         configList = unnestConfig(args, flattened=True)
+        token_level = False
         if(args.name == "GermEval18Coarse"):
             processor = GermEval18coarseProcessor(args.data_dir, args.dev_size, args.seed)
         elif (args.name == "GermEval18Fine"):
             processor = GermEval18fineProcessor(args.data_dir, args.dev_size, args.seed)
         elif (args.name == "Conll2003"):
             processor = ConllProcessor()
+            token_level = True
         elif (args.name == "GermEval14"):
             processor = ConllProcessor()
+            token_level = True
         elif (args.name == "GNAD"):
             processor = GNADProcessor(args.data_dir, args.dev_size, args.seed)
         else:
             raise NotImplementedError
 
         for args in configList:
-            run_model(args=args, prediction_head=args.prediction_head, processor=processor, output_mode=args.output_mode,metric=args.metric)
+            run_model(args=args, prediction_head=args.prediction_head, processor=processor, output_mode=args.output_mode,metric=args.metric, token_level=token_level)
 
 
 

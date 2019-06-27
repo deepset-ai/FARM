@@ -18,6 +18,8 @@ from opensesame.models.bert.tokenization import BertTokenizer
 from opensesame.models.bert.optimization import BertAdam, WarmupLinearSchedule
 from opensesame.data_handler.general import BertDataBunch, NewDataBunch
 from opensesame.data_handler.ner import convert_examples_to_features as convert_examples_to_features_ner
+from opensesame.data_handler.seq_classification import convert_examples_to_features as convert_examples_to_features
+
 from opensesame.metrics import compute_metrics
 from opensesame.utils import set_all_seeds, initialize_device_settings, MLFlowLogger
 
@@ -87,10 +89,10 @@ class Trainer:
                 if self.global_step % self.evaluate_every == 1:
                     result = self.evaluator_dev.eval(model)
                     self.print_dev(result, self.global_step)
-                    # Log to mlflow
-                    #TODO make it optional
-                    metrics = {f"dev {metric_name}": metric_val for metric_name, metric_val in result.items()}
-                    MLFlowLogger.write_metrics(metrics, step=self.global_step)
+                    # # Log to mlflow
+                    # #TODO make it optional
+                    # metrics = {f"dev {metric_name}": metric_val for metric_name, metric_val in result.items()}
+                    # MLFlowLogger.write_metrics(metrics, step=self.global_step)
 
                 self.global_step += 1
         return model
@@ -178,11 +180,12 @@ class Evaluator:
                 loss = model.logits_to_loss(logits=logits,
                                             labels=label_ids,
                                             attention_mask=input_mask)
-                label_ids, preds = model.logits_to_preds(logits=logits,
+                Y, preds = model.logits_to_preds(logits=logits,
                                                       input_mask=input_mask,
                                                       label_map=self.label_map,
                                                       label_ids=label_ids)
-
+            if Y is not None:
+                label_ids = Y
 
             # TODO: define a cast to numpy function
             self.loss_all += list(to_numpy(loss))
@@ -320,11 +323,11 @@ def run_model(args, prediction_head, processor, output_mode, metric, token_level
                         datefmt = '%m/%d/%Y %H:%M:%S',
                         level = logging.INFO if args.local_rank in [-1, 0] else logging.WARN)
 
-    if args.mlflow_url:
-        MLFlowLogger(experiment_name=args.mlflow_experiment, uri=args.mlflow_url)
-        MLFlowLogger.init_trail(trail_name=args.mlflow_run_name, nested=args.mlflow_nested)
-        params = {key: args.__dict__[key] for key in args.__dict__}
-        MLFlowLogger.write_params(params)
+    # if args.mlflow_url:
+    #     MLFlowLogger(experiment_name=args.mlflow_experiment, uri=args.mlflow_url)
+    #     MLFlowLogger.init_trail(trail_name=args.mlflow_run_name, nested=args.mlflow_nested)
+    #     params = {key: args.__dict__[key] for key in args.__dict__}
+    #     MLFlowLogger.write_params(params)
 
     if not args.do_train and not args.do_eval:
         raise ValueError("At least one of `do_train` or `do_eval` must be True.")
@@ -338,17 +341,15 @@ def run_model(args, prediction_head, processor, output_mode, metric, token_level
     if not os.path.exists(args.output_dir):
         os.makedirs(args.output_dir)
 
+
     # Init device and distributed settings
-    device, n_gpu = initialize_device_settings(no_cuda=args.no_cuda,
-                                               local_rank=args.local_rank,
-                                               fp16=args.fp16)
     device, n_gpu = initialize_device_settings(use_cuda=args.cuda, local_rank=args.local_rank, fp16=args.fp16)
     args.train_batch_size = args.train_batch_size // args.gradient_accumulation_steps
     set_all_seeds(args.seed)
 
     # Prepare Data
-    tokenizer = BertTokenizer.from_pretrained(args.bert_model,
-                                              do_lower_case=args.do_lower_case)
+    tokenizer = BertTokenizer.from_pretrained(args.model,
+                                              do_lower_case=args.lower_case)
     # data_bunch = BertDataBunch(args.data_dir,
     #                            processor,
     #                            output_mode,
@@ -362,7 +363,7 @@ def run_model(args, prediction_head, processor, output_mode, metric, token_level
                                    tokenizer,
                                    args.train_batch_size,
                                    args.max_seq_length,
-                                   convert_examples_to_features_ner,
+                                   convert_examples_to_features,
                                    local_rank=args.local_rank)
     weights = data_bunch.get_class_weights("train")
 

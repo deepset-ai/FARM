@@ -567,13 +567,14 @@ class BertForSequenceClassification(BertPreTrainedModel):
         logits = self.classifier(pooled_output).view(-1, self.num_labels)
         return logits
 
-    def logits_to_loss(self, logits, labels):
+    def logits_to_loss(self, logits, labels, **kwargs):
         return self.loss_fct(logits, labels.view(-1))
 
     def logits_to_preds(self, logits, **kwargs):
         preds = logits.argmax(1)
         # preds = np.argmax(logits, axis=1)
-        return preds
+        # TODO: Two are returned because token level classification currently returns label ids as well. This should be changed
+        return None, preds
 
     # def forward_loss(self, input_ids, token_type_ids=None, attention_mask=None, labels=None):
     #     logits = self.forward(input_ids=input_ids,
