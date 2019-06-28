@@ -37,6 +37,22 @@ class WrappedDataParallel(torch.nn.DataParallel):
         except AttributeError:
             return getattr(self.module, name)
 
+try:
+    from apex.parallel import DistributedDataParallel as DDP
+    class WrappedDDP(DDP):
+        """
+        Hack to get attributes of underlying class in distributed mode. Same as in WrappedDataParallel above.
+        Even when using distributed on a single machine with multiple GPUs, apex can speed up training significantly.
+        Distributed code must be launched with "python -m torch.distributed.launch --nproc_per_node=1 run_script.py"
+        """
+        def __getattr__(self, name):
+            try:
+                return super().__getattr__(name)
+            except AttributeError:
+                return getattr(self.module, name)
+except ImportError:
+    logger.warn("Apex not installed. If you use distributed training with local rank != -1 apex must be installed.")
+
 
 class Trainer:
     def __init__(self,
@@ -296,14 +312,8 @@ def initialize_model(bert_model, prediction_head, num_labels, device, n_gpu, cac
     if fp16:
         model.half()
     model.to(device)
-    if local_rank != -1:
-        try:
-            #TODO check for dataparallel problems, as in WrappedDataParallel
-            from apex.parallel import DistributedDataParallel as DDP
-        except ImportError:
-            raise ImportError("Please install apex from https://www.github.com/nvidia/apex to use distributed and fp16 training.")
-
-        model = DDP(model)
+    if local_rank > -1:
+        model = WrappedDDP(model)
     elif n_gpu > 1:
         model = WrappedDataParallel(model)
     return model
