@@ -16,8 +16,9 @@ from opensesame.file_utils import OPENSESAME_CACHE, WEIGHTS_NAME, CONFIG_NAME, r
 from opensesame.models.bert.modeling import BertForSequenceClassification, BertForTokenClassification
 from opensesame.models.bert.tokenization import BertTokenizer
 from opensesame.models.bert.optimization import BertAdam, WarmupLinearSchedule
-from opensesame.data_handler.general import BertDataBunch, NewDataBunch
+from opensesame.data_handler.general import NewDataBunch
 from opensesame.data_handler.ner import convert_examples_to_features as convert_examples_to_features_ner
+
 from opensesame.data_handler.seq_classification import convert_examples_to_features as convert_examples_to_features
 
 from opensesame.metrics import compute_metrics
@@ -91,14 +92,16 @@ class Trainer:
 
                 # Move batch of samples to device
                 batch = tuple(t.to(self.device) for t in batch)
-                input_ids, input_mask, segment_ids, label_ids = batch
+                input_ids, input_mask, segment_ids, label_ids, initial_mask = batch
 
                 # Forward pass through model
                 logits = model.forward(input_ids=input_ids,
-                                          token_type_ids=segment_ids,
-                                          attention_mask=input_mask)
+                                       token_type_ids=segment_ids,
+                                       attention_mask=input_mask)
                 loss = model.logits_to_loss(logits=logits,
-                                            labels=label_ids)
+                                            labels=label_ids,
+                                            initial_mask=initial_mask,
+                                            attention_mask=input_mask)
                 self.backward_propagate(loss, step)
 
                 # Perform evaluation
@@ -156,23 +159,24 @@ class Trainer:
         logger.info("***** Dev Eval Results After Steps: {} *****".format(step))
         logger.info(result["report"])
 
-def evaluation(model, data_bunch, output_mode, device, metric, data_type, report_output_dir=None, global_step=None, n_gpu = None):
-    # TODO: need to differentiate between args.do_eval for standalone eval and eval within the training loop
-    label_map = {i: label for i, label in enumerate(data_bunch.label_list)}
 
 class Evaluator:
     def __init__(self, data_loader, label_list, device, metric, output_mode, token_level):
 
         self.data_loader = data_loader
         self.label_map = {i: label for i, label in enumerate(label_list)}
+
+        # These will contain the per sample loss, logits, preds and Y
         self.loss_all = []
         self.logits_all = []
         self.preds_all = []
         self.Y_all = []
+
         self.device = device
         # Where should metric be defined? When dataset loaded? In config?
         self.metric = metric
 
+        # Turn classification_report into an argument of init
         if output_mode in ["classification", "ner"]:
             if token_level:
                 self.classification_report = token_classification_report
@@ -187,7 +191,7 @@ class Evaluator:
 
         for step, batch in enumerate(tqdm(self.data_loader, desc="Evaluating")):
             batch = tuple(t.to(self.device) for t in batch)
-            input_ids, input_mask, segment_ids, label_ids = batch
+            input_ids, input_mask, segment_ids, label_ids, initial_mask = batch
 
             with torch.no_grad():
                 logits = model.forward(input_ids=input_ids,
@@ -195,15 +199,17 @@ class Evaluator:
                                        attention_mask=input_mask)
                 loss = model.logits_to_loss(logits=logits,
                                             labels=label_ids,
-                                            attention_mask=input_mask)
+                                            attention_mask=input_mask,
+                                            initial_mask = initial_mask)
+                # Todo BC: I don't like that Y is returned here but this is the best I have right now
                 Y, preds = model.logits_to_preds(logits=logits,
-                                                      input_mask=input_mask,
-                                                      label_map=self.label_map,
-                                                      label_ids=label_ids)
+                                                 input_mask=input_mask,
+                                                 label_map=self.label_map,
+                                                 label_ids=label_ids,
+                                                 initial_mask=initial_mask)
             if Y is not None:
                 label_ids = Y
 
-            # TODO: define a cast to numpy function
             self.loss_all += list(to_numpy(loss))
             self.logits_all += list(to_numpy(logits))
             self.preds_all += list(to_numpy(preds))
@@ -360,21 +366,20 @@ def run_model(args, prediction_head, processor, output_mode, metric, token_level
     # Prepare Data
     tokenizer = BertTokenizer.from_pretrained(args.model,
                                               do_lower_case=args.lower_case)
-    # data_bunch = BertDataBunch(args.data_dir,
-    #                            processor,
-    #                            output_mode,
-    #                            tokenizer,
-    #                            args.train_batch_size,
-    #                            args.max_seq_length,
-    #                            local_rank=args.local_rank)
+
+    if token_level:
+        ex2feat = convert_examples_to_features_ner
+    else:
+        ex2feat = convert_examples_to_features
 
     data_bunch = NewDataBunch.load(args.data_dir,
                                    processor,
                                    tokenizer,
                                    args.train_batch_size,
                                    args.max_seq_length,
-                                   convert_examples_to_features,
+                                   ex2feat,
                                    local_rank=args.local_rank)
+
     weights = data_bunch.get_class_weights("train")
 
 
