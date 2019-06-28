@@ -20,56 +20,9 @@ from opensesame.data_handler.seq_classification import GermEval18coarseProcessor
 from opensesame.data_handler.ner import ConllProcessor
 from opensesame.models.bert.training import run_model
 import argparse
-from opensesame.file_utils import read_config
+from opensesame.file_utils import read_config, unnestConfig
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
-
-def unnestConfig(config, flattened=False):
-    """
-    This function creates a list of config files for doing grid search over multiple parameters. If a config parameter is a list
-    of values this list is iterated over and a config object without lists is returned to do training. It can handle
-    lists at multiple locations
-    """
-    nestedKeys = []
-    nestedVals = []
-    if(flattened):
-        for k, v in config.items():
-            if(isinstance(v,list)):
-                nestedKeys.append(k)
-                nestedVals.append(v)
-    else:
-        for gk, gv in config.items():
-            for k, v in gv.items():
-                if(isinstance(v, list)):
-                    if (isinstance(v, list)):
-                        nestedKeys.append([gk, k])
-                        nestedVals.append(v)
-                    elif(isinstance(v,dict)):
-                        logger.error("Config too deep!")
-
-
-    if(len(nestedKeys)>0):
-        unnestedConfig = []
-        mesh = np.meshgrid(*nestedVals) # get all combinations, each dimension corresponds to one parameter type
-        #flatten mesh into shape: [num_parameters, num_combinations]
-        mesh = [x.flatten() for x in mesh]
-
-        # loop over all combinations
-        for i in range(len(mesh[0])):
-            tempconfig = config.copy()
-            for j,k in enumerate(nestedKeys):
-                if(isinstance(k,str)):
-                    tempconfig[k] = mesh[j][i] #get ith val of correct param value and overwrite original config
-                elif(len(k) == 2):
-                    tempconfig[k[0]][k[1]] = mesh[j][i] #set nested dictionary keys
-                else:
-                    logger.error("Config too deep!")
-            unnestedConfig.append(tempconfig)
-    else:
-        unnestedConfig = [config]
-
-
-    return unnestedConfig
 
 
 def main():
