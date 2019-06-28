@@ -74,72 +74,137 @@ def readfile(filename):
     return data
 
 
-def convert_examples_to_features(examples, label_list, max_seq_length, tokenizer, **kwargs):
-    """Loads a data file into a list of `InputBatch`s."""
+def convert_examples_to_features(examples,
+                                 label_list,
+                                 max_seq_length,
+                                 tokenizer,
+                                 cls_token="[CLS]",
+                                 pad_token="[PAD]",
+                                 sep_token="[SEP]",
+                                 non_initial_token="X",
+                                 **kwargs):
 
-    #TODO factor out common parts of this function and the one for other tasks (e.g. classification)
+    feature_objects = []
 
-    label_map = {label: i for i, label in enumerate(label_list)} # changed numbering to start from 0 after adding an additional padding label to label_Map!
+    for idx, example in enumerate(examples):
+        # Tokenize words and extend the labels so they are aligned with the tokens
+        words = example.text_a.split(" ")
+        tokens, initial_mask = words_to_tokens(words, tokenizer, max_seq_length)
 
-    features = []
-    for (ex_index, example) in enumerate(examples):
-        textlist = example.text_a.split(' ')
-        labellist = example.label
-        tokens = []
-        labels = []
-        for i, word in enumerate(textlist):
-            token = tokenizer.tokenize(word)
-            tokens.extend(token)
-            label_1 = labellist[i]
-            for m in range(len(token)):
-                if m == 0:
-                    labels.append(label_1)
-                else:
-                    labels.append("X")
-        if len(tokens) >= max_seq_length - 1:
-            tokens = tokens[0:(max_seq_length - 2)]
-            labels = labels[0:(max_seq_length - 2)]
-        ntokens = []
-        segment_ids = []
-        label_ids = []
-        ntokens.append("[CLS]")
-        segment_ids.append(0)
-        label_ids.append(label_map["[CLS]"])
-        for i, token in enumerate(tokens):
-            ntokens.append(token)
-            segment_ids.append(0)
-            label_ids.append(label_map[labels[i]])
-        ntokens.append("[SEP]")
-        segment_ids.append(0)
-        label_ids.append(label_map["[SEP]"])
-        input_ids = tokenizer.convert_tokens_to_ids(ntokens)
-        input_mask = [1] * len(input_ids)
-        while len(input_ids) < max_seq_length:
-            input_ids.append(0)
-            input_mask.append(0)
-            segment_ids.append(0)
-            label_ids.append(0)
-        assert len(input_ids) == max_seq_length
-        assert len(input_mask) == max_seq_length
-        assert len(segment_ids) == max_seq_length
-        assert len(label_ids) == max_seq_length
-        assert max(label_ids) < len(label_list)
+        labels_word = example.label
+        labels_token = expand_labels(labels_word, initial_mask, non_initial_token)
 
-        if ex_index < 5:
-            logger.info("*** Example ***")
-            logger.info("guid: %s" % (example.guid))
-            logger.info("tokens: %s" % " ".join(
-                [str(x) for x in tokens]))
-            logger.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
-            logger.info("input_mask: %s" % " ".join([str(x) for x in input_mask]))
-            logger.info(
-                "segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
-            logger.info("label: %s" % (example.label))
-            logger.info("ids  : %s" % (label_ids))
+        # Add CLS and SEP tokens
+        tokens = add_cls_sep(tokens, cls_token, sep_token)
+        labels_token = add_cls_sep(labels_token, cls_token, sep_token)
+        initial_mask = [0] + initial_mask + [0]      # CLS and SEP don't count as initial tokens
+        input_mask = [1] * len(tokens)
 
-        features.append(
-            InputFeatures(input_ids=input_ids,
-                          input_mask=input_mask,
-                          segment_ids=segment_ids,
-                          label_id=label_ids))
-    return features
+        # Convert to input and labels to ids, generate masks
+        # Todo: Something is odd here because [PAD] is index one in the vocab of tokenizer but we are padding with 0, or maybe it doesnt matter because its masked out anyways
+        input_ids = tokenizer.convert_tokens_to_ids(tokens)
+        label_ids = [label_list.index(lt) for lt in labels_token]
+        segment_ids = [0] * max_seq_length
+
+        # Pad
+        input_ids = pad(input_ids, max_seq_length, 0)
+        label_ids = pad(label_ids, max_seq_length, 0)
+        initial_mask = pad(initial_mask, max_seq_length, 0)
+        input_mask = pad(input_mask, max_seq_length, 0)
+
+
+        if idx < 5:
+            print_example_with_features(example,
+                                        tokens,
+                                        input_ids,
+                                        input_mask,
+                                        segment_ids,
+                                        label_ids,
+                                        initial_mask)
+
+        feature_object = InputFeatures(input_ids=input_ids,
+                                       input_mask=input_mask,
+                                       segment_ids=segment_ids,
+                                       label_id=label_ids,
+                                       initial_mask=initial_mask)
+        feature_objects.append(feature_object)
+
+    return feature_objects
+
+
+def print_example_with_features(example,
+                                tokens,
+                                input_ids,
+                                input_mask,
+                                segment_ids,
+                                label_ids,
+                                initial_mask):
+    logger.info("*** Example ***")
+    logger.info("guid: %s" % (example.guid))
+    logger.info("tokens: %s" % " ".join(
+        [str(x) for x in tokens]))
+    logger.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
+    logger.info("input_mask: %s" % " ".join([str(x) for x in input_mask]))
+    logger.info(
+        "segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
+    logger.info("label: %s" % (example.label))
+    logger.info("ids  : %s" % (label_ids))
+    logger.info("initial_mask: %s" % (initial_mask))
+
+
+def add_cls_sep(seq, cls_token, sep_token):
+    ret = [cls_token]
+    ret += seq
+    ret += [sep_token]
+    return ret
+
+
+def pad(seq, max_seq_len, pad_token):
+    ret = seq
+    n_required_pad = max_seq_len - len(seq)
+    for _ in range(n_required_pad):
+        ret.append(pad_token)
+    return ret
+
+
+def expand_labels(labels_word,
+                  initial_mask,
+                  non_initial_token):
+    labels_token = []
+    word_index = 0
+    for im in initial_mask:
+        if im:
+            # i.e. if token is word initial
+            labels_token.append(labels_word[word_index])
+            word_index += 1
+        else:
+            # i.e. token is not the first in the word
+            labels_token.append(non_initial_token)
+
+    assert len(labels_token) == len(initial_mask)
+    return labels_token
+
+
+def words_to_tokens(words, tokenizer, max_seq_length):
+    tokens_all = []
+    initial_mask = []
+    for w in words:
+        tokens_word = tokenizer.tokenize(w)
+
+        # Sometimes the tokenizer returns no tokens
+        if len(tokens_word) == 0:
+            continue
+
+        n_non_initial_tokens = len(tokens_word) - 1
+        initial_mask += [1]
+        for _ in range(n_non_initial_tokens):
+            initial_mask += [0]
+        tokens_all += tokens_word
+
+    # Clip at max_seq_length. The "-2" is for CLS and SEP token
+    tokens_all = tokens_all[:max_seq_length - 2]
+    initial_mask = initial_mask[:max_seq_length - 2]
+
+    assert len(tokens_all) == len(initial_mask)
+
+    return tokens_all, initial_mask
