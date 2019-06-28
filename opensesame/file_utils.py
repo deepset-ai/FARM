@@ -5,23 +5,23 @@ Copyright by the AllenNLP authors.
 """
 from __future__ import (absolute_import, division, print_function, unicode_literals)
 
-import sys
+import fnmatch
 import json
 import logging
 import os
 import shutil
+import sys
 import tempfile
-import fnmatch
 from functools import wraps
 from hashlib import sha256
-import sys
 from io import open
 
 import boto3
+import numpy as np
 import requests
 from botocore.exceptions import ClientError
-from tqdm import tqdm
 from dotmap import DotMap
+from tqdm import tqdm
 
 try:
     from torch.hub import _get_torch_home
@@ -302,7 +302,7 @@ def read_config(path, flattend= False):
     # flatten last part of config, take either value or default as value
     for gk,gv in conf_args.items():
         for k,v in gv.items():
-            if(isinstance(v,dict)):
+            if(isinstance(getArgValue(v),dict)):
                 logger.error("Config is too deeply nested, at %s" %str(v))
             conf_args[gk][k] = getArgValue(v)
 
@@ -314,3 +314,55 @@ def read_config(path, flattend= False):
         args = DotMap(conf_args, _dynamic=False)
 
     return args
+
+def unnestConfig(config, flattened=False):
+    """
+    This function creates a list of config files for evaluating parameters with different values. If a config parameter
+    is of type list this list is iterated over and a config object without lists is returned. Can handle lists inside any
+    number of parameters.
+
+    Can handle shallow or nested (one level) configs
+    """
+    nestedKeys = []
+    nestedVals = []
+    if(flattened):
+        for k, v in config.items():
+            if(isinstance(v,list)):
+                nestedKeys.append(k)
+                nestedVals.append(v)
+    else:
+        for gk, gv in config.items():
+            for k, v in gv.items():
+                if(isinstance(v, list)):
+                    if (isinstance(v, list)):
+                        nestedKeys.append([gk, k])
+                        nestedVals.append(v)
+                    elif(isinstance(v,dict)):
+                        logger.error("Config too deep!")
+
+
+    if(len(nestedKeys) == 0):
+        unnestedConfig = [config]
+    else:
+        if(flattened):
+            logger.info("Nested config at parameters: %s" %(", ".join(nestedKeys)))
+        else:
+            logger.info("Nested config at parameters: %s" %(", ".join(".".join(x) for x in nestedKeys)))
+        unnestedConfig = []
+        mesh = np.meshgrid(*nestedVals) # get all combinations, each dimension corresponds to one parameter type
+        #flatten mesh into shape: [num_parameters, num_combinations] so we can iterate in 2d over any paramter combinations
+        mesh = [x.flatten() for x in mesh]
+
+        # loop over all combinations
+        for i in range(len(mesh[0])):
+            tempconfig = config.copy()
+            for j,k in enumerate(nestedKeys):
+                if(isinstance(k,str)):
+                    tempconfig[k] = mesh[j][i] #get ith val of correct param value and overwrite original config
+                elif(len(k) == 2):
+                    tempconfig[k[0]][k[1]] = mesh[j][i] #set nested dictionary keys
+                else:
+                    logger.error("Config too deep!")
+            unnestedConfig.append(tempconfig)
+
+    return unnestedConfig

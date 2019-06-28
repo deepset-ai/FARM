@@ -18,8 +18,8 @@ import logging
 from opensesame.data_handler.seq_classification import GermEval18coarseProcessor, GermEval18fineProcessor, GNADProcessor
 from opensesame.data_handler.ner import ConllProcessor
 from opensesame.models.bert.training import run_model
-from opensesame.file_utils import read_config
-from tasks.run_downstream import unnestConfig
+from opensesame.file_utils import read_config, unnestConfig
+
 
 logger = logging.getLogger(__name__)
 
