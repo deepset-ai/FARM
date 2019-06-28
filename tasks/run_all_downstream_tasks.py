@@ -25,12 +25,10 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    # config_files = ["ner/conll2003_de_config.json",
-                    # "ner/germEval14_config.json",
-                    # "seq_classification/germEval18_config.json",
-                    # "seq_classification/gnad_config.json"]
-
-    config_files = ["seq_classification/gnad_config.json"]
+    config_files = ["ner/conll2003_de_config.json",
+                    "ner/germEval14_config.json",
+                    "seq_classification/germEval18_config.json",
+                    "seq_classification/gnad_config.json"]
 
 
     for conf_file in config_files:

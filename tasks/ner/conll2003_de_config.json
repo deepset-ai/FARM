@@ -5,7 +5,7 @@
     "output_dir": {"value": null, "default": "output",          "desc": "Output directory where model predictions and checkpoints will be saved."}, 
 
     "cuda":        {"value": null, "default": true,  "desc": "CUDA flag,  uses CUDA if available."}, 
-    "local_rank":  {"value": null, "default": -1,    "desc": "If local_rank == -1 -> multiGPU mode on one machine,  other values signal distributed computation across several nodes (apex install required)."}, 
+    "local_rank":  {"value": 0, "default": -1,    "desc": "If local_rank == -1 -> multiGPU mode on one machine,  other values signal distributed computation across several nodes (apex install required)."},
     "fp16":        {"value": null, "default": false, "desc": "Floating point precision. IF true it halves the precision and therefore the memory requirements,  so you can doulbe the batch size."}, 
     "loss_scale":  {"value": null, "default": 0,     "desc": "Loss scaling to improve fp16 numeric stability. Only used when fp16 set to True. 0 (default value): dynamic loss scaling. Positive power of 2: static loss scaling value."}, 
 
@@ -35,8 +35,8 @@
     "warmup_proportion":  {"value": null, "default": 0.4,  "desc": "Proportion of training to perform linear learning rate warmup for. E.g.,  0.1 = 10%% of training."}, 
 
     "num_train_epochs":             {"value": null, "default": 2,  "desc": "Total number of training epochs to perform."}, 
-    "train_batch_size":             {"value": null, "default": 32, "desc": "Total batch size for training. If using multiGPU,  the total number will be spread evenly across all GPUs"}, 
-    "eval_batch_size":              {"value": null, "default": 32, "desc": "Total batch size for eval."}, 
+    "train_batch_size":             {"value": 128, "default": 32, "desc": "Total batch size for training on one V100 GPU. If using multiGPU,  the total number will be spread evenly across all GPUs"},
+    "eval_batch_size":              {"value": 128, "default": 32, "desc": "Total batch size for eval."},
     "gradient_accumulation_steps":  {"value": null, "default": 1,  "desc": "Number of updates steps (batches) to accumulate before performing a backward/update pass."}
   }, 
 
