@@ -4,10 +4,13 @@ import torch
 import logging
 
 from mlflow import log_metrics, log_params, set_tracking_uri, set_experiment, start_run, log_artifacts
-from tensorboardX import SummaryWriter
 
 logger = logging.getLogger(__name__)
 
+try:
+    from tensorboardX import SummaryWriter
+except ImportError:
+    logger.warn("TensorboardX not installed. If you use tensordoard logger.")
 
 def set_all_seeds(seed, n_gpu=0):
     random.seed(seed)
