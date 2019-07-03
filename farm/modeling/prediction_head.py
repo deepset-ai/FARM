@@ -1,11 +1,12 @@
+import ast
+import datetime
+import json
+import os
+
 import torch
 from torch import nn
-import os
-import json
-import datetime
-import ast
-
 from torch.nn import CrossEntropyLoss
+
 
 class PredictionHead(nn.Module):
     """ Takes word embeddings from a language model and generates logits for a given task. Can also convert logits
@@ -27,10 +28,14 @@ class PredictionHead(nn.Module):
     def checkpoint(self, save_dir, step="X"):
 
         # Save a trained model, configuration and tokenizer
-        model_to_save = self.module if hasattr(self, 'module') else self  # Only save the model it-self
+        model_to_save = (
+            self.module if hasattr(self, "module") else self
+        )  # Only save the model it-self
 
         # If we save using the predefined names, we can load using `from_pretrained`
-        output_model_file = os.path.join(save_dir, "prediction_head_{}.bin".format(step))
+        output_model_file = os.path.join(
+            save_dir, "prediction_head_{}.bin".format(step)
+        )
 
         torch.save(model_to_save.state_dict(), output_model_file)
 
@@ -43,25 +48,28 @@ class PredictionHead(nn.Module):
 
 
 class SeqClassificationHead(PredictionHead):
-    def __init__(self,
-                 layer_dims,
-                 balanced_weights=None,
-                 **kwargs):
+    def __init__(self, layer_dims, balanced_weights=None, **kwargs):
         super(SeqClassificationHead, self).__init__()
         self.layer_dims = layer_dims
         self.feed_forward = FeedForwardBlock(layer_dims)
         self.generate_config()
         self.num_labels = layer_dims[-1]
         if balanced_weights:
-            self.balanced_weights = nn.Parameter(torch.tensor(balanced_weights), requires_grad=False)
-            self.loss_fct = CrossEntropyLoss(weight=self.balanced_weights, reduction="none")
+            self.balanced_weights = nn.Parameter(
+                torch.tensor(balanced_weights), requires_grad=False
+            )
+            self.loss_fct = CrossEntropyLoss(
+                weight=self.balanced_weights, reduction="none"
+            )
         else:
             self.loss_fct = CrossEntropyLoss(reduction="none")
 
     def generate_config(self):
-        self.config = {"type": type(self).__name__,
-                       "last_initialized": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                       "layer_dims": str(self.layer_dims)}
+        self.config = {
+            "type": type(self).__name__,
+            "last_initialized": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "layer_dims": str(self.layer_dims),
+        }
 
     def forward(self, X):
         logits = self.feed_forward(X)
@@ -77,9 +85,7 @@ class SeqClassificationHead(PredictionHead):
 
 
 class NERClassificationHead(PredictionHead):
-    def __init__(self,
-                 layer_dims,
-                 **kwargs):
+    def __init__(self, layer_dims, **kwargs):
         super(NERClassificationHead, self).__init__()
         self.layer_dims = layer_dims
         self.feed_forward = FeedForwardBlock(layer_dims)
@@ -88,14 +94,15 @@ class NERClassificationHead(PredictionHead):
         self.loss_fct = CrossEntropyLoss(reduction="none")
 
     def generate_config(self):
-        self.config = {"type": type(self).__name__,
-                       "last_initialized": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                       "layer_dims": str(self.layer_dims)}
+        self.config = {
+            "type": type(self).__name__,
+            "last_initialized": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "layer_dims": str(self.layer_dims),
+        }
 
     def forward(self, X):
         logits = self.feed_forward(X)
         return logits
-
 
     def logits_to_loss(self, logits, labels, initial_mask, attention_mask=None):
         # Todo: should we be applying initial mask here? Loss is currently calculated even on non initial tokens
@@ -104,7 +111,6 @@ class NERClassificationHead(PredictionHead):
         active_labels = labels.view(-1)[active_loss]
         loss = self.loss_fct(active_logits, active_labels)
         return loss
-
 
     def logits_to_preds(self, logits, input_mask, initial_mask, label_map, label_ids):
 
@@ -134,7 +140,6 @@ class NERClassificationHead(PredictionHead):
 
         return labels_word_all, preds_word_all
 
-
     @staticmethod
     def initial_token_only(seq, initial_mask):
         ret = []
@@ -146,9 +151,8 @@ class NERClassificationHead(PredictionHead):
 
 class FeedForwardBlock(nn.Module):
     """ A feed forward neural network of variable depth and width. """
-    def __init__(self,
-                 layer_dims,
-                 **kwargs):
+
+    def __init__(self, layer_dims, **kwargs):
         # Todo: Consider having just one input argument
         super(FeedForwardBlock, self).__init__()
 
@@ -165,7 +169,6 @@ class FeedForwardBlock(nn.Module):
             layer = nn.Linear(size_in, size_out)
             layers_all.append(layer)
         self.feed_forward = nn.Sequential(*layers_all)
-
 
     def forward(self, X):
         logits = self.feed_forward(X)

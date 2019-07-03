@@ -23,39 +23,44 @@ import shutil
 import tarfile
 import tempfile
 
-
 import torch
+from pytorch_pretrained_bert.modeling import (
+    BertConfig,
+    BertLayerNorm,
+    load_tf_weights_in_bert,
+    BertEncoder,
+    BertEmbeddings,
+    BertPooler,
+    BertPreTrainedModel,
+)
 from torch import nn
-from torch.nn import CrossEntropyLoss
-from pytorch_pretrained_bert.modeling import BertConfig, BertLayerNorm, load_tf_weights_in_bert, BertEncoder, \
-    BertEmbeddings, BertPooler, BertPreTrainedModel
 
 from farm.file_utils import cached_path, WEIGHTS_NAME, CONFIG_NAME
 
 logger = logging.getLogger(__name__)
 
 PRETRAINED_MODEL_ARCHIVE_MAP = {
-    'bert-base-uncased': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-uncased.tar.gz",
-    'bert-large-uncased': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-large-uncased.tar.gz",
-    'bert-base-cased': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-cased.tar.gz",
-    'bert-large-cased': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-large-cased.tar.gz",
-    'bert-base-multilingual-uncased': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-multilingual-uncased.tar.gz",
-    'bert-base-multilingual-cased': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-multilingual-cased.tar.gz",
-    'bert-base-chinese': "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-chinese.tar.gz",
-    'bert-base-cased-de-v0-1': "s3://int-models-bert/bert-base-cased-de-v0-1/bert-base-cased-de-v0-1.tar.gz",
-    'bert-base-cased-de-1a-start': "s3://int-models-bert/bert-base-cased-de-1a-start/bert-base-cased-de-1a-start.tar.gz",
-    'bert-base-cased-de-1a-10k': "s3://int-models-bert/bert-base-cased-de-1a-10k/bert-base-cased-de-1a-10k.tar.gz",
-    'bert-base-cased-de-1a-20k': "s3://int-models-bert/bert-base-cased-de-1a-20k/bert-base-cased-de-1a-20k.tar.gz",
-    'bert-base-cased-de-1a-50k': "s3://int-models-bert/bert-base-cased-de-1a-50k/bert-base-cased-de-1a-50k.tar.gz",
-    'bert-base-cased-de-1a-end': "s3://int-models-bert/bert-base-cased-de-1a-end/bert-base-cased-de-1a-end.tar.gz",
-    'bert-base-cased-de-1b-end': "s3://int-models-bert/bert-base-cased-de-1b-end/bert-base-cased-de-1b-end.tar.gz",
-    'bert-base-cased-de-1b-best': "s3://int-models-bert/bert-base-cased-de-1b-best/bert-base-cased-de-1b-best.tar.gz",
-    'bert-base-cased-de-2a-end': "s3://int-models-bert/bert-base-cased-de-2a-end/bert-base-cased-de-2a-end.tar.gz",
-    'bert-base-cased-de-2b-end': "s3://int-models-bert/bert-base-cased-de-2b-end/bert-base-cased-de-2b-end.tar.gz",
+    "bert-base-uncased": "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-uncased.tar.gz",
+    "bert-large-uncased": "https://s3.amazonaws.com/models.huggingface.co/bert/bert-large-uncased.tar.gz",
+    "bert-base-cased": "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-cased.tar.gz",
+    "bert-large-cased": "https://s3.amazonaws.com/models.huggingface.co/bert/bert-large-cased.tar.gz",
+    "bert-base-multilingual-uncased": "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-multilingual-uncased.tar.gz",
+    "bert-base-multilingual-cased": "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-multilingual-cased.tar.gz",
+    "bert-base-chinese": "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-chinese.tar.gz",
+    "bert-base-cased-de-v0-1": "s3://int-models-bert/bert-base-cased-de-v0-1/bert-base-cased-de-v0-1.tar.gz",
+    "bert-base-cased-de-1a-start": "s3://int-models-bert/bert-base-cased-de-1a-start/bert-base-cased-de-1a-start.tar.gz",
+    "bert-base-cased-de-1a-10k": "s3://int-models-bert/bert-base-cased-de-1a-10k/bert-base-cased-de-1a-10k.tar.gz",
+    "bert-base-cased-de-1a-20k": "s3://int-models-bert/bert-base-cased-de-1a-20k/bert-base-cased-de-1a-20k.tar.gz",
+    "bert-base-cased-de-1a-50k": "s3://int-models-bert/bert-base-cased-de-1a-50k/bert-base-cased-de-1a-50k.tar.gz",
+    "bert-base-cased-de-1a-end": "s3://int-models-bert/bert-base-cased-de-1a-end/bert-base-cased-de-1a-end.tar.gz",
+    "bert-base-cased-de-1b-end": "s3://int-models-bert/bert-base-cased-de-1b-end/bert-base-cased-de-1b-end.tar.gz",
+    "bert-base-cased-de-1b-best": "s3://int-models-bert/bert-base-cased-de-1b-best/bert-base-cased-de-1b-best.tar.gz",
+    "bert-base-cased-de-2a-end": "s3://int-models-bert/bert-base-cased-de-2a-end/bert-base-cased-de-2a-end.tar.gz",
+    "bert-base-cased-de-2b-end": "s3://int-models-bert/bert-base-cased-de-2b-end/bert-base-cased-de-2b-end.tar.gz",
 }
 
-BERT_CONFIG_NAME = 'bert_config.json'
-TF_WEIGHTS_NAME = 'model.ckpt'
+BERT_CONFIG_NAME = "bert_config.json"
+TF_WEIGHTS_NAME = "model.ckpt"
 
 
 class LanguageModel(nn.Module):
@@ -85,6 +90,7 @@ class LanguageModel(nn.Module):
 class Bert(LanguageModel):
     """ A BERT model (https://arxiv.org/abs/1810.04805) that wraps the HuggingFace's implementation
     (https://github.com/huggingface/pytorch-pretrained-BERT) to fit the LanguageModel class. """
+
     def __init__(self):
         super(Bert, self).__init__()
         self.model = None
@@ -95,15 +101,12 @@ class Bert(LanguageModel):
         bert.model = BertModel.from_pretrained(pretrained_model_name_or_path)
         return bert
 
-    def forward(self,
-                input_ids,
-                token_type_ids,
-                attention_mask,
-                output_all_encoded_layers=False):
-        return self.model(input_ids,
-                         token_type_ids,
-                         attention_mask,
-                         output_all_encoded_layers=False)
+    def forward(
+        self, input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False
+    ):
+        return self.model(
+            input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False
+        )
 
     def save_config(self, save_dir):
         # TODO: Maybe we want to initialize at higher so that switching in a new config can give us a whole new class of lm
@@ -128,7 +131,8 @@ class BertPreTrainedModel(nn.Module):
                 "To create a model from a Google pretrained model use "
                 "`model = {}.from_pretrained(PRETRAINED_MODEL_NAME)`".format(
                     self.__class__.__name__, self.__class__.__name__
-                ))
+                )
+            )
         self.config = config
 
     def init_bert_weights(self, module):
@@ -172,12 +176,12 @@ class BertPreTrainedModel(nn.Module):
             *inputs, **kwargs: additional input for the specific Bert class
                 (ex: num_labels for BertForSequenceClassification)
         """
-        state_dict = kwargs.get('state_dict', None)
-        kwargs.pop('state_dict', None)
-        cache_dir = kwargs.get('cache_dir', None)
-        kwargs.pop('cache_dir', None)
-        from_tf = kwargs.get('from_tf', False)
-        kwargs.pop('from_tf', None)
+        state_dict = kwargs.get("state_dict", None)
+        kwargs.pop("state_dict", None)
+        cache_dir = kwargs.get("cache_dir", None)
+        kwargs.pop("cache_dir", None)
+        from_tf = kwargs.get("from_tf", False)
+        kwargs.pop("from_tf", None)
 
         if pretrained_model_name_or_path in PRETRAINED_MODEL_ARCHIVE_MAP:
             archive_file = PRETRAINED_MODEL_ARCHIVE_MAP[pretrained_model_name_or_path]
@@ -192,26 +196,36 @@ class BertPreTrainedModel(nn.Module):
                 "We assumed '{}' was a path or url but couldn't find any file "
                 "associated to this path or url.".format(
                     pretrained_model_name_or_path,
-                    ', '.join(PRETRAINED_MODEL_ARCHIVE_MAP.keys()),
-                    archive_file))
+                    ", ".join(PRETRAINED_MODEL_ARCHIVE_MAP.keys()),
+                    archive_file,
+                )
+            )
             return None
         if resolved_archive_file == archive_file:
             logger.info("loading archive file {}".format(archive_file))
         else:
-            logger.info("loading archive file {} from cache at {}".format(
-                archive_file, resolved_archive_file))
+            logger.info(
+                "loading archive file {} from cache at {}".format(
+                    archive_file, resolved_archive_file
+                )
+            )
         tempdir = None
         if os.path.isdir(resolved_archive_file) or from_tf:
             serialization_dir = resolved_archive_file
         else:
             # Extract archive to temp dir
             tempdir = tempfile.mkdtemp()
-            logger.info("extracting archive file {} to temp dir {}".format(
-                resolved_archive_file, tempdir))
-            with tarfile.open(resolved_archive_file, 'r:gz') as archive:
+            logger.info(
+                "extracting archive file {} to temp dir {}".format(
+                    resolved_archive_file, tempdir
+                )
+            )
+            with tarfile.open(resolved_archive_file, "r:gz") as archive:
                 for member in archive.getmembers():
                     if member.isreg():  # skip if the TarInfo is not files
-                        member.name = os.path.basename(member.name)  # remove the path by reset it
+                        member.name = os.path.basename(
+                            member.name
+                        )  # remove the path by reset it
                         archive.extract(member, tempdir)  # extract
                 # archive.extractall(tempdir)
             serialization_dir = tempdir
@@ -226,7 +240,7 @@ class BertPreTrainedModel(nn.Module):
         model = cls(config, *inputs, **kwargs)
         if state_dict is None and not from_tf:
             weights_path = os.path.join(serialization_dir, WEIGHTS_NAME)
-            state_dict = torch.load(weights_path, map_location='cpu')
+            state_dict = torch.load(weights_path, map_location="cpu")
         if tempdir:
             # Clean up temp dir
             shutil.rmtree(tempdir)
@@ -239,10 +253,10 @@ class BertPreTrainedModel(nn.Module):
         new_keys = []
         for key in state_dict.keys():
             new_key = None
-            if 'gamma' in key:
-                new_key = key.replace('gamma', 'weight')
-            if 'beta' in key:
-                new_key = key.replace('beta', 'bias')
+            if "gamma" in key:
+                new_key = key.replace("gamma", "weight")
+            if "beta" in key:
+                new_key = key.replace("beta", "bias")
             if new_key:
                 old_keys.append(key)
                 new_keys.append(new_key)
@@ -253,32 +267,50 @@ class BertPreTrainedModel(nn.Module):
         unexpected_keys = []
         error_msgs = []
         # copy state_dict so _load_from_state_dict can modify it
-        metadata = getattr(state_dict, '_metadata', None)
+        metadata = getattr(state_dict, "_metadata", None)
         state_dict = state_dict.copy()
         if metadata is not None:
             state_dict._metadata = metadata
 
-        def load(module, prefix=''):
+        def load(module, prefix=""):
             local_metadata = {} if metadata is None else metadata.get(prefix[:-1], {})
             module._load_from_state_dict(
-                state_dict, prefix, local_metadata, True, missing_keys, unexpected_keys, error_msgs)
+                state_dict,
+                prefix,
+                local_metadata,
+                True,
+                missing_keys,
+                unexpected_keys,
+                error_msgs,
+            )
             for name, child in module._modules.items():
                 if child is not None:
-                    load(child, prefix + name + '.')
+                    load(child, prefix + name + ".")
 
-        start_prefix = ''
-        if not hasattr(model, 'bert') and any(s.startswith('bert.') for s in state_dict.keys()):
-            start_prefix = 'bert.'
+        start_prefix = ""
+        if not hasattr(model, "bert") and any(
+            s.startswith("bert.") for s in state_dict.keys()
+        ):
+            start_prefix = "bert."
         load(model, prefix=start_prefix)
         if len(missing_keys) > 0:
-            logger.info("Weights of {} not initialized from pretrained model: {}".format(
-                model.__class__.__name__, missing_keys))
+            logger.info(
+                "Weights of {} not initialized from pretrained model: {}".format(
+                    model.__class__.__name__, missing_keys
+                )
+            )
         if len(unexpected_keys) > 0:
-            logger.info("Weights from pretrained model not used in {}: {}".format(
-                model.__class__.__name__, unexpected_keys))
+            logger.info(
+                "Weights from pretrained model not used in {}: {}".format(
+                    model.__class__.__name__, unexpected_keys
+                )
+            )
         if len(error_msgs) > 0:
-            raise RuntimeError('Error(s) in loading state_dict for {}:\n\t{}'.format(
-                model.__class__.__name__, "\n\t".join(error_msgs)))
+            raise RuntimeError(
+                "Error(s) in loading state_dict for {}:\n\t{}".format(
+                    model.__class__.__name__, "\n\t".join(error_msgs)
+                )
+            )
         return model
 
 
@@ -334,7 +366,13 @@ class BertModel(BertPreTrainedModel):
         self.pooler = BertPooler(config)
         self.apply(self.init_bert_weights)
 
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None, output_all_encoded_layers=True):
+    def forward(
+        self,
+        input_ids,
+        token_type_ids=None,
+        attention_mask=None,
+        output_all_encoded_layers=True,
+    ):
         if attention_mask is None:
             attention_mask = torch.ones_like(input_ids)
         if token_type_ids is None:
@@ -352,13 +390,17 @@ class BertModel(BertPreTrainedModel):
         # positions we want to attend and -10000.0 for masked positions.
         # Since we are adding it to the raw scores before the softmax, this is
         # effectively the same as removing these entirely.
-        extended_attention_mask = extended_attention_mask.to(dtype=next(self.parameters()).dtype)  # fp16 compatibility
+        extended_attention_mask = extended_attention_mask.to(
+            dtype=next(self.parameters()).dtype
+        )  # fp16 compatibility
         extended_attention_mask = (1.0 - extended_attention_mask) * -10000.0
 
         embedding_output = self.embeddings(input_ids, token_type_ids)
-        encoded_layers = self.encoder(embedding_output,
-                                      extended_attention_mask,
-                                      output_all_encoded_layers=output_all_encoded_layers)
+        encoded_layers = self.encoder(
+            embedding_output,
+            extended_attention_mask,
+            output_all_encoded_layers=output_all_encoded_layers,
+        )
         sequence_output = encoded_layers[-1]
         pooled_output = self.pooler(sequence_output)
         if not output_all_encoded_layers:

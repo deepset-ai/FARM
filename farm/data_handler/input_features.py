@@ -1,6 +1,13 @@
 import logging
 
-from farm.data_handler.utils import truncate_seq_pair, words_to_tokens, expand_labels, add_cls_sep, pad, print_example_with_features
+from farm.data_handler.utils import (
+    truncate_seq_pair,
+    words_to_tokens,
+    expand_labels,
+    add_cls_sep,
+    pad,
+    print_example_with_features,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -14,14 +21,21 @@ class InputFeatures(object):
         self.segment_ids = segment_ids
         self.label_id = label_id
         self.initial_mask = initial_mask
-        self.order = [self.input_ids, self.input_mask, self.segment_ids, self.label_id, self.initial_mask]
+        self.order = [
+            self.input_ids,
+            self.input_mask,
+            self.segment_ids,
+            self.label_id,
+            self.initial_mask,
+        ]
 
 
-def examples_to_features_sequence(examples, label_list, max_seq_len,
-                                  tokenizer, output_mode="classification"):
+def examples_to_features_sequence(
+    examples, label_list, max_seq_len, tokenizer, output_mode="classification"
+):
     """Loads a data file into a list of `InputBatch`s."""
 
-    label_map = {label : i for i, label in enumerate(label_list)}
+    label_map = {label: i for i, label in enumerate(label_list)}
 
     features = []
     for (ex_index, example) in enumerate(examples):
@@ -40,7 +54,7 @@ def examples_to_features_sequence(examples, label_list, max_seq_len,
         else:
             # Account for [CLS] and [SEP] with "- 2"
             if len(tokens_a) > max_seq_len - 2:
-                tokens_a = tokens_a[:(max_seq_len - 2)]
+                tokens_a = tokens_a[: (max_seq_len - 2)]
 
         # The convention in BERT is:
         # (a) For sequence pairs:
@@ -93,31 +107,34 @@ def examples_to_features_sequence(examples, label_list, max_seq_len,
         if ex_index < 2:
             logger.info("*** Example ***")
             logger.info("guid: %s" % (example.guid))
-            logger.info("tokens: %s" % " ".join(
-                    [str(x) for x in tokens]))
+            logger.info("tokens: %s" % " ".join([str(x) for x in tokens]))
             logger.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
             logger.info("input_mask: %s" % " ".join([str(x) for x in input_mask]))
-            logger.info(
-                    "segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
+            logger.info("segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
             logger.info("label: %s (id = %d)" % (example.label, label_id))
 
         features.append(
-                InputFeatures(input_ids=input_ids,
-                              input_mask=input_mask,
-                              segment_ids=segment_ids,
-                              label_id=label_id))
+            InputFeatures(
+                input_ids=input_ids,
+                input_mask=input_mask,
+                segment_ids=segment_ids,
+                label_id=label_id,
+            )
+        )
     return features
 
 
-def examples_to_features_ner(examples,
-                                 label_list,
-                                 max_seq_len,
-                                 tokenizer,
-                                 cls_token="[CLS]",
-                                 pad_token="[PAD]",
-                                 sep_token="[SEP]",
-                                 non_initial_token="X",
-                                 **kwargs):
+def examples_to_features_ner(
+    examples,
+    label_list,
+    max_seq_len,
+    tokenizer,
+    cls_token="[CLS]",
+    pad_token="[PAD]",
+    sep_token="[SEP]",
+    non_initial_token="X",
+    **kwargs
+):
 
     feature_objects = []
 
@@ -132,7 +149,9 @@ def examples_to_features_ner(examples,
         # Add CLS and SEP tokens
         tokens = add_cls_sep(tokens, cls_token, sep_token)
         labels_token = add_cls_sep(labels_token, cls_token, sep_token)
-        initial_mask = [0] + initial_mask + [0]      # CLS and SEP don't count as initial tokens
+        initial_mask = (
+            [0] + initial_mask + [0]
+        )  # CLS and SEP don't count as initial tokens
         input_mask = [1] * len(tokens)
 
         # Convert to input and labels to ids, generate masks
@@ -148,19 +167,23 @@ def examples_to_features_ner(examples,
         input_mask = pad(input_mask, max_seq_len, 0)
 
         if idx < 2:
-            print_example_with_features(example,
-                                        tokens,
-                                        input_ids,
-                                        input_mask,
-                                        segment_ids,
-                                        label_ids,
-                                        initial_mask)
+            print_example_with_features(
+                example,
+                tokens,
+                input_ids,
+                input_mask,
+                segment_ids,
+                label_ids,
+                initial_mask,
+            )
 
-        feature_object = InputFeatures(input_ids=input_ids,
-                                       input_mask=input_mask,
-                                       segment_ids=segment_ids,
-                                       label_id=label_ids,
-                                       initial_mask=initial_mask)
+        feature_object = InputFeatures(
+            input_ids=input_ids,
+            input_mask=input_mask,
+            segment_ids=segment_ids,
+            label_id=label_ids,
+            initial_mask=initial_mask,
+        )
         feature_objects.append(feature_object)
 
     return feature_objects

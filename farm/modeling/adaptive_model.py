@@ -6,7 +6,10 @@ from torch.nn import CrossEntropyLoss
 class AdaptiveModel(nn.Module):
     """ Combines a language model and a prediction head for an NLP task. Allows for gradient
     flow back to the language model component"""
-    def __init__(self, language_model, prediction_head, embeds_dropout_prob, token_level):
+
+    def __init__(
+        self, language_model, prediction_head, embeds_dropout_prob, token_level
+    ):
         super(AdaptiveModel, self).__init__()
         self.language_model = language_model
         self.prediction_head = prediction_head
@@ -28,15 +31,11 @@ class AdaptiveModel(nn.Module):
     def logits_to_preds(self, logits, **kwargs):
         return self.prediction_head.logits_to_preds(logits, **kwargs)
 
-    def forward(self,
-                input_ids,
-                token_type_ids=None,
-                attention_mask=None):
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None):
 
-        sequence_output, pooled_output = self.language_model(input_ids,
-                                               token_type_ids,
-                                               attention_mask,
-                                               output_all_encoded_layers=False)
+        sequence_output, pooled_output = self.language_model(
+            input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False
+        )
 
         if self.token_level:
             output = sequence_output
@@ -51,14 +50,16 @@ class AdaptiveModel(nn.Module):
 
 class NERClassifier(AdaptiveModel):
     """ A Classifier that performs Named Entity Recognition. Can handle mapping of word to tokens """
-    def __init__(self,
-                 language_model,
-                 prediction_head,
-                 embeds_dropout_prob,
-                 balanced_weights=None):
+
+    def __init__(
+        self,
+        language_model,
+        prediction_head,
+        embeds_dropout_prob,
+        balanced_weights=None,
+    ):
 
         super(NERClassifier, self).__init__(language_model, prediction_head)
-
 
         self.language_model = language_model
         self.prediction_head = prediction_head
@@ -70,21 +71,23 @@ class NERClassifier(AdaptiveModel):
         # needs to be a parameter for distributed setting
         # This is messy, can we do this differently?
         if balanced_weights:
-            self.balanced_weights = nn.Parameter(torch.tensor(balanced_weights), requires_grad=False)
-            self.loss_fct = CrossEntropyLoss(weight=self.balanced_weights, reduction="none")
+            self.balanced_weights = nn.Parameter(
+                torch.tensor(balanced_weights), requires_grad=False
+            )
+            self.loss_fct = CrossEntropyLoss(
+                weight=self.balanced_weights, reduction="none"
+            )
         else:
             self.loss_fct = CrossEntropyLoss(reduction="none")
 
-    def forward(self,
-                input_ids,
-                token_type_ids=None,
-                attention_mask=None):
+    def forward(self, input_ids, token_type_ids=None, attention_mask=None):
 
-        sequence_output, _ = self.language_model(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
+        sequence_output, _ = self.language_model(
+            input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False
+        )
         sequence_output = self.dropout(sequence_output)
         logits = self.prediction_head(sequence_output)
         return logits
-
 
     def logits_to_loss(self, logits, labels, initial_mask, attention_mask=None):
         # Todo: should we be applying initial mask here? Loss is currently calculated even on non initial tokens
@@ -93,7 +96,6 @@ class NERClassifier(AdaptiveModel):
         active_labels = labels.view(-1)[active_loss]
         loss = self.loss_fct(active_logits, active_labels)
         return loss
-
 
     def logits_to_preds(self, logits, input_mask, initial_mask, label_map, label_ids):
 
@@ -122,7 +124,6 @@ class NERClassifier(AdaptiveModel):
             labels_word_all.append(labels_word)
 
         return labels_word_all, preds_word_all
-
 
     @staticmethod
     def initial_token_only(seq, initial_mask):

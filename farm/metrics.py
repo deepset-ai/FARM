@@ -1,7 +1,7 @@
-from sklearn.metrics import matthews_corrcoef, f1_score
+import numpy as np
 from scipy.stats import pearsonr, spearmanr
 from seqeval.metrics import f1_score as seq_f1_score
-import numpy as np
+from sklearn.metrics import matthews_corrcoef, f1_score
 
 
 def simple_accuracy(preds, labels):
@@ -10,9 +10,7 @@ def simple_accuracy(preds, labels):
         preds = np.array(preds)
         labels = np.array(labels)
         correct = preds = labels
-        return {
-            "acc" :correct.mean()
-        }
+        return {"acc": correct.mean()}
     except TypeError:
         return (preds == labels.numpy()).mean()
 
@@ -20,16 +18,11 @@ def simple_accuracy(preds, labels):
 def acc_and_f1(preds, labels):
     acc = simple_accuracy(preds, labels)
     f1 = f1_score(y_true=labels, y_pred=preds)
-    return {
-        "acc": acc,
-        "f1": f1,
-        "acc_and_f1": (acc + f1) / 2,
-    }
+    return {"acc": acc, "f1": f1, "acc_and_f1": (acc + f1) / 2}
 
-def f1_macro(preds,labels):
-    return {
-        "f1_macro" : f1_score(y_true=labels,y_pred=preds,average="macro")
-    }
+
+def f1_macro(preds, labels):
+    return {"f1_macro": f1_score(y_true=labels, y_pred=preds, average="macro")}
 
 
 def pearson_and_spearman(preds, labels):

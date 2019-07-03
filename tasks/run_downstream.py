@@ -13,13 +13,17 @@
 # limitations under the License.
 """BERT finetuning runner."""
 
-import numpy as np
+import argparse
 import logging
 
-from farm.data_handler.seq_classification import GermEval18coarseProcessor, GermEval18fineProcessor, GNADProcessor
 from farm.data_handler.ner import ConllProcessor
+from farm.data_handler.seq_classification import (
+    GermEval18coarseProcessor,
+    GermEval18fineProcessor,
+    GNADProcessor,
+)
 from farm.modeling.bert.training import run_model
-import argparse
+
 from farm.file_utils import read_config, unnestConfig
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
@@ -27,32 +31,40 @@ logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("-c",
-                        "--conf_file",
-                        help="Specify config file",
-                        metavar="FILE",
-                        default="seq_classification/gnad_config.json")
+    parser.add_argument(
+        "-c",
+        "--conf_file",
+        help="Specify config file",
+        metavar="FILE",
+        default="seq_classification/gnad_config.json",
+    )
     cli_args, remaining_argv = parser.parse_known_args()
-    args = read_config(cli_args.conf_file,flattend=True)
+    args = read_config(cli_args.conf_file, flattend=True)
     configList = unnestConfig(args, flattened=True)
 
-
     # TODO here args is flat, we want nested anyways!
-    if(args.name == "GermEval18Coarse"):
+    if args.name == "GermEval18Coarse":
         processor = GermEval18coarseProcessor(args.data_dir, args.dev_size, args.seed)
-    elif (args.name == "GermEval18Fine"):
+    elif args.name == "GermEval18Fine":
         processor = GermEval18fineProcessor(args.data_dir, args.dev_size, args.seed)
-    elif (args.name == "Conll2003"):
+    elif args.name == "Conll2003":
         processor = ConllProcessor()
-    elif (args.name == "GermEval14"):
+    elif args.name == "GermEval14":
         processor = ConllProcessor()
-    elif (args.name == "GNAD"):
+    elif args.name == "GNAD":
         processor = GNADProcessor(args.data_dir, args.dev_size, args.seed)
     else:
         raise NotImplementedError
 
     for args in configList:
-        run_model(args=args, prediction_head=args.prediction_head, processor=processor, output_mode=args.output_mode,metric=args.metric)
+        run_model(
+            args=args,
+            prediction_head=args.prediction_head,
+            processor=processor,
+            output_mode=args.output_mode,
+            metric=args.metric,
+        )
+
 
 if __name__ == "__main__":
     main()

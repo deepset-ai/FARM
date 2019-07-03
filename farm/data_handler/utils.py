@@ -5,6 +5,7 @@ logger = logging.getLogger(__name__)
 import csv
 import sys
 
+
 def read_tsv(filename, quotechar=None, delimiter="\t"):
     """Reads a tab separated value file."""
     with open(filename, "r", encoding="utf-8") as f:
@@ -12,55 +13,49 @@ def read_tsv(filename, quotechar=None, delimiter="\t"):
         lines = []
         for line in reader:
             if sys.version_info[0] == 2:
-                line = list(unicode(cell, 'utf-8') for cell in line)
+                line = list(unicode(cell, "utf-8") for cell in line)
             lines.append(line)
         return lines
 
+
 def read_ner_file(filename, **kwargs):
-    '''
+    """
     read file
     return format :
     [ ['EU', 'B-ORG'], ['rejects', 'O'], ['German', 'B-MISC'], ['call', 'O'], ['to', 'O'], ['boycott', 'O'], ['British', 'B-MISC'], ['lamb', 'O'], ['.', 'O'] ]
-    '''
+    """
     f = open(filename)
-
 
     data = []
     sentence = []
-    label= []
+    label = []
     for line in f:
-        if len(line)==0 or line.startswith('-DOCSTART') or line[0]=="\n":
+        if len(line) == 0 or line.startswith("-DOCSTART") or line[0] == "\n":
             if len(sentence) > 0:
-                data.append((sentence,label))
+                data.append((sentence, label))
                 sentence = []
                 label = []
             continue
-        splits = line.split(' ')
+        splits = line.split(" ")
         sentence.append(splits[0])
         label.append(splits[-1][:-1])
 
-    if len(sentence) >0:
-        data.append((sentence,label))
+    if len(sentence) > 0:
+        data.append((sentence, label))
         sentence = []
         label = []
     return data
 
 
-def print_example_with_features(example,
-                                tokens,
-                                input_ids,
-                                input_mask,
-                                segment_ids,
-                                label_ids,
-                                initial_mask):
+def print_example_with_features(
+    example, tokens, input_ids, input_mask, segment_ids, label_ids, initial_mask
+):
     logger.info("*** Example ***")
     logger.info("guid: %s" % (example.guid))
-    logger.info("tokens: %s" % " ".join(
-        [str(x) for x in tokens]))
+    logger.info("tokens: %s" % " ".join([str(x) for x in tokens]))
     logger.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
     logger.info("input_mask: %s" % " ".join([str(x) for x in input_mask]))
-    logger.info(
-        "segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
+    logger.info("segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
     logger.info("label: %s" % (example.label))
     logger.info("ids  : %s" % (label_ids))
     logger.info("initial_mask: %s" % (initial_mask))
@@ -98,9 +93,7 @@ def pad(seq, max_seq_len, pad_token):
     return ret
 
 
-def expand_labels(labels_word,
-                  initial_mask,
-                  non_initial_token):
+def expand_labels(labels_word, initial_mask, non_initial_token):
     labels_token = []
     word_index = 0
     for im in initial_mask:
@@ -133,8 +126,8 @@ def words_to_tokens(words, tokenizer, max_seq_length):
         tokens_all += tokens_word
 
     # Clip at max_seq_length. The "-2" is for CLS and SEP token
-    tokens_all = tokens_all[:max_seq_length - 2]
-    initial_mask = initial_mask[:max_seq_length - 2]
+    tokens_all = tokens_all[: max_seq_length - 2]
+    initial_mask = initial_mask[: max_seq_length - 2]
 
     assert len(tokens_all) == len(initial_mask)
 

@@ -33,7 +33,8 @@ def create_examples_gnad(lines, set_type):
         text_b = ""
         label = line[0]
         examples.append(
-            InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
+            InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
+        )
     return examples
 
 
@@ -47,8 +48,10 @@ def create_examples_germ_eval_18_coarse(lines, set_type):
         text_a = line[0]
         label = line[1]
         examples.append(
-            InputExample(guid=guid, text_a=text_a, text_b=None, label=label))
+            InputExample(guid=guid, text_a=text_a, text_b=None, label=label)
+        )
     return examples
+
 
 def create_examples_germ_eval_18_fine(lines, set_type):
     """Creates examples for the training and dev sets."""
@@ -60,18 +63,22 @@ def create_examples_germ_eval_18_fine(lines, set_type):
         text_a = line[0]
         label = line[2]
         examples.append(
-            InputExample(guid=guid, text_a=text_a, text_b=None, label=label))
+            InputExample(guid=guid, text_a=text_a, text_b=None, label=label)
+        )
     return examples
 
+
 def create_examples_conll_03(lines, set_type):
-        examples = []
-        for i, (sentence, label) in enumerate(lines):
-            guid = "%s-%s" % (set_type, i)
-            text_a = ' '.join(sentence)
-            text_b = None
-            label = label
-            examples.append(InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
-        return examples
+    examples = []
+    for i, (sentence, label) in enumerate(lines):
+        guid = "%s-%s" % (set_type, i)
+        text_a = " ".join(sentence)
+        text_b = None
+        label = label
+        examples.append(
+            InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
+        )
+    return examples
 
 
 def create_examples_mrpc(lines, set_type):
@@ -85,7 +92,8 @@ def create_examples_mrpc(lines, set_type):
         text_b = line[4]
         label = line[0]
         examples.append(
-            InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
+            InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
+        )
     return examples
 
 
@@ -100,9 +108,9 @@ def create_examples_mnli(lines, set_type):
         text_b = line[9]
         label = line[-1]
         examples.append(
-            InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
+            InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
+        )
     return examples
-
 
 
 def create_examples_cola(lines, set_type):
@@ -113,7 +121,8 @@ def create_examples_cola(lines, set_type):
         text_a = line[3]
         label = line[1]
         examples.append(
-            InputExample(guid=guid, text_a=text_a, text_b=None, label=label))
+            InputExample(guid=guid, text_a=text_a, text_b=None, label=label)
+        )
     return examples
 
 
@@ -127,7 +136,8 @@ def create_examples_sst2(lines, set_type):
         text_a = line[0]
         label = line[1]
         examples.append(
-            InputExample(guid=guid, text_a=text_a, text_b=None, label=label))
+            InputExample(guid=guid, text_a=text_a, text_b=None, label=label)
+        )
     return examples
 
 
@@ -142,7 +152,8 @@ def create_examples_stsb(lines, set_type):
         text_b = line[8]
         label = line[-1]
         examples.append(
-            InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
+            InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
+        )
     return examples
 
 
@@ -160,7 +171,8 @@ def create_examples_qqp(lines, set_type):
         except IndexError:
             continue
         examples.append(
-            InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
+            InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
+        )
     return examples
 
 
@@ -175,7 +187,8 @@ def create_examples_qnli(lines, set_type):
         text_b = line[2]
         label = line[-1]
         examples.append(
-            InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
+            InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
+        )
     return examples
 
 
@@ -190,7 +203,8 @@ def create_examples_rte(lines, set_type):
         text_b = line[2]
         label = line[-1]
         examples.append(
-            InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
+            InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
+        )
     return examples
 
 
@@ -205,5 +219,6 @@ def create_examples_wnli(lines, set_type):
         text_b = line[2]
         label = line[-1]
         examples.append(
-            InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label))
+            InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
+        )
     return examples
