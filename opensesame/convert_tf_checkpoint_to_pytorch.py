@@ -25,7 +25,7 @@ import tensorflow as tf
 import torch
 import numpy as np
 
-from opensesame.models.bert.modeling import BertConfig, BertForPreTraining, load_tf_weights_in_bert
+from opensesame.modeling.bert.modeling import BertConfig, BertForPreTraining, load_tf_weights_in_bert
 
 def convert_tf_checkpoint_to_pytorch(tf_checkpoint_path, bert_config_file, pytorch_dump_path):
     # Initialise PyTorch model

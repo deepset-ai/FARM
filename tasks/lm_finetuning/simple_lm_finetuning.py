@@ -29,9 +29,9 @@ from torch.utils.data import DataLoader, Dataset, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
 
-from opensesame.models.bert.modeling import BertForPreTraining
-from opensesame.models.bert.tokenization import BertTokenizer
-from opensesame.models.bert.optimization import BertAdam, WarmupLinearSchedule
+from opensesame.modeling.bert.modeling import BertForPreTraining
+from opensesame.modeling.bert.tokenization import BertTokenizer
+from opensesame.modeling.bert.optimization import BertAdam, WarmupLinearSchedule
 
 logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt='%m/%d/%Y %H:%M:%S',

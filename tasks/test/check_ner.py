@@ -1,6 +1,6 @@
 from opensesame.data_handler.ner import ConllProcessor
-from opensesame.models.bert.tokenization import BertTokenizer
-from opensesame.models.bert.modeling import BertForSequenceClassification, BertForTokenClassification
+from opensesame.modeling.bert.tokenization import BertTokenizer
+from opensesame.modeling.bert.modeling import BertForSequenceClassification, BertForTokenClassification
 from opensesame.data_handler.general import BertDataBunch, NewDataBunch
 from opensesame.data_handler.ner import convert_examples_to_features as convert_examples_to_features_ner
 from opensesame.data_handler.ner import convert_examples_to_features_old as convert_examples_to_features_ner_old

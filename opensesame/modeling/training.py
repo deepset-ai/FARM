@@ -13,18 +13,18 @@ from seqeval.metrics import classification_report as token_classification_report
 from seqeval.metrics import f1_score
 
 from opensesame.file_utils import OPENSESAME_CACHE, WEIGHTS_NAME, CONFIG_NAME, read_config
-from opensesame.models.bert.modeling import BertForSequenceClassification, BertForTokenClassification
-from opensesame.models.bert.tokenization import BertTokenizer
-from opensesame.models.bert.optimization import BertAdam, WarmupLinearSchedule
-from opensesame.data_handler.general import NewDataBunch
-from opensesame.data_handler.ner import convert_examples_to_features as convert_examples_to_features_ner
+from opensesame.modeling.language_model import BertForSequenceClassification, BertForTokenClassification
+from opensesame.modeling.tokenization import BertTokenizer
+from opensesame.modeling.optimization import BertAdam, WarmupLinearSchedule
+from opensesame.data_handler.input_features import examples_to_features_ner, examples_to_features_sequence
+from opensesame.data_handler.data_bunch import DataBunch
 
-from opensesame.data_handler.seq_classification import convert_examples_to_features as convert_examples_to_features
 
 from opensesame.metrics import compute_metrics
 from opensesame.utils import set_all_seeds, initialize_device_settings, MLFlowLogger
 
 logger = logging.getLogger(__name__)
+
 
 class WrappedDataParallel(torch.nn.DataParallel):
     """
@@ -123,7 +123,7 @@ class Trainer:
 
 
     def backward_propagate(self, loss, step):
-        loss = self._adjust_loss(loss)
+        loss = self.adjust_loss(loss)
         if self.fp16:
             self.optimizer.backward(loss)
         else:
@@ -140,15 +140,8 @@ class Trainer:
             self.optimizer.zero_grad()
 
 
-    def _adjust_loss(self, loss):
-        # TODO: These 2 lines are added because the CrossEntropy function in SEqClassifier was given the parameter
-        # reduction=None
+    def adjust_loss(self, loss):
         loss = loss.mean()
-        # if self.n_gpu == 1:
-        #     loss = loss.mean()
-        # # adjust loss for multi-gpu and distributed calculations
-        # if self.n_gpu > 1:
-        #     loss = loss.mean()  # mean() to average on multi-gpu.
         if self.grad_acc_steps > 1:
             loss = loss / self.grad_acc_steps
         return loss
@@ -368,11 +361,11 @@ def run_model(args, prediction_head, processor, output_mode, metric, token_level
                                               do_lower_case=args.lower_case)
 
     if token_level:
-        ex2feat = convert_examples_to_features_ner
+        ex2feat = examples_to_features_ner
     else:
-        ex2feat = convert_examples_to_features
+        ex2feat = examples_to_features_sequence
 
-    data_bunch = NewDataBunch.load(args.data_dir,
+    data_bunch = DataBunch.load(args.data_dir,
                                    processor,
                                    tokenizer,
                                    args.train_batch_size,

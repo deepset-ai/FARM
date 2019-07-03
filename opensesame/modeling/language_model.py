@@ -22,16 +22,13 @@ import os
 import shutil
 import tarfile
 import tempfile
-import datetime
-import json
-import ast
 
 
 import torch
 from torch import nn
-from torch.nn import CrossEntropyLoss, MSELoss, Module
+from torch.nn import CrossEntropyLoss
 from pytorch_pretrained_bert.modeling import BertConfig, BertLayerNorm, load_tf_weights_in_bert, BertEncoder, \
-    BertEmbeddings, BertPooler, BertPreTrainingHeads, BertOnlyMLMHead, BertOnlyNSPHead, BertPreTrainedModel
+    BertEmbeddings, BertPooler, BertPreTrainedModel
 
 from opensesame.file_utils import cached_path, WEIGHTS_NAME, CONFIG_NAME
 
@@ -61,27 +58,9 @@ BERT_CONFIG_NAME = 'bert_config.json'
 TF_WEIGHTS_NAME = 'model.ckpt'
 
 
-class FARMModel(Module):
-    def __init__(self, language_model, prediction_head):
-        super(FARMModel, self).__init__()
-        self.language_model = language_model
-        self.prediction_head = prediction_head
+class LanguageModel(nn.Module):
+    """ Takes a tokenized sentence as input and returns vectors that represents the input semantically. """
 
-    def logits_to_loss(self, logits, labels):
-        raise NotImplementedError()
-
-    def logits_to_pred(self, logits):
-        raise NotImplementedError()
-
-    def save(self, save_dir):
-        raise NotImplementedError()
-
-    @classmethod
-    def load(cls, load_dir):
-        raise NotImplementedError()
-
-
-class LanguageModel(Module):
     def freeze(self, layers):
         raise NotImplementedError()
 
@@ -103,142 +82,35 @@ class LanguageModel(Module):
         raise NotImplementedError()
 
 
-class PredictionHead(Module):
+class Bert(LanguageModel):
+    """ A BERT model (https://arxiv.org/abs/1810.04805) that wraps the HuggingFace's implementation
+    (https://github.com/huggingface/pytorch-pretrained-BERT) to fit the LanguageModel class. """
+    def __init__(self):
+        super(Bert, self).__init__()
+        self.model = None
+
     @classmethod
-    def load(cls, load_dir):
-        raise NotImplementedError()
-
-    def save(self, save_dir):
-        raise NotImplementedError()
-
-    @classmethod
-    def load(cls, load_dir):
-        # TODO: Maybe we want to initialize at higher so that switching in a new config can give us a whole new class of ph
-        filepath = os.path.join(load_dir, "prediction_head_config.json")
-        with open(filepath) as file:
-            config = json.load(file)
-        return cls(**config)
-
-
-class FeedForwardFarm(PredictionHead):
-    def __init__(self,
-                 layer_dims,
-                 **kwargs):
-        # Todo: Consider having just one input argument
-        super(FeedForwardFarm, self).__init__()
-
-        # If read from config the input will be string
-        self.layer_dims = ast.literal_eval(str(layer_dims))
-        n_layers = len(self.layer_dims) - 1
-        layers_all = []
-        # TODO: IS this needed?
-        self.output_size = self.layer_dims[-1]
-
-        for i in range(n_layers):
-            size_in = self.layer_dims[i]
-            size_out = self.layer_dims[i + 1]
-            layer = nn.Linear(size_in, size_out)
-            layers_all.append(layer)
-        self.feed_forward = nn.Sequential(*layers_all)
-
-        self.generate_config()
-
-
-    def forward(self, X):
-        logits = self.feed_forward(X)
-        return logits
-
-    def save_config(self, save_dir):
-        output_config_file = os.path.join(save_dir, "prediction_head_config.json")
-        with open(output_config_file, "w") as file:
-            json.dump(self.config, file)
-
-    def checkpoint(self, save_dir, step="X"):
-
-        # Save a trained model, configuration and tokenizer
-        model_to_save = self.module if hasattr(self, 'module') else self  # Only save the model it-self
-
-        # If we save using the predefined names, we can load using `from_pretrained`
-        output_model_file = os.path.join(save_dir, "prediction_head_{}.bin".format(step))
-
-        torch.save(model_to_save.state_dict(), output_model_file)
-
-    def generate_config(self):
-        self.config = {"type": type(self).__name__,
-                       "last_initialized": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                       "layer_dims": str(self.layer_dims)}
-
-class BertFarm(LanguageModel):
-    def __init__(self, pretrained_model_name_or_path):
-        super(BertFarm, self).__init__()
-
-        self.bert = BertModel.from_pretrained(pretrained_model_name_or_path)
+    def load(cls, pretrained_model_name_or_path):
+        bert = cls()
+        bert.model = BertModel.from_pretrained(pretrained_model_name_or_path)
+        return bert
 
     def forward(self,
                 input_ids,
                 token_type_ids,
                 attention_mask,
                 output_all_encoded_layers=False):
-        return self.bert(input_ids,
+        return self.model(input_ids,
                          token_type_ids,
                          attention_mask,
                          output_all_encoded_layers=False)
 
-    @classmethod
-    def load(cls, pretrained_model_name_or_path):
-        return BertFarm(pretrained_model_name_or_path)
-
     def save_config(self, save_dir):
         # TODO: Maybe we want to initialize at higher so that switching in a new config can give us a whole new class of lm
-        output_config_file = os.path.join(save_dir, "language_model_config.json")
-        self.bert.config.to_json_file(output_config_file)
-
-
-class BertSeqFarm(FARMModel):
-    def __init__(self,
-                 language_model,
-                 prediction_head,
-                 embeds_dropout_prob,
-                 balanced_weights=None):
-
-        super(BertSeqFarm, self).__init__(language_model, prediction_head)
-
-        self.num_labels = prediction_head.output_size
-
-        self.dropout = nn.Dropout(embeds_dropout_prob)
-
-        # needs to be a parameter for distributed setting
-        # This is messy, can we do this differently?
-        if balanced_weights:
-            self.balanced_weights = torch.nn.Parameter(torch.tensor(balanced_weights), requires_grad=False)
-            self.loss_fct = CrossEntropyLoss(weight=self.balanced_weights, reduction="none")
-        else:
-            self.loss_fct = CrossEntropyLoss(reduction="none")
-
-    def forward(self,
-                input_ids,
-                token_type_ids=None,
-                attention_mask=None):
-
-        _, pooled_output = self.language_model(input_ids,
-                                               token_type_ids,
-                                               attention_mask,
-                                               output_all_encoded_layers=False)
-
-        pooled_output = self.dropout(pooled_output)
-
-        # TODO: is self.num_labels needed here? Doesn't prediction head already do this?
-        logits = self.prediction_head(pooled_output).view(-1, self.num_labels)
-
-        return logits
-
-    def logits_to_loss(self, logits, labels, **kwargs):
-        return self.loss_fct(logits, labels.view(-1))
-
-    def logits_to_preds(self, logits, **kwargs):
-        preds = logits.argmax(1)
-        # TODO: Two are returned because token level classification currently returns label ids as well. This should be changed
-        return None, preds
+        output_config_name = os.path.join(save_dir, "language_model_config.json")
+        with open(output_config_name, "w") as file:
+            string = self.model.config.to_json_string(file)
+            file.write(string)
 
 
 # TODO: This class is huge and we only have it here because we need to load our models from S3. Is there a better way to do this?
@@ -492,200 +364,3 @@ class BertModel(BertPreTrainedModel):
         if not output_all_encoded_layers:
             encoded_layers = encoded_layers[-1]
         return encoded_layers, pooled_output
-
-
-class BertForSequenceClassification(BertPreTrainedModel):
-    """BERT model for classification.
-    This module is composed of the BERT model with a linear layer on top of
-    the pooled output.
-
-    Params:
-        `config`: a BertConfig class instance with the configuration to build a new model.
-        `num_labels`: the number of classes for the classifier. Default = 2.
-
-    Inputs:
-        `input_ids`: a torch.LongTensor of shape [batch_size, sequence_length]
-            with the word token indices in the vocabulary. Items in the batch should begin with the special "CLS" token. (see the tokens preprocessing logic in the scripts
-            `extract_features.py`, `run_classifier.py` and `run_squad.py`)
-        `token_type_ids`: an optional torch.LongTensor of shape [batch_size, sequence_length] with the token
-            types indices selected in [0, 1]. Type 0 corresponds to a `sentence A` and type 1 corresponds to
-            a `sentence B` token (see BERT paper for more details).
-        `attention_mask`: an optional torch.LongTensor of shape [batch_size, sequence_length] with indices
-            selected in [0, 1]. It's a mask to be used if the input sequence length is smaller than the max
-            input sequence length in the current batch. It's the mask that we typically use for attention when
-            a batch has varying length sentences.
-        `labels`: labels for the classification output: torch.LongTensor of shape [batch_size]
-            with indices selected in [0, ..., num_labels].
-
-    Outputs:
-        if `labels` is not `None`:
-            Outputs the CrossEntropy classification loss of the output with the labels.
-        if `labels` is `None`:
-            Outputs the classification logits of shape [batch_size, num_labels].
-
-    Example usage:
-    ```python
-    # Already been converted into WordPiece token ids
-    input_ids = torch.LongTensor([[31, 51, 99], [15, 5, 0]])
-    input_mask = torch.LongTensor([[1, 1, 1], [1, 1, 0]])
-    token_type_ids = torch.LongTensor([[0, 0, 1], [0, 1, 0]])
-
-    config = BertConfig(vocab_size_or_config_json_file=32000, hidden_size=768,
-        num_hidden_layers=12, num_attention_heads=12, intermediate_size=3072)
-
-    num_labels = 2
-
-    model = BertForSequenceClassification(config, num_labels)
-    logits = model(input_ids, token_type_ids, input_mask)
-    ```
-    """
-
-    def __init__(self, config, num_labels, balanced_weights=None):
-        super(BertForSequenceClassification, self).__init__(config)
-        self.num_labels = num_labels
-        self.bert = BertModel(config)
-        self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.classifier = nn.Linear(config.hidden_size, num_labels)
-        if balanced_weights:
-            assert self.num_labels == len(balanced_weights)
-            # needs to be a parameter for distributed setting
-            self.balanced_weights = torch.nn.Parameter(torch.tensor(balanced_weights), requires_grad=False)
-        else:
-            self.balanced_weights = None
-        self.loss_fct = CrossEntropyLoss(weight=self.balanced_weights, reduction="none")
-        self.apply(self.init_bert_weights)
-
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None):
-        _, pooled_output = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
-        pooled_output = self.dropout(pooled_output)
-        logits = self.classifier(pooled_output).view(-1, self.num_labels)
-        return logits
-
-    def logits_to_loss(self, logits, labels, **kwargs):
-        return self.loss_fct(logits, labels.view(-1))
-
-    def logits_to_preds(self, logits, **kwargs):
-        preds = logits.argmax(1)
-        # preds = np.argmax(logits, axis=1)
-        # TODO: Two are returned because token level classification currently returns label ids as well. This should be changed
-        return None, preds
-
-
-class BertForTokenClassification(BertPreTrainedModel):
-    """BERT model for token-level classification.
-    This module is composed of the BERT model with a linear layer on top of
-    the full hidden state of the last layer.
-
-    Params:
-        `config`: a BertConfig class instance with the configuration to build a new model.
-        `num_labels`: the number of classes for the classifier. Default = 2.
-
-    Inputs:
-        `input_ids`: a torch.LongTensor of shape [batch_size, sequence_length]
-            with the word token indices in the vocabulary(see the tokens preprocessing logic in the scripts
-            `extract_features.py`, `run_classifier.py` and `run_squad.py`)
-        `token_type_ids`: an optional torch.LongTensor of shape [batch_size, sequence_length] with the token
-            types indices selected in [0, 1]. Type 0 corresponds to a `sentence A` and type 1 corresponds to
-            a `sentence B` token (see BERT paper for more details).
-        `attention_mask`: an optional torch.LongTensor of shape [batch_size, sequence_length] with indices
-            selected in [0, 1]. It's a mask to be used if the input sequence length is smaller than the max
-            input sequence length in the current batch. It's the mask that we typically use for attention when
-            a batch has varying length sentences.
-        `labels`: labels for the classification output: torch.LongTensor of shape [batch_size, sequence_length]
-            with indices selected in [0, ..., num_labels].
-
-    Outputs:
-        if `labels` is not `None`:
-            Outputs the CrossEntropy classification loss of the output with the labels.
-        if `labels` is `None`:
-            Outputs the classification logits of shape [batch_size, sequence_length, num_labels].
-
-    Example usage:
-    ```python
-    # Already been converted into WordPiece token ids
-    input_ids = torch.LongTensor([[31, 51, 99], [15, 5, 0]])
-    input_mask = torch.LongTensor([[1, 1, 1], [1, 1, 0]])
-    token_type_ids = torch.LongTensor([[0, 0, 1], [0, 1, 0]])
-
-    config = BertConfig(vocab_size_or_config_json_file=32000, hidden_size=768,
-        num_hidden_layers=12, num_attention_heads=12, intermediate_size=3072)
-
-    num_labels = 2
-
-    model = BertForTokenClassification(config, num_labels)
-    logits = model(input_ids, token_type_ids, input_mask)
-    ```
-    """
-
-    def __init__(self, config, num_labels):
-        super(BertForTokenClassification, self).__init__(config)
-        self.num_labels = num_labels
-        self.bert = BertModel(config)
-        self.dropout = nn.Dropout(config.hidden_dropout_prob)
-        self.classifier = nn.Linear(config.hidden_size, num_labels)
-        # TODO: In the other models, CrossEntropyLoss is expected to return per sample loss (using the reduction = none argument)
-        self.loss_fct = CrossEntropyLoss(reduction="none")
-        self.apply(self.init_bert_weights)
-
-    def forward(self, input_ids, token_type_ids=None, attention_mask=None, labels=None):
-        sequence_output, _ = self.bert(input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False)
-        sequence_output = self.dropout(sequence_output)
-        logits = self.classifier(sequence_output)
-
-        if labels is not None:
-            # loss_fct = CrossEntropyLoss()
-            # Only keep active parts of the loss
-            if attention_mask is not None:
-                active_loss = attention_mask.view(-1) == 1
-                active_logits = logits.view(-1, self.num_labels)[active_loss]
-                active_labels = labels.view(-1)[active_loss]
-                loss = self.loss_fct(active_logits, active_labels)
-            else:
-                loss = self.loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
-            return loss
-        else:
-            return logits
-
-    def logits_to_loss(self, logits, labels, initial_mask, attention_mask=None):
-        # Todo: should we be applying initial mask here? Loss is currently calculated even on non initial tokens
-        active_loss = attention_mask.view(-1) == 1
-        active_logits = logits.view(-1, self.num_labels)[active_loss]
-        active_labels = labels.view(-1)[active_loss]
-        loss = self.loss_fct(active_logits, active_labels)
-        return loss
-
-    def logits_to_preds(self, logits, input_mask, initial_mask, label_map, label_ids):
-
-        preds_word_all = []
-        labels_word_all = []
-
-        preds_tokens = torch.argmax(logits, dim=2)
-
-        preds_token = preds_tokens.detach().cpu().numpy()
-        input_mask = input_mask.detach().cpu().numpy()
-        initial_mask = initial_mask.detach().cpu().numpy()
-        label_ids = label_ids.cpu().numpy()
-
-        for idx, im in enumerate(initial_mask):
-            preds_t = preds_token[idx]
-            labels_t = label_ids[idx]
-
-            # Get labels and predictions for just the word initial tokens
-            labels_word_id = self.initial_token_only(labels_t, initial_mask=im)
-            preds_word_id = self.initial_token_only(preds_t, initial_mask=im)
-
-            labels_word = [label_map[lwi] for lwi in labels_word_id]
-            preds_word = [label_map[pwi] for pwi in preds_word_id]
-
-            preds_word_all.append(preds_word)
-            labels_word_all.append(labels_word)
-
-        return labels_word_all, preds_word_all
-
-    @staticmethod
-    def initial_token_only(seq, initial_mask):
-        ret = []
-        for init, s in zip(initial_mask, seq):
-            if init:
-                ret.append(s)
-        return ret
