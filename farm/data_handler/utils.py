@@ -1,13 +1,26 @@
+import csv
 import logging
+import os
+import sys
+import tarfile
+import tempfile
+
+from farm.file_utils import http_get
 
 logger = logging.getLogger(__name__)
 
-import csv
-import sys
+DOWNSTREAM_TASK_MAP = {
+    "gnad": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/gnad.tar.gz",
+    "conll03-de": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/conll03de.tar.gz",
+    "germeval14": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/germeval14.tar.gz",
+    "germeval18": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/germeval18.tar.gz",
+}
 
 
 def read_tsv(filename, quotechar=None, delimiter="\t"):
-    """Reads a tab separated value file."""
+    """Reads a tab separated value file. Tries to download the data if filename is not found"""
+    if not (os.path.exists(filename)):
+        download_extract_downstream_data(filename)
     with open(filename, "r", encoding="utf-8") as f:
         reader = csv.reader(f, delimiter=delimiter, quotechar=quotechar)
         lines = []
@@ -24,6 +37,8 @@ def read_ner_file(filename, **kwargs):
     return format :
     [ ['EU', 'B-ORG'], ['rejects', 'O'], ['German', 'B-MISC'], ['call', 'O'], ['to', 'O'], ['boycott', 'O'], ['British', 'B-MISC'], ['lamb', 'O'], ['.', 'O'] ]
     """
+    if not (os.path.exists(filename)):
+        download_extract_downstream_data(filename)
     f = open(filename)
 
     data = []
@@ -42,9 +57,28 @@ def read_ner_file(filename, **kwargs):
 
     if len(sentence) > 0:
         data.append((sentence, label))
-        sentence = []
-        label = []
     return data
+
+
+def download_extract_downstream_data(input_file):
+    # download archive to temp dir and extract to correct position
+    full_path = os.path.realpath(input_file)
+    directory = os.path.dirname(full_path)
+    taskname = directory.split("/")[-1]
+    datadir = "/".join(directory.split("/")[:-1])
+    logger.info(
+        "downloading and extracting file {} to dir {}".format(taskname, datadir)
+    )
+    if taskname not in DOWNSTREAM_TASK_MAP:
+        logger.error("Cannot download {}. Unknown data source.".format(taskname))
+    else:
+        with tempfile.NamedTemporaryFile() as temp_file:
+            http_get(DOWNSTREAM_TASK_MAP[taskname], temp_file)
+            temp_file.flush()
+            temp_file.seek(0)  # making tempfile accessible
+            tfile = tarfile.open(temp_file.name)
+            tfile.extractall(datadir)
+        # temp_file gets deleted here
 
 
 def print_example_with_features(
