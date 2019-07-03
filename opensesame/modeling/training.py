@@ -13,7 +13,6 @@ from seqeval.metrics import classification_report as token_classification_report
 from seqeval.metrics import f1_score
 
 from opensesame.file_utils import OPENSESAME_CACHE, WEIGHTS_NAME, CONFIG_NAME, read_config
-from opensesame.modeling.language_model import BertForSequenceClassification, BertForTokenClassification
 from opensesame.modeling.tokenization import BertTokenizer
 from opensesame.modeling.optimization import BertAdam, WarmupLinearSchedule
 from opensesame.data_handler.input_features import examples_to_features_ner, examples_to_features_sequence

@@ -2,7 +2,7 @@ import logging
 import torch
 from opensesame.utils import set_all_seeds
 from opensesame.modeling.tokenization import BertTokenizer
-from opensesame.data_handler.data_bunch import DataBunch, NewDataBunch
+from opensesame.data_handler.data_bunch import DataBunch, DataBunch
 from opensesame.data_handler.input_features import examples_to_features_ner, examples_to_features_sequence
 from opensesame.data_handler.utils import read_tsv
 from opensesame.data_handler.input_example import create_examples_gnad
@@ -34,7 +34,7 @@ pipeline = PPGNAD(data_dir="../data/gnad/",
 
 # TODO Maybe data_dir should not be an argument here but in pipeline
 # Pipeline should also contain metric
-data_bunch = NewDataBunch(preprocessing_pipeline=pipeline,
+data_bunch = DataBunch(preprocessing_pipeline=pipeline,
                           batch_size=32,
                           distributed=False)
 
@@ -45,8 +45,9 @@ language_model = Bert.load("bert-base-cased-de-2b-end")
 
 # TODO where are balance class weights?
 model = AdaptiveModel(language_model=language_model,
-                            prediction_head=prediction_head,
-                            embeds_dropout_prob=0.1)
+                      prediction_head=prediction_head,
+                      embeds_dropout_prob=0.1,
+                      token_level=False)
 model.to(device)
 
 # Init optimizer
