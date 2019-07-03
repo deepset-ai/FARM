@@ -12,15 +12,15 @@ from sklearn.metrics import classification_report
 from seqeval.metrics import classification_report as token_classification_report
 from seqeval.metrics import f1_score
 
-from opensesame.file_utils import OPENSESAME_CACHE, WEIGHTS_NAME, CONFIG_NAME, read_config
-from opensesame.modeling.tokenization import BertTokenizer
-from opensesame.modeling.optimization import BertAdam, WarmupLinearSchedule
-from opensesame.data_handler.input_features import examples_to_features_ner, examples_to_features_sequence
-from opensesame.data_handler.data_bunch import DataBunch
+from farm.file_utils import FARM_CACHE, WEIGHTS_NAME, CONFIG_NAME, read_config
+from farm.modeling.tokenization import BertTokenizer
+from farm.modeling.optimization import BertAdam, WarmupLinearSchedule
+from farm.data_handler.input_features import examples_to_features_ner, examples_to_features_sequence
+from farm.data_handler.data_bunch import DataBunch
 
 
-from opensesame.metrics import compute_metrics
-from opensesame.utils import set_all_seeds, initialize_device_settings, MLFlowLogger
+from farm.metrics import compute_metrics
+from farm.utils import set_all_seeds, initialize_device_settings, MLFlowLogger
 
 logger = logging.getLogger(__name__)
 
@@ -290,7 +290,7 @@ def load_model(model_dir, prediction_head, do_lower_case, num_labels):
 
 def initialize_model(bert_model, prediction_head, num_labels, device, n_gpu, cache_dir, local_rank, fp16, balanced_weights=None):
     # Prepare model
-    cache_dir = cache_dir if cache_dir else os.path.join(str(OPENSESAME_CACHE), 'distributed_{}'.format(local_rank))
+    cache_dir = cache_dir if cache_dir else os.path.join(str(FARM_CACHE), 'distributed_{}'.format(local_rank))
     if prediction_head == "seq_classification":
         model = BertForSequenceClassification.from_pretrained(bert_model,
                                                               cache_dir=cache_dir,

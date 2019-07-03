@@ -30,7 +30,7 @@ from torch.nn import CrossEntropyLoss
 from pytorch_pretrained_bert.modeling import BertConfig, BertLayerNorm, load_tf_weights_in_bert, BertEncoder, \
     BertEmbeddings, BertPooler, BertPreTrainedModel
 
-from opensesame.file_utils import cached_path, WEIGHTS_NAME, CONFIG_NAME
+from farm.file_utils import cached_path, WEIGHTS_NAME, CONFIG_NAME
 
 logger = logging.getLogger(__name__)
 

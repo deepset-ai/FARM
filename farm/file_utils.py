@@ -30,7 +30,7 @@ except ImportError:
     torch_cache_home = os.path.expanduser(
         os.getenv('TORCH_HOME', os.path.join(
             os.getenv('XDG_CACHE_HOME', '~/.cache'), 'torch')))
-default_cache_path = os.path.join(torch_cache_home, 'opensesame')
+default_cache_path = os.path.join(torch_cache_home, 'farm')
 
 try:
     from urllib.parse import urlparse
@@ -39,10 +39,10 @@ except ImportError:
 
 try:
     from pathlib import Path
-    OPENSESAME_CACHE = Path(
-        os.getenv('OPENSESAME_CACHE', default_cache_path))
+    FARM_CACHE = Path(
+        os.getenv('FARM_CACHE', default_cache_path))
 except (AttributeError, ImportError):
-    OPENSESAME_CACHE = os.getenv('OPENSESAME_CACHE',
+    FARM_CACHE = os.getenv('FARM_CACHE',
                                               default_cache_path)
 
 CONFIG_NAME = "config.json"
@@ -75,7 +75,7 @@ def filename_to_url(filename, cache_dir=None):
     Raise ``EnvironmentError`` if `filename` or its stored metadata do not exist.
     """
     if cache_dir is None:
-        cache_dir = OPENSESAME_CACHE
+        cache_dir = FARM_CACHE
     if sys.version_info[0] == 3 and isinstance(cache_dir, Path):
         cache_dir = str(cache_dir)
 
@@ -103,7 +103,7 @@ def cached_path(url_or_filename, cache_dir=None):
     make sure the file exists and then return the path.
     """
     if cache_dir is None:
-        cache_dir = OPENSESAME_CACHE
+        cache_dir = FARM_CACHE
     if sys.version_info[0] == 3 and isinstance(url_or_filename, Path):
         url_or_filename = str(url_or_filename)
     if sys.version_info[0] == 3 and isinstance(cache_dir, Path):
@@ -192,7 +192,7 @@ def get_from_cache(url, cache_dir=None):
     If it's not there, download it. Then return the path to the cached file.
     """
     if cache_dir is None:
-        cache_dir = OPENSESAME_CACHE
+        cache_dir = FARM_CACHE
     if sys.version_info[0] == 3 and isinstance(cache_dir, Path):
         cache_dir = str(cache_dir)
 

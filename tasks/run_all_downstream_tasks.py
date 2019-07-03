@@ -15,10 +15,10 @@
 
 import logging
 
-from opensesame.data_handler.seq_classification import GermEval18coarseProcessor, GermEval18fineProcessor, GNADProcessor
-from opensesame.data_handler.ner import ConllProcessor
-from opensesame.modeling.bert.training import run_model
-from opensesame.file_utils import read_config, unnestConfig
+from farm.data_handler.seq_classification import GermEval18coarseProcessor, GermEval18fineProcessor, GNADProcessor
+from farm.data_handler.ner import ConllProcessor
+from farm.modeling.bert.training import run_model
+from farm.file_utils import read_config, unnestConfig
 
 
 logger = logging.getLogger(__name__)

@@ -28,15 +28,15 @@ import torch
 from torch.utils.data import TensorDataset, DataLoader, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
 
-from opensesame.modeling.bert.tokenization import BertTokenizer
-from opensesame.modeling.bert.modeling import BertModel
+from farm.modeling.bert.tokenization import BertTokenizer
+from farm.modeling.bert.modeling import BertModel
 
 logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s', 
                     datefmt = '%m/%d/%Y %H:%M:%S',
                     level = logging.INFO)
 logger = logging.getLogger(__name__)
 
-#TODO refactor for opensesame!
+#TODO refactor for farm!
 
 class InputExample(object):
 

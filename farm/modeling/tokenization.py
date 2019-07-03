@@ -22,7 +22,7 @@ import os
 import unicodedata
 from io import open
 
-from opensesame.file_utils import cached_path
+from farm.file_utils import cached_path
 
 logger = logging.getLogger(__name__)
 

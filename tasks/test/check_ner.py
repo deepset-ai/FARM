@@ -1,9 +1,9 @@
-from opensesame.data_handler.ner import ConllProcessor
-from opensesame.modeling.bert.tokenization import BertTokenizer
+from farm.data_handler.ner import ConllProcessor
+from farm.modeling.bert.tokenization import BertTokenizer
 
-from opensesame.data_handler.general import DataBunch
-from opensesame.data_handler.ner import convert_examples_to_features as convert_examples_to_features_ner
-from opensesame.data_handler.ner import convert_examples_to_features_old as convert_examples_to_features_ner_old
+from farm.data_handler.general import DataBunch
+from farm.data_handler.ner import convert_examples_to_features as convert_examples_to_features_ner
+from farm.data_handler.ner import convert_examples_to_features_old as convert_examples_to_features_ner_old
 import logging
 
 

@@ -1,19 +1,19 @@
 import logging
 import torch
-from opensesame.utils import set_all_seeds
-from opensesame.modeling.tokenization import BertTokenizer
-from opensesame.data_handler.data_bunch import DataBunch, DataBunch
-from opensesame.data_handler.input_features import examples_to_features_ner, examples_to_features_sequence
-from opensesame.data_handler.utils import read_tsv
-from opensesame.data_handler.input_example import create_examples_gnad
-from opensesame.data_handler.input_features import examples_to_features_sequence
-from opensesame.data_handler.dataset import convert_features_to_dataset
+from farm.utils import set_all_seeds
+from farm.modeling.tokenization import BertTokenizer
+from farm.data_handler.data_bunch import DataBunch, DataBunch
+from farm.data_handler.input_features import examples_to_features_ner, examples_to_features_sequence
+from farm.data_handler.utils import read_tsv
+from farm.data_handler.input_example import create_examples_gnad
+from farm.data_handler.input_features import examples_to_features_sequence
+from farm.data_handler.dataset import convert_features_to_dataset
 
-from opensesame.modeling.training import calculate_optimization_steps, initialize_optimizer, Trainer, Evaluator
-from opensesame.modeling.language_model import BertModel, Bert
-from opensesame.modeling.adaptive_model import AdaptiveModel
-from opensesame.modeling.prediction_head import SeqClassificationHead
-from opensesame.data_handler.preprocessing_pipeline import PPGNAD, PreprocessingPipeline
+from farm.modeling.training import calculate_optimization_steps, initialize_optimizer, Trainer, Evaluator
+from farm.modeling.language_model import BertModel, Bert
+from farm.modeling.adaptive_model import AdaptiveModel
+from farm.modeling.prediction_head import SeqClassificationHead
+from farm.data_handler.preprocessing_pipeline import PPGNAD, PreprocessingPipeline
 
 logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt = '%m/%d/%Y %H:%M:%S',
@@ -27,7 +27,7 @@ tokenizer = BertTokenizer.from_pretrained(pretrained_model_name_or_path="bert-ba
                                           do_lower_case=False)
 
 
-pipeline = PPGNAD(data_dir="../data/gnad/",
+pipeline = PPGNAD(data_dir="../data/gnad",
                   tokenizer=tokenizer,
                   max_seq_len=128)
 

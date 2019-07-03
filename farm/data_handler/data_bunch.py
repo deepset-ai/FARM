@@ -1,6 +1,6 @@
 
-from opensesame.data_handler.dataset import convert_features_to_dataset
-from opensesame.data_handler.dataloader import covert_dataset_to_dataloader
+from farm.data_handler.dataset import convert_features_to_dataset
+from farm.data_handler.dataloader import covert_dataset_to_dataloader
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
 from sklearn.utils.class_weight import compute_class_weight
@@ -24,7 +24,7 @@ class DataBunch(object):
 
         self.load_data()
 
-    def load_data(self, dev_split=0.0):
+    def load_data(self):
 
         train_file = self.pipeline.train_file
         dev_file = self.pipeline.dev_file
@@ -38,7 +38,7 @@ class DataBunch(object):
         logger.info("Loading test set from: {}".format(test_file))
 
         # TODO checks to ensure dev is loaded the right way
-        if not dev_split:
+        if not self.pipeline.dev_split:
             dataset_train = self.pipeline.convert(train_file, start="file", end="dataset")
             dataset_dev = self.pipeline.convert(dev_file, start="file", end="dataset")
 
@@ -46,7 +46,7 @@ class DataBunch(object):
             # TODO How to handle seed?
             SEED = 42
             list_train_dev = self.pipeline.convert(train_file, start="file", end="list")
-            list_train, list_dev = train_test_split(list_train_dev, test_size=dev_split, random_state=SEED)
+            list_train, list_dev = train_test_split(list_train_dev, test_size=self.pipeline.dev_split, random_state=SEED)
             dataset_train = self.pipeline.convert(list_train, start="list", end="dataset")
             dataset_dev = self.pipeline.convert(list_dev, start="list", end="dataset")
 

@@ -12,9 +12,9 @@ from torch.utils.data import DataLoader, Dataset, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
 
-from opensesame.modeling.bert.modeling import BertForPreTraining
-from opensesame.modeling.bert.tokenization import BertTokenizer
-from opensesame.modeling.bert.optimization import BertAdam, WarmupLinearSchedule
+from farm.modeling.bert.modeling import BertForPreTraining
+from farm.modeling.bert.tokenization import BertTokenizer
+from farm.modeling.bert.optimization import BertAdam, WarmupLinearSchedule
 
 InputFeatures = namedtuple("InputFeatures", "input_ids input_mask segment_ids lm_label_ids is_next")
 

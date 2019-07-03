@@ -1,11 +1,11 @@
 import torch
 import os
 
-from opensesame.data_handler.utils import read_tsv, read_ner_file
-from opensesame.data_handler.input_example import create_examples_gnad, create_examples_conll_03
-from opensesame.data_handler.input_features import examples_to_features_sequence, examples_to_features_ner
-from opensesame.data_handler.dataset import convert_features_to_dataset
-from opensesame.data_handler.dataloader import covert_dataset_to_dataloader
+from farm.data_handler.utils import read_tsv, read_ner_file
+from farm.data_handler.input_example import create_examples_gnad, create_examples_conll_03
+from farm.data_handler.input_features import examples_to_features_sequence, examples_to_features_ner
+from farm.data_handler.dataset import convert_features_to_dataset
+from farm.data_handler.dataloader import covert_dataset_to_dataloader
 
 class PreprocessingPipeline:
     """ Contains the pipeline of preprocessing functions that is used to turn a dataset from files into
@@ -105,9 +105,9 @@ class PPGNAD(PreprocessingPipeline):
         output_mode = "classification"
         token_level = False
         train_file = "train.csv"
-        dev_file = "dev.csv"
+        dev_file = None
         test_file = "test.csv"
-        dev_split = 0.0
+        dev_split = 0.1
 
         super(PPGNAD, self).__init__(file_to_list=read_tsv,
                                         list_to_examples=create_examples_gnad,

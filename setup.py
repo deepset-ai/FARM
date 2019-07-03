@@ -2,7 +2,7 @@ from io import open
 from setuptools import find_packages, setup
 
 setup(
-    name="opensesame",
+    name="farm",
     version="0.1",
     author="Malte Pietsch, Timo Moeller, Branden Chan, Huggingface Team Authors, Google AI Language Team Authors, Open AI team Authors",
     author_email="malte.pietsch@deepset.ai",
@@ -11,7 +11,7 @@ setup(
     long_description_content_type="text/markdown",
     keywords='BERT NLP deep learning languagemodel transformer',
     license='Apache',
-    url="https://gitlab.com/deepset-ai/ml/lm/opensesame",
+    url="https://gitlab.com/deepset-ai/ml/lm/farm",
     packages=find_packages(exclude=["*.tests", "*.tests.*",
                                     "tests.*", "tests"]),
     install_requires=['torch>=0.4.1',

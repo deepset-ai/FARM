@@ -1,6 +1,6 @@
 import logging
 
-from opensesame.data_handler.utils import truncate_seq_pair, words_to_tokens, expand_labels, add_cls_sep, pad, print_example_with_features
+from farm.data_handler.utils import truncate_seq_pair, words_to_tokens, expand_labels, add_cls_sep, pad, print_example_with_features
 
 logger = logging.getLogger(__name__)
 

@@ -5,7 +5,7 @@ from tempfile import TemporaryDirectory
 import shelve
 
 from random import random, randrange, randint, shuffle, choice, sample
-from opensesame.modeling.bert.tokenization import BertTokenizer
+from farm.modeling.bert.tokenization import BertTokenizer
 import numpy as np
 import json
 
