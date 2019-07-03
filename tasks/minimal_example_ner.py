@@ -12,8 +12,8 @@ from opensesame.data_handler.dataset import convert_features_to_dataset
 from opensesame.modeling.training import calculate_optimization_steps, initialize_optimizer, Trainer, Evaluator
 from opensesame.modeling.language_model import BertModel, Bert
 from opensesame.modeling.adaptive_model import AdaptiveModel
-from opensesame.modeling.prediction_head import SeqClassificationHead
-from opensesame.data_handler.preprocessing_pipeline import PPGNAD, PreprocessingPipeline
+from opensesame.modeling.prediction_head import SeqClassificationHead, NERClassificationHead
+from opensesame.data_handler.preprocessing_pipeline import PPGNAD, PPCONLL03
 
 logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt = '%m/%d/%Y %H:%M:%S',
@@ -21,15 +21,17 @@ logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(messa
 
 set_all_seeds(seed=42)
 
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 
 tokenizer = BertTokenizer.from_pretrained(pretrained_model_name_or_path="bert-base-cased-de-2b-end",
                                           do_lower_case=False)
 
 
-pipeline = PPGNAD(data_dir="../data/gnad/",
-                  tokenizer=tokenizer,
-                  max_seq_len=128)
+pipeline = PPCONLL03(data_dir="../data/conll03",
+                     tokenizer=tokenizer,
+                     max_seq_len=128)
 
 
 # TODO Maybe data_dir should not be an argument here but in pipeline
@@ -39,14 +41,15 @@ data_bunch = NewDataBunch(preprocessing_pipeline=pipeline,
                           distributed=False)
 
 # Init model
-prediction_head = SeqClassificationHead(layer_dims=[768, 9])
+prediction_head = NERClassificationHead(layer_dims=[768, len(pipeline.label_list)])
 
 language_model = Bert.load("bert-base-cased-de-2b-end")
+# language_model.save_config("save")
 
-# TODO where are balance class weights?
 model = AdaptiveModel(language_model=language_model,
-                            prediction_head=prediction_head,
-                            embeds_dropout_prob=0.1)
+                      prediction_head=prediction_head,
+                      embeds_dropout_prob=0.1,
+                      token_level=pipeline.token_level)
 model.to(device)
 
 # Init optimizer
@@ -64,7 +67,7 @@ optimizer, warmup_linear = initialize_optimizer(model=model,
                                                 fp16=False,
                                                 num_train_optimization_steps=num_train_optimization_steps)
 
-# TODO: maybe have a pipeline params object to collapse some of these arguments?
+
 evaluator_dev = Evaluator(data_loader=data_bunch.get_data_loader("dev"),
                           label_list=pipeline.label_list,
                           device=device,

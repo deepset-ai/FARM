@@ -35,11 +35,11 @@ from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
 
 from opensesame.file_utils import OPENSESAME_CACHE, WEIGHTS_NAME, CONFIG_NAME
-from opensesame.models.bert.modeling import BertForQuestionAnswering, BertConfig
-from opensesame.models.bert.optimization import BertAdam, WarmupLinearSchedule
-from opensesame.models.bert.tokenization import (BasicTokenizer,
-                                                  BertTokenizer,
-                                                  whitespace_tokenize)
+from opensesame.modeling.bert.modeling import BertForQuestionAnswering, BertConfig
+from opensesame.modeling.bert.optimization import BertAdam, WarmupLinearSchedule
+from opensesame.modeling.bert.tokenization import (BasicTokenizer,
+                                                   BertTokenizer,
+                                                   whitespace_tokenize)
 
 if sys.version_info[0] == 2:
     import cPickle as pickle

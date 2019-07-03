@@ -28,8 +28,8 @@ import torch
 from torch.utils.data import TensorDataset, DataLoader, SequentialSampler
 from torch.utils.data.distributed import DistributedSampler
 
-from opensesame.models.bert.tokenization import BertTokenizer
-from opensesame.models.bert.modeling import BertModel
+from opensesame.modeling.bert.tokenization import BertTokenizer
+from opensesame.modeling.bert.modeling import BertModel
 
 logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s', 
                     datefmt = '%m/%d/%Y %H:%M:%S',

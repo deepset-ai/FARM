@@ -33,9 +33,9 @@ from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm, trange
 
 from opensesame.file_utils import OPENSESAME_CACHE, WEIGHTS_NAME, CONFIG_NAME
-from opensesame.models.bert.modeling import BertForMultipleChoice, BertConfig
-from opensesame.models.bert.optimization import BertAdam, WarmupLinearSchedule
-from opensesame.models.bert.tokenization import BertTokenizer
+from opensesame.modeling.bert.modeling import BertForMultipleChoice, BertConfig
+from opensesame.modeling.bert.optimization import BertAdam, WarmupLinearSchedule
+from opensesame.modeling.bert.tokenization import BertTokenizer
 
 logging.basicConfig(format = '%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
                     datefmt = '%m/%d/%Y %H:%M:%S',
