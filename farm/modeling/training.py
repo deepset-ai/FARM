@@ -87,21 +87,12 @@ class Trainer:
         logger.info("***** Running training *****")
         model.train()
         for _ in trange(self.epochs, desc="Epoch"):
-            for step, batch in enumerate(
-                tqdm(self.data_loader_train, desc="Iteration")
+            for step, batch in enumerate(tqdm(self.data_loader_train, desc="Iteration")
             ):
 
                 # Move batch of samples to device
-                batch = tuple(t.to(self.device) for t in batch)
-                # all_input_ids, all_input_mask, all_segment_ids, all_label_ids, all_initial_masks
-                # TODO unify naming of masks (attention = input, token_type = segment)
-                batch = {
-                    "input_ids": batch[0],
-                    "attention_mask": batch[1],
-                    "token_type_ids": batch[2],
-                    "label_ids": batch[3],
-                    "is_next": batch[4],
-                }
+                batch = {key: batch[key].to(self.device) for key in batch}
+                # input_ids, input_mask, segment_ids, label_ids, initial_mask = batch
 
                 # Forward pass through model
                 logits = model.forward(**batch)
@@ -189,13 +180,7 @@ class Evaluator:
 
         for step, batch in enumerate(tqdm(self.data_loader, desc="Evaluating")):
             batch = tuple(t.to(self.device) for t in batch)
-            batch = {
-                "input_ids": batch[0],
-                "attention_mask": batch[1],
-                "token_type_ids": batch[2],
-                "label_ids": batch[3],
-                "is_next": batch[4],
-            }
+            input_ids, input_mask, segment_ids, label_ids, initial_mask = batch
 
             with torch.no_grad():
 
@@ -206,7 +191,7 @@ class Evaluator:
                 Y, preds = model.logits_to_preds(
                     logits=logits, label_map=self.label_map, **batch
                 )
-
+            #TODO this needs to be resolved
             label_ids = batch["label_ids"]
             if Y is not None:
                 label_ids = Y

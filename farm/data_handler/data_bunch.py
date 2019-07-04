@@ -6,6 +6,7 @@ from sklearn.utils.class_weight import compute_class_weight
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
+from farm.data_handler.dataloader import NamedDataLoader
 
 logger = logging.getLogger(__name__)
 
@@ -64,20 +65,27 @@ class DataBunch(object):
         else:
             sampler_train = RandomSampler(dataset_train)
 
-        data_loader_train = DataLoader(
-            dataset=dataset_train, sampler=sampler_train, batch_size=self.batch_size
+        temp_tensor_names = ["input_ids", "input_mask", "token_type_ids", "label_ids", "initial_mask"]
+
+        data_loader_train = NamedDataLoader(
+            dataset=dataset_train,
+            sampler=sampler_train,
+            batch_size=self.batch_size,
+            tensor_names=temp_tensor_names
         )
 
-        data_loader_dev = DataLoader(
+        data_loader_dev = NamedDataLoader(
             dataset=dataset_dev,
             sampler=SequentialSampler(dataset_dev),
             batch_size=self.batch_size,
+            tensor_names=temp_tensor_names
         )
 
-        data_loader_test = DataLoader(
+        data_loader_test = NamedDataLoader(
             dataset=dataset_test,
             sampler=SequentialSampler(dataset_test),
             batch_size=self.batch_size,
+            tensor_names=temp_tensor_names
         )
 
         self.loaders = {
