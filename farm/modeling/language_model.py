@@ -104,14 +104,14 @@ class Bert(LanguageModel):
     def forward(
         self,
         input_ids,
-        token_type_ids,
+        segment_ids,
         padding_mask,
         output_all_encoded_layers=False,
         **kwargs
     ):
         return self.model(
             input_ids,
-            token_type_ids,
+            token_type_ids=segment_ids,
             attention_mask=padding_mask,
             output_all_encoded_layers=output_all_encoded_layers,
         )

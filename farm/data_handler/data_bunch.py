@@ -65,7 +65,7 @@ class DataBunch(object):
         else:
             sampler_train = RandomSampler(dataset_train)
 
-        temp_tensor_names = ["input_ids", "padding_mask", "token_type_ids", "label_ids"]
+        temp_tensor_names = ["input_ids", "padding_mask", "segment_ids", "label_ids"]
 
         data_loader_train = NamedDataLoader(
             dataset=dataset_train,
