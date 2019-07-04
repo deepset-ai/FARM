@@ -25,8 +25,6 @@ def read_tsv(filename, quotechar=None, delimiter="\t"):
         reader = csv.reader(f, delimiter=delimiter, quotechar=quotechar)
         lines = []
         for line in reader:
-            if sys.version_info[0] == 2:
-                line = list(unicode(cell, "utf-8") for cell in line)
             lines.append(line)
         return lines
 
