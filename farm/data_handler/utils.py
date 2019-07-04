@@ -112,13 +112,13 @@ def read_docs_from_txt(filename, delimiter="", encoding="utf-8"):
 
 
 def print_example_with_features(
-    example, tokens, input_ids, input_mask, segment_ids, label_ids, initial_mask
+    example, tokens, input_ids, padding_mask, segment_ids, label_ids, initial_mask
 ):
     logger.info("*** Example ***")
     logger.info("guid: %s" % (example.guid))
     logger.info("tokens: %s" % " ".join([str(x) for x in tokens]))
     logger.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
-    logger.info("input_mask: %s" % " ".join([str(x) for x in input_mask]))
+    logger.info("padding_mask: %s" % " ".join([str(x) for x in padding_mask]))
     logger.info("segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
     logger.info("label: %s" % (example.label))
     logger.info("ids  : %s" % (label_ids))

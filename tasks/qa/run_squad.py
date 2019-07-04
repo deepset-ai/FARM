@@ -105,7 +105,7 @@ class InputFeatures(object):
         token_to_orig_map,
         token_is_max_context,
         input_ids,
-        input_mask,
+        padding_mask,
         segment_ids,
         start_position=None,
         end_position=None,
@@ -118,7 +118,7 @@ class InputFeatures(object):
         self.token_to_orig_map = token_to_orig_map
         self.token_is_max_context = token_is_max_context
         self.input_ids = input_ids
-        self.input_mask = input_mask
+        self.padding_mask = padding_mask
         self.segment_ids = segment_ids
         self.start_position = start_position
         self.end_position = end_position
@@ -306,16 +306,16 @@ def convert_examples_to_features(
 
             # The mask has 1 for real tokens and 0 for padding tokens. Only real
             # tokens are attended to.
-            input_mask = [1] * len(input_ids)
+            padding_mask = [1] * len(input_ids)
 
             # Zero-pad up to the sequence length.
             while len(input_ids) < max_seq_length:
                 input_ids.append(0)
-                input_mask.append(0)
+                padding_mask.append(0)
                 segment_ids.append(0)
 
             assert len(input_ids) == max_seq_length
-            assert len(input_mask) == max_seq_length
+            assert len(padding_mask) == max_seq_length
             assert len(segment_ids) == max_seq_length
 
             start_position = None
@@ -359,7 +359,9 @@ def convert_examples_to_features(
                     )
                 )
                 logger.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
-                logger.info("input_mask: %s" % " ".join([str(x) for x in input_mask]))
+                logger.info(
+                    "padding_mask: %s" % " ".join([str(x) for x in padding_mask])
+                )
                 logger.info("segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
                 if is_training and example.is_impossible:
                     logger.info("impossible example")
@@ -378,7 +380,7 @@ def convert_examples_to_features(
                     token_to_orig_map=token_to_orig_map,
                     token_is_max_context=token_is_max_context,
                     input_ids=input_ids,
-                    input_mask=input_mask,
+                    padding_mask=padding_mask,
                     segment_ids=segment_ids,
                     start_position=start_position,
                     end_position=end_position,
@@ -1196,8 +1198,8 @@ def main():
         all_input_ids = torch.tensor(
             [f.input_ids for f in train_features], dtype=torch.long
         )
-        all_input_mask = torch.tensor(
-            [f.input_mask for f in train_features], dtype=torch.long
+        all_padding_mask = torch.tensor(
+            [f.padding_mask for f in train_features], dtype=torch.long
         )
         all_segment_ids = torch.tensor(
             [f.segment_ids for f in train_features], dtype=torch.long
@@ -1210,7 +1212,7 @@ def main():
         )
         train_data = TensorDataset(
             all_input_ids,
-            all_input_mask,
+            all_padding_mask,
             all_segment_ids,
             all_start_positions,
             all_end_positions,
@@ -1236,11 +1238,11 @@ def main():
                     batch = tuple(
                         t.to(device) for t in batch
                     )  # multi-gpu does scattering it-self
-                input_ids, input_mask, segment_ids, start_positions, end_positions = (
+                input_ids, padding_mask, segment_ids, start_positions, end_positions = (
                     batch
                 )
                 loss = model(
-                    input_ids, segment_ids, input_mask, start_positions, end_positions
+                    input_ids, segment_ids, padding_mask, start_positions, end_positions
                 )
                 if n_gpu > 1:
                     loss = loss.mean()  # mean() to average on multi-gpu.
@@ -1311,15 +1313,15 @@ def main():
         all_input_ids = torch.tensor(
             [f.input_ids for f in eval_features], dtype=torch.long
         )
-        all_input_mask = torch.tensor(
-            [f.input_mask for f in eval_features], dtype=torch.long
+        all_padding_mask = torch.tensor(
+            [f.padding_mask for f in eval_features], dtype=torch.long
         )
         all_segment_ids = torch.tensor(
             [f.segment_ids for f in eval_features], dtype=torch.long
         )
         all_example_index = torch.arange(all_input_ids.size(0), dtype=torch.long)
         eval_data = TensorDataset(
-            all_input_ids, all_input_mask, all_segment_ids, all_example_index
+            all_input_ids, all_padding_mask, all_segment_ids, all_example_index
         )
         # Run prediction for full data
         eval_sampler = SequentialSampler(eval_data)
@@ -1330,17 +1332,17 @@ def main():
         model.eval()
         all_results = []
         logger.info("Start evaluating")
-        for input_ids, input_mask, segment_ids, example_indices in tqdm(
+        for input_ids, padding_mask, segment_ids, example_indices in tqdm(
             eval_dataloader, desc="Evaluating", disable=args.local_rank not in [-1, 0]
         ):
             if len(all_results) % 1000 == 0:
                 logger.info("Processing example: %d" % (len(all_results)))
             input_ids = input_ids.to(device)
-            input_mask = input_mask.to(device)
+            padding_mask = padding_mask.to(device)
             segment_ids = segment_ids.to(device)
             with torch.no_grad():
                 batch_start_logits, batch_end_logits = model(
-                    input_ids, segment_ids, input_mask
+                    input_ids, segment_ids, padding_mask
                 )
             for i, example_index in enumerate(example_indices):
                 start_logits = batch_start_logits[i].detach().cpu().tolist()

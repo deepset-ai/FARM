@@ -93,7 +93,7 @@ class Trainer:
 
                 # Move batch of samples to device
                 batch = {key: batch[key].to(self.device) for key in batch}
-                # input_ids, input_mask, segment_ids, label_ids, initial_mask = batch
+                # input_ids, padding_mask, segment_ids, label_ids, initial_mask = batch
 
                 # Forward pass through model
                 logits = model.forward(**batch)
@@ -177,8 +177,8 @@ class Evaluator:
         model.eval()
 
         for step, batch in enumerate(tqdm(self.data_loader, desc="Evaluating")):
-            batch = tuple(t.to(self.device) for t in batch)
-            input_ids, input_mask, segment_ids, label_ids, initial_mask = batch
+            batch = {key: batch[key].to(self.device) for key in batch}
+            # input_ids, padding_mask, segment_ids, label_ids, initial_mask = batch
 
             with torch.no_grad():
 

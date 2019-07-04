@@ -65,27 +65,27 @@ class DataBunch(object):
         else:
             sampler_train = RandomSampler(dataset_train)
 
-        temp_tensor_names = ["input_ids", "input_mask", "token_type_ids", "label_ids", "initial_mask"]
+        temp_tensor_names = ["input_ids", "padding_mask", "token_type_ids", "label_ids"]
 
         data_loader_train = NamedDataLoader(
             dataset=dataset_train,
             sampler=sampler_train,
             batch_size=self.batch_size,
-            tensor_names=temp_tensor_names
+            tensor_names=temp_tensor_names,
         )
 
         data_loader_dev = NamedDataLoader(
             dataset=dataset_dev,
             sampler=SequentialSampler(dataset_dev),
             batch_size=self.batch_size,
-            tensor_names=temp_tensor_names
+            tensor_names=temp_tensor_names,
         )
 
         data_loader_test = NamedDataLoader(
             dataset=dataset_test,
             sampler=SequentialSampler(dataset_test),
             batch_size=self.batch_size,
-            tensor_names=temp_tensor_names
+            tensor_names=temp_tensor_names,
         )
 
         self.loaders = {

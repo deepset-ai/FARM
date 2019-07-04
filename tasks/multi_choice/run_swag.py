@@ -92,10 +92,10 @@ class InputFeatures(object):
         self.choices_features = [
             {
                 "input_ids": input_ids,
-                "input_mask": input_mask,
+                "padding_mask": padding_mask,
                 "segment_ids": segment_ids,
             }
-            for _, input_ids, input_mask, segment_ids in choices_features
+            for _, input_ids, padding_mask, segment_ids in choices_features
         ]
         self.label = label
 
@@ -179,31 +179,31 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length, is_trainin
             )
 
             input_ids = tokenizer.convert_tokens_to_ids(tokens)
-            input_mask = [1] * len(input_ids)
+            padding_mask = [1] * len(input_ids)
 
             # Zero-pad up to the sequence length.
             padding = [0] * (max_seq_length - len(input_ids))
             input_ids += padding
-            input_mask += padding
+            padding_mask += padding
             segment_ids += padding
 
             assert len(input_ids) == max_seq_length
-            assert len(input_mask) == max_seq_length
+            assert len(padding_mask) == max_seq_length
             assert len(segment_ids) == max_seq_length
 
-            choices_features.append((tokens, input_ids, input_mask, segment_ids))
+            choices_features.append((tokens, input_ids, padding_mask, segment_ids))
 
         label = example.label
         if example_index < 5:
             logger.info("*** Example ***")
             logger.info("swag_id: {}".format(example.swag_id))
-            for choice_idx, (tokens, input_ids, input_mask, segment_ids) in enumerate(
+            for choice_idx, (tokens, input_ids, padding_mask, segment_ids) in enumerate(
                 choices_features
             ):
                 logger.info("choice: {}".format(choice_idx))
                 logger.info("tokens: {}".format(" ".join(tokens)))
                 logger.info("input_ids: {}".format(" ".join(map(str, input_ids))))
-                logger.info("input_mask: {}".format(" ".join(map(str, input_mask))))
+                logger.info("padding_mask: {}".format(" ".join(map(str, padding_mask))))
                 logger.info("segment_ids: {}".format(" ".join(map(str, segment_ids))))
             if is_training:
                 logger.info("label: {}".format(label))
@@ -512,15 +512,15 @@ def main():
         all_input_ids = torch.tensor(
             select_field(train_features, "input_ids"), dtype=torch.long
         )
-        all_input_mask = torch.tensor(
-            select_field(train_features, "input_mask"), dtype=torch.long
+        all_padding_mask = torch.tensor(
+            select_field(train_features, "padding_mask"), dtype=torch.long
         )
         all_segment_ids = torch.tensor(
             select_field(train_features, "segment_ids"), dtype=torch.long
         )
         all_label = torch.tensor([f.label for f in train_features], dtype=torch.long)
         train_data = TensorDataset(
-            all_input_ids, all_input_mask, all_segment_ids, all_label
+            all_input_ids, all_padding_mask, all_segment_ids, all_label
         )
         if args.local_rank == -1:
             train_sampler = RandomSampler(train_data)
@@ -536,8 +536,8 @@ def main():
             nb_tr_examples, nb_tr_steps = 0, 0
             for step, batch in enumerate(tqdm(train_dataloader, desc="Iteration")):
                 batch = tuple(t.to(device) for t in batch)
-                input_ids, input_mask, segment_ids, label_ids = batch
-                loss = model(input_ids, segment_ids, input_mask, label_ids)
+                input_ids, padding_mask, segment_ids, label_ids = batch
+                loss = model(input_ids, segment_ids, padding_mask, label_ids)
                 if n_gpu > 1:
                     loss = loss.mean()  # mean() to average on multi-gpu.
                 if args.fp16 and args.loss_scale != 1.0:
@@ -603,15 +603,15 @@ def main():
         all_input_ids = torch.tensor(
             select_field(eval_features, "input_ids"), dtype=torch.long
         )
-        all_input_mask = torch.tensor(
-            select_field(eval_features, "input_mask"), dtype=torch.long
+        all_padding_mask = torch.tensor(
+            select_field(eval_features, "padding_mask"), dtype=torch.long
         )
         all_segment_ids = torch.tensor(
             select_field(eval_features, "segment_ids"), dtype=torch.long
         )
         all_label = torch.tensor([f.label for f in eval_features], dtype=torch.long)
         eval_data = TensorDataset(
-            all_input_ids, all_input_mask, all_segment_ids, all_label
+            all_input_ids, all_padding_mask, all_segment_ids, all_label
         )
         # Run prediction for full data
         eval_sampler = SequentialSampler(eval_data)
@@ -622,17 +622,17 @@ def main():
         model.eval()
         eval_loss, eval_accuracy = 0, 0
         nb_eval_steps, nb_eval_examples = 0, 0
-        for input_ids, input_mask, segment_ids, label_ids in tqdm(
+        for input_ids, padding_mask, segment_ids, label_ids in tqdm(
             eval_dataloader, desc="Evaluating"
         ):
             input_ids = input_ids.to(device)
-            input_mask = input_mask.to(device)
+            padding_mask = padding_mask.to(device)
             segment_ids = segment_ids.to(device)
             label_ids = label_ids.to(device)
 
             with torch.no_grad():
-                tmp_eval_loss = model(input_ids, segment_ids, input_mask, label_ids)
-                logits = model(input_ids, segment_ids, input_mask)
+                tmp_eval_loss = model(input_ids, segment_ids, padding_mask, label_ids)
+                logits = model(input_ids, segment_ids, padding_mask)
 
             logits = logits.detach().cpu().numpy()
             label_ids = label_ids.to("cpu").numpy()

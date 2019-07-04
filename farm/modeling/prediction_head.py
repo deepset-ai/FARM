@@ -129,7 +129,7 @@ class TokenClassificationHead(PredictionHead):
         preds_tokens = torch.argmax(logits, dim=2)
 
         preds_token = preds_tokens.detach().cpu().numpy()
-        # used to be: input_mask = input_mask.detach().cpu().numpy()
+        # used to be: padding_mask = padding_mask.detach().cpu().numpy()
         initial_mask = initial_mask.detach().cpu().numpy()
         label_ids = label_ids.cpu().numpy()
 

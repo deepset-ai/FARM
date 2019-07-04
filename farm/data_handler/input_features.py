@@ -16,15 +16,15 @@ logger = logging.getLogger(__name__)
 # class InputFeatures(object):
 #     """A single set of features of data."""
 #
-#     def __init__(self, input_ids, input_mask, segment_ids, label_id, initial_mask=None):
+#     def __init__(self, input_ids, padding_mask, segment_ids, label_id, initial_mask=None):
 #         self.input_ids = input_ids
-#         self.input_mask = input_mask
+#         self.padding_mask = padding_mask
 #         self.segment_ids = segment_ids
 #         self.label_id = label_id
 #         self.initial_mask = initial_mask
 #         self.order = [
 #             self.input_ids,
-#             self.input_mask,
+#             self.padding_mask,
 #             self.segment_ids,
 #             self.label_id,
 #             self.initial_mask,
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 # class InputFeature(object):
 #     def __init__(self, name, value, type):
-#         self.name = "input_mask"
+#         self.name = "padding_mask"
 #         self.value = [0,0,0,0,1,1,1,1,1]
 #         self.type = torch.long
 
@@ -103,16 +103,16 @@ def examples_to_features_sequence(
 
         # The mask has 1 for real tokens and 0 for padding tokens. Only real
         # tokens are attended to.
-        input_mask = [1] * len(input_ids)
+        padding_mask = [1] * len(input_ids)
 
         # Zero-pad up to the sequence length.
         padding = [0] * (max_seq_len - len(input_ids))
         input_ids += padding
-        input_mask += padding
+        padding_mask += padding
         segment_ids += padding
 
         assert len(input_ids) == max_seq_len
-        assert len(input_mask) == max_seq_len
+        assert len(padding_mask) == max_seq_len
         assert len(segment_ids) == max_seq_len
 
         if target == "classification":
@@ -128,14 +128,14 @@ def examples_to_features_sequence(
             logger.info("guid: %s" % (example.guid))
             logger.info("tokens: %s" % " ".join([str(x) for x in tokens]))
             logger.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
-            logger.info("input_mask: %s" % " ".join([str(x) for x in input_mask]))
+            logger.info("padding_mask: %s" % " ".join([str(x) for x in padding_mask]))
             logger.info("segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
             logger.info("label: %s (id = %d)" % (example.label, label_id))
 
         features.append(
             InputFeatures(
                 input_ids=input_ids,
-                input_mask=input_mask,
+                padding_mask=padding_mask,
                 segment_ids=segment_ids,
                 label_id=label_id,
             )
@@ -171,7 +171,7 @@ def examples_to_features_ner(
         initial_mask = (
             [0] + initial_mask + [0]
         )  # CLS and SEP don't count as initial tokens
-        input_mask = [1] * len(tokens)
+        padding_mask = [1] * len(tokens)
 
         # Convert to input and labels to ids, generate masks
         # Todo: Something is odd here because [PAD] is index one in the vocab of tokenizer but we are padding with 0, or maybe it doesnt matter because its masked out anyways
@@ -183,14 +183,14 @@ def examples_to_features_ner(
         input_ids = pad(input_ids, max_seq_len, 0)
         label_ids = pad(label_ids, max_seq_len, 0)
         initial_mask = pad(initial_mask, max_seq_len, 0)
-        input_mask = pad(input_mask, max_seq_len, 0)
+        padding_mask = pad(padding_mask, max_seq_len, 0)
 
         if idx < 2:
             print_example_with_features(
                 example,
                 tokens,
                 input_ids,
-                input_mask,
+                padding_mask,
                 segment_ids,
                 label_ids,
                 initial_mask,
@@ -198,7 +198,7 @@ def examples_to_features_ner(
 
         feature_object = InputFeatures(
             input_ids=input_ids,
-            input_mask=input_mask,
+            padding_mask=padding_mask,
             segment_ids=segment_ids,
             label_id=label_ids,
             initial_mask=initial_mask,
@@ -211,7 +211,7 @@ def examples_to_features_ner(
 def examples_to_features_lm(examples, label_list, max_seq_len, tokenizer):
     """
     Convert a raw sample (pair of sentences as tokenized strings) into a proper training sample with
-    IDs, LM labels, input_mask, CLS and SEP tokens etc.
+    IDs, LM labels, padding_mask, CLS and SEP tokens etc.
     :param example: InputExample, containing sentence input as strings and is_next label
     :param max_seq_len: int, maximum length of sequence.
     :param tokenizer: Tokenizer
@@ -270,17 +270,17 @@ def examples_to_features_lm(examples, label_list, max_seq_len, tokenizer):
 
         # The mask has 1 for real tokens and 0 for padding tokens. Only real
         # tokens are attended to.
-        input_mask = [1] * len(input_ids)
+        padding_mask = [1] * len(input_ids)
 
         # Zero-pad up to the sequence length.
         while len(input_ids) < max_seq_len:
             input_ids.append(0)
-            input_mask.append(0)
+            padding_mask.append(0)
             segment_ids.append(0)
             lm_label_ids.append(-1)
 
         assert len(input_ids) == max_seq_len
-        assert len(input_mask) == max_seq_len
+        assert len(padding_mask) == max_seq_len
         assert len(segment_ids) == max_seq_len
         assert len(lm_label_ids) == max_seq_len
 
@@ -289,7 +289,7 @@ def examples_to_features_lm(examples, label_list, max_seq_len, tokenizer):
             logger.info("guid: %s" % (example.guid))
             logger.info("tokens: %s" % " ".join([str(x) for x in tokens]))
             logger.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
-            logger.info("input_mask: %s" % " ".join([str(x) for x in input_mask]))
+            logger.info("padding_mask: %s" % " ".join([str(x) for x in padding_mask]))
             logger.info("segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
             logger.info("LM label: %s " % (lm_label_ids))
             logger.info("Is next sentence label: %s " % (example.label))
@@ -298,7 +298,7 @@ def examples_to_features_lm(examples, label_list, max_seq_len, tokenizer):
         features.append(
             InputFeatures(
                 input_ids=input_ids,
-                input_mask=input_mask,
+                padding_mask=padding_mask,
                 segment_ids=segment_ids,
                 lm_label_ids=lm_label_ids,
                 is_next=example.label,

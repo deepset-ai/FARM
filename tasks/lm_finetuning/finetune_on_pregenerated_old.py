@@ -17,7 +17,7 @@ from opensesame.models.bert.tokenization import BertTokenizer
 from opensesame.models.bert.optimization import BertAdam, WarmupLinearSchedule
 
 InputFeatures = namedtuple(
-    "InputFeatures", "input_ids input_mask segment_ids lm_label_ids is_next"
+    "InputFeatures", "input_ids padding_mask segment_ids lm_label_ids is_next"
 )
 
 log_format = "%(asctime)-10s: %(message)s"
@@ -51,7 +51,7 @@ def convert_example_to_features(example, tokenizer, max_seq_length):
 
     features = InputFeatures(
         input_ids=input_array,
-        input_mask=mask_array,
+        padding_mask=mask_array,
         segment_ids=segment_array,
         lm_label_ids=lm_label_array,
         is_next=is_random_next,
@@ -84,8 +84,8 @@ class PregeneratedDataset(Dataset):
                 dtype=np.int32,
                 shape=(num_samples, seq_len),
             )
-            input_masks = np.memmap(
-                filename=self.working_dir / "input_masks.memmap",
+            padding_masks = np.memmap(
+                filename=self.working_dir / "padding_masks.memmap",
                 shape=(num_samples, seq_len),
                 mode="w+",
                 dtype=np.bool,
@@ -111,7 +111,7 @@ class PregeneratedDataset(Dataset):
             )
         else:
             input_ids = np.zeros(shape=(num_samples, seq_len), dtype=np.int32)
-            input_masks = np.zeros(shape=(num_samples, seq_len), dtype=np.bool)
+            padding_masks = np.zeros(shape=(num_samples, seq_len), dtype=np.bool)
             segment_ids = np.zeros(shape=(num_samples, seq_len), dtype=np.bool)
             lm_label_ids = np.full(
                 shape=(num_samples, seq_len), dtype=np.int32, fill_value=-1
@@ -127,7 +127,7 @@ class PregeneratedDataset(Dataset):
                 features = convert_example_to_features(example, tokenizer, seq_len)
                 input_ids[i] = features.input_ids
                 segment_ids[i] = features.segment_ids
-                input_masks[i] = features.input_mask
+                padding_masks[i] = features.padding_mask
                 lm_label_ids[i] = features.lm_label_ids
                 is_nexts[i] = features.is_next
         assert i == num_samples - 1  # Assert that the sample count metric was true
@@ -135,7 +135,7 @@ class PregeneratedDataset(Dataset):
         self.num_samples = num_samples
         self.seq_len = seq_len
         self.input_ids = input_ids
-        self.input_masks = input_masks
+        self.padding_masks = padding_masks
         self.segment_ids = segment_ids
         self.lm_label_ids = lm_label_ids
         self.is_nexts = is_nexts
@@ -146,7 +146,7 @@ class PregeneratedDataset(Dataset):
     def __getitem__(self, item):
         return (
             torch.tensor(self.input_ids[item].astype(np.int64)),
-            torch.tensor(self.input_masks[item].astype(np.int64)),
+            torch.tensor(self.padding_masks[item].astype(np.int64)),
             torch.tensor(self.segment_ids[item].astype(np.int64)),
             torch.tensor(self.lm_label_ids[item].astype(np.int64)),
             torch.tensor(self.is_nexts[item].astype(np.int64)),
@@ -396,8 +396,10 @@ def main():
         with tqdm(total=len(train_dataloader), desc=f"Epoch {epoch}") as pbar:
             for step, batch in enumerate(train_dataloader):
                 batch = tuple(t.to(device) for t in batch)
-                input_ids, input_mask, segment_ids, lm_label_ids, is_next = batch
-                loss = model(input_ids, segment_ids, input_mask, lm_label_ids, is_next)
+                input_ids, padding_mask, segment_ids, lm_label_ids, is_next = batch
+                loss = model(
+                    input_ids, segment_ids, padding_mask, lm_label_ids, is_next
+                )
                 if n_gpu > 1:
                     loss = loss.mean()  # mean() to average on multi-gpu.
                 if args.gradient_accumulation_steps > 1:
