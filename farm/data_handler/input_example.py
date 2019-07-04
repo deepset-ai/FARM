@@ -31,6 +31,32 @@ class InputExample(object):
 
     # def featurize(self)
 
+def create_examples_germ_eval_18_coarse(lines, set_type, text_a_index, label_index, text_b_index=None):
+    """Creates examples for the training and dev sets."""
+    examples = []
+    for (i, line) in enumerate(lines):
+        if i == 0:
+            continue
+        guid = "%s-%s" % (set_type, i)
+        text_a = line[0]
+        label = line[1]
+        # Skips the invalid example from the header of the file
+        if label == "label":
+            continue
+        examples.append(
+            InputExample(guid=guid, text_a=text_a, text_b=None, label=label)
+        )
+    return examples
+
+
+# def GNADInputExamples(InputExample):
+#
+#     def featurize()
+#         # currently examples to features
+#
+#
+#     def create()
+#         # currentlz create_examples
 
 def create_examples_gnad(lines, set_type):
     """Creates examples for the training and dev sets."""

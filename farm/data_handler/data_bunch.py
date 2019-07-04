@@ -15,9 +15,9 @@ class DataBunch(object):
     """ Loads the train, dev and test sets from file, calculates statistics from the data, casts datasets to
     PyTorch DataLoader objects. """
 
-    def __init__(self, preprocessing_pipeline, batch_size, distributed=False):
+    def __init__(self, processor, batch_size, distributed=False):
         self.distributed = distributed
-        self.pipeline = preprocessing_pipeline
+        self.processor = processor
         self.batch_size = batch_size
         self.class_weights = None
 
@@ -25,34 +25,15 @@ class DataBunch(object):
 
     def load_data(self):
         # fmt: off
-        train_file = self.pipeline.train_file
-        dev_file = self.pipeline.dev_file
-        test_file = self.pipeline.test_file
 
-        logger.info("Loading train set from: {}".format(train_file))
-        if not dev_file:
+        logger.info("Loading train set from: {}".format(self.processor.train_filename))
+        if not self.processor.dev_filename:
             logger.info("Loading dev set as a slice of train set")
         else:
-            logger.info("Loading dev set from: {}".format(dev_file))
-        logger.info("Loading test set from: {}".format(test_file))
+            logger.info("Loading dev set from: {}".format(self.processor.dev_filename))
+        logger.info("Loading test set from: {}".format(self.processor.test_filename))
 
-        # TODO checks to ensure dev is loaded the right way
-        if not self.pipeline.dev_split:
-            dataset_train = self.pipeline.convert(train_file, start="file", end="dataset")
-            dataset_dev = self.pipeline.convert(dev_file, start="file", end="dataset")
-
-        else:
-            # TODO How to handle seed?
-            SEED = 42
-            list_train_dev = self.pipeline.convert(train_file, start="file", end="list")
-            list_train, list_dev = train_test_split(list_train_dev,
-                                                    test_size=self.pipeline.dev_split,
-                                                    random_state=SEED)
-
-            dataset_train = self.pipeline.convert(list_train, start="list", end="dataset")
-            dataset_dev = self.pipeline.convert(list_dev, start="list", end="dataset")
-
-        dataset_test = self.pipeline.convert(test_file, start="file", end="dataset")
+        dataset_train, dataset_dev, dataset_test = self.processor.dataset_from_file()
 
         self.calculate_statistics(dataset_train, dataset_dev, dataset_test)
         self.calculate_class_weights(dataset_train)
