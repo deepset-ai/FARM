@@ -29,7 +29,8 @@ tokenizer = BertTokenizer.from_pretrained(
     pretrained_model_name_or_path="bert-base-cased-de-2b-end",
     do_lower_case=False)
 
-pipeline = PPGNAD(data_dir="../data/gnad",
+pipeline = PPGNAD(
+    data_dir="../data/gnad",
     tokenizer=tokenizer,
     max_seq_len=128)
 
