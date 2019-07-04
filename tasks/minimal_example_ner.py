@@ -8,10 +8,7 @@ from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
 from farm.modeling.prediction_head import NERClassificationHead
 from farm.modeling.tokenization import BertTokenizer
-from farm.modeling.training import (
-    Trainer,
-    Evaluator,
-)
+from farm.modeling.training import Trainer, Evaluator
 from farm.run_model import calculate_optimization_steps, initialize_optimizer
 from farm.utils import set_all_seeds
 
@@ -51,7 +48,7 @@ model = AdaptiveModel(
     language_model=language_model,
     prediction_head=prediction_head,
     embeds_dropout_prob=0.1,
-    token_level=pipeline.token_level,
+    lm_output_type="per_token",
 )
 model.to(device)
 

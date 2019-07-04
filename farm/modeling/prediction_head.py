@@ -2,10 +2,13 @@ import ast
 import datetime
 import json
 import os
+from dotmap import DotMap
 
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
+
+from pytorch_pretrained_bert.modeling import BertPreTrainingHeads
 
 
 class PredictionHead(nn.Module):
@@ -76,8 +79,8 @@ class SeqClassificationHead(PredictionHead):
         logits = self.feed_forward(X)
         return logits
 
-    def logits_to_loss(self, logits, labels, **kwargs):
-        return self.loss_fct(logits, labels.view(-1))
+    def logits_to_loss(self, logits, label_ids, **kwargs):
+        return self.loss_fct(logits, label_ids.view(-1))
 
     def logits_to_preds(self, logits, **kwargs):
         preds = logits.argmax(1)
@@ -105,15 +108,17 @@ class NERClassificationHead(PredictionHead):
         logits = self.feed_forward(X)
         return logits
 
-    def logits_to_loss(self, logits, labels, initial_mask, attention_mask=None):
+    def logits_to_loss(
+        self, logits, label_ids, initial_mask, attention_mask=None, **kwargs
+    ):
         # Todo: should we be applying initial mask here? Loss is currently calculated even on non initial tokens
         active_loss = attention_mask.view(-1) == 1
         active_logits = logits.view(-1, self.num_labels)[active_loss]
-        active_labels = labels.view(-1)[active_loss]
+        active_labels = label_ids.view(-1)[active_loss]
         loss = self.loss_fct(active_logits, active_labels)
         return loss
 
-    def logits_to_preds(self, logits, input_mask, initial_mask, label_map, label_ids):
+    def logits_to_preds(self, logits, initial_mask, label_map, label_ids, **kwargs):
 
         preds_word_all = []
         labels_word_all = []
@@ -121,7 +126,7 @@ class NERClassificationHead(PredictionHead):
         preds_tokens = torch.argmax(logits, dim=2)
 
         preds_token = preds_tokens.detach().cpu().numpy()
-        # input_mask = input_mask.detach().cpu().numpy()
+        # used to be: input_mask = input_mask.detach().cpu().numpy()
         initial_mask = initial_mask.detach().cpu().numpy()
         label_ids = label_ids.cpu().numpy()
 
@@ -148,6 +153,55 @@ class NERClassificationHead(PredictionHead):
             if init:
                 ret.append(s)
         return ret
+
+
+class BertLanguageModelHead(PredictionHead):
+    """ Masked Language Model with NextSentence Prediction"""
+
+    def __init__(self, embeddings, hidden_size, hidden_act="gelu", **kwargs):
+        super(BertLanguageModelHead, self).__init__()
+
+        # self.bert = BertModel(config)
+        config = {"hidden_size": hidden_size, "hidden_act": hidden_act}
+        config = DotMap(config, _dynamic=False)
+        embeddings_weights = embeddings.word_embeddings.weight
+        self.multihead = BertPreTrainingHeads(config, embeddings_weights)
+        self.loss_fct = CrossEntropyLoss(ignore_index=-1)
+        # TODO change dummy value to real one
+        self.num_labels = embeddings_weights.shape[0]  # vocab size
+        # TODO Check if weight init needed!
+        # self.apply(self.init_bert_weights)
+
+        self.generate_config()
+
+    def generate_config(self):
+        self.config = {
+            "type": type(self).__name__,
+            "last_initialized": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            # "layer_dims": str(self.layer_dims),
+        }
+
+    def forward(self, X):
+        lm_logits, next_sentence_logits = self.multihead(X[0], X[1])
+        return [lm_logits, next_sentence_logits]
+
+    def logits_to_loss(self, logits, label_ids, is_next, **kwargs):
+        assert len(logits) == 2
+        masked_lm_loss = self.loss_fct(
+            logits[0].view(-1, self.num_labels), label_ids.view(-1)
+        )
+        next_sentence_loss = self.loss_fct(logits[1].view(-1, 2), is_next.view(-1))
+        total_loss = masked_lm_loss + next_sentence_loss
+        total_loss = total_loss.view(1, 1)
+        return total_loss
+
+    def logits_to_preds(self, logits, is_next, **kwargs):
+        # TODO does logits shape really allow just argmax here?
+        lm_preds = logits[0].argmax(1)
+        next_sentence_preds = logits[1].argmax(1)
+        # TODO return lm_preds for eval as well
+        # TODO: Two are returned because token level classification currently returns label ids as well. This should be changed
+        return is_next, next_sentence_preds
 
 
 class FeedForwardBlock(nn.Module):

@@ -286,6 +286,7 @@ def get_file_extension(path, dot=True, lower=True):
     return ext.lower() if lower else ext
 
 
+# TODO: still needed?
 # Allow retrieval of config args with dot notation
 class Struct:
     def __init__(self, **entries):

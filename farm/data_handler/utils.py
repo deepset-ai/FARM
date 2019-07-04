@@ -4,6 +4,8 @@ import os
 import sys
 import tarfile
 import tempfile
+from tqdm import tqdm
+import random
 
 from farm.file_utils import http_get
 
@@ -77,6 +79,36 @@ def download_extract_downstream_data(input_file):
             tfile = tarfile.open(temp_file.name)
             tfile.extractall(datadir)
         # temp_file gets deleted here
+
+
+def read_docs_from_txt(filename, delimiter="", encoding="utf-8"):
+    """Reads a text file with one sentence per line and a delimiter between docs (default: empty lines) ."""
+    all_docs = []
+    doc = []
+    corpus_lines = 0
+    sample_to_doc = []
+    with open(filename, "r", encoding=encoding) as f:
+        for line in tqdm(f, desc="Loading Dataset", total=corpus_lines):
+            line = line.strip()
+            if line == delimiter:
+                all_docs.append(doc)
+                doc = []
+                # remove last added sample because there won't be a subsequent line anymore in the doc
+                sample_to_doc.pop()
+            else:
+                # store as one sample
+                sample = {"doc_id": len(all_docs), "line": len(doc)}
+                sample_to_doc.append(sample)
+                doc.append(line)
+                corpus_lines = corpus_lines + 1
+
+        # if last row in file is not empty
+        if all_docs[-1] != doc:
+            all_docs.append(doc)
+            sample_to_doc.pop()
+
+        num_docs = len(all_docs)
+    return all_docs, sample_to_doc
 
 
 def print_example_with_features(
@@ -164,3 +196,97 @@ def words_to_tokens(words, tokenizer, max_seq_length):
     assert len(tokens_all) == len(initial_mask)
 
     return tokens_all, initial_mask
+
+
+def get_sentence_pair(docs, sample_to_doc, idx):
+    """
+    Get one sample from corpus consisting of two sentences. With prob. 50% these are two subsequent sentences
+    from one doc. With 50% the second sentence will be a random one from another doc.
+    :param idx: int, index of sample.
+    :return: (str, str, int), sentence 1, sentence 2, isNextSentence Label
+    """
+    t1, t2, current_doc_id = _get_subsequent_sentence_pair(docs, sample_to_doc, idx)
+    if random.random() > 0.5:
+        label = 0
+    else:
+        t2 = _get_random_sentence(docs, current_doc_id)
+        label = 1
+
+    assert len(t1) > 0
+    assert len(t2) > 0
+    return t1, t2, label
+
+
+def _get_subsequent_sentence_pair(all_docs, sample_to_doc, idx):
+    """
+    Get one sample from corpus consisting of a pair of two subsequent lines from the same doc.
+    :param idx: int, index of sample.
+    :return: (str, str), two subsequent sentences from corpus
+    """
+    sample = sample_to_doc[idx]
+    t1 = all_docs[sample["doc_id"]][sample["line"]]
+    t2 = all_docs[sample["doc_id"]][sample["line"] + 1]
+
+    # used later to avoid random nextSentence from same doc
+    doc_id = sample["doc_id"]
+    return t1, t2, doc_id
+
+
+def _get_random_sentence(docs, forbidden_doc_id):
+    """
+    Get random line from another document for nextSentence task.
+    :return: str, content of one line
+    """
+    # Similar to original BERT tf repo: This outer loop should rarely go for more than one iteration for large
+    # corpora. However, just to be careful, we try to make sure that
+    # the random document is not the same as the document we're processing.
+    for _ in range(10):
+        rand_doc_idx = random.randint(0, len(docs) - 1)
+        rand_doc = docs[rand_doc_idx]
+        line = rand_doc[random.randrange(len(rand_doc))]
+
+        # check if our picked random line is really from another doc like we want it to be
+        if rand_doc_idx != forbidden_doc_id:
+            break
+    return line
+
+
+def mask_random_words(tokens, tokenizer):
+    """
+    Masking some random tokens for Language Model task with probabilities as in the original BERT paper.
+    :param tokens: list of str, tokenized sentence.
+    :param tokenizer: Tokenizer, object used for tokenization (we need it's vocab here)
+    :return: (list of str, list of int), masked tokens and related labels for LM prediction
+    """
+    output_label = []
+
+    for i, token in enumerate(tokens):
+        prob = random.random()
+        # mask token with 15% probability
+        if prob < 0.15:
+            prob /= 0.15
+
+            # 80% randomly change token to mask token
+            if prob < 0.8:
+                tokens[i] = "[MASK]"
+
+            # 10% randomly change token to random token
+            elif prob < 0.9:
+                tokens[i] = random.choice(list(tokenizer.vocab.items()))[0]
+
+            # -> rest 10% randomly keep current token
+
+            # append current token to output (we will predict these later)
+            try:
+                output_label.append(tokenizer.vocab[token])
+            except KeyError:
+                # For unknown words (should not occur with BPE vocab)
+                output_label.append(tokenizer.vocab["[UNK]"])
+                logger.warning(
+                    "Cannot find token '{}' in vocab. Using [UNK] insetad".format(token)
+                )
+        else:
+            # no masking token (will be ignored by loss function later)
+            output_label.append(-1)
+
+    return tokens, output_label

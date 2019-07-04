@@ -124,5 +124,8 @@ dmypy.json
 # TF code
 tensorflow_code
 
-#training data
+# training data
 data/
+
+# models
+models/

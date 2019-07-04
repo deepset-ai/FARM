@@ -101,19 +101,20 @@ class Bert(LanguageModel):
         bert.model = BertModel.from_pretrained(pretrained_model_name_or_path)
         return bert
 
-    # fmt: off
     def forward(
-            self,
+        self,
+        input_ids,
+        token_type_ids,
+        attention_mask,
+        output_all_encoded_layers=False,
+        **kwargs
+    ):
+        return self.model(
             input_ids,
             token_type_ids,
             attention_mask,
-            output_all_encoded_layers=False):
-
-        return self.model(input_ids,
-                          token_type_ids,
-                          attention_mask,
-                          output_all_encoded_layers=False)
-    #fmt: on
+            output_all_encoded_layers=output_all_encoded_layers,
+        )
 
     def save_config(self, save_dir):
         # TODO: Maybe we want to initialize at higher so that switching in a new config can give us a whole new class of lm
