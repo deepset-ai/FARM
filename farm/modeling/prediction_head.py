@@ -48,15 +48,16 @@ class PredictionHead(nn.Module):
 
 
 class SeqClassificationHead(PredictionHead):
-    def __init__(self, layer_dims, balanced_weights=None, **kwargs):
+    def __init__(self, layer_dims, class_weights=None, **kwargs):
         super(SeqClassificationHead, self).__init__()
-        self.layer_dims = layer_dims
-        self.feed_forward = FeedForwardBlock(layer_dims)
+        self.layer_dims_list = ast.literal_eval(str(layer_dims))
+        self.feed_forward = FeedForwardBlock(self.layer_dims_list)
         self.generate_config()
-        self.num_labels = layer_dims[-1]
-        if balanced_weights:
+        self.num_labels = self.layer_dims_list[-1]
+        # Todo do we still need to do this?
+        if class_weights:
             self.balanced_weights = nn.Parameter(
-                torch.tensor(balanced_weights), requires_grad=False
+                torch.tensor(class_weights), requires_grad=False
             )
             self.loss_fct = CrossEntropyLoss(
                 weight=self.balanced_weights, reduction="none"
@@ -68,7 +69,7 @@ class SeqClassificationHead(PredictionHead):
         self.config = {
             "type": type(self).__name__,
             "last_initialized": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "layer_dims": str(self.layer_dims),
+            "layer_dims": str(self.layer_dims_list),
         }
 
     def forward(self, X):
@@ -87,17 +88,17 @@ class SeqClassificationHead(PredictionHead):
 class NERClassificationHead(PredictionHead):
     def __init__(self, layer_dims, **kwargs):
         super(NERClassificationHead, self).__init__()
-        self.layer_dims = layer_dims
-        self.feed_forward = FeedForwardBlock(layer_dims)
+        self.layer_dims_list = ast.literal_eval(str(layer_dims))
+        self.feed_forward = FeedForwardBlock(self.layer_dims_list)
         self.generate_config()
-        self.num_labels = layer_dims[-1]
+        self.num_labels = self.layer_dims_list[-1]
         self.loss_fct = CrossEntropyLoss(reduction="none")
 
     def generate_config(self):
         self.config = {
             "type": type(self).__name__,
             "last_initialized": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "layer_dims": str(self.layer_dims),
+            "layer_dims": str(self.layer_dims_list),
         }
 
     def forward(self, X):
@@ -157,15 +158,14 @@ class FeedForwardBlock(nn.Module):
         super(FeedForwardBlock, self).__init__()
 
         # If read from config the input will be string
-        self.layer_dims = ast.literal_eval(str(layer_dims))
-        n_layers = len(self.layer_dims) - 1
+        n_layers = len(layer_dims) - 1
         layers_all = []
         # TODO: IS this needed?
-        self.output_size = self.layer_dims[-1]
+        self.output_size = layer_dims[-1]
 
         for i in range(n_layers):
-            size_in = self.layer_dims[i]
-            size_out = self.layer_dims[i + 1]
+            size_in = layer_dims[i]
+            size_out = layer_dims[i + 1]
             layer = nn.Linear(size_in, size_out)
             layers_all.append(layer)
         self.feed_forward = nn.Sequential(*layers_all)

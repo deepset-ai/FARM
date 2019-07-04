@@ -18,11 +18,12 @@ class DataBunch(object):
         self.distributed = distributed
         self.pipeline = preprocessing_pipeline
         self.batch_size = batch_size
+        self.class_weights = None
 
         self.load_data()
 
     def load_data(self):
-
+        # fmt: off
         train_file = self.pipeline.train_file
         dev_file = self.pipeline.dev_file
         test_file = self.pipeline.test_file
@@ -36,36 +37,33 @@ class DataBunch(object):
 
         # TODO checks to ensure dev is loaded the right way
         if not self.pipeline.dev_split:
-            dataset_train = self.pipeline.convert(
-                train_file, start="file", end="dataset"
-            )
+            dataset_train = self.pipeline.convert(train_file, start="file", end="dataset")
             dataset_dev = self.pipeline.convert(dev_file, start="file", end="dataset")
 
         else:
             # TODO How to handle seed?
             SEED = 42
             list_train_dev = self.pipeline.convert(train_file, start="file", end="list")
-            list_train, list_dev = train_test_split(
-                list_train_dev, test_size=self.pipeline.dev_split, random_state=SEED
-            )
-            dataset_train = self.pipeline.convert(
-                list_train, start="list", end="dataset"
-            )
-            dataset_dev = self.pipeline.convert(list_dev, start="list", end="dataset")
+            list_train, list_dev = train_test_split(list_train_dev,
+                                                    test_size=self.pipeline.dev_split,
+                                                    random_state=SEED)
 
-        # TODO: Currently no printing via print_example_with_features function - would require input_features_train etc.
+            dataset_train = self.pipeline.convert(list_train, start="list", end="dataset")
+            dataset_dev = self.pipeline.convert(list_dev, start="list", end="dataset")
 
         dataset_test = self.pipeline.convert(test_file, start="file", end="dataset")
 
         self.calculate_statistics(dataset_train, dataset_dev, dataset_test)
         self.calculate_class_weights(dataset_train)
         self.initialize_data_loaders(dataset_train, dataset_dev, dataset_test)
+        # fmt: on
 
     def initialize_data_loaders(self, dataset_train, dataset_dev, dataset_test):
         if self.distributed:
             sampler_train = DistributedSampler(dataset_train)
         else:
             sampler_train = RandomSampler(dataset_train)
+
         data_loader_train = DataLoader(
             dataset=dataset_train, sampler=sampler_train, batch_size=self.batch_size
         )
@@ -103,10 +101,9 @@ class DataBunch(object):
     def calculate_class_weights(self, dataset):
         try:
             labels = [x[3].item() for x in dataset]
-            class_weights = list(
+            self.class_weights = list(
                 compute_class_weight("balanced", np.unique(labels), labels)
             )
-            self.class_weights = class_weights
         except ValueError:
             logger.info(
                 "Class weighting not available for token level tasks such as NER"

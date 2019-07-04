@@ -47,6 +47,9 @@ def create_examples_germ_eval_18_coarse(lines, set_type):
         guid = "%s-%s" % (set_type, i)
         text_a = line[0]
         label = line[1]
+        # Skips the invalid example from the header of the file
+        if label == "label":
+            continue
         examples.append(
             InputExample(guid=guid, text_a=text_a, text_b=None, label=label)
         )
@@ -62,6 +65,9 @@ def create_examples_germ_eval_18_fine(lines, set_type):
         guid = "%s-%s" % (set_type, i)
         text_a = line[0]
         label = line[2]
+        # Skips the invalid example from the header of the file
+        if label == "label":
+            continue
         examples.append(
             InputExample(guid=guid, text_a=text_a, text_b=None, label=label)
         )

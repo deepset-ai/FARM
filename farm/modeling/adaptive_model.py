@@ -32,17 +32,19 @@ class AdaptiveModel(nn.Module):
         return self.prediction_head.logits_to_preds(logits, **kwargs)
 
     def forward(self, input_ids, token_type_ids=None, attention_mask=None):
-
+        # Run language model
         sequence_output, pooled_output = self.language_model(
             input_ids, token_type_ids, attention_mask, output_all_encoded_layers=False
         )
 
+        # Choose relevant vectors as output and perform dropout
         if self.token_level:
             output = sequence_output
         else:
             output = pooled_output
-
         output = self.dropout(output)
+
+        # Run prediction head
         logits = self.prediction_head(output)
 
         return logits
@@ -68,7 +70,7 @@ class NERClassifier(AdaptiveModel):
 
         self.dropout = nn.Dropout(embeds_dropout_prob)
 
-        # needs to be a parameter for distributed setting
+        # Todo needs to be a parameter for distributed setting - or does it now?
         # This is messy, can we do this differently?
         if balanced_weights:
             self.balanced_weights = nn.Parameter(
