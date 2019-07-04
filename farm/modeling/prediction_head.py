@@ -50,13 +50,15 @@ class PredictionHead(nn.Module):
         raise NotImplementedError()
 
 
-class SeqClassificationHead(PredictionHead):
+class TextClassificationHead(PredictionHead):
     def __init__(self, layer_dims, class_weights=None, **kwargs):
-        super(SeqClassificationHead, self).__init__()
+        super(TextClassificationHead, self).__init__()
         self.layer_dims_list = ast.literal_eval(str(layer_dims))
         self.feed_forward = FeedForwardBlock(self.layer_dims_list)
         self.generate_config()
         self.num_labels = self.layer_dims_list[-1]
+        self.ph_output_type = "per_sequence"
+
         # Todo do we still need to do this?
         if class_weights:
             self.balanced_weights = nn.Parameter(
@@ -88,14 +90,15 @@ class SeqClassificationHead(PredictionHead):
         return None, preds
 
 
-class NERClassificationHead(PredictionHead):
+class TokenClassificationHead(PredictionHead):
     def __init__(self, layer_dims, **kwargs):
-        super(NERClassificationHead, self).__init__()
+        super(TokenClassificationHead, self).__init__()
         self.layer_dims_list = ast.literal_eval(str(layer_dims))
         self.feed_forward = FeedForwardBlock(self.layer_dims_list)
         self.generate_config()
         self.num_labels = self.layer_dims_list[-1]
         self.loss_fct = CrossEntropyLoss(reduction="none")
+        self.ph_output_type = "per_token"
 
     def generate_config(self):
         self.config = {

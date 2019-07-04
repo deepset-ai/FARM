@@ -7,7 +7,7 @@ import torch
 from farm.utils import set_all_seeds, initialize_device_settings
 from farm.data_handler.preprocessing_pipeline import PPCONLL03, PPGNAD, PPGermEval18Coarse, PPGermEval18Fine, PPGermEval14
 from farm.data_handler.data_bunch import DataBunch
-from farm.modeling.prediction_head import SeqClassificationHead, NERClassificationHead
+from farm.modeling.prediction_head import TextClassificationHead, TokenClassificationHead
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
 from farm.modeling.training import Trainer, Evaluator
@@ -54,7 +54,8 @@ def run_model(args):
     if args.balance_classes:
         class_weights = data_bunch.class_weights
 
-    model = get_adaptive_model(token_level=pipeline.token_level,
+    model = get_adaptive_model(lm_output_type=args.lm_output_type,
+                               prediction_head=args.prediction_head,
                                layer_dims=args.layer_dims,
                                model=args.model,
                                device=device,
@@ -86,16 +87,14 @@ def run_model(args):
         label_list=pipeline.label_list,
         device=device,
         metric=pipeline.metric,
-        output_mode=pipeline.output_mode,
-        token_level=pipeline.token_level)
+        ph_output_type=model.prediction_head.ph_output_type)
 
     evaluator_test = Evaluator(
         data_loader=data_bunch.get_data_loader("test"),
         label_list=pipeline.label_list,
         device=device,
         metric=pipeline.metric,
-        output_mode=pipeline.output_mode,
-        token_level=pipeline.token_level)
+        ph_output_type=model.prediction_head.ph_output_type)
 
     trainer = Trainer(
         optimizer=optimizer,
@@ -118,7 +117,8 @@ def run_model(args):
 
 
 def get_adaptive_model(
-    token_level,
+    lm_output_type,
+    prediction_head,
     layer_dims,
     model,
     device,
@@ -129,11 +129,15 @@ def get_adaptive_model(
     class_weights=None
 ):
 
-    if token_level:
-        prediction_head = NERClassificationHead(layer_dims=layer_dims)
+    if(prediction_head == "TokenClassificationHead"):
+        #todo change NERhead to TokenClassificationHead
+        prediction_head = TokenClassificationHead(layer_dims=layer_dims)
+    elif(prediction_head == "TextClassificationHead"):
+        #TODO change name here too
+        prediction_head = TextClassificationHead(layer_dims=layer_dims,
+                                                 class_weights=class_weights)
     else:
-        prediction_head = SeqClassificationHead(layer_dims=layer_dims,
-                                                class_weights=class_weights)
+        raise NotImplementedError
 
     language_model = Bert.load(model)
 
@@ -141,7 +145,7 @@ def get_adaptive_model(
     model = AdaptiveModel(language_model=language_model,
                           prediction_head=prediction_head,
                           embeds_dropout_prob=embeds_dropout_prob,
-                          token_level=token_level)
+                          lm_output_type=lm_output_type)
     if fp16:
         model.half()
     model.to(device)

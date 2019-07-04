@@ -49,7 +49,7 @@ class InputFeatures(object):
 
 
 def examples_to_features_sequence(
-    examples, label_list, max_seq_len, tokenizer, output_mode="classification"
+    examples, label_list, max_seq_len, tokenizer, target="classification"
 ):
     """Loads a data file into a list of `InputBatch`s."""
 
@@ -115,12 +115,13 @@ def examples_to_features_sequence(
         assert len(input_mask) == max_seq_len
         assert len(segment_ids) == max_seq_len
 
-        if output_mode == "classification":
+        if target == "classification":
             label_id = label_map[example.label]
-        elif output_mode == "regression":
+        elif target == "regression":
             label_id = float(example.label)
         else:
-            raise KeyError(output_mode)
+            # TODO Add multilabel here
+            raise KeyError(target)
 
         if ex_index < 2:
             logger.info("*** Example ***")

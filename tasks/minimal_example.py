@@ -7,7 +7,7 @@ from farm.data_handler.data_bunch import DataBunch
 from farm.data_handler.preprocessing_pipeline import PPGNAD
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
-from farm.modeling.prediction_head import SeqClassificationHead
+from farm.modeling.prediction_head import TextClassificationHead
 from farm.modeling.tokenization import BertTokenizer
 from farm.modeling.training import (
     Trainer,
@@ -42,7 +42,7 @@ data_bunch = DataBunch(
     distributed=False)
 
 # Init model
-prediction_head = SeqClassificationHead(layer_dims=[768, 9])
+prediction_head = TextClassificationHead(layer_dims=[768, 9])
 
 language_model = Bert.load("bert-base-cased-de-2b-end")
 
@@ -77,8 +77,7 @@ evaluator_dev = Evaluator(
     label_list=pipeline.label_list,
     device=device,
     metric=pipeline.metric,
-    output_mode=pipeline.output_mode,
-    token_level=pipeline.token_level)
+    ph_output_type=pipeline.ph_output_type)
 
 
 evaluator_test = Evaluator(
@@ -86,8 +85,7 @@ evaluator_test = Evaluator(
     label_list=pipeline.label_list,
     device=device,
     metric=pipeline.metric,
-    output_mode=pipeline.output_mode,
-    token_level=pipeline.token_level)
+    ph_output_type=pipeline.ph_output_type)
 
 trainer = Trainer(
     optimizer=optimizer,

@@ -6,7 +6,7 @@ from farm.data_handler.data_bunch import DataBunch
 from farm.data_handler.preprocessing_pipeline import PPCONLL03
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
-from farm.modeling.prediction_head import NERClassificationHead
+from farm.modeling.prediction_head import TokenClassificationHead
 from farm.modeling.tokenization import BertTokenizer
 from farm.modeling.training import Trainer, Evaluator
 from farm.run_model import calculate_optimization_steps, initialize_optimizer
@@ -39,7 +39,7 @@ data_bunch = DataBunch(
 )
 
 # Init model
-prediction_head = NERClassificationHead(layer_dims=[768, len(pipeline.label_list)])
+prediction_head = TokenClassificationHead(layer_dims=[768, len(pipeline.label_list)])
 
 language_model = Bert.load("bert-base-cased-de-2b-end")
 # language_model.save_config("save")
@@ -77,18 +77,15 @@ evaluator_dev = Evaluator(
     label_list=pipeline.label_list,
     device=device,
     metric=pipeline.metric,
-    output_mode=pipeline.output_mode,
-    token_level=pipeline.token_level,
+    ph_output_type=pipeline.ph_output_type,
 )
-
 
 evaluator_test = Evaluator(
     data_loader=data_bunch.get_data_loader("test"),
     label_list=pipeline.label_list,
     device=device,
     metric=pipeline.metric,
-    output_mode=pipeline.output_mode,
-    token_level=pipeline.token_level,
+    ph_output_type=pipeline.ph_output_type,
 )
 
 trainer = Trainer(

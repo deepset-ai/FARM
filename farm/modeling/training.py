@@ -87,7 +87,8 @@ class Trainer:
         logger.info("***** Running training *****")
         model.train()
         for _ in trange(self.epochs, desc="Epoch"):
-            for step, batch in enumerate(tqdm(self.data_loader_train, desc="Iteration")
+            for step, batch in enumerate(
+                tqdm(self.data_loader_train, desc="Iteration")
             ):
 
                 # Move batch of samples to device
@@ -149,9 +150,7 @@ class Trainer:
 
 
 class Evaluator:
-    def __init__(
-        self, data_loader, label_list, device, metric, output_mode, token_level
-    ):
+    def __init__(self, data_loader, label_list, device, metric, ph_output_type):
 
         self.data_loader = data_loader
         self.label_map = {i: label for i, label in enumerate(label_list)}
@@ -167,11 +166,10 @@ class Evaluator:
         self.metric = metric
 
         # Turn classification_report into an argument of init
-        if output_mode in ["classification", "ner"]:
-            if token_level:
-                self.classification_report = token_classification_report
-            else:
-                self.classification_report = classification_report
+        if ph_output_type == "per_token":
+            self.classification_report = token_classification_report
+        elif ph_output_type == "per_sequence":
+            self.classification_report = classification_report
         else:
             raise NotImplementedError
 
@@ -191,7 +189,7 @@ class Evaluator:
                 Y, preds = model.logits_to_preds(
                     logits=logits, label_map=self.label_map, **batch
                 )
-            #TODO this needs to be resolved
+            # TODO this needs to be resolved
             label_ids = batch["label_ids"]
             if Y is not None:
                 label_ids = Y

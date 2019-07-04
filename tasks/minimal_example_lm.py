@@ -82,8 +82,7 @@ evaluator_dev = Evaluator(
     label_list=pipeline.label_list,
     device=device,
     metric=pipeline.metric,
-    output_mode=pipeline.output_mode,
-    token_level=pipeline.token_level,
+    ph_output_type=pipeline.ph_output_type,
 )
 
 
@@ -92,8 +91,7 @@ evaluator_test = Evaluator(
     label_list=pipeline.label_list,
     device=device,
     metric=pipeline.metric,
-    output_mode=pipeline.output_mode,
-    token_level=pipeline.token_level,
+    ph_output_type=pipeline.ph_output_type,
 )
 
 trainer = Trainer(

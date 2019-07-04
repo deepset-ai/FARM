@@ -33,8 +33,6 @@ class PreprocessingPipeline:
         max_seq_len,
         label_list,
         metric,
-        output_mode,
-        token_level,
         filenames,
         dev_split,
         data_dir,
@@ -67,8 +65,6 @@ class PreprocessingPipeline:
         self.label_dtype = label_dtype
         self.label_list = label_list
         self.metric = metric
-        self.output_mode = output_mode
-        self.token_level = token_level
         self.train_file = os.path.join(data_dir, filenames[0])
         self.test_file = os.path.join(data_dir, filenames[2])
 
@@ -128,8 +124,6 @@ class PPGNAD(PreprocessingPipeline):
             "Inland",
         ]
         metric = "acc"
-        output_mode = "classification"
-        token_level = False
         train_file = "train.csv"
         dev_file = None
         test_file = "test.csv"
@@ -146,8 +140,6 @@ class PPGNAD(PreprocessingPipeline):
             delimiter=";",
             label_dtype=torch.long,
             metric=metric,
-            output_mode=output_mode,
-            token_level=token_level,
             filenames=[train_file, dev_file, test_file],
             dev_split=dev_split,
             data_dir=data_dir,
@@ -178,8 +170,6 @@ class PPCONLL03(PreprocessingPipeline):
             "[SEP]",
         ]
         metric = "seq_f1"
-        output_mode = "classification"
-        token_level = True
         train_file = "train.txt"
         dev_file = "valid.txt"
         test_file = "test.txt"
@@ -195,8 +185,6 @@ class PPCONLL03(PreprocessingPipeline):
             label_list=label_list,
             label_dtype=torch.long,
             metric=metric,
-            output_mode=output_mode,
-            token_level=token_level,
             filenames=[train_file, dev_file, test_file],
             dev_split=dev_split,
             data_dir=data_dir,
@@ -211,8 +199,6 @@ class PPGermEval18Fine(PreprocessingPipeline):
         # TODO how best to format this
         label_list = ["OTHER", "INSULT", "PROFANITY", "ABUSE"]
         metric = "f1_macro"
-        output_mode = "classification"
-        token_level = False
         train_file = "train.tsv"
         dev_file = None
         test_file = "test.tsv"
@@ -230,8 +216,6 @@ class PPGermEval18Fine(PreprocessingPipeline):
             delimiter=delimiter,
             label_dtype=torch.long,
             metric=metric,
-            output_mode=output_mode,
-            token_level=token_level,
             filenames=[train_file, dev_file, test_file],
             dev_split=dev_split,
             data_dir=data_dir,
@@ -246,8 +230,6 @@ class PPGermEval18Coarse(PreprocessingPipeline):
         # TODO how best to format this
         label_list = ["OTHER", "OFFENSE"]
         metric = "f1_macro"
-        output_mode = "classification"
-        token_level = False
         train_file = "train.tsv"
         dev_file = None
         test_file = "test.tsv"
@@ -265,8 +247,6 @@ class PPGermEval18Coarse(PreprocessingPipeline):
             delimiter=delimiter,
             label_dtype=torch.long,
             metric=metric,
-            output_mode=output_mode,
-            token_level=token_level,
             filenames=[train_file, dev_file, test_file],
             dev_split=dev_split,
             data_dir=data_dir,
@@ -297,8 +277,6 @@ class PPGermEval14(PreprocessingPipeline):
             "[SEP]",
         ]
         metric = "seq_f1"
-        output_mode = "classification"
-        token_level = True
         train_file = "train.txt"
         dev_file = "valid.txt"
         test_file = "test.txt"
@@ -314,8 +292,6 @@ class PPGermEval14(PreprocessingPipeline):
             label_list=label_list,
             label_dtype=torch.long,
             metric=metric,
-            output_mode=output_mode,
-            token_level=token_level,
             filenames=[train_file, dev_file, test_file],
             dev_split=dev_split,
             data_dir=data_dir,
@@ -346,8 +322,6 @@ class PPLMFineTuning(PreprocessingPipeline):
             "[SEP]",
         ]
         metric = "acc"
-        output_mode = "classification"
-        token_level = False
         train_file = "train.txt"
         dev_file = (
             "dev.txt"
@@ -366,8 +340,6 @@ class PPLMFineTuning(PreprocessingPipeline):
             label_list=label_list,
             label_dtype=torch.long,
             metric=metric,
-            output_mode=output_mode,
-            token_level=token_level,
             filenames=[train_file, dev_file, test_file],
             dev_split=dev_split,
             data_dir=data_dir,
