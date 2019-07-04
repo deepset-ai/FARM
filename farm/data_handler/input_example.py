@@ -239,13 +239,15 @@ def create_examples_wnli(lines, set_type):
 
 
 # TODO naming here would be better docs than lines. Just changed for temporary bug fixing
-def create_examples_lm(lines, sample_to_docs, set_type):
+def create_examples_lm(lines, set_type):
     """Creates examples for Language Model Finetuning that consist of two sentences and the isNext label indicating if
      the two are subsequent sentences from one doc"""
+    docs = lines[0]
+    sample_to_docs = lines[1]
     examples = []
     for idx in range(len(sample_to_docs)):
         guid = "%s-%s" % (set_type, idx)
-        text_a, text_b, is_next_label = get_sentence_pair(lines, sample_to_docs, idx)
+        text_a, text_b, is_next_label = get_sentence_pair(docs, sample_to_docs, idx)
         examples.append(
             InputExample(guid=guid, text_a=text_a, text_b=text_b, label=is_next_label)
         )

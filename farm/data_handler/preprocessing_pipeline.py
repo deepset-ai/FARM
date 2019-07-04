@@ -96,7 +96,7 @@ class PreprocessingPipeline:
 
     def call_list_to_examples(self, data):
         # TODO make this generically work for tuples of data
-        return self.list_to_examples(*data, set_type="X")
+        return self.list_to_examples(data, set_type="X")
 
     def call_example_to_features(self, data):
         return self.examples_to_features(

@@ -8,12 +8,9 @@ from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
 from farm.modeling.prediction_head import BertLanguageModelHead
 from farm.modeling.tokenization import BertTokenizer
-from farm.modeling.training import (
-    calculate_optimization_steps,
-    initialize_optimizer,
-    Trainer,
-    Evaluator,
-)
+from farm.modeling.training import Trainer, Evaluator
+from farm.run_model import calculate_optimization_steps, initialize_optimizer
+
 from farm.utils import set_all_seeds
 
 logging.basicConfig(

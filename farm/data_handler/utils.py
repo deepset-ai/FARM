@@ -107,8 +107,8 @@ def read_docs_from_txt(filename, delimiter="", encoding="utf-8"):
             all_docs.append(doc)
             sample_to_doc.pop()
 
-        num_docs = len(all_docs)
-    return all_docs, sample_to_doc
+    data = (all_docs, sample_to_doc)
+    return data
 
 
 def print_example_with_features(
