@@ -102,20 +102,25 @@ class Trainer:
 
                 # Move batch of samples to device
                 batch = tuple(t.to(self.device) for t in batch)
-                input_ids, input_mask, segment_ids, label_ids, initial_mask = batch
+                # all_input_ids, all_input_mask, all_segment_ids, all_label_ids, all_initial_masks
+                # TODO unify naming of masks (attention = input, token_type = segment)
+                batch = {
+                    "input_ids": batch[0],
+                    "attention_mask": batch[1],
+                    "token_type_ids": batch[2],
+                    "label_ids": batch[3],
+                    "is_next": batch[4],
+                }
 
                 # Forward pass through model
-                logits = model.forward(
-                    input_ids=input_ids,
-                    token_type_ids=segment_ids,
-                    attention_mask=input_mask,
-                )
-                loss = model.logits_to_loss(
-                    logits=logits,
-                    labels=label_ids,
-                    initial_mask=initial_mask,
-                    attention_mask=input_mask,
-                )
+                logits = model.forward(**batch)
+                loss = model.logits_to_loss(logits=logits, **batch)
+                # loss = model.logits_to_loss(
+                #     logits=logits,
+                #     labels=label_ids,
+                #     initial_mask=initial_mask,
+                #     attention_mask=input_mask,
+                # )
                 self.backward_propagate(loss, step)
 
                 # Perform evaluation
@@ -198,28 +203,25 @@ class Evaluator:
 
         for step, batch in enumerate(tqdm(self.data_loader, desc="Evaluating")):
             batch = tuple(t.to(self.device) for t in batch)
-            input_ids, input_mask, segment_ids, label_ids, initial_mask = batch
+            batch = {
+                "input_ids": batch[0],
+                "attention_mask": batch[1],
+                "token_type_ids": batch[2],
+                "label_ids": batch[3],
+                "is_next": batch[4],
+            }
 
             with torch.no_grad():
-                logits = model.forward(
-                    input_ids=input_ids,
-                    token_type_ids=segment_ids,
-                    attention_mask=input_mask,
-                )
-                loss = model.logits_to_loss(
-                    logits=logits,
-                    labels=label_ids,
-                    attention_mask=input_mask,
-                    initial_mask=initial_mask,
-                )
+
+                logits = model.forward(**batch)
+                loss = model.logits_to_loss(logits=logits, **batch)
+
                 # Todo BC: I don't like that Y is returned here but this is the best I have right now
                 Y, preds = model.logits_to_preds(
-                    logits=logits,
-                    input_mask=input_mask,
-                    label_map=self.label_map,
-                    label_ids=label_ids,
-                    initial_mask=initial_mask,
+                    logits=logits, label_map=self.label_map, **batch
                 )
+
+            label_ids = batch["label_ids"]
             if Y is not None:
                 label_ids = Y
 
@@ -392,6 +394,13 @@ def calculate_optimization_steps(
     optimization_steps = int(n_examples / batch_size / grad_acc_steps) * n_epochs
     if local_rank != -1:
         optimization_steps = optimization_steps // torch.distributed.get_world_size()
+    if optimization_steps <= 0:
+        raise ValueError(
+            "Your current settings yielded {} optimization steps."
+            "You have {} examples in your train set, but choise a batch_size of {}".format(
+                optimization_steps, n_examples, batch_size
+            )
+        )
     return optimization_steps
 
 

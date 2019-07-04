@@ -1,3 +1,5 @@
+from farm.data_handler.utils import get_sentence_pair
+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -22,6 +24,12 @@ class InputExample(object):
         self.text_a = text_a
         self.text_b = text_b
         self.label = label
+
+        # sefl.guid
+        # self.raw
+        # self.features = {"input_ids": .... , "attention_mask": ...}
+
+    # def featurize(self)
 
 
 def create_examples_gnad(lines, set_type):
@@ -220,5 +228,19 @@ def create_examples_wnli(lines, set_type):
         label = line[-1]
         examples.append(
             InputExample(guid=guid, text_a=text_a, text_b=text_b, label=label)
+        )
+    return examples
+
+
+# TODO naming here would be better docs than lines. Just changed for temporary bug fixing
+def create_examples_lm(lines, sample_to_docs, set_type):
+    """Creates examples for Language Model Finetuning that consist of two sentences and the isNext label indicating if
+     the two are subsequent sentences from one doc"""
+    examples = []
+    for idx in range(len(sample_to_docs)):
+        guid = "%s-%s" % (set_type, idx)
+        text_a, text_b, is_next_label = get_sentence_pair(lines, sample_to_docs, idx)
+        examples.append(
+            InputExample(guid=guid, text_a=text_a, text_b=text_b, label=is_next_label)
         )
     return examples

@@ -6,12 +6,14 @@ from farm.data_handler.dataset import convert_features_to_dataset
 from farm.data_handler.input_example import (
     create_examples_gnad,
     create_examples_conll_03,
+    create_examples_lm,
 )
 from farm.data_handler.input_features import (
     examples_to_features_sequence,
     examples_to_features_ner,
+    examples_to_features_lm,
 )
-from farm.data_handler.utils import read_tsv, read_ner_file
+from farm.data_handler.utils import read_tsv, read_ner_file, read_docs_from_txt
 
 
 class PreprocessingPipeline:
@@ -91,7 +93,8 @@ class PreprocessingPipeline:
         return self.file_to_list(filename=filename, delimiter=self.delimiter)
 
     def call_list_to_examples(self, data):
-        return self.list_to_examples(lines=data, set_type="X")
+        # TODO make this genericall work for tuples of data
+        return self.list_to_examples(*data, set_type="X")
 
     def call_example_to_features(self, data):
         return self.examples_to_features(
@@ -195,4 +198,57 @@ class PPCONLL03(PreprocessingPipeline):
             filenames=[train_file, dev_file, test_file],
             dev_split=dev_split,
             data_dir=data_dir,
+        )
+
+
+class PPLMFineTuning(PreprocessingPipeline):
+    """ Used to handle a dataset for Language Model Finetuning"""
+
+    def __init__(self, data_dir, tokenizer, max_seq_len):
+
+        # TODO how best to format this
+        label_list = [
+            "[PAD]",
+            "O",
+            "B-MISC",
+            "I-MISC",
+            "B-PER",
+            "I-PER",
+            "B-ORG",
+            "I-ORG",
+            "B-LOC",
+            "I-LOC",
+            "X",
+            "B-OTH",
+            "I-OTH",
+            "[CLS]",
+            "[SEP]",
+        ]
+        metric = "acc"
+        output_mode = "classification"
+        token_level = False
+        train_file = "train.txt"
+        dev_file = (
+            "dev.txt"
+        )  # TODO I do not want to be forced here to supply any of dev / test
+        test_file = "test.txt"
+        dev_split = 0.0
+        delimiter = ""
+
+        super(PPLMFineTuning, self).__init__(
+            file_to_list=read_docs_from_txt,
+            list_to_examples=create_examples_lm,
+            examples_to_features=examples_to_features_lm,
+            features_to_dataset=convert_features_to_dataset,
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            label_list=label_list,
+            label_dtype=torch.long,
+            metric=metric,
+            output_mode=output_mode,
+            token_level=token_level,
+            filenames=[train_file, dev_file, test_file],
+            dev_split=dev_split,
+            data_dir=data_dir,
+            delimiter=delimiter,
         )

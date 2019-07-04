@@ -50,7 +50,7 @@ model = AdaptiveModel(
     language_model=language_model,
     prediction_head=prediction_head,
     embeds_dropout_prob=0.1,
-    token_level=False,
+    lm_output_type="per_sequence",
 )
 model.to(device)
 

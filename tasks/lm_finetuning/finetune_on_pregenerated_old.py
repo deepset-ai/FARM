@@ -1,19 +1,20 @@
-import json
-import logging
-import random
 from argparse import ArgumentParser
-from collections import namedtuple
 from pathlib import Path
+import torch
+import logging
+import json
+import random
+import numpy as np
+from collections import namedtuple
 from tempfile import TemporaryDirectory
 
-import numpy as np
-import torch
-from farm.modeling.bert.modeling import BertForPreTraining
-from farm.modeling.bert.optimization import BertAdam, WarmupLinearSchedule
-from farm.modeling.bert.tokenization import BertTokenizer
 from torch.utils.data import DataLoader, Dataset, RandomSampler
 from torch.utils.data.distributed import DistributedSampler
 from tqdm import tqdm
+
+from opensesame.models.bert.modeling import BertForPreTraining
+from opensesame.models.bert.tokenization import BertTokenizer
+from opensesame.models.bert.optimization import BertAdam, WarmupLinearSchedule
 
 InputFeatures = namedtuple(
     "InputFeatures", "input_ids input_mask segment_ids lm_label_ids is_next"

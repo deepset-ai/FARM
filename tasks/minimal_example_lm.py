@@ -3,10 +3,10 @@ import logging
 import torch
 
 from farm.data_handler.data_bunch import DataBunch
-from farm.data_handler.preprocessing_pipeline import PPCONLL03
+from farm.data_handler.preprocessing_pipeline import PPLMFineTuning
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
-from farm.modeling.prediction_head import NERClassificationHead
+from farm.modeling.prediction_head import BertLanguageModelHead
 from farm.modeling.tokenization import BertTokenizer
 from farm.modeling.training import (
     calculate_optimization_steps,
@@ -29,11 +29,13 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 tokenizer = BertTokenizer.from_pretrained(
-    pretrained_model_name_or_path="bert-base-cased-de-2b-end", do_lower_case=False
+    pretrained_model_name_or_path="bert-base-cased", do_lower_case=False
 )
 
 
-pipeline = PPCONLL03(data_dir="../data/conll03", tokenizer=tokenizer, max_seq_len=128)
+pipeline = PPLMFineTuning(
+    data_dir="../data/finetune_sample", tokenizer=tokenizer, max_seq_len=128
+)
 
 
 # TODO Maybe data_dir should not be an argument here but in pipeline
@@ -43,16 +45,18 @@ data_bunch = DataBunch(
 )
 
 # Init model
-prediction_head = NERClassificationHead(layer_dims=[768, len(pipeline.label_list)])
-
 language_model = Bert.load("bert-base-cased-de-2b-end")
 # language_model.save_config("save")
+prediction_head = BertLanguageModelHead(
+    embeddings=language_model.model.embeddings,
+    hidden_size=language_model.model.config.hidden_size,
+)
 
 model = AdaptiveModel(
     language_model=language_model,
     prediction_head=prediction_head,
     embeds_dropout_prob=0.1,
-    lm_output_type="per_token",
+    lm_output_type="both",
 )
 model.to(device)
 
