@@ -178,7 +178,6 @@ class Evaluator:
 
         for step, batch in enumerate(tqdm(self.data_loader, desc="Evaluating")):
             batch = {key: batch[key].to(self.device) for key in batch}
-            # input_ids, padding_mask, segment_ids, label_ids, initial_mask = batch
 
             with torch.no_grad():
 
@@ -189,9 +188,10 @@ class Evaluator:
                 Y, preds = model.logits_to_preds(
                     logits=logits, label_map=self.label_map, **batch
                 )
-            # TODO this needs to be resolved
-            label_ids = batch["label_ids"]
-            if Y is not None:
+            # TODO this needs to be changed to allow flexible naming of label tensors
+            if Y is None:
+                label_ids = batch["label_ids"]
+            else:
                 label_ids = Y
 
             self.loss_all += list(to_numpy(loss))

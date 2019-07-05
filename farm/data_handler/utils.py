@@ -88,29 +88,29 @@ def read_docs_from_txt(filename, delimiter="", encoding="utf-8"):
     all_docs = []
     doc = []
     corpus_lines = 0
-    sample_to_doc = []
+    # sample_to_doc = []
     with open(filename, "r", encoding=encoding) as f:
         for line in tqdm(f, desc="Loading Dataset", total=corpus_lines):
             line = line.strip()
             if line == delimiter:
                 all_docs.append(doc)
                 doc = []
-                # remove last added sample because there won't be a subsequent line anymore in the doc
-                sample_to_doc.pop()
+                # # remove last added sample because there won't be a subsequent line anymore in the doc
+                # sample_to_doc.pop()
             else:
                 # store as one sample
-                sample = {"doc_id": len(all_docs), "line": len(doc)}
-                sample_to_doc.append(sample)
+                # sample = {"doc_id": len(all_docs), "line": len(doc)}
+                # sample_to_doc.append(sample)
                 doc.append(line)
-                corpus_lines = corpus_lines + 1
+                # corpus_lines = corpus_lines + 1
 
         # if last row in file is not empty
         if all_docs[-1] != doc:
             all_docs.append(doc)
-            sample_to_doc.pop()
+            # sample_to_doc.pop()
 
-    data = (all_docs, sample_to_doc)
-    return data
+    # data = (all_docs, sample_to_doc)
+    return all_docs
 
 
 def print_example_with_features(
@@ -200,41 +200,42 @@ def words_to_tokens(words, tokenizer, max_seq_length):
     return tokens_all, initial_mask
 
 
-def get_sentence_pair(docs, sample_to_doc, idx):
+def get_sentence_pair(doc, all_docs, idx):
     """
     Get one sample from corpus consisting of two sentences. With prob. 50% these are two subsequent sentences
     from one doc. With 50% the second sentence will be a random one from another doc.
     :param idx: int, index of sample.
     :return: (str, str, int), sentence 1, sentence 2, isNextSentence Label
     """
-    t1, t2, current_doc_id = _get_subsequent_sentence_pair(docs, sample_to_doc, idx)
+    sent_1, sent_2 = doc[idx], doc[idx + 1]
+
     if random.random() > 0.5:
-        label = 0
+        label = True
     else:
-        t2 = _get_random_sentence(docs, current_doc_id)
-        label = 1
+        sent_2 = _get_random_sentence(all_docs, forbidden_doc=doc)
+        label = False
 
-    assert len(t1) > 0
-    assert len(t2) > 0
-    return t1, t2, label
-
-
-def _get_subsequent_sentence_pair(all_docs, sample_to_doc, idx):
-    """
-    Get one sample from corpus consisting of a pair of two subsequent lines from the same doc.
-    :param idx: int, index of sample.
-    :return: (str, str), two subsequent sentences from corpus
-    """
-    sample = sample_to_doc[idx]
-    t1 = all_docs[sample["doc_id"]][sample["line"]]
-    t2 = all_docs[sample["doc_id"]][sample["line"] + 1]
-
-    # used later to avoid random nextSentence from same doc
-    doc_id = sample["doc_id"]
-    return t1, t2, doc_id
+    assert len(sent_1) > 0
+    assert len(sent_2) > 0
+    return sent_1, sent_2, label
 
 
-def _get_random_sentence(docs, forbidden_doc_id):
+# def _get_subsequent_sentence_pair(all_docs, sample_to_doc, idx):
+#     """
+#     Get one sample from corpus consisting of a pair of two subsequent lines from the same doc.
+#     :param idx: int, index of sample.
+#     :return: (str, str), two subsequent sentences from corpus
+#     """
+#     sample = sample_to_doc[idx]
+#     t1 = all_docs[sample["doc_id"]][sample["line"]]
+#     t2 = all_docs[sample["doc_id"]][sample["line"] + 1]
+#
+#     # used later to avoid random nextSentence from same doc
+#     doc_id = sample["doc_id"]
+#     return t1, t2, doc_id
+
+
+def _get_random_sentence(docs, forbidden_doc):
     """
     Get random line from another document for nextSentence task.
     :return: str, content of one line
@@ -245,12 +246,12 @@ def _get_random_sentence(docs, forbidden_doc_id):
     for _ in range(10):
         rand_doc_idx = random.randint(0, len(docs) - 1)
         rand_doc = docs[rand_doc_idx]
-        line = rand_doc[random.randrange(len(rand_doc))]
 
-        # check if our picked random line is really from another doc like we want it to be
-        if rand_doc_idx != forbidden_doc_id:
+        # check if our picked random doc is really different to our initial doc
+        if rand_doc != forbidden_doc:
+            sentence = rand_doc[random.randrange(len(rand_doc))]
             break
-    return line
+    return sentence
 
 
 def mask_random_words(tokens, tokenizer):

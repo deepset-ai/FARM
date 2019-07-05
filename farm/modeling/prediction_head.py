@@ -164,13 +164,11 @@ class BertLanguageModelHead(PredictionHead):
     def __init__(self, embeddings, hidden_size, hidden_act="gelu", **kwargs):
         super(BertLanguageModelHead, self).__init__()
 
-        # self.bert = BertModel(config)
         config = {"hidden_size": hidden_size, "hidden_act": hidden_act}
         config = DotMap(config, _dynamic=False)
         embeddings_weights = embeddings.word_embeddings.weight
         self.multihead = BertPreTrainingHeads(config, embeddings_weights)
         self.loss_fct = CrossEntropyLoss(ignore_index=-1)
-        # TODO change dummy value to real one
         self.num_labels = embeddings_weights.shape[0]  # vocab size
         # TODO Check if weight init needed!
         # self.apply(self.init_bert_weights)
@@ -181,30 +179,32 @@ class BertLanguageModelHead(PredictionHead):
         self.config = {
             "type": type(self).__name__,
             "last_initialized": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            # "layer_dims": str(self.layer_dims),
+            "vocab_size": str(self.num_labels),
         }
 
     def forward(self, X):
         lm_logits, next_sentence_logits = self.multihead(X[0], X[1])
         return [lm_logits, next_sentence_logits]
 
-    def logits_to_loss(self, logits, label_ids, is_next, **kwargs):
+    def logits_to_loss(self, logits, lm_label_ids, is_next_label_id, **kwargs):
         assert len(logits) == 2
         masked_lm_loss = self.loss_fct(
-            logits[0].view(-1, self.num_labels), label_ids.view(-1)
+            logits[0].view(-1, self.num_labels), lm_label_ids.view(-1)
         )
-        next_sentence_loss = self.loss_fct(logits[1].view(-1, 2), is_next.view(-1))
+        next_sentence_loss = self.loss_fct(
+            logits[1].view(-1, 2), is_next_label_id.view(-1)
+        )
         total_loss = masked_lm_loss + next_sentence_loss
         total_loss = total_loss.view(1, 1)
         return total_loss
 
-    def logits_to_preds(self, logits, is_next, **kwargs):
+    def logits_to_preds(self, logits, is_next_label_id, **kwargs):
         # TODO does logits shape really allow just argmax here?
         lm_preds = logits[0].argmax(1)
         next_sentence_preds = logits[1].argmax(1)
         # TODO return lm_preds for eval as well
         # TODO: Two are returned because token level classification currently returns label ids as well. This should be changed
-        return is_next, next_sentence_preds
+        return is_next_label_id, next_sentence_preds
 
 
 class FeedForwardBlock(nn.Module):
