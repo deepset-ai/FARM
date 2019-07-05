@@ -168,18 +168,6 @@ def samples_to_features_ner(
         initial_mask = pad(initial_mask, max_seq_len, 0)
         padding_mask = pad(padding_mask, max_seq_len, 0)
 
-        # TODO: This is broken
-        # if idx < 2:
-        #     print_example_with_features(
-        #         sample,
-        #         tokens,
-        #         input_ids,
-        #         padding_mask,
-        #         segment_ids,
-        #         label_ids,
-        #         initial_mask,
-        #     )
-
         feature_dict = {
             "input_ids": input_ids,
             "padding_mask": padding_mask,
@@ -193,7 +181,7 @@ def samples_to_features_ner(
     return feature_objects
 
 
-def examples_to_features_lm(examples, label_list, max_seq_len, tokenizer):
+def samples_to_features_lm(samples, max_seq_len, tokenizer):
     """
     Convert a raw sample (pair of sentences as tokenized strings) into a proper training sample with
     IDs, LM labels, padding_mask, CLS and SEP tokens etc.
@@ -203,9 +191,9 @@ def examples_to_features_lm(examples, label_list, max_seq_len, tokenizer):
     :return: InputFeatures, containing all inputs and labels of one sample as IDs (as used for model training)
     """
     features = []
-    for idx, example in enumerate(examples):
-        tokens_a = tokenizer.tokenize(example.text_a)
-        tokens_b = tokenizer.tokenize(example.text_b)
+    for idx, sample in enumerate(samples):
+        tokens_a = tokenizer.tokenize(sample.clear_text["text_a"])
+        tokens_b = tokenizer.tokenize(sample.clear_text["text_b"])
         # Modifies `tokens_a` and `tokens_b` in place so that the total
         # length is less than the specified length.
         # Account for [CLS], [SEP], [SEP] with "- 3"
@@ -269,24 +257,14 @@ def examples_to_features_lm(examples, label_list, max_seq_len, tokenizer):
         assert len(segment_ids) == max_seq_len
         assert len(lm_label_ids) == max_seq_len
 
-        if idx < 5:
-            logger.info("*** Example ***")
-            logger.info("guid: %s" % (example.guid))
-            logger.info("tokens: %s" % " ".join([str(x) for x in tokens]))
-            logger.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
-            logger.info("padding_mask: %s" % " ".join([str(x) for x in padding_mask]))
-            logger.info("segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
-            logger.info("LM label: %s " % (lm_label_ids))
-            logger.info("Is next sentence label: %s " % (example.label))
 
-        # TODO: adjust to current format of InputFeatures
         features.append(
-            InputFeatures(
-                input_ids=input_ids,
-                padding_mask=padding_mask,
-                segment_ids=segment_ids,
-                lm_label_ids=lm_label_ids,
-                is_next=example.label,
-            )
+            {
+                "input_ids": input_ids,
+                "padding_mask": padding_mask,
+                "segment_ids": segment_ids,
+                "lm_label_ids": lm_label_ids,
+                "is_next_label_id": [sample.clear_text["is_next_label"]],
+            }
         )
     return features

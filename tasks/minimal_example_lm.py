@@ -3,7 +3,7 @@ import logging
 import torch
 
 from farm.data_handler.data_bunch import DataBunch
-from farm.data_handler.preprocessing_pipeline import PPLMFineTuning
+from farm.data_handler.processor import BertStyleLMProcessor
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
 from farm.modeling.prediction_head import BertLanguageModelHead
@@ -30,16 +30,14 @@ tokenizer = BertTokenizer.from_pretrained(
 )
 
 
-pipeline = PPLMFineTuning(
+processor = BertStyleLMProcessor(
     data_dir="../data/finetune_sample", tokenizer=tokenizer, max_seq_len=128
 )
 
 
 # TODO Maybe data_dir should not be an argument here but in pipeline
 # Pipeline should also contain metric
-data_bunch = DataBunch(
-    preprocessing_pipeline=pipeline, batch_size=32, distributed=False
-)
+data_bunch = DataBunch(processor=processor, batch_size=32, distributed=False)
 
 # Init model
 language_model = Bert.load("bert-base-cased-de-2b-end")
@@ -79,19 +77,19 @@ optimizer, warmup_linear = initialize_optimizer(
 
 evaluator_dev = Evaluator(
     data_loader=data_bunch.get_data_loader("dev"),
-    label_list=pipeline.label_list,
+    label_list=processor.label_list,
     device=device,
-    metric=pipeline.metric,
-    ph_output_type=pipeline.ph_output_type,
+    metric=processor.metric,
+    ph_output_type=processor.ph_output_type,
 )
 
 
 evaluator_test = Evaluator(
     data_loader=data_bunch.get_data_loader("test"),
-    label_list=pipeline.label_list,
+    label_list=processor.label_list,
     device=device,
-    metric=pipeline.metric,
-    ph_output_type=pipeline.ph_output_type,
+    metric=processor.metric,
+    ph_output_type=processor.ph_output_type,
 )
 
 trainer = Trainer(

@@ -8,18 +8,14 @@ from farm.data_handler.samples import (
     create_examples_conll_03,
     create_examples_germ_eval_18_coarse,
     create_examples_germ_eval_18_fine,
-    create_examples_lm,
+    create_samples_lm,
 )
 from farm.data_handler.input_features import (
     samples_to_features_sequence,
     examples_to_features_ner,
-    examples_to_features_lm,
+    samples_to_features_lm,
 )
 from farm.data_handler.utils import read_tsv, read_ner_file, read_docs_from_txt
-
-
-
-
 
 
 class PreprocessingPipeline:
@@ -101,7 +97,6 @@ class PreprocessingPipeline:
     def call_list_to_examples(self, data):
         return self.example_class.from_list(data)
 
-
     # def call_example_to_features(self, data):
     #     return self.examples_to_features(
     #         examples=data,
@@ -170,7 +165,6 @@ class PPGNAD(PreprocessingPipeline):
             dev_split=dev_split,
             data_dir=data_dir,
         )
-
 
     def features(object):
         return object.featurize()
@@ -362,8 +356,8 @@ class PPLMFineTuning(PreprocessingPipeline):
 
         super(PPLMFineTuning, self).__init__(
             file_to_list=read_docs_from_txt,
-            list_to_examples=create_examples_lm,
-            examples_to_features=examples_to_features_lm,
+            list_to_examples=create_samples_lm,
+            examples_to_features=samples_to_features_lm,
             features_to_dataset=convert_features_to_dataset,
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,

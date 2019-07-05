@@ -188,23 +188,25 @@ class BertLanguageModelHead(PredictionHead):
         lm_logits, next_sentence_logits = self.multihead(X[0], X[1])
         return [lm_logits, next_sentence_logits]
 
-    def logits_to_loss(self, logits, label_ids, is_next, **kwargs):
+    def logits_to_loss(self, logits, lm_label_ids, is_next_label_id, **kwargs):
         assert len(logits) == 2
         masked_lm_loss = self.loss_fct(
-            logits[0].view(-1, self.num_labels), label_ids.view(-1)
+            logits[0].view(-1, self.num_labels), lm_label_ids.view(-1)
         )
-        next_sentence_loss = self.loss_fct(logits[1].view(-1, 2), is_next.view(-1))
+        next_sentence_loss = self.loss_fct(
+            logits[1].view(-1, 2), is_next_label_id.view(-1)
+        )
         total_loss = masked_lm_loss + next_sentence_loss
         total_loss = total_loss.view(1, 1)
         return total_loss
 
-    def logits_to_preds(self, logits, is_next, **kwargs):
+    def logits_to_preds(self, logits, is_next_label_id, **kwargs):
         # TODO does logits shape really allow just argmax here?
         lm_preds = logits[0].argmax(1)
         next_sentence_preds = logits[1].argmax(1)
         # TODO return lm_preds for eval as well
         # TODO: Two are returned because token level classification currently returns label ids as well. This should be changed
-        return is_next, next_sentence_preds
+        return is_next_label_id, next_sentence_preds
 
 
 class FeedForwardBlock(nn.Module):
