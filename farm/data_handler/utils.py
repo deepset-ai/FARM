@@ -19,14 +19,16 @@ DOWNSTREAM_TASK_MAP = {
 }
 
 
-def read_tsv(filename, quotechar=None, delimiter="\t"):
+def read_tsv(filename, quotechar=None, delimiter="\t", skip_first_line=False):
     """Reads a tab separated value file. Tries to download the data if filename is not found"""
     if not (os.path.exists(filename)):
         download_extract_downstream_data(filename)
     with open(filename, "r", encoding="utf-8") as f:
         reader = csv.reader(f, delimiter=delimiter, quotechar=quotechar)
         lines = []
-        for line in reader:
+        for i, line in enumerate(reader):
+            if i == 0:
+                continue
             lines.append(line)
         return lines
 

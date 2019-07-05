@@ -15,6 +15,7 @@ from farm.modeling.training import (
 )
 from farm.run_model import initialize_optimizer, calculate_optimization_steps
 from farm.utils import set_all_seeds
+from farm.data_handler.processor import GNADProcessor
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
@@ -29,15 +30,14 @@ tokenizer = BertTokenizer.from_pretrained(
     pretrained_model_name_or_path="bert-base-cased-de-2b-end",
     do_lower_case=False)
 
-pipeline = PPGNAD(
-    data_dir="../data/gnad",
-    tokenizer=tokenizer,
-    max_seq_len=128)
+processor = GNADProcessor(tokenizer=tokenizer,
+                          max_seq_len=128,
+                          data_dir="data/gnad")
 
 # TODO Maybe data_dir should not be an argument here but in pipeline
 # Pipeline should also contain metric
 data_bunch = DataBunch(
-    preprocessing_pipeline=pipeline,
+    processor=processor,
     batch_size=32,
     distributed=False)
 
@@ -74,18 +74,18 @@ optimizer, warmup_linear = initialize_optimizer(
 # TODO: maybe have a pipeline params object to collapse some of these arguments?
 evaluator_dev = Evaluator(
     data_loader=data_bunch.get_data_loader("dev"),
-    label_list=pipeline.label_list,
+    label_list=processor.label_list,
     device=device,
-    metric=pipeline.metric,
-    ph_output_type=pipeline.ph_output_type)
+    metric=processor.metric,
+    ph_output_type=processor.ph_output_type)
 
 
 evaluator_test = Evaluator(
     data_loader=data_bunch.get_data_loader("test"),
-    label_list=pipeline.label_list,
+    label_list=processor.label_list,
     device=device,
-    metric=pipeline.metric,
-    ph_output_type=pipeline.ph_output_type)
+    metric=processor.metric,
+    ph_output_type=processor.ph_output_type)
 
 trainer = Trainer(
     optimizer=optimizer,

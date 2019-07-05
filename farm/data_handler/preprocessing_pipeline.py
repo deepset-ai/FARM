@@ -3,19 +3,23 @@ import os
 import torch
 
 from farm.data_handler.dataset import convert_features_to_dataset
-from farm.data_handler.input_example import (
-    create_examples_gnad,
+from farm.data_handler.samples import (
+    create_samples_gnad,
     create_examples_conll_03,
     create_examples_germ_eval_18_coarse,
     create_examples_germ_eval_18_fine,
     create_examples_lm,
 )
 from farm.data_handler.input_features import (
-    examples_to_features_sequence,
+    samples_to_features_sequence,
     examples_to_features_ner,
     examples_to_features_lm,
 )
 from farm.data_handler.utils import read_tsv, read_ner_file, read_docs_from_txt
+
+
+
+
 
 
 class PreprocessingPipeline:
@@ -90,17 +94,24 @@ class PreprocessingPipeline:
     def call_file_to_list(self, filename):
         return self.file_to_list(filename=filename, delimiter=self.delimiter)
 
-    def call_list_to_examples(self, data):
-        # TODO make this generically work for tuples of data
-        return self.list_to_examples(data, set_type="X")
+    # def call_list_to_examples(self, data):
+    #     # TODO make this generically work for tuples of data
+    #     return self.list_to_examples(data, set_type="X")
 
-    def call_example_to_features(self, data):
-        return self.examples_to_features(
-            examples=data,
-            label_list=self.label_list,
-            max_seq_len=self.max_seq_len,
-            tokenizer=self.tokenizer,
-        )
+    def call_list_to_examples(self, data):
+        return self.example_class.from_list(data)
+
+
+    # def call_example_to_features(self, data):
+    #     return self.examples_to_features(
+    #         examples=data,
+    #         label_list=self.label_list,
+    #         max_seq_len=self.max_seq_len,
+    #         tokenizer=self.tokenizer,
+    #     )
+
+    def call_exmaple_to_features(self, input_example):
+        return input_example.featurize()
 
     def call_features_to_dataset(self, data):
         return self.features_to_dataset(features=data, label_dtype=self.label_dtype)
@@ -129,10 +140,25 @@ class PPGNAD(PreprocessingPipeline):
         test_file = "test.csv"
         dev_split = 0.1
 
+        # super(PPGNAD, self).__init__(
+        #     file_to_list=read_tsv,
+        #     list_to_examples=create_samples_gnad,
+        #     examples_to_features=samples_to_features_sequence,
+        #     features_to_dataset=convert_features_to_dataset,
+        #     tokenizer=tokenizer,
+        #     max_seq_len=max_seq_len,
+        #     label_list=label_list,
+        #     delimiter=";",
+        #     label_dtype=torch.long,
+        #     metric=metric,
+        #     filenames=[train_file, dev_file, test_file],
+        #     dev_split=dev_split,
+        #     data_dir=data_dir,
+        # )
         super(PPGNAD, self).__init__(
             file_to_list=read_tsv,
-            list_to_examples=create_examples_gnad,
-            examples_to_features=examples_to_features_sequence,
+            list_to_examples=examples.create,
+            examples_to_features=examples.featurize,
             features_to_dataset=convert_features_to_dataset,
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
@@ -144,6 +170,10 @@ class PPGNAD(PreprocessingPipeline):
             dev_split=dev_split,
             data_dir=data_dir,
         )
+
+
+    def features(object):
+        return object.featurize()
 
 
 class PPCONLL03(PreprocessingPipeline):
@@ -208,7 +238,7 @@ class PPGermEval18Fine(PreprocessingPipeline):
         super(PPGermEval18Fine, self).__init__(
             file_to_list=read_tsv,
             list_to_examples=create_examples_germ_eval_18_fine,
-            examples_to_features=examples_to_features_sequence,
+            examples_to_features=samples_to_features_sequence,
             features_to_dataset=convert_features_to_dataset,
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
@@ -239,7 +269,7 @@ class PPGermEval18Coarse(PreprocessingPipeline):
         super(PPGermEval18Coarse, self).__init__(
             file_to_list=read_tsv,
             list_to_examples=create_examples_germ_eval_18_coarse,
-            examples_to_features=examples_to_features_sequence,
+            examples_to_features=samples_to_features_sequence,
             features_to_dataset=convert_features_to_dataset,
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,

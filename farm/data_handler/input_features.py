@@ -48,31 +48,21 @@ class InputFeatures(object):
         self.features = kwargs
 
 
-def examples_to_features_sequence(
-    examples, label_list, max_seq_len, tokenizer, target="classification"
+def samples_to_features_sequence(
+    samples, label_list, max_seq_len, tokenizer, target="classification"
 ):
     """Loads a data file into a list of `InputBatch`s."""
 
     label_map = {label: i for i, label in enumerate(label_list)}
 
     features = []
-    for (ex_index, example) in enumerate(examples):
-        if ex_index % 10000 == 0:
-            logger.info("Writing example %d of %d" % (ex_index, len(examples)))
+    for (ex_index, sample) in enumerate(samples):
 
-        tokens_a = tokenizer.tokenize(example.text_a)
+        tokens = tokenizer.tokenize(sample.clear_text["text"])
 
-        tokens_b = None
-        if example.text_b:
-            tokens_b = tokenizer.tokenize(example.text_b)
-            # Modifies `tokens_a` and `tokens_b` in place so that the total
-            # length is less than the specified length.
-            # Account for [CLS], [SEP], [SEP] with "- 3"
-            truncate_seq_pair(tokens_a, tokens_b, max_seq_len - 3)
-        else:
-            # Account for [CLS] and [SEP] with "- 2"
-            if len(tokens_a) > max_seq_len - 2:
-                tokens_a = tokens_a[: (max_seq_len - 2)]
+        # Account for [CLS] and [SEP] with "- 2"
+        if len(tokens) > max_seq_len - 2:
+            tokens = tokens[: (max_seq_len - 2)]
 
         # The convention in BERT is:
         # (a) For sequence pairs:
@@ -92,12 +82,8 @@ def examples_to_features_sequence(
         # For classification tasks, the first vector (corresponding to [CLS]) is
         # used as as the "sentence vector". Note that this only makes sense because
         # the entire model is fine-tuned.
-        tokens = ["[CLS]"] + tokens_a + ["[SEP]"]
+        tokens = ["[CLS]"] + tokens + ["[SEP]"]
         segment_ids = [0] * len(tokens)
-
-        if tokens_b:
-            tokens += tokens_b + ["[SEP]"]
-            segment_ids += [1] * (len(tokens_b) + 1)
 
         input_ids = tokenizer.convert_tokens_to_ids(tokens)
 
@@ -116,35 +102,32 @@ def examples_to_features_sequence(
         assert len(segment_ids) == max_seq_len
 
         if target == "classification":
-            label_id = label_map[example.label]
+            label_ids = label_map[sample.clear_text["label"]]
         elif target == "regression":
-            label_id = float(example.label)
+            label_ids = float(sample.clear_text["label"])
         else:
             # TODO Add multilabel here
             raise KeyError(target)
 
-        if ex_index < 2:
-            logger.info("*** Example ***")
-            logger.info("guid: %s" % (example.guid))
-            logger.info("tokens: %s" % " ".join([str(x) for x in tokens]))
-            logger.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
-            logger.info("padding_mask: %s" % " ".join([str(x) for x in padding_mask]))
-            logger.info("segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
-            logger.info("label: %s (id = %d)" % (example.label, label_id))
+        # TODO: This indexing will break
+        # if ex_index < 2:
+        #     logger.info("*** Example ***")
+        #     logger.info("guid: %s" % (sample.guid))
+        #     logger.info("tokens: %s" % " ".join([str(x) for x in tokens]))
+        #     logger.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
+        #     logger.info("padding_mask: %s" % " ".join([str(x) for x in padding_mask]))
+        #     logger.info("segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
+        #     logger.info("label: %s (id = %d)" % (sample.label, label_id))
 
-        features.append(
-            InputFeatures(
-                input_ids=input_ids,
-                padding_mask=padding_mask,
-                segment_ids=segment_ids,
-                label_id=label_id,
-            )
-        )
+        features.append({"input_ids": input_ids,
+                            "padding_mask": padding_mask,
+                            "segment_ids": segment_ids,
+                            "label_ids": label_ids})
     return features
 
 
-def examples_to_features_ner(
-    examples,
+def samples_to_features_ner(
+    samples,
     label_list,
     max_seq_len,
     tokenizer,
@@ -157,12 +140,12 @@ def examples_to_features_ner(
 
     feature_objects = []
 
-    for idx, example in enumerate(examples):
+    for idx, sample in enumerate(samples):
         # Tokenize words and extend the labels so they are aligned with the tokens
-        words = example.text_a.split(" ")
+        words = sample.clear_text["text"].split(" ")
         tokens, initial_mask = words_to_tokens(words, tokenizer, max_seq_len)
 
-        labels_word = example.label
+        labels_word = sample.clear_text["label"]
         labels_token = expand_labels(labels_word, initial_mask, non_initial_token)
 
         # Add CLS and SEP tokens
@@ -185,25 +168,27 @@ def examples_to_features_ner(
         initial_mask = pad(initial_mask, max_seq_len, 0)
         padding_mask = pad(padding_mask, max_seq_len, 0)
 
-        if idx < 2:
-            print_example_with_features(
-                example,
-                tokens,
-                input_ids,
-                padding_mask,
-                segment_ids,
-                label_ids,
-                initial_mask,
-            )
+        # TODO: This is broken
+        # if idx < 2:
+        #     print_example_with_features(
+        #         sample,
+        #         tokens,
+        #         input_ids,
+        #         padding_mask,
+        #         segment_ids,
+        #         label_ids,
+        #         initial_mask,
+        #     )
 
-        feature_object = InputFeatures(
-            input_ids=input_ids,
-            padding_mask=padding_mask,
-            segment_ids=segment_ids,
-            label_id=label_ids,
-            initial_mask=initial_mask,
-        )
-        feature_objects.append(feature_object)
+        feature_dict = {
+            "input_ids": input_ids,
+            "padding_mask": padding_mask,
+            "segment_ids": segment_ids,
+            "label_ids": label_ids,
+            "initial_mask": initial_mask
+        }
+
+        feature_objects.append(feature_dict)
 
     return feature_objects
 
@@ -212,7 +197,7 @@ def examples_to_features_lm(examples, label_list, max_seq_len, tokenizer):
     """
     Convert a raw sample (pair of sentences as tokenized strings) into a proper training sample with
     IDs, LM labels, padding_mask, CLS and SEP tokens etc.
-    :param example: InputExample, containing sentence input as strings and is_next label
+    :param example: Sample, containing sentence input as strings and is_next label
     :param max_seq_len: int, maximum length of sequence.
     :param tokenizer: Tokenizer
     :return: InputFeatures, containing all inputs and labels of one sample as IDs (as used for model training)
