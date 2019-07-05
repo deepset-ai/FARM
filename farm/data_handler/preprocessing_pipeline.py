@@ -3,15 +3,15 @@ import os
 import torch
 
 from farm.data_handler.dataset import convert_features_to_dataset
-from farm.data_handler.input_example import (
-    create_examples_gnad,
+from farm.data_handler.samples import (
+    create_samples_gnad,
     create_examples_conll_03,
     create_examples_germ_eval_18_coarse,
     create_examples_germ_eval_18_fine,
     create_examples_lm,
 )
 from farm.data_handler.input_features import (
-    examples_to_features_sequence,
+    samples_to_features_sequence,
     examples_to_features_ner,
     examples_to_features_lm,
 )
@@ -142,8 +142,8 @@ class PPGNAD(PreprocessingPipeline):
 
         # super(PPGNAD, self).__init__(
         #     file_to_list=read_tsv,
-        #     list_to_examples=create_examples_gnad,
-        #     examples_to_features=examples_to_features_sequence,
+        #     list_to_examples=create_samples_gnad,
+        #     examples_to_features=samples_to_features_sequence,
         #     features_to_dataset=convert_features_to_dataset,
         #     tokenizer=tokenizer,
         #     max_seq_len=max_seq_len,
@@ -238,7 +238,7 @@ class PPGermEval18Fine(PreprocessingPipeline):
         super(PPGermEval18Fine, self).__init__(
             file_to_list=read_tsv,
             list_to_examples=create_examples_germ_eval_18_fine,
-            examples_to_features=examples_to_features_sequence,
+            examples_to_features=samples_to_features_sequence,
             features_to_dataset=convert_features_to_dataset,
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
@@ -269,7 +269,7 @@ class PPGermEval18Coarse(PreprocessingPipeline):
         super(PPGermEval18Coarse, self).__init__(
             file_to_list=read_tsv,
             list_to_examples=create_examples_germ_eval_18_coarse,
-            examples_to_features=examples_to_features_sequence,
+            examples_to_features=samples_to_features_sequence,
             features_to_dataset=convert_features_to_dataset,
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
