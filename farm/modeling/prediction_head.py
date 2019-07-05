@@ -112,10 +112,10 @@ class TokenClassificationHead(PredictionHead):
         return logits
 
     def logits_to_loss(
-        self, logits, label_ids, initial_mask, attention_mask=None, **kwargs
+        self, logits, label_ids, initial_mask, padding_mask=None, **kwargs
     ):
         # Todo: should we be applying initial mask here? Loss is currently calculated even on non initial tokens
-        active_loss = attention_mask.view(-1) == 1
+        active_loss = padding_mask.view(-1) == 1
         active_logits = logits.view(-1, self.num_labels)[active_loss]
         active_labels = label_ids.view(-1)[active_loss]
         loss = self.loss_fct(active_logits, active_labels)

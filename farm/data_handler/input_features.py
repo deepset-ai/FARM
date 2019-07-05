@@ -102,9 +102,9 @@ def samples_to_features_sequence(
         assert len(segment_ids) == max_seq_len
 
         if target == "classification":
-            label_id = label_map[sample.clear_text["label"]]
+            label_ids = label_map[sample.clear_text["label"]]
         elif target == "regression":
-            label_id = float(sample.clear_text["label"])
+            label_ids = float(sample.clear_text["label"])
         else:
             # TODO Add multilabel here
             raise KeyError(target)
@@ -122,12 +122,12 @@ def samples_to_features_sequence(
         features.append({"input_ids": input_ids,
                             "padding_mask": padding_mask,
                             "segment_ids": segment_ids,
-                            "label_id": label_id})
+                            "label_ids": label_ids})
     return features
 
 
-def examples_to_features_ner(
-    examples,
+def samples_to_features_ner(
+    samples,
     label_list,
     max_seq_len,
     tokenizer,
@@ -140,12 +140,12 @@ def examples_to_features_ner(
 
     feature_objects = []
 
-    for idx, example in enumerate(examples):
+    for idx, sample in enumerate(samples):
         # Tokenize words and extend the labels so they are aligned with the tokens
-        words = example.text_a.split(" ")
+        words = sample.clear_text["text"].split(" ")
         tokens, initial_mask = words_to_tokens(words, tokenizer, max_seq_len)
 
-        labels_word = example.label
+        labels_word = sample.clear_text["label"]
         labels_token = expand_labels(labels_word, initial_mask, non_initial_token)
 
         # Add CLS and SEP tokens
@@ -168,25 +168,27 @@ def examples_to_features_ner(
         initial_mask = pad(initial_mask, max_seq_len, 0)
         padding_mask = pad(padding_mask, max_seq_len, 0)
 
-        if idx < 2:
-            print_example_with_features(
-                example,
-                tokens,
-                input_ids,
-                padding_mask,
-                segment_ids,
-                label_ids,
-                initial_mask,
-            )
+        # TODO: This is broken
+        # if idx < 2:
+        #     print_example_with_features(
+        #         sample,
+        #         tokens,
+        #         input_ids,
+        #         padding_mask,
+        #         segment_ids,
+        #         label_ids,
+        #         initial_mask,
+        #     )
 
-        feature_object = InputFeatures(
-            input_ids=input_ids,
-            padding_mask=padding_mask,
-            segment_ids=segment_ids,
-            label_id=label_ids,
-            initial_mask=initial_mask,
-        )
-        feature_objects.append(feature_object)
+        feature_dict = {
+            "input_ids": input_ids,
+            "padding_mask": padding_mask,
+            "segment_ids": segment_ids,
+            "label_ids": label_ids,
+            "initial_mask": initial_mask
+        }
+
+        feature_objects.append(feature_dict)
 
     return feature_objects
 

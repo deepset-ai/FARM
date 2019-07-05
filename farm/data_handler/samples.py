@@ -48,15 +48,6 @@ def create_examples_germ_eval_18_coarse(lines, set_type, text_a_index, label_ind
     return examples
 
 
-# def GNADInputExamples(Sample):
-#
-#     def featurize()
-#         # currently examples to features
-#
-#
-#     def create()
-#         # currentlz create_samples
-
 def create_samples_gnad(baskets, set_type):
     """Creates examples for the training and dev sets."""
     for (i, basket) in enumerate(baskets):
@@ -68,14 +59,40 @@ def create_samples_gnad(baskets, set_type):
                                       "label": label} ))
     return baskets
 
-def create_samples_one_label_one_text(raw_data, text_index, label_index, basket_id):
 
-    text = " ".join(raw_data[text_index:])
+def create_samples_conll_03(lines, set_type):
+    examples = []
+    for i, (sentence, label) in enumerate(lines):
+        guid = "%s-%s" % (set_type, i)
+        text = " ".join(sentence)
+        label = label
+        examples.append(
+            Sample(id=basket_id + " - 1",
+                    clear_text={"text": text,
+                                "label": label})
+        )
+    return examples
+
+
+def create_sample_one_label_one_text(raw_data, text_index, label_index, basket_id):
+
+    # text = " ".join(raw_data[text_index:])
+    text = raw_data[text_index]
     label = raw_data[label_index]
 
-    return [Sample(id=basket_id + " - 1",
+    return [Sample(id=basket_id + " - 0",
                     clear_text={"text": text,
                                 "label": label})]
+
+
+def create_sample_ner(split_text, label, basket_id):
+
+    text = " ".join(split_text)
+    label = label
+
+    return [Sample(id=basket_id + "- 0",
+                   clear_text={"text": text,
+                               "label": label})]
 
 def create_examples_germ_eval_18_coarse(lines, set_type):
     """Creates examples for the training and dev sets."""
@@ -112,18 +129,6 @@ def create_examples_germ_eval_18_fine(lines, set_type):
         )
     return examples
 
-
-def create_examples_conll_03(lines, set_type):
-    examples = []
-    for i, (sentence, label) in enumerate(lines):
-        guid = "%s-%s" % (set_type, i)
-        text_a = " ".join(sentence)
-        text_b = None
-        label = label
-        examples.append(
-            Sample(guid=guid, text_a=text_a, text_b=text_b, label=label)
-        )
-    return examples
 
 
 def create_examples_mrpc(lines, set_type):

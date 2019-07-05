@@ -22,19 +22,12 @@ class NamedDataLoader(DataLoader):
 
             return ret
 
-
         super(NamedDataLoader, self).__init__(dataset=dataset,
                                               sampler=sampler,
                                               batch_size=batch_size,
                                               collate_fn=collate_fn)
 
 
-# class NamedDataLoader(DataLoader):
-#     def __init__(self, names ...):
-#
-#     def collate(self, names):
-#         ....
-#
 
 
 def covert_dataset_to_dataloader(dataset, sampler, batch_size):

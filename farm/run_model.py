@@ -5,7 +5,8 @@ import os
 import torch
 
 from farm.utils import set_all_seeds, initialize_device_settings
-from farm.data_handler.preprocessing_pipeline import PPCONLL03, PPGNAD, PPGermEval18Coarse, PPGermEval18Fine, PPGermEval14
+# from farm.data_handler.preprocessing_pipeline import PPCONLL03, PPGNAD, PPGermEval18Coarse, PPGermEval18Fine, PPGermEval14
+from farm.data_handler.processor import GNADProcessor, CONLLProcessor, GermEval14Processor, GermEval18CoarseProcessor, GermEval18FineProcessor
 from farm.data_handler.data_bunch import DataBunch
 from farm.modeling.prediction_head import TextClassificationHead, TokenClassificationHead
 from farm.modeling.adaptive_model import AdaptiveModel
@@ -41,12 +42,12 @@ def run_model(args):
     # Prepare Data
     tokenizer = BertTokenizer.from_pretrained(args.model, do_lower_case=args.lower_case)
 
-    pipeline = get_pipeline(name=args.name,
-                            tokenizer=tokenizer,
-                            max_seq_len=args.max_seq_len,
-                            data_dir=args.data_dir)
+    processor = get_processor(name=args.name,
+                                 tokenizer=tokenizer,
+                                 max_seq_len=args.max_seq_len,
+                                 data_dir=args.data_dir)
 
-    data_bunch = DataBunch(preprocessing_pipeline=pipeline,
+    data_bunch = DataBunch(processor=processor,
                            batch_size=args.batch_size,
                            distributed=distributed)
 
@@ -84,16 +85,16 @@ def run_model(args):
 
     evaluator_dev = Evaluator(
         data_loader=data_bunch.get_data_loader("dev"),
-        label_list=pipeline.label_list,
+        label_list=processor.label_list,
         device=device,
-        metric=pipeline.metric,
+        metric=processor.metric,
         ph_output_type=model.prediction_head.ph_output_type)
 
     evaluator_test = Evaluator(
         data_loader=data_bunch.get_data_loader("test"),
-        label_list=pipeline.label_list,
+        label_list=processor.label_list,
         device=device,
-        metric=pipeline.metric,
+        metric=processor.metric,
         ph_output_type=model.prediction_head.ph_output_type)
 
     trainer = Trainer(
@@ -157,28 +158,28 @@ def get_adaptive_model(
 
     return model
 
-def get_pipeline(name, data_dir, tokenizer, max_seq_len):
+def get_processor(name, data_dir, tokenizer, max_seq_len):
     # todo How to deal with the file paths???
     if name == "Conll2003":
-        pipeline = PPCONLL03(data_dir=data_dir,
-                             tokenizer=tokenizer,
-                             max_seq_len=max_seq_len)
+        pipeline = CONLLProcessor(data_dir=data_dir,
+                                     tokenizer=tokenizer,
+                                     max_seq_len=max_seq_len)
     elif name == "GNAD":
-        pipeline = PPGNAD(data_dir=data_dir,
+        pipeline = GNADProcessor(data_dir=data_dir,
                                   tokenizer=tokenizer,
                                   max_seq_len=max_seq_len)
     elif name == "GermEval18Coarse":
-        pipeline = PPGermEval18Coarse(data_dir=data_dir,
+        pipeline = GermEval18CoarseProcessor(data_dir=data_dir,
                                       tokenizer=tokenizer,
                                       max_seq_len=max_seq_len)
     elif name == "GermEval18Fine":
-        pipeline = PPGermEval18Fine(data_dir=data_dir,
+        pipeline = GermEval18FineProcessor(data_dir=data_dir,
                                       tokenizer=tokenizer,
                                       max_seq_len=max_seq_len)
     elif name == "GermEval14":
-        pipeline = PPGermEval14(data_dir=data_dir,
-                                      tokenizer=tokenizer,
-                                      max_seq_len=max_seq_len)
+        pipeline = GermEval14Processor(data_dir=data_dir,
+                                          tokenizer=tokenizer,
+                                          max_seq_len=max_seq_len)
     else:
         raise NotImplementedError
 
