@@ -13,30 +13,6 @@ from farm.data_handler.utils import (
 logger = logging.getLogger(__name__)
 
 
-# class InputFeatures(object):
-#     """A single set of features of data."""
-#
-#     def __init__(self, input_ids, padding_mask, segment_ids, label_id, initial_mask=None):
-#         self.input_ids = input_ids
-#         self.padding_mask = padding_mask
-#         self.segment_ids = segment_ids
-#         self.label_id = label_id
-#         self.initial_mask = initial_mask
-#         self.order = [
-#             self.input_ids,
-#             self.padding_mask,
-#             self.segment_ids,
-#             self.label_id,
-#             self.initial_mask,
-#         ]
-
-# class InputFeature(object):
-#     def __init__(self, name, value, type):
-#         self.name = "padding_mask"
-#         self.value = [0,0,0,0,1,1,1,1,1]
-#         self.type = torch.long
-
-
 class InputFeatures(object):
     """A single set of features of data."""
 
@@ -181,7 +157,7 @@ def samples_to_features_ner(
     return feature_objects
 
 
-def samples_to_features_lm(samples, max_seq_len, tokenizer):
+def samples_to_features_bert_lm(samples, max_seq_len, tokenizer):
     """
     Convert a raw sample (pair of sentences as tokenized strings) into a proper training sample with
     IDs, LM labels, padding_mask, CLS and SEP tokens etc.
@@ -252,11 +228,16 @@ def samples_to_features_lm(samples, max_seq_len, tokenizer):
             segment_ids.append(0)
             lm_label_ids.append(-1)
 
+        # Convert is_next_label: Note that in Bert, is_next_labelid = 0 is used for next_sentence=true!
+        if sample.clear_text["is_next_label"]:
+            is_next_label_id = [0]
+        else:
+            is_next_label_id = [1]
+
         assert len(input_ids) == max_seq_len
         assert len(padding_mask) == max_seq_len
         assert len(segment_ids) == max_seq_len
         assert len(lm_label_ids) == max_seq_len
-
 
         features.append(
             {
@@ -264,7 +245,7 @@ def samples_to_features_lm(samples, max_seq_len, tokenizer):
                 "padding_mask": padding_mask,
                 "segment_ids": segment_ids,
                 "lm_label_ids": lm_label_ids,
-                "is_next_label_id": [sample.clear_text["is_next_label"]],
+                "is_next_label_id": is_next_label_id,
             }
         )
     return features

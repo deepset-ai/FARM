@@ -2,6 +2,9 @@ import torch
 import os
 import abc
 from abc import ABC
+import random
+import logging
+
 from farm.data_handler.utils import read_tsv, read_docs_from_txt,read_ner_file
 from torch.utils.data import random_split
 from farm.data_handler.samples import (
@@ -10,15 +13,18 @@ from farm.data_handler.samples import (
     create_sample_ner,
     create_examples_germ_eval_18_coarse,
     create_examples_germ_eval_18_fine,
-    create_samples_lm,
+    create_samples_sentence_pairs,
 )
 from farm.data_handler.input_features import (
     samples_to_features_sequence,
     samples_to_features_ner,
-    samples_to_features_lm,
+    samples_to_features_bert_lm,
 )
 from farm.data_handler.dataset import convert_features_to_dataset
 from farm.data_handler.samples import create_sample_one_label_one_text, Sample, SampleBasket
+
+
+logger = logging.getLogger(__name__)
 
 
 class Processor(ABC):
@@ -107,15 +113,29 @@ class Processor(ABC):
         self.create_samples()
         self.count_samples()
         self.featurize_samples()
+        self.log_samples(3)
         self.create_dataset()
         self.ensure_dev()
         return self.data["train"], self.data["dev"], self.data["test"]
 
     def dataset_from_list(self, list):
+        #TODO we need to pass list to create_samples properly
         self.create_samples()
         self.count_samples()
         self.featurize_samples()
         self.create_dataset()
+
+    def log_samples(self, n_samples):
+        for dataset_name, buckets in self.data.items():
+            logger.info(
+                "*** Show {} random examples from {} dataset ***".format(
+                    n_samples, dataset_name
+                )
+            )
+            for i in range(n_samples):
+                random_bucket = random.choice(buckets)
+                random_sample = random.choice(random_bucket.samples)
+                print(random_sample)
 
 
 class GNADProcessor(Processor):
@@ -578,15 +598,13 @@ class BertStyleLMProcessor(Processor):
     ):
 
         # TODO how best to format this
-        label_list = ["TODO"]
+        label_list = []
         metric = "acc"
         self.delimiter = ""
-
 
         dev_split = dev_split
         label_dtype = torch.long
         # TODO adjust this to new cases
-        self.target = "both"
         self.ph_output_type = "per_sequence"
 
         # # TODO: Is this inheritance needed?
@@ -634,13 +652,13 @@ class BertStyleLMProcessor(Processor):
 
     def create_samples(self):
         for dataset_name, baskets in self.data.items():
-            baskets = create_samples_lm(baskets)
+            baskets = create_samples_sentence_pairs(baskets)
         self.stage = "examples"
 
     def featurize_samples(self):
         for dataset_name, baskets in self.data.items():
             for basket in baskets:
-                features = samples_to_features_lm(
+                features = samples_to_features_bert_lm(
                     samples=basket.samples,
                     max_seq_len=self.max_seq_len,
                     tokenizer=self.tokenizer,

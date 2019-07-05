@@ -25,9 +25,29 @@ class Sample(object):
                  features=None):
 
         self.id = id
-        # "train - 1 - 1
         self.clear_text = clear_text
         self.features = features
+
+    def __str__(self):
+        if self.clear_text:
+            clear_text_str = "\n \t".join(
+                [k + ": " + str(v) for k, v in self.clear_text.items()]
+            )
+        else:
+            clear_text_str = "None"
+        if self.features:
+            feature_str = "\n \t".join(
+                [k + ": " + str(v) for k, v in self.features.items()]
+            )
+        else:
+            feature_str = "None"
+        s = (
+            "*** Example ***\n"
+            "ID: {}\n"
+            "Clear Text: \n \t{}\n"
+            "Features: \n \t{}".format(self.id, clear_text_str, feature_str)
+        )
+        return s
 
 
 
@@ -53,7 +73,7 @@ def create_sample_ner(split_text, label, basket_id):
 
 
 
-def create_samples_lm(baskets):
+def create_samples_sentence_pairs(baskets):
     """Creates examples for Language Model Finetuning that consist of two sentences and the isNext label indicating if
      the two are subsequent sentences from one doc"""
     # sample_to_docs = lines[1]

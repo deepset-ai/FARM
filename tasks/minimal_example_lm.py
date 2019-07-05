@@ -34,9 +34,6 @@ processor = BertStyleLMProcessor(
     data_dir="../data/finetune_sample", tokenizer=tokenizer, max_seq_len=128
 )
 
-
-# TODO Maybe data_dir should not be an argument here but in pipeline
-# Pipeline should also contain metric
 data_bunch = DataBunch(processor=processor, batch_size=32, distributed=False)
 
 # Init model

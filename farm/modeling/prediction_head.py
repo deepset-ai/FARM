@@ -164,13 +164,11 @@ class BertLanguageModelHead(PredictionHead):
     def __init__(self, embeddings, hidden_size, hidden_act="gelu", **kwargs):
         super(BertLanguageModelHead, self).__init__()
 
-        # self.bert = BertModel(config)
         config = {"hidden_size": hidden_size, "hidden_act": hidden_act}
         config = DotMap(config, _dynamic=False)
         embeddings_weights = embeddings.word_embeddings.weight
         self.multihead = BertPreTrainingHeads(config, embeddings_weights)
         self.loss_fct = CrossEntropyLoss(ignore_index=-1)
-        # TODO change dummy value to real one
         self.num_labels = embeddings_weights.shape[0]  # vocab size
         # TODO Check if weight init needed!
         # self.apply(self.init_bert_weights)
@@ -181,7 +179,7 @@ class BertLanguageModelHead(PredictionHead):
         self.config = {
             "type": type(self).__name__,
             "last_initialized": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            # "layer_dims": str(self.layer_dims),
+            "vocab_size": str(self.num_labels),
         }
 
     def forward(self, X):

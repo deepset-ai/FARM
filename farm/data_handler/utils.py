@@ -210,10 +210,10 @@ def get_sentence_pair(doc, all_docs, idx):
     sent_1, sent_2 = doc[idx], doc[idx + 1]
 
     if random.random() > 0.5:
-        label = 0
+        label = True
     else:
         sent_2 = _get_random_sentence(all_docs, forbidden_doc=doc)
-        label = 1
+        label = False
 
     assert len(sent_1) > 0
     assert len(sent_2) > 0
