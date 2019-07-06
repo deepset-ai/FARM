@@ -5,7 +5,7 @@ from abc import ABC
 import random
 import logging
 
-from farm.data_handler.utils import read_tsv, read_docs_from_txt,read_ner_file
+from farm.data_handler.utils import read_tsv, read_docs_from_txt, read_ner_file
 from torch.utils.data import random_split
 from farm.data_handler.samples import (
     create_samples_gnad,
@@ -21,7 +21,11 @@ from farm.data_handler.input_features import (
     samples_to_features_bert_lm,
 )
 from farm.data_handler.dataset import convert_features_to_dataset
-from farm.data_handler.samples import create_sample_one_label_one_text, Sample, SampleBasket
+from farm.data_handler.samples import (
+    create_sample_one_label_one_text,
+    Sample,
+    SampleBasket,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -29,19 +33,20 @@ logger = logging.getLogger(__name__)
 
 class Processor(ABC):
     # TODO think about how to define this parent class so it enforces that certain attributes are initialized
-    def __init__(self,
-                 tokenizer,
-                 max_seq_len,
-                 label_list,
-                 metric,
-                 train_filename,
-                 dev_filename,
-                 test_filename,
-                 dev_split,
-                 data_dir,
-                 ph_output_type,
-                 label_dtype=torch.long,
-                 ):
+    def __init__(
+        self,
+        tokenizer,
+        max_seq_len,
+        label_list,
+        metric,
+        train_filename,
+        dev_filename,
+        test_filename,
+        dev_split,
+        data_dir,
+        ph_output_type,
+        label_dtype=torch.long,
+    ):
         self.tokenizer = tokenizer
         self.max_seq_len = max_seq_len
         self.label_list = label_list
@@ -118,8 +123,11 @@ class Processor(ABC):
         self.ensure_dev()
         return self.data["train"], self.data["dev"], self.data["test"]
 
-    def dataset_from_list(self, list):
-        #TODO we need to pass list to create_samples properly
+    def dataset_from_raw_data(self, raw_data):
+        self.data["inference"] = [
+            SampleBasket(raw=tr, id="infer - {}".format(i))
+            for i, tr in enumerate(raw_data)
+        ]
         self.create_samples()
         self.count_samples()
         self.featurize_samples()
@@ -139,14 +147,16 @@ class Processor(ABC):
 
 
 class GNADProcessor(Processor):
-    def __init__(self,
-                 tokenizer,
-                 max_seq_len,
-                 data_dir,
-                 train_filename="train.csv",
-                 dev_filename=None,
-                 test_filename="test.csv",
-                 dev_split=0.1):
+    def __init__(
+        self,
+        tokenizer,
+        max_seq_len,
+        data_dir,
+        train_filename="train.csv",
+        dev_filename=None,
+        test_filename="test.csv",
+        dev_split=0.1,
+    ):
 
         label_list = [
             "Web",
@@ -171,36 +181,43 @@ class GNADProcessor(Processor):
         self.delimiter = ";"
 
         # # TODO: Is this inheritance needed?
-        super(GNADProcessor, self).__init__(tokenizer=tokenizer,
-                                            max_seq_len=max_seq_len,
-                                            label_list=label_list,
-                                            metric=metric,
-                                            train_filename=train_filename,
-                                            dev_filename=dev_filename,
-                                            test_filename=test_filename,
-                                            dev_split=dev_split,
-                                            data_dir=data_dir,
-                                            ph_output_type=ph_output_type,
-                                            label_dtype=label_dtype,)
-
+        super(GNADProcessor, self).__init__(
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            label_list=label_list,
+            metric=metric,
+            train_filename=train_filename,
+            dev_filename=dev_filename,
+            test_filename=test_filename,
+            dev_split=dev_split,
+            data_dir=data_dir,
+            ph_output_type=ph_output_type,
+            label_dtype=label_dtype,
+        )
 
     def read_from_file(self):
         train_file = os.path.join(self.data_dir, self.train_filename)
         test_file = os.path.join(self.data_dir, self.test_filename)
 
-        train_raw = read_tsv(filename=train_file,
-                              delimiter=self.delimiter)
-        self.data["train"] = [SampleBasket(raw=tr, id="train - {}".format(i)) for i, tr in enumerate(train_raw)]
+        train_raw = read_tsv(filename=train_file, delimiter=self.delimiter)
+        self.data["train"] = [
+            SampleBasket(raw=tr, id="train - {}".format(i))
+            for i, tr in enumerate(train_raw)
+        ]
 
-        test_raw = read_tsv(filename=test_file,
-                              delimiter=self.delimiter)
-        self.data["test"] = [SampleBasket(raw=tr, id="test - {}".format(i)) for i, tr in enumerate(test_raw)]
+        test_raw = read_tsv(filename=test_file, delimiter=self.delimiter)
+        self.data["test"] = [
+            SampleBasket(raw=tr, id="test - {}".format(i))
+            for i, tr in enumerate(test_raw)
+        ]
 
         if self.dev_filename:
             dev_file = os.path.join(self.data_dir, self.dev_filename)
-            dev_raw = read_tsv(filename=dev_file,
-                                delimiter=self.delimiter)
-            self.data["dev"] = [SampleBasket(raw=dr, id="dev - {}".format(i)) for i, dr in enumerate(dev_raw)]
+            dev_raw = read_tsv(filename=dev_file, delimiter=self.delimiter)
+            self.data["dev"] = [
+                SampleBasket(raw=dr, id="dev - {}".format(i))
+                for i, dr in enumerate(dev_raw)
+            ]
 
         self.stage = "lines"
 
@@ -208,10 +225,9 @@ class GNADProcessor(Processor):
         for dataset_name in self.data:
             baskets = self.data[dataset_name]
             for basket in baskets:
-                basket.samples = create_sample_one_label_one_text(basket.raw,
-                                                                    text_index=1,
-                                                                    label_index=0,
-                                                                    basket_id=basket.id)
+                basket.samples = create_sample_one_label_one_text(
+                    basket.raw, text_index=1, label_index=0, basket_id=basket.id
+                )
         self.stage = "examples"
 
     def featurize_samples(self):
@@ -219,26 +235,29 @@ class GNADProcessor(Processor):
             baskets = self.data[dataset_name]
             for basket in baskets:
 
-                features = samples_to_features_sequence(samples=basket.samples,
-                                                        label_list=self.label_list,
-                                                        max_seq_len=self.max_seq_len,
-                                                        tokenizer=self.tokenizer,
-                                                        target=self.target)
+                features = samples_to_features_sequence(
+                    samples=basket.samples,
+                    label_list=self.label_list,
+                    max_seq_len=self.max_seq_len,
+                    tokenizer=self.tokenizer,
+                    target=self.target,
+                )
                 for sample, feat in zip(basket.samples, features):
                     sample.features = feat
         self.stage = "features"
 
 
-
 class GermEval18CoarseProcessor(Processor):
-    def __init__(self,
-                 tokenizer,
-                 max_seq_len,
-                 data_dir,
-                 train_filename="train.tsv",
-                 dev_filename=None,
-                 test_filename="test.tsv",
-                 dev_split=0.1):
+    def __init__(
+        self,
+        tokenizer,
+        max_seq_len,
+        data_dir,
+        train_filename="train.tsv",
+        dev_filename=None,
+        test_filename="test.tsv",
+        dev_split=0.1,
+    ):
 
         label_list = ["OTHER", "OFFENSE"]
 
@@ -255,38 +274,55 @@ class GermEval18CoarseProcessor(Processor):
         self.label_index = 1
 
         # # TODO: Is this inheritance needed?
-        super(GermEval18CoarseProcessor, self).__init__(tokenizer=tokenizer,
-                                                        max_seq_len=max_seq_len,
-                                                        label_list=label_list,
-                                                        metric=metric,
-                                                        train_filename=train_filename,
-                                                        dev_filename=dev_filename,
-                                                        test_filename=test_filename,
-                                                        dev_split=dev_split,
-                                                        data_dir=data_dir,
-                                                        ph_output_type=ph_output_type,
-                                                        label_dtype=label_dtype,)
+        super(GermEval18CoarseProcessor, self).__init__(
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            label_list=label_list,
+            metric=metric,
+            train_filename=train_filename,
+            dev_filename=dev_filename,
+            test_filename=test_filename,
+            dev_split=dev_split,
+            data_dir=data_dir,
+            ph_output_type=ph_output_type,
+            label_dtype=label_dtype,
+        )
 
     def read_from_file(self):
         train_file = os.path.join(self.data_dir, self.train_filename)
         test_file = os.path.join(self.data_dir, self.test_filename)
 
-        train_raw = read_tsv(filename=train_file,
-                              delimiter=self.delimiter,
-                             skip_first_line=self.skip_first_line)
-        self.data["train"] = [SampleBasket(raw=tr, id="train - {}".format(i)) for i, tr in enumerate(train_raw)]
+        train_raw = read_tsv(
+            filename=train_file,
+            delimiter=self.delimiter,
+            skip_first_line=self.skip_first_line,
+        )
+        self.data["train"] = [
+            SampleBasket(raw=tr, id="train - {}".format(i))
+            for i, tr in enumerate(train_raw)
+        ]
 
-        test_raw = read_tsv(filename=test_file,
-                            delimiter=self.delimiter,
-                            skip_first_line=self.skip_first_line)
-        self.data["test"] = [SampleBasket(raw=tr, id="test - {}".format(i)) for i, tr in enumerate(test_raw)]
+        test_raw = read_tsv(
+            filename=test_file,
+            delimiter=self.delimiter,
+            skip_first_line=self.skip_first_line,
+        )
+        self.data["test"] = [
+            SampleBasket(raw=tr, id="test - {}".format(i))
+            for i, tr in enumerate(test_raw)
+        ]
 
         if self.dev_filename:
             dev_file = os.path.join(self.data_dir, self.dev_filename)
-            dev_raw = read_tsv(filename=dev_file,
-                               delimiter=self.delimiter,
-                               skip_first_line=self.skip_first_line)
-            self.data["dev"] = [SampleBasket(raw=dr, id="dev - {}".format(i)) for i, dr in enumerate(dev_raw)]
+            dev_raw = read_tsv(
+                filename=dev_file,
+                delimiter=self.delimiter,
+                skip_first_line=self.skip_first_line,
+            )
+            self.data["dev"] = [
+                SampleBasket(raw=dr, id="dev - {}".format(i))
+                for i, dr in enumerate(dev_raw)
+            ]
 
         self.stage = "lines"
 
@@ -294,10 +330,12 @@ class GermEval18CoarseProcessor(Processor):
         for dataset_name in self.data:
             baskets = self.data[dataset_name]
             for basket in baskets:
-                basket.samples = create_sample_one_label_one_text(basket.raw,
-                                                                    text_index=self.text_index,
-                                                                    label_index=self.label_index,
-                                                                    basket_id=basket.id)
+                basket.samples = create_sample_one_label_one_text(
+                    basket.raw,
+                    text_index=self.text_index,
+                    label_index=self.label_index,
+                    basket_id=basket.id,
+                )
         self.stage = "examples"
 
     def featurize_samples(self):
@@ -305,26 +343,29 @@ class GermEval18CoarseProcessor(Processor):
             baskets = self.data[dataset_name]
             for basket in baskets:
 
-                features = samples_to_features_sequence(samples=basket.samples,
-                                                        label_list=self.label_list,
-                                                        max_seq_len=self.max_seq_len,
-                                                        tokenizer=self.tokenizer,
-                                                        target=self.target)
+                features = samples_to_features_sequence(
+                    samples=basket.samples,
+                    label_list=self.label_list,
+                    max_seq_len=self.max_seq_len,
+                    tokenizer=self.tokenizer,
+                    target=self.target,
+                )
                 for sample, feat in zip(basket.samples, features):
                     sample.features = feat
         self.stage = "features"
 
 
-
 class GermEval18FineProcessor(Processor):
-    def __init__(self,
-                 tokenizer,
-                 max_seq_len,
-                 data_dir,
-                 train_filename="train.tsv",
-                 dev_filename=None,
-                 test_filename="test.tsv",
-                 dev_split=0.1):
+    def __init__(
+        self,
+        tokenizer,
+        max_seq_len,
+        data_dir,
+        train_filename="train.tsv",
+        dev_filename=None,
+        test_filename="test.tsv",
+        dev_split=0.1,
+    ):
 
         label_list = ["OTHER", "INSULT", "ABUSE", "PROFANITY"]
 
@@ -341,38 +382,55 @@ class GermEval18FineProcessor(Processor):
         self.label_index = 2
 
         # # TODO: Is this inheritance needed?
-        super(GermEval18FineProcessor, self).__init__(tokenizer=tokenizer,
-                                                        max_seq_len=max_seq_len,
-                                                        label_list=label_list,
-                                                        metric=metric,
-                                                        train_filename=train_filename,
-                                                        dev_filename=dev_filename,
-                                                        test_filename=test_filename,
-                                                        dev_split=dev_split,
-                                                        data_dir=data_dir,
-                                                        ph_output_type=ph_output_type,
-                                                        label_dtype=label_dtype,)
+        super(GermEval18FineProcessor, self).__init__(
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            label_list=label_list,
+            metric=metric,
+            train_filename=train_filename,
+            dev_filename=dev_filename,
+            test_filename=test_filename,
+            dev_split=dev_split,
+            data_dir=data_dir,
+            ph_output_type=ph_output_type,
+            label_dtype=label_dtype,
+        )
 
     def read_from_file(self):
         train_file = os.path.join(self.data_dir, self.train_filename)
         test_file = os.path.join(self.data_dir, self.test_filename)
 
-        train_raw = read_tsv(filename=train_file,
-                              delimiter=self.delimiter,
-                             skip_first_line=self.skip_first_line)
-        self.data["train"] = [SampleBasket(raw=tr, id="train - {}".format(i)) for i, tr in enumerate(train_raw)]
+        train_raw = read_tsv(
+            filename=train_file,
+            delimiter=self.delimiter,
+            skip_first_line=self.skip_first_line,
+        )
+        self.data["train"] = [
+            SampleBasket(raw=tr, id="train - {}".format(i))
+            for i, tr in enumerate(train_raw)
+        ]
 
-        test_raw = read_tsv(filename=test_file,
-                            delimiter=self.delimiter,
-                            skip_first_line=self.skip_first_line)
-        self.data["test"] = [SampleBasket(raw=tr, id="test - {}".format(i)) for i, tr in enumerate(test_raw)]
+        test_raw = read_tsv(
+            filename=test_file,
+            delimiter=self.delimiter,
+            skip_first_line=self.skip_first_line,
+        )
+        self.data["test"] = [
+            SampleBasket(raw=tr, id="test - {}".format(i))
+            for i, tr in enumerate(test_raw)
+        ]
 
         if self.dev_filename:
             dev_file = os.path.join(self.data_dir, self.dev_filename)
-            dev_raw = read_tsv(filename=dev_file,
-                               delimiter=self.delimiter,
-                               skip_first_line=self.skip_first_line)
-            self.data["dev"] = [SampleBasket(raw=dr, id="dev - {}".format(i)) for i, dr in enumerate(dev_raw)]
+            dev_raw = read_tsv(
+                filename=dev_file,
+                delimiter=self.delimiter,
+                skip_first_line=self.skip_first_line,
+            )
+            self.data["dev"] = [
+                SampleBasket(raw=dr, id="dev - {}".format(i))
+                for i, dr in enumerate(dev_raw)
+            ]
 
         self.stage = "lines"
 
@@ -380,10 +438,12 @@ class GermEval18FineProcessor(Processor):
         for dataset_name in self.data:
             baskets = self.data[dataset_name]
             for basket in baskets:
-                basket.samples = create_sample_one_label_one_text(basket.raw,
-                                                                    text_index=self.text_index,
-                                                                    label_index=self.label_index,
-                                                                    basket_id=basket.id)
+                basket.samples = create_sample_one_label_one_text(
+                    basket.raw,
+                    text_index=self.text_index,
+                    label_index=self.label_index,
+                    basket_id=basket.id,
+                )
         self.stage = "examples"
 
     def featurize_samples(self):
@@ -391,11 +451,13 @@ class GermEval18FineProcessor(Processor):
             baskets = self.data[dataset_name]
             for basket in baskets:
 
-                features = samples_to_features_sequence(samples=basket.samples,
-                                                        label_list=self.label_list,
-                                                        max_seq_len=self.max_seq_len,
-                                                        tokenizer=self.tokenizer,
-                                                        target=self.target)
+                features = samples_to_features_sequence(
+                    samples=basket.samples,
+                    label_list=self.label_list,
+                    max_seq_len=self.max_seq_len,
+                    tokenizer=self.tokenizer,
+                    target=self.target,
+                )
                 for sample, feat in zip(basket.samples, features):
                     sample.features = feat
         self.stage = "features"
@@ -404,14 +466,16 @@ class GermEval18FineProcessor(Processor):
 class CONLLProcessor(Processor):
     """ Used to handle the CoNLL 2003 dataset (https://www.clips.uantwerpen.be/conll2003/ner/)"""
 
-    def __init__(self,
-                 tokenizer,
-                 max_seq_len,
-                 data_dir,
-                 train_file="train.txt",
-                 dev_file="valid.txt",
-                 test_file="test.txt",
-                 dev_split=0.0):
+    def __init__(
+        self,
+        tokenizer,
+        max_seq_len,
+        data_dir,
+        train_file="train.txt",
+        dev_file="valid.txt",
+        test_file="test.txt",
+        dev_split=0.0,
+    ):
 
         label_list = [
             "[PAD]",
@@ -440,70 +504,81 @@ class CONLLProcessor(Processor):
 
         self.target = "classification"
 
-        super(CONLLProcessor, self).__init__(tokenizer=tokenizer,
-                                             max_seq_len=max_seq_len,
-                                             label_list=label_list,
-                                             metric=metric,
-                                             train_filename=train_filename,
-                                             dev_filename=dev_filename,
-                                             test_filename=test_filename,
-                                             dev_split=dev_split,
-                                             data_dir=data_dir,
-                                             ph_output_type=ph_output_type,
-                                             label_dtype=label_dtype)
+        super(CONLLProcessor, self).__init__(
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            label_list=label_list,
+            metric=metric,
+            train_filename=train_filename,
+            dev_filename=dev_filename,
+            test_filename=test_filename,
+            dev_split=dev_split,
+            data_dir=data_dir,
+            ph_output_type=ph_output_type,
+            label_dtype=label_dtype,
+        )
 
     def read_from_file(self):
         train_file = os.path.join(self.data_dir, self.train_filename)
         test_file = os.path.join(self.data_dir, self.test_filename)
 
         train_raw = read_ner_file(filename=train_file)
-        self.data["train"] = [SampleBasket(raw=tr, id="train - {}".format(i)) for i, tr in enumerate(train_raw)]
+        self.data["train"] = [
+            SampleBasket(raw=tr, id="train - {}".format(i))
+            for i, tr in enumerate(train_raw)
+        ]
 
         test_raw = read_ner_file(filename=test_file)
-        self.data["test"] = [SampleBasket(raw=tr, id="test - {}".format(i)) for i, tr in enumerate(test_raw)]
+        self.data["test"] = [
+            SampleBasket(raw=tr, id="test - {}".format(i))
+            for i, tr in enumerate(test_raw)
+        ]
 
         if self.dev_filename:
             dev_file = os.path.join(self.data_dir, self.dev_filename)
             dev_raw = read_ner_file(filename=dev_file)
-            self.data["dev"] = [SampleBasket(raw=dr, id="dev - {}".format(i)) for i, dr in enumerate(dev_raw)]
+            self.data["dev"] = [
+                SampleBasket(raw=dr, id="dev - {}".format(i))
+                for i, dr in enumerate(dev_raw)
+            ]
         self.stage = "lines"
-
 
     def create_samples(self):
         for dataset_name in self.data:
             baskets = self.data[dataset_name]
             for basket in baskets:
-                basket.samples = create_sample_ner(split_text=basket.raw[0],
-                                                   label=basket.raw[1],
-                                                   basket_id=basket.id)
+                basket.samples = create_sample_ner(
+                    split_text=basket.raw[0], label=basket.raw[1], basket_id=basket.id
+                )
         self.stage = "examples"
-
 
     def featurize_samples(self):
         for dataset_name in self.data:
             baskets = self.data[dataset_name]
             for basket in baskets:
-                features = samples_to_features_ner(samples=basket.samples,
-                                                    label_list=self.label_list,
-                                                    max_seq_len=self.max_seq_len,
-                                                    tokenizer=self.tokenizer,
-                                                    target=self.target)
+                features = samples_to_features_ner(
+                    samples=basket.samples,
+                    label_list=self.label_list,
+                    max_seq_len=self.max_seq_len,
+                    tokenizer=self.tokenizer,
+                    target=self.target,
+                )
                 for sample, feat in zip(basket.samples, features):
                     sample.features = feat
         self.stage = "features"
 
 
-
 class GermEval14Processor(Processor):
-
-    def __init__(self,
-                 tokenizer,
-                 max_seq_len,
-                 data_dir,
-                 train_file="train.txt",
-                 dev_file="valid.txt",
-                 test_file="test.txt",
-                 dev_split=0.0):
+    def __init__(
+        self,
+        tokenizer,
+        max_seq_len,
+        data_dir,
+        train_file="train.txt",
+        dev_file="valid.txt",
+        test_file="test.txt",
+        dev_split=0.0,
+    ):
 
         label_list = [
             "[PAD]",
@@ -532,54 +607,65 @@ class GermEval14Processor(Processor):
 
         self.target = "classification"
 
-        super(GermEval14Processor, self).__init__(tokenizer=tokenizer,
-                                                     max_seq_len=max_seq_len,
-                                                     label_list=label_list,
-                                                     metric=metric,
-                                                     train_filename=train_filename,
-                                                     dev_filename=dev_filename,
-                                                     test_filename=test_filename,
-                                                     dev_split=dev_split,
-                                                     data_dir=data_dir,
-                                                     ph_output_type=ph_output_type,
-                                                     label_dtype=label_dtype)
+        super(GermEval14Processor, self).__init__(
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            label_list=label_list,
+            metric=metric,
+            train_filename=train_filename,
+            dev_filename=dev_filename,
+            test_filename=test_filename,
+            dev_split=dev_split,
+            data_dir=data_dir,
+            ph_output_type=ph_output_type,
+            label_dtype=label_dtype,
+        )
 
     def read_from_file(self):
         train_file = os.path.join(self.data_dir, self.train_filename)
         test_file = os.path.join(self.data_dir, self.test_filename)
 
         train_raw = read_ner_file(filename=train_file)
-        self.data["train"] = [SampleBasket(raw=tr, id="train - {}".format(i)) for i, tr in enumerate(train_raw)]
+        self.data["train"] = [
+            SampleBasket(raw=tr, id="train - {}".format(i))
+            for i, tr in enumerate(train_raw)
+        ]
 
         test_raw = read_ner_file(filename=test_file)
-        self.data["test"] = [SampleBasket(raw=tr, id="test - {}".format(i)) for i, tr in enumerate(test_raw)]
+        self.data["test"] = [
+            SampleBasket(raw=tr, id="test - {}".format(i))
+            for i, tr in enumerate(test_raw)
+        ]
 
         if self.dev_filename:
             dev_file = os.path.join(self.data_dir, self.dev_filename)
             dev_raw = read_ner_file(filename=dev_file)
-            self.data["dev"] = [SampleBasket(raw=dr, id="dev - {}".format(i)) for i, dr in enumerate(dev_raw)]
+            self.data["dev"] = [
+                SampleBasket(raw=dr, id="dev - {}".format(i))
+                for i, dr in enumerate(dev_raw)
+            ]
         self.stage = "lines"
-
 
     def create_samples(self):
         for dataset_name in self.data:
             baskets = self.data[dataset_name]
             for basket in baskets:
-                basket.samples = create_sample_ner(split_text=basket.raw[0],
-                                                   label=basket.raw[1],
-                                                   basket_id=basket.id)
+                basket.samples = create_sample_ner(
+                    split_text=basket.raw[0], label=basket.raw[1], basket_id=basket.id
+                )
         self.stage = "examples"
-
 
     def featurize_samples(self):
         for dataset_name in self.data:
             baskets = self.data[dataset_name]
             for basket in baskets:
-                features = samples_to_features_ner(samples=basket.samples,
-                                                    label_list=self.label_list,
-                                                    max_seq_len=self.max_seq_len,
-                                                    tokenizer=self.tokenizer,
-                                                    target=self.target)
+                features = samples_to_features_ner(
+                    samples=basket.samples,
+                    label_list=self.label_list,
+                    max_seq_len=self.max_seq_len,
+                    tokenizer=self.tokenizer,
+                    target=self.target,
+                )
                 for sample, feat in zip(basket.samples, features):
                     sample.features = feat
         self.stage = "features"
