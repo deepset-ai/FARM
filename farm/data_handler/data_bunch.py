@@ -1,5 +1,6 @@
 import logging
 
+import os
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
@@ -26,12 +27,16 @@ class DataBunch(object):
     def load_data(self):
         # fmt: off
 
-        logger.info("Loading train set from: {}".format(self.processor.train_filename))
+        train_file = os.path.join(self.processor.data_dir, self.processor.train_filename)
+        test_file = os.path.join(self.processor.data_dir, self.processor.test_filename)
+
+        logger.info("Loading train set from: {}".format(train_file))
         if not self.processor.dev_filename:
             logger.info("Loading dev set as a slice of train set")
         else:
-            logger.info("Loading dev set from: {}".format(self.processor.dev_filename))
-        logger.info("Loading test set from: {}".format(self.processor.test_filename))
+            dev_file = os.path.join(self.processor.data_dir, self.processor.dev_filename)
+            logger.info("Loading dev set from: {}".format(dev_file))
+        logger.info("Loading test set from: {}".format(test_file))
 
         dataset_train, dataset_dev, dataset_test = self.processor.dataset_from_file()
 

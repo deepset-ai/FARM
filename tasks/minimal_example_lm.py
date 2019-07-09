@@ -6,7 +6,7 @@ from farm.data_handler.data_bunch import DataBunch
 from farm.data_handler.processor import BertStyleLMProcessor
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
-from farm.modeling.prediction_head import BertLanguageModelHead
+from farm.modeling.prediction_head import BertLMHead, TextClassificationHead
 from farm.modeling.tokenization import BertTokenizer
 from farm.modeling.training import Trainer, Evaluator
 from farm.run_model import calculate_optimization_steps, initialize_optimizer
@@ -22,8 +22,8 @@ logging.basicConfig(
 set_all_seeds(seed=42)
 
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+# device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = "cpu"
 
 tokenizer = BertTokenizer.from_pretrained(
     pretrained_model_name_or_path="bert-base-cased", do_lower_case=False
@@ -38,19 +38,22 @@ data_bunch = DataBunch(processor=processor, batch_size=32, distributed=False)
 
 # Init model
 language_model = Bert.load("bert-base-cased-de-2b-end")
-# language_model.save_config("save")
-prediction_head = BertLanguageModelHead(
+
+lm_prediction_head = BertLMHead(
     embeddings=language_model.model.embeddings,
     hidden_size=language_model.model.config.hidden_size,
+)
+next_sentence_head = TextClassificationHead(
+    layer_dims=[language_model.model.config.hidden_size, 2], loss_ignore_index=-1
 )
 
 model = AdaptiveModel(
     language_model=language_model,
-    prediction_head=prediction_head,
+    prediction_heads=[lm_prediction_head, next_sentence_head],
     embeds_dropout_prob=0.1,
-    lm_output_type="both",
+    lm_output_types=["per_token", "per_sequence"],
+    device=device,
 )
-model.to(device)
 
 # Init optimizer
 num_train_optimization_steps = calculate_optimization_steps(
@@ -76,8 +79,8 @@ evaluator_dev = Evaluator(
     data_loader=data_bunch.get_data_loader("dev"),
     label_list=processor.label_list,
     device=device,
-    metric=processor.metric,
-    ph_output_type=processor.ph_output_type,
+    metrics=processor.metrics,
+    classification_report=False,
 )
 
 
@@ -85,15 +88,14 @@ evaluator_test = Evaluator(
     data_loader=data_bunch.get_data_loader("test"),
     label_list=processor.label_list,
     device=device,
-    metric=processor.metric,
-    ph_output_type=processor.ph_output_type,
+    metrics=processor.metrics,
+    classification_report=False,
 )
 
 trainer = Trainer(
     optimizer=optimizer,
     data_bunch=data_bunch,
     evaluator_dev=evaluator_dev,
-    evaluator_test=evaluator_test,
     epochs=1,
     n_gpu=1,
     grad_acc_steps=1,
@@ -106,4 +108,5 @@ trainer = Trainer(
 
 model = trainer.train(model)
 
-trainer.evaluate_on_test(model)
+results = evaluator_test.eval(model)
+evaluator_test.print_results(results, "Test", trainer.global_step)

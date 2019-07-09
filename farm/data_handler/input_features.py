@@ -6,22 +6,10 @@ from farm.data_handler.utils import (
     expand_labels,
     add_cls_sep,
     pad,
-    print_example_with_features,
     mask_random_words,
 )
 
 logger = logging.getLogger(__name__)
-
-
-class InputFeatures(object):
-    """A single set of features of data."""
-
-    def __init__(self, **kwargs):
-        """
-
-        :param features: dict, key = name of feature, value = list or ndarray
-        """
-        self.features = kwargs
 
 
 def samples_to_features_sequence(
@@ -95,10 +83,14 @@ def samples_to_features_sequence(
         #     logger.info("segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
         #     logger.info("label: %s (id = %d)" % (sample.label, label_id))
 
-        features.append({"input_ids": input_ids,
-                            "padding_mask": padding_mask,
-                            "segment_ids": segment_ids,
-                            "label_ids": label_ids})
+        features.append(
+            {
+                "input_ids": input_ids,
+                "padding_mask": padding_mask,
+                "segment_ids": segment_ids,
+                "label_ids": label_ids,
+            }
+        )
     return features
 
 
@@ -149,7 +141,7 @@ def samples_to_features_ner(
             "padding_mask": padding_mask,
             "segment_ids": segment_ids,
             "label_ids": label_ids,
-            "initial_mask": initial_mask
+            "initial_mask": initial_mask,
         }
 
         feature_objects.append(feature_dict)
@@ -245,7 +237,7 @@ def samples_to_features_bert_lm(samples, max_seq_len, tokenizer):
                 "padding_mask": padding_mask,
                 "segment_ids": segment_ids,
                 "lm_label_ids": lm_label_ids,
-                "is_next_label_id": is_next_label_id,
+                "label_ids": is_next_label_id,
             }
         )
     return features

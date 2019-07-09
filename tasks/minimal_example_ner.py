@@ -3,7 +3,7 @@ import logging
 import torch
 
 from farm.data_handler.data_bunch import DataBunch
-from farm.data_handler.preprocessing_pipeline import PPCONLL03
+from farm.data_handler.processor import CONLLProcessor
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
 from farm.modeling.prediction_head import TokenClassificationHead
@@ -22,35 +22,33 @@ set_all_seeds(seed=42)
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
+# device = "cpu"
 
 tokenizer = BertTokenizer.from_pretrained(
     pretrained_model_name_or_path="bert-base-cased-de-2b-end", do_lower_case=False
 )
 
-
-pipeline = PPCONLL03(data_dir="../data/conll03", tokenizer=tokenizer, max_seq_len=128)
-
+processor = CONLLProcessor(
+    tokenizer=tokenizer, max_seq_len=128, data_dir="../data/conll03"
+)
 
 # TODO Maybe data_dir should not be an argument here but in pipeline
 # Pipeline should also contain metric
-data_bunch = DataBunch(
-    preprocessing_pipeline=pipeline, batch_size=32, distributed=False
-)
+data_bunch = DataBunch(processor=processor, batch_size=32, distributed=False)
 
 # Init model
-prediction_head = TokenClassificationHead(layer_dims=[768, len(pipeline.label_list)])
+prediction_head = TokenClassificationHead(layer_dims=[768, len(processor.label_list)])
 
 language_model = Bert.load("bert-base-cased-de-2b-end")
 # language_model.save_config("save")
 
 model = AdaptiveModel(
     language_model=language_model,
-    prediction_head=prediction_head,
+    prediction_heads=[prediction_head],
     embeds_dropout_prob=0.1,
-    lm_output_type="per_token",
+    lm_output_types=["per_token"],
+    device=device,
 )
-model.to(device)
 
 # Init optimizer
 num_train_optimization_steps = calculate_optimization_steps(
@@ -74,25 +72,22 @@ optimizer, warmup_linear = initialize_optimizer(
 
 evaluator_dev = Evaluator(
     data_loader=data_bunch.get_data_loader("dev"),
-    label_list=pipeline.label_list,
+    label_list=processor.label_list,
     device=device,
-    metric=pipeline.metric,
-    ph_output_type=pipeline.ph_output_type,
+    metrics=processor.metrics,
 )
 
 evaluator_test = Evaluator(
     data_loader=data_bunch.get_data_loader("test"),
-    label_list=pipeline.label_list,
+    label_list=processor.label_list,
     device=device,
-    metric=pipeline.metric,
-    ph_output_type=pipeline.ph_output_type,
+    metrics=processor.metrics,
 )
 
 trainer = Trainer(
     optimizer=optimizer,
     data_bunch=data_bunch,
     evaluator_dev=evaluator_dev,
-    evaluator_test=evaluator_test,
     epochs=1,
     n_gpu=1,
     grad_acc_steps=1,
@@ -105,4 +100,5 @@ trainer = Trainer(
 
 model = trainer.train(model)
 
-trainer.evaluate_on_test(model)
+results = evaluator_test.eval(model)
+evaluator_test.print_results(results, "Test", trainer.global_step)

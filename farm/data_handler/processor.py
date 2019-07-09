@@ -7,14 +7,7 @@ import logging
 
 from farm.data_handler.utils import read_tsv, read_docs_from_txt, read_ner_file
 from torch.utils.data import random_split
-from farm.data_handler.samples import (
-    create_samples_gnad,
-    create_samples_conll_03,
-    create_sample_ner,
-    create_examples_germ_eval_18_coarse,
-    create_examples_germ_eval_18_fine,
-    create_samples_sentence_pairs,
-)
+from farm.data_handler.samples import create_sample_ner, create_samples_sentence_pairs
 from farm.data_handler.input_features import (
     samples_to_features_sequence,
     samples_to_features_ner,
@@ -38,25 +31,24 @@ class Processor(ABC):
         tokenizer,
         max_seq_len,
         label_list,
-        metric,
+        metrics,
         train_filename,
         dev_filename,
         test_filename,
         dev_split,
         data_dir,
-        ph_output_type,
         label_dtype=torch.long,
     ):
         self.tokenizer = tokenizer
         self.max_seq_len = max_seq_len
         self.label_list = label_list
-        self.metric = metric
+        # TODO I would rather see the metric as a property of each prediction head (having a default value that however can be changed at init)
+        self.metrics = [metrics] if isinstance(metrics, str) else metrics
         self.train_filename = train_filename
         self.dev_filename = dev_filename
         self.test_filename = test_filename
         self.dev_split = dev_split
         self.data_dir = data_dir
-        self.ph_output_type = ph_output_type
         self.label_dtype = label_dtype
 
         self.data = {}
@@ -143,7 +135,7 @@ class Processor(ABC):
             for i in range(n_samples):
                 random_bucket = random.choice(buckets)
                 random_sample = random.choice(random_bucket.samples)
-                print(random_sample)
+                logger.info(random_sample)
 
 
 class GNADProcessor(Processor):
@@ -174,7 +166,6 @@ class GNADProcessor(Processor):
         metric = "acc"
         dev_split = dev_split
         label_dtype = torch.long
-        ph_output_type = "per_sequence"
 
         # custom processor attributes
         self.target = "classification"
@@ -185,13 +176,12 @@ class GNADProcessor(Processor):
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
             label_list=label_list,
-            metric=metric,
+            metrics=metric,
             train_filename=train_filename,
             dev_filename=dev_filename,
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
-            ph_output_type=ph_output_type,
             label_dtype=label_dtype,
         )
 
@@ -265,7 +255,6 @@ class GermEval18CoarseProcessor(Processor):
         metric = "f1_macro"
         dev_split = dev_split
         label_dtype = torch.long
-        ph_output_type = "per_sequence"
 
         self.target = "classification"
         self.delimiter = "\t"
@@ -278,13 +267,12 @@ class GermEval18CoarseProcessor(Processor):
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
             label_list=label_list,
-            metric=metric,
+            metrics=metric,
             train_filename=train_filename,
             dev_filename=dev_filename,
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
-            ph_output_type=ph_output_type,
             label_dtype=label_dtype,
         )
 
@@ -373,7 +361,6 @@ class GermEval18FineProcessor(Processor):
         metric = "f1_macro"
         dev_split = dev_split
         label_dtype = torch.long
-        ph_output_type = "per_sequence"
 
         self.target = "classification"
         self.delimiter = "\t"
@@ -386,13 +373,12 @@ class GermEval18FineProcessor(Processor):
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
             label_list=label_list,
-            metric=metric,
+            metrics=metric,
             train_filename=train_filename,
             dev_filename=dev_filename,
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
-            ph_output_type=ph_output_type,
             label_dtype=label_dtype,
         )
 
@@ -500,7 +486,6 @@ class CONLLProcessor(Processor):
         test_filename = test_file
         label_dtype = torch.long
         metric = "seq_f1"
-        ph_output_type = "per_token"
 
         self.target = "classification"
 
@@ -508,13 +493,12 @@ class CONLLProcessor(Processor):
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
             label_list=label_list,
-            metric=metric,
+            metrics=metric,
             train_filename=train_filename,
             dev_filename=dev_filename,
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
-            ph_output_type=ph_output_type,
             label_dtype=label_dtype,
         )
 
@@ -603,7 +587,6 @@ class GermEval14Processor(Processor):
         test_filename = test_file
         label_dtype = torch.long
         metric = "seq_f1"
-        ph_output_type = "per_token"
 
         self.target = "classification"
 
@@ -611,13 +594,12 @@ class GermEval14Processor(Processor):
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
             label_list=label_list,
-            metric=metric,
+            metrics=metric,
             train_filename=train_filename,
             dev_filename=dev_filename,
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
-            ph_output_type=ph_output_type,
             label_dtype=label_dtype,
         )
 
@@ -685,20 +667,18 @@ class BertStyleLMProcessor(Processor):
 
         # TODO how best to format this
         label_list = []
-        metric = "acc"
+        metrics = ["acc", "acc"]
         self.delimiter = ""
 
         dev_split = dev_split
         label_dtype = torch.long
-        # TODO adjust this to new cases
-        self.ph_output_type = "per_sequence"
 
         # # TODO: Is this inheritance needed?
         super(BertStyleLMProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
             label_list=label_list,
-            metric=metric,
+            metrics=metrics,
             train_filename=train_filename,
             dev_filename=dev_filename,
             test_filename=test_filename,
