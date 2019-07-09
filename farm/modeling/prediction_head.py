@@ -8,7 +8,7 @@ import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
 
-from pytorch_pretrained_bert.modeling import BertPreTrainingHeads
+from pytorch_pretrained_bert.modeling import BertLMPredictionHead
 
 
 class PredictionHead(nn.Module):
@@ -49,26 +49,44 @@ class PredictionHead(nn.Module):
     def logits_to_preds(self, logits):
         raise NotImplementedError()
 
+    def prepare_labels(self, label_ids, **kwargs):
+        """ This should be overwritten in the case of NER in order to map token level labels to word level labels"""
+        return label_ids
+
 
 class TextClassificationHead(PredictionHead):
-    def __init__(self, layer_dims, class_weights=None, **kwargs):
+    def __init__(
+        self,
+        layer_dims,
+        class_weights=None,
+        loss_ignore_index=-100,
+        loss_reduction="none",
+        **kwargs
+    ):
         super(TextClassificationHead, self).__init__()
+        # TODO MP I think it would be nicer here to pass hidden_dim and num_labels and construct layer_dims from it.
+        # num_labels could in most cases also be automatically retrieved from the data processor
         self.layer_dims_list = ast.literal_eval(str(layer_dims))
         self.feed_forward = FeedForwardBlock(self.layer_dims_list)
         self.generate_config()
         self.num_labels = self.layer_dims_list[-1]
         self.ph_output_type = "per_sequence"
 
+        # TODO: MP why do we do reduction = "none" per default?
         # Todo do we still need to do this?
         if class_weights:
             self.balanced_weights = nn.Parameter(
                 torch.tensor(class_weights), requires_grad=False
             )
             self.loss_fct = CrossEntropyLoss(
-                weight=self.balanced_weights, reduction="none"
+                weight=self.balanced_weights,
+                reduction=loss_reduction,
+                ignore_index=loss_ignore_index,
             )
         else:
-            self.loss_fct = CrossEntropyLoss(reduction="none")
+            self.loss_fct = CrossEntropyLoss(
+                reduction=loss_reduction, ignore_index=loss_ignore_index
+            )
 
     def generate_config(self):
         self.config = {
@@ -86,8 +104,7 @@ class TextClassificationHead(PredictionHead):
 
     def logits_to_preds(self, logits, **kwargs):
         preds = logits.argmax(1)
-        # TODO: Two are returned because token level classification currently returns label ids as well. This should be changed
-        return None, preds
+        return preds
 
 
 class TokenClassificationHead(PredictionHead):
@@ -124,30 +141,37 @@ class TokenClassificationHead(PredictionHead):
     def logits_to_preds(self, logits, initial_mask, label_map, label_ids, **kwargs):
 
         preds_word_all = []
-        labels_word_all = []
 
         preds_tokens = torch.argmax(logits, dim=2)
 
         preds_token = preds_tokens.detach().cpu().numpy()
         # used to be: padding_mask = padding_mask.detach().cpu().numpy()
         initial_mask = initial_mask.detach().cpu().numpy()
-        label_ids = label_ids.cpu().numpy()
 
         for idx, im in enumerate(initial_mask):
             preds_t = preds_token[idx]
-            labels_t = label_ids[idx]
 
             # Get labels and predictions for just the word initial tokens
-            labels_word_id = self.initial_token_only(labels_t, initial_mask=im)
             preds_word_id = self.initial_token_only(preds_t, initial_mask=im)
 
-            labels_word = [label_map[lwi] for lwi in labels_word_id]
             preds_word = [label_map[pwi] for pwi in preds_word_id]
 
             preds_word_all.append(preds_word)
-            labels_word_all.append(labels_word)
 
-        return labels_word_all, preds_word_all
+        return preds_word_all
+
+    def prepare_labels(self, label_ids, initial_mask, label_map, **kwargs):
+        labels_all = []
+        label_ids = label_ids.cpu().numpy()
+        for label_ids_one_sample, initial_mask_one_sample in zip(
+            label_ids, initial_mask
+        ):
+            label_ids = self.initial_token_only(
+                label_ids_one_sample, initial_mask_one_sample
+            )
+            labels = [label_map[l] for l in label_ids]
+            labels_all.append(labels)
+        return labels_all
 
     @staticmethod
     def initial_token_only(seq, initial_mask):
@@ -158,21 +182,20 @@ class TokenClassificationHead(PredictionHead):
         return ret
 
 
-class BertLanguageModelHead(PredictionHead):
-    """ Masked Language Model with NextSentence Prediction"""
-
+class BertLMHead(PredictionHead):
     def __init__(self, embeddings, hidden_size, hidden_act="gelu", **kwargs):
-        super(BertLanguageModelHead, self).__init__()
+        super(BertLMHead, self).__init__()
 
         config = {"hidden_size": hidden_size, "hidden_act": hidden_act}
         config = DotMap(config, _dynamic=False)
         embeddings_weights = embeddings.word_embeddings.weight
-        self.multihead = BertPreTrainingHeads(config, embeddings_weights)
-        self.loss_fct = CrossEntropyLoss(ignore_index=-1)
+
+        self.model = BertLMPredictionHead(config, embeddings_weights)
+        self.loss_fct = CrossEntropyLoss(reduction="none", ignore_index=-1)
         self.num_labels = embeddings_weights.shape[0]  # vocab size
         # TODO Check if weight init needed!
         # self.apply(self.init_bert_weights)
-
+        self.ph_output_type = "per_token"
         self.generate_config()
 
     def generate_config(self):
@@ -183,28 +206,23 @@ class BertLanguageModelHead(PredictionHead):
         }
 
     def forward(self, X):
-        lm_logits, next_sentence_logits = self.multihead(X[0], X[1])
-        return [lm_logits, next_sentence_logits]
+        lm_logits = self.model(X)
+        return lm_logits
 
-    def logits_to_loss(self, logits, lm_label_ids, is_next_label_id, **kwargs):
-        assert len(logits) == 2
+    def logits_to_loss(self, logits, lm_label_ids, **kwargs):
+        batch_size = lm_label_ids.shape[0]
         masked_lm_loss = self.loss_fct(
-            logits[0].view(-1, self.num_labels), lm_label_ids.view(-1)
+            logits.view(-1, self.num_labels), lm_label_ids.view(-1)
         )
-        next_sentence_loss = self.loss_fct(
-            logits[1].view(-1, 2), is_next_label_id.view(-1)
-        )
-        total_loss = masked_lm_loss + next_sentence_loss
-        total_loss = total_loss.view(1, 1)
-        return total_loss
+        per_sample_loss = masked_lm_loss.view(-1, batch_size).mean(dim=0)
+        return per_sample_loss
 
-    def logits_to_preds(self, logits, is_next_label_id, **kwargs):
-        # TODO does logits shape really allow just argmax here?
-        lm_preds = logits[0].argmax(1)
-        next_sentence_preds = logits[1].argmax(1)
-        # TODO return lm_preds for eval as well
+    def logits_to_preds(self, logits, lm_label_ids, **kwargs):
+        lm_preds = logits.argmax(2)
+        # apply mask to get rid of predictions for non-masked tokens
+        lm_preds[lm_label_ids == -1] = -1
         # TODO: Two are returned because token level classification currently returns label ids as well. This should be changed
-        return is_next_label_id, next_sentence_preds
+        return lm_preds
 
 
 class FeedForwardBlock(nn.Module):

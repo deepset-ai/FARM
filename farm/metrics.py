@@ -9,10 +9,10 @@ def simple_accuracy(preds, labels):
     try:
         preds = np.array(preds)
         labels = np.array(labels)
-        correct = preds = labels
+        correct = preds == labels
         return {"acc": correct.mean()}
     except TypeError:
-        return (preds == labels.numpy()).mean()
+        return {"acc": (preds == labels.numpy()).mean()}
 
 
 def acc_and_f1(preds, labels):
@@ -40,14 +40,17 @@ def compute_metrics(metric, preds, labels):
     if metric == "mcc":
         return {"mcc": matthews_corrcoef(labels, preds)}
     elif metric == "acc":
-        return {"acc": simple_accuracy(preds, labels)}
+        return simple_accuracy(preds, labels)
     elif metric == "acc_f1":
         return acc_and_f1(preds, labels)
     elif metric == "pear_spear":
         return pearson_and_spearman(preds, labels)
+    # TODO this metric seems very specific for NER and doesnt work for
     elif metric == "seq_f1":
         return {"seq_f1": seq_f1_score(labels, preds)}
     elif metric == "f1_macro":
         return f1_macro(preds, labels)
+    # elif metric == "masked_accuracy":
+    #     return simple_accuracy(preds, labels, ignore=-1)
     else:
         raise KeyError(metric)

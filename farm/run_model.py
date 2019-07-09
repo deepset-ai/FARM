@@ -14,7 +14,15 @@ from farm.modeling.language_model import Bert
 from farm.modeling.training import Trainer, Evaluator
 from farm.modeling.optimization import BertAdam, WarmupLinearSchedule
 from farm.modeling.tokenization import BertTokenizer
-from farm.modeling.training import WrappedDataParallel, WrappedDDP
+from farm.modeling.training import WrappedDataParallel
+
+import logging
+logger = logging.getLogger(__name__)
+
+try:
+    from farm.modeling.training import WrappedDDP
+except ImportError:
+    logger.info("Importing Data Loader for Distributed Training failed. Apex not installed?")
 
 
 logging.basicConfig(
@@ -87,21 +95,18 @@ def run_model(args):
         data_loader=data_bunch.get_data_loader("dev"),
         label_list=processor.label_list,
         device=device,
-        metric=processor.metric,
-        ph_output_type=model.prediction_head.ph_output_type)
+        metrics=processor.metrics)
 
     evaluator_test = Evaluator(
         data_loader=data_bunch.get_data_loader("test"),
         label_list=processor.label_list,
         device=device,
-        metric=processor.metric,
-        ph_output_type=model.prediction_head.ph_output_type)
+        metrics=processor.metrics)
 
     trainer = Trainer(
         optimizer=optimizer,
         data_bunch=data_bunch,
         evaluator_dev=evaluator_dev,
-        evaluator_test=evaluator_test,
         epochs=args.epochs,
         n_gpu=n_gpu,
         grad_acc_steps=args.gradient_accumulation_steps,
@@ -113,7 +118,9 @@ def run_model(args):
 
     model = trainer.train(model)
 
-    trainer.evaluate_on_test(model)
+    results = evaluator_test.eval(model)
+    evaluator_test.print_results(results, "Test", trainer.global_step)
+
     #TODO: Model Saving and Loading
 
 
@@ -144,9 +151,9 @@ def get_adaptive_model(
 
     # TODO where are balance class weights?
     model = AdaptiveModel(language_model=language_model,
-                          prediction_head=prediction_head,
+                          prediction_heads=prediction_head,
                           embeds_dropout_prob=embeds_dropout_prob,
-                          lm_output_type=lm_output_type)
+                          lm_output_types=lm_output_type)
     if fp16:
         model.half()
     model.to(device)

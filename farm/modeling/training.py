@@ -58,7 +58,6 @@ class Trainer:
         optimizer,
         data_bunch,
         evaluator_dev,
-        evaluator_test,
         epochs,
         n_gpu,
         grad_acc_steps,
@@ -70,7 +69,6 @@ class Trainer:
     ):
         self.data_bunch = data_bunch
         self.evaluator_dev = evaluator_dev
-        self.evaluator_test = evaluator_test
         self.epochs = int(epochs)
         self.optimizer = optimizer
         self.evaluate_every = evaluate_every
@@ -93,7 +91,6 @@ class Trainer:
 
                 # Move batch of samples to device
                 batch = {key: batch[key].to(self.device) for key in batch}
-                # input_ids, padding_mask, segment_ids, label_ids, initial_mask = batch
 
                 # Forward pass through model
                 logits = model.forward(**batch)
@@ -104,7 +101,7 @@ class Trainer:
                 # Perform evaluation
                 if self.global_step % self.evaluate_every == 1:
                     result = self.evaluator_dev.eval(model)
-                    self.print_dev(result, self.global_step)
+                    self.evaluator_dev.print_results(result, "Dev", self.global_step)
                     # # Log to mlflow
                     # #TODO make it optional
                     # metrics = {f"dev {metric_name}": metric_val for metric_name, metric_val in result.items()}
@@ -112,11 +109,6 @@ class Trainer:
 
                 self.global_step += 1
         return model
-
-    def evaluate_on_test(self, model):
-        result = self.evaluator_test.eval(model)
-        logger.info("***** Test Eval Results *****")
-        logger.info(result["report"])
 
     def backward_propagate(self, loss, step):
         loss = self.adjust_loss(loss)
@@ -143,38 +135,28 @@ class Trainer:
             loss = loss / self.grad_acc_steps
         return loss
 
-    @staticmethod
-    def print_dev(result, step):
-        logger.info("***** Dev Eval Results After Steps: {} *****".format(step))
-        logger.info(result["report"])
-
 
 class Evaluator:
-    def __init__(self, data_loader, label_list, device, metric, ph_output_type):
+    def __init__(
+        self, data_loader, label_list, device, metrics, classification_report=True
+    ):
 
         self.data_loader = data_loader
         self.label_map = {i: label for i, label in enumerate(label_list)}
-
-        # These will contain the per sample loss, logits, preds and Y
-        self.loss_all = []
-        self.logits_all = []
-        self.preds_all = []
-        self.Y_all = []
-
         self.device = device
-        # Where should metric be defined? When dataset loaded? In config?
-        self.metric = metric
 
-        # Turn classification_report into an argument of init
-        if ph_output_type == "per_token":
-            self.classification_report = token_classification_report
-        elif ph_output_type == "per_sequence":
-            self.classification_report = classification_report
-        else:
-            raise NotImplementedError
+        # Where should metric be defined? When dataset loaded? In config?
+        self.metrics = metrics
+        self.classification_report = classification_report
 
     def eval(self, model):
         model.eval()
+
+        # init empty lists per prediction head
+        loss_all = [[] for _ in model.prediction_heads]
+        logits_all = [[] for _ in model.prediction_heads]
+        preds_all = [[] for _ in model.prediction_heads]
+        label_all = [[] for _ in model.prediction_heads]
 
         for step, batch in enumerate(tqdm(self.data_loader, desc="Evaluating")):
             batch = {key: batch[key].to(self.device) for key in batch}
@@ -182,38 +164,57 @@ class Evaluator:
             with torch.no_grad():
 
                 logits = model.forward(**batch)
-                loss = model.logits_to_loss(logits=logits, **batch)
+                # todo logits_to_loss should be a single, overloaded function
+                losses_per_head = model.logits_to_loss_per_head(logits=logits, **batch)
 
-                # Todo BC: I don't like that Y is returned here but this is the best I have right now
-                Y, preds = model.logits_to_preds(
+                preds = model.logits_to_preds(
                     logits=logits, label_map=self.label_map, **batch
                 )
-            # TODO this needs to be changed to allow flexible naming of label tensors
-            if Y is None:
-                label_ids = batch["label_ids"]
-            else:
-                label_ids = Y
 
-            self.loss_all += list(to_numpy(loss))
-            self.logits_all += list(to_numpy(logits))
-            self.preds_all += list(to_numpy(preds))
-            self.Y_all += list(to_numpy(label_ids))
+                labels = model.prepare_labels(label_map=self.label_map, **batch)
 
-        loss_eval = np.mean(self.loss_all)
-        result = {"loss_eval": loss_eval}
-        result[self.metric] = compute_metrics(self.metric, self.preds_all, self.Y_all)
-        result["report"] = self.classification_report(
-            self.Y_all, self.preds_all, digits=4
+            # stack results of all batches per prediction head
+            for head_num, head in enumerate(model.prediction_heads):
+                loss_all[head_num] += list(to_numpy(losses_per_head[head_num]))
+                logits_all[head_num] += list(to_numpy(logits[head_num]))
+                preds_all[head_num] += list(to_numpy(preds[head_num]))
+                label_all[head_num] += list(to_numpy(labels[head_num]))
+
+        # Evaluate per prediction head
+        all_results = []
+        for head_num, head in enumerate(model.prediction_heads):
+            result = {"loss_eval": np.mean(loss_all[head_num])}
+            result.update(
+                compute_metrics(
+                    self.metrics[head_num], preds_all[head_num], label_all[head_num]
+                )
+            )
+
+            # Select type of report depending on prediction head output type
+            if self.classification_report:
+                if head.ph_output_type == "per_token":
+                    report_fn = token_classification_report
+                elif head.ph_output_type == "per_sequence":
+                    report_fn = classification_report
+                else:
+                    raise NotImplementedError
+                result["report"] = report_fn(
+                    label_all[head_num], preds_all[head_num], digits=4
+                )
+            all_results.append(result)
+
+        return all_results
+
+    @staticmethod
+    def print_results(results, dataset_name, steps):
+        logger.info(
+            "***** {} Eval Results After Steps: {} *****".format(dataset_name, steps)
         )
-
-        self.reset_state()
-        return result
-
-    def reset_state(self):
-        self.loss_all = []
-        self.logits_all = []
-        self.preds_all = []
-        self.Y_all = []
+        for num, head in enumerate(results):
+            logger.info("\n _________ Prediction Head {} _________".format(num))
+            for key, value in head.items():
+                logger.info("{}".format(key))
+                logger.info("{}".format(value))
 
 
 def to_numpy(container):
