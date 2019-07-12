@@ -24,6 +24,8 @@ from torch.nn.utils import clip_grad_norm_
 from torch.optim import Optimizer
 from torch.optim.optimizer import required
 
+from farm.utils import MLFlowLogger as MlLogger
+
 logger = logging.getLogger(__name__)
 
 
@@ -350,6 +352,9 @@ class BertAdam(Optimizer):
 
                 lr_scheduled = group["lr"]
                 lr_scheduled *= group["schedule"].get_lr(state["step"])
+
+                # Custom logging functionality
+                # MlLogger.write_metrics({"learning_rate": lr_scheduled}, step=state["step"])
 
                 update_with_lr = lr_scheduled * update
                 p.data.add_(-update_with_lr)

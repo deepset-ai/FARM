@@ -18,12 +18,13 @@ from farm.run_model import run_model
 from farm.file_utils import read_config, unnestConfig
 
 logger = logging.getLogger(__name__)
+from farm.utils import MLFlowLogger
 
 
 def main():
     config_files = [
-        # "tasks/ner/conll2003_de_config.json",
-        # "tasks/ner/germEval14_config.json",
+        "tasks/ner/conll2003_de_config.json",
+        "tasks/ner/germEval14_config.json",
         # "tasks/seq_classification/germEval18Fine_config.json",
         # "tasks/seq_classification/germEval18Coarse_config.json",
         "tasks/seq_classification/gnad_config.json",
@@ -31,8 +32,19 @@ def main():
 
     for conf_file in config_files:
         args = read_config(conf_file, flattend=True)
-        configList = unnestConfig(args, flattened=True)
-        for args in configList:
+        experiments = unnestConfig(args, flattened=True)
+        for args in experiments:
+            logger.info(
+                "\n***********************************************"
+                f"\n************* Experiment: {args.name} ************"
+                "\n************************************************"
+            )
+            ml_logger = MLFlowLogger(tracking_uri=args.mlflow_url)
+            ml_logger.init_experiment(
+                experiment_name=args.mlflow_experiment,
+                run_name=args.mlflow_run_name,
+                nested=args.mlflow_nested,
+            )
             run_model(args)
 
 

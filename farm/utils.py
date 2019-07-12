@@ -3,21 +3,14 @@ import random
 
 import numpy as np
 import torch
-from mlflow import (
-    log_metrics,
-    log_params,
-    set_tracking_uri,
-    set_experiment,
-    start_run,
-    log_artifacts,
-)
+import mlflow
 
 logger = logging.getLogger(__name__)
 
 try:
     from tensorboardX import SummaryWriter
 except ImportError:
-    logger.warn("TensorboardX not installed. If you use tensordoard logger.")
+    logger.warn("TensorboardX not installed. Required if you use tensorboard logger.")
 
 
 def set_all_seeds(seed, n_gpu=0):
@@ -59,27 +52,22 @@ class BaseMLLogger:
     This class can be extended to implement custom logging backends like MLFlow, Tensorboard, or Sacred.
     """
 
-    def __init__(self, experiment_name, uri, **kwargs):
-        self.experiment_name = experiment_name
-        self.uri = uri
+    def __init__(self, tracking_uri, **kwargs):
+        self.tracking_uri = tracking_uri
 
     def init_experiment(self, tracking_uri):
         raise NotImplementedError()
 
     @classmethod
-    def init_trail(cls, trail_name, nested=True):
+    def log_metrics(cls, metrics, step):
         raise NotImplementedError()
 
     @classmethod
-    def write_metrics(cls, metrics, step):
+    def log_artifacts(cls, self):
         raise NotImplementedError()
 
     @classmethod
-    def add_artifacts(cls, self):
-        raise NotImplementedError()
-
-    @classmethod
-    def write_params(cls, params):
+    def log_params(cls, params):
         raise NotImplementedError()
 
 
@@ -88,25 +76,22 @@ class MLFlowLogger(BaseMLLogger):
     Logger for MLFlow experiment tracking.
     """
 
-    def init_experiment(self, tracking_uri):
-        set_experiment(self.experiment_name)
-        set_tracking_uri(tracking_uri)
+    def init_experiment(self, experiment_name, run_name=None, nested=True):
+        mlflow.set_tracking_uri(self.tracking_uri)
+        mlflow.set_experiment(experiment_name)
+        mlflow.start_run(run_name=run_name, nested=nested)
 
     @classmethod
-    def init_trail(cls, trail_name, nested=True):
-        start_run(run_name=trail_name, nested=nested)
+    def log_metrics(cls, metrics, step):
+        mlflow.log_metrics(metrics, step=step)
 
     @classmethod
-    def write_metrics(cls, metrics, step):
-        log_metrics(metrics, step=step)
+    def log_params(cls, params):
+        mlflow.log_params(params)
 
     @classmethod
-    def write_params(cls, params):
-        log_params(params)
-
-    @classmethod
-    def add_artifacts(cls, dir_path, artifact_path=None):
-        log_artifacts(dir_path, artifact_path)
+    def log_artifacts(cls, dir_path, artifact_path=None):
+        mlflow.log_artifacts(dir_path, artifact_path)
 
 
 class TensorBoardLogger(BaseMLLogger):
@@ -119,13 +104,13 @@ class TensorBoardLogger(BaseMLLogger):
         super().__init__(**kwargs)
 
     @classmethod
-    def write_metrics(cls, metrics, step):
+    def log_metrics(cls, metrics, step):
         for key, value in metrics.items():
             TensorBoardLogger.summary_writer.add_scalar(
                 tag=key, scalar_value=value, global_step=step
             )
 
     @classmethod
-    def write_params(cls, params):
+    def log_params(cls, params):
         for key, value in params.items():
             TensorBoardLogger.summary_writer.add_text(tag=key, text_string=str(value))

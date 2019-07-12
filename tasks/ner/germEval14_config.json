@@ -45,8 +45,8 @@
     "mlflow_url":     {"value": "http://80.158.39.167:5000/", "default": null, "desc": "Mlflow server for tracking experiments (e.g. http://80.123.45.167:5000/)"}, 
     "mlflow_nested":  {"value": null,                         "default": true, "desc": "Nesting mlflow experiments. For doing multiple runs across a set of hyperparameters."}, 
 
-    "mlflow_experiment": {"value": "tm_experiment", "default": null, "desc": "Experiment name used for mlflow"}, 
-    "mlflow_run_name":   {"value": "ner testing",   "default": null, "desc": "Name of the particular run for mlflow"}
+    "mlflow_experiment": {"value": "Public_FARM", "default": null, "desc": "Experiment name used for mlflow"},
+    "mlflow_run_name":   {"value": "germeval14 by config",   "default": null, "desc": "Name of the particular run for mlflow"}
   }
 }
 
