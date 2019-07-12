@@ -13,13 +13,16 @@ from farm.modeling.training import (
     Evaluator,
 )
 from farm.run_model import initialize_optimizer, calculate_optimization_steps
-from farm.utils import set_all_seeds
+from farm.utils import set_all_seeds, MLFlowLogger
 from farm.data_handler.processor import GNADProcessor
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
     datefmt="%m/%d/%Y %H:%M:%S",
     level=logging.INFO)
+
+ml_logger = MLFlowLogger(tracking_uri="http://80.158.39.167:5000/")
+ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_minimal_example")
 
 set_all_seeds(seed=42)
 
@@ -32,9 +35,8 @@ tokenizer = BertTokenizer.from_pretrained(
 processor = GNADProcessor(tokenizer=tokenizer,
                           max_seq_len=128,
                           data_dir="../data/gnad",
-                          train_filename="train_full.csv")
+                          train_filename="train.csv")
 
-# TODO Maybe data_dir should not be an argument here but in pipeline
 # Pipeline should also contain metric
 data_bunch = DataBunch(
     processor=processor,
@@ -99,7 +101,9 @@ trainer = Trainer(
 
 model = trainer.train(model)
 
+# final evaluation on test set
 results = evaluator_test.eval(model)
-evaluator_test.print_results(results, "Test", trainer.global_step)
+#TODO this should be executed within the above call
+evaluator_test.log_results(results, "Test", trainer.global_step)
 
 # fmt: on

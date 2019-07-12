@@ -6,6 +6,7 @@ import random
 import logging
 
 from farm.data_handler.utils import read_tsv, read_docs_from_txt, read_ner_file
+from farm.utils import MLFlowLogger as MlLogger
 from torch.utils.data import random_split
 from farm.data_handler.samples import create_sample_ner, create_samples_sentence_pairs
 from farm.data_handler.input_features import (
@@ -54,6 +55,8 @@ class Processor(ABC):
         self.data = {}
         self.counts = {}
         self.stage = None
+
+        self.log_params()
 
     def ensure_dev(self):
         assert self.stage == "dataset"
@@ -136,6 +139,17 @@ class Processor(ABC):
                 random_bucket = random.choice(buckets)
                 random_sample = random.choice(random_bucket.samples)
                 logger.info(random_sample)
+
+    def log_params(self):
+        params = {
+            "processor": self.__class__.__name__,
+            "tokenizer": self.tokenizer.__class__.__name__,
+        }
+        names = ["max_seq_len", "metrics", "dev_split"]
+        for name in names:
+            value = getattr(self, name)
+            params.update({name: str(value)})
+        MlLogger.log_params(params)
 
 
 class GNADProcessor(Processor):

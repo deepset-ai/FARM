@@ -10,7 +10,7 @@ from farm.modeling.prediction_head import TokenClassificationHead
 from farm.modeling.tokenization import BertTokenizer
 from farm.modeling.training import Trainer, Evaluator
 from farm.run_model import calculate_optimization_steps, initialize_optimizer
-from farm.utils import set_all_seeds
+from farm.utils import set_all_seeds, MLFlowLogger
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
@@ -20,9 +20,12 @@ logging.basicConfig(
 
 set_all_seeds(seed=42)
 
+ml_logger = MLFlowLogger(tracking_uri="http://80.158.39.167:5000/")
+ml_logger.init_experiment(
+    experiment_name="Public_FARM", run_name="Run_minimal_example_ner"
+)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-# device = "cpu"
 
 tokenizer = BertTokenizer.from_pretrained(
     pretrained_model_name_or_path="bert-base-cased-de-2b-end", do_lower_case=False
@@ -101,4 +104,4 @@ trainer = Trainer(
 model = trainer.train(model)
 
 results = evaluator_test.eval(model)
-evaluator_test.print_results(results, "Test", trainer.global_step)
+evaluator_test.log_results(results, "Test", trainer.global_step)

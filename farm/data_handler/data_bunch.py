@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
 from farm.data_handler.dataloader import NamedDataLoader
+from farm.utils import MLFlowLogger as MlLogger
 
 logger = logging.getLogger(__name__)
 
@@ -88,6 +89,14 @@ class DataBunch(object):
         logger.info("Examples in train: {}".format(len(dataset_train)))
         logger.info("Examples in dev  : {}".format(len(dataset_dev)))
         logger.info("Examples in test : {}".format(len(dataset_test)))
+
+        MlLogger.log_params(
+            {
+                "n_samples_train": len(dataset_train),
+                "n_samples_dev": len(dataset_dev),
+                "n_samples_test": len(dataset_test),
+            }
+        )
 
     # TODO: maybe this can be inside calculate_statistics
     def calculate_class_weights(self, dataset):

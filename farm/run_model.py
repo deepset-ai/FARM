@@ -15,6 +15,7 @@ from farm.modeling.training import Trainer, Evaluator
 from farm.modeling.optimization import BertAdam, WarmupLinearSchedule
 from farm.modeling.tokenization import BertTokenizer
 from farm.modeling.training import WrappedDataParallel
+from farm.utils import MLFlowLogger as MlLogger
 
 import logging
 logger = logging.getLogger(__name__)
@@ -64,7 +65,7 @@ def run_model(args):
         class_weights = data_bunch.class_weights
 
     model = get_adaptive_model(lm_output_type=args.lm_output_type,
-                               prediction_head=args.prediction_head,
+                               prediction_heads=args.prediction_head,
                                layer_dims=args.layer_dims,
                                model=args.model,
                                device=device,
@@ -119,14 +120,14 @@ def run_model(args):
     model = trainer.train(model)
 
     results = evaluator_test.eval(model)
-    evaluator_test.print_results(results, "Test", trainer.global_step)
+    evaluator_test.log_results(results, "Test", trainer.global_step)
 
     #TODO: Model Saving and Loading
 
 
 def get_adaptive_model(
     lm_output_type,
-    prediction_head,
+    prediction_heads,
     layer_dims,
     model,
     device,
@@ -136,24 +137,26 @@ def get_adaptive_model(
     fp16=False,
     class_weights=None
 ):
+    parsed_lm_output_types = lm_output_type.split(",")
 
-    if(prediction_head == "TokenClassificationHead"):
-        #todo change NERhead to TokenClassificationHead
-        prediction_head = TokenClassificationHead(layer_dims=layer_dims)
-    elif(prediction_head == "TextClassificationHead"):
-        #TODO change name here too
-        prediction_head = TextClassificationHead(layer_dims=layer_dims,
-                                                 class_weights=class_weights)
-    else:
-        raise NotImplementedError
+    initialized_heads = []
+    for head in prediction_heads.split(","):
+        if(head == "TokenClassificationHead"):
+            initialized_heads.append(TokenClassificationHead(layer_dims=layer_dims))
+        elif(head == "TextClassificationHead"):
+            initialized_heads.append(TextClassificationHead(layer_dims=layer_dims,
+                                                      class_weights=class_weights))
+        else:
+            raise NotImplementedError
 
     language_model = Bert.load(model)
 
     # TODO where are balance class weights?
     model = AdaptiveModel(language_model=language_model,
-                          prediction_heads=prediction_head,
+                          prediction_heads=initialized_heads,
                           embeds_dropout_prob=embeds_dropout_prob,
-                          lm_output_types=lm_output_type)
+                          lm_output_types=parsed_lm_output_types,
+                          device=device)
     if fp16:
         model.half()
     model.to(device)
@@ -168,29 +171,29 @@ def get_adaptive_model(
 def get_processor(name, data_dir, tokenizer, max_seq_len):
     # todo How to deal with the file paths???
     if name == "Conll2003":
-        pipeline = CONLLProcessor(data_dir=data_dir,
+        processor = CONLLProcessor(data_dir=data_dir,
                                      tokenizer=tokenizer,
                                      max_seq_len=max_seq_len)
     elif name == "GNAD":
-        pipeline = GNADProcessor(data_dir=data_dir,
+        processor = GNADProcessor(data_dir=data_dir,
                                   tokenizer=tokenizer,
                                   max_seq_len=max_seq_len)
     elif name == "GermEval18Coarse":
-        pipeline = GermEval18CoarseProcessor(data_dir=data_dir,
+        processor = GermEval18CoarseProcessor(data_dir=data_dir,
                                       tokenizer=tokenizer,
                                       max_seq_len=max_seq_len)
     elif name == "GermEval18Fine":
-        pipeline = GermEval18FineProcessor(data_dir=data_dir,
+        processor = GermEval18FineProcessor(data_dir=data_dir,
                                       tokenizer=tokenizer,
                                       max_seq_len=max_seq_len)
     elif name == "GermEval14":
-        pipeline = GermEval14Processor(data_dir=data_dir,
+        processor = GermEval14Processor(data_dir=data_dir,
                                           tokenizer=tokenizer,
                                           max_seq_len=max_seq_len)
     else:
         raise NotImplementedError
 
-    return pipeline
+    return processor
 
 def directory_setup(output_dir, do_train):
     # Setup directory
@@ -218,6 +221,11 @@ def initialize_optimizer(
     fp16,
     num_train_optimization_steps,
 ):
+    # Log params
+    MlLogger.log_params({"learning_rate": learning_rate,
+                         "warmup_proportion": warmup_proportion,
+                         "fp16": fp16,
+                         "num_train_optimization_steps": num_train_optimization_steps})
     # Prepare optimizer
     param_optimizer = list(model.named_parameters())
     no_decay = ["bias", "LayerNorm.bias", "LayerNorm.weight"]

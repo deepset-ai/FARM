@@ -1,4 +1,6 @@
 from torch import nn
+from farm.utils import MLFlowLogger as MlLogger
+from farm.modeling.prediction_head import PredictionHead
 
 
 class AdaptiveModel(nn.Module):
@@ -19,6 +21,8 @@ class AdaptiveModel(nn.Module):
         self.num_labels = [head.num_labels for head in prediction_heads]
         self.dropout = nn.Dropout(embeds_dropout_prob)
         self.lm_output_types = lm_output_types
+
+        self.log_params()
 
     def save(self, save_dir):
         raise NotImplementedError()
@@ -80,3 +84,13 @@ class AdaptiveModel(nn.Module):
             all_logits.append(head(output))
 
         return all_logits
+
+    def log_params(self):
+        params = {
+            "lm": self.language_model.__class__.__name__,
+            "prediction_heads": ",".join(
+                [head.__class__.__name__ for head in self.prediction_heads]
+            ),
+            "lm_output_types": ",".join(self.lm_output_types),
+        }
+        MlLogger.log_params(params)
