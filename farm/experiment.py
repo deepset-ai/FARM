@@ -79,7 +79,7 @@ def run_experiment(args):
 
     # Init optimizer
     num_train_optimization_steps = calculate_optimization_steps(
-        n_examples=data_silo.n_samples("train"),
+        n_examples=data_silo._n_samples("train"),
         batch_size=args.batch_size,
         grad_acc_steps=args.gradient_accumulation_steps,
         n_epochs=args.epochs,
