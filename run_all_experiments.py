@@ -14,7 +14,7 @@
 """BERT finetuning runner for all tasks in specified config files."""
 
 import logging
-from farm.run_model import run_model
+from farm.experiment import run_experiment
 from farm.file_utils import read_config, unnestConfig
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ def main():
                 run_name=args.mlflow_run_name,
                 nested=args.mlflow_nested,
             )
-            run_model(args)
+            run_experiment(args)
 
 
 if __name__ == "__main__":

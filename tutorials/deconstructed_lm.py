@@ -2,14 +2,15 @@ import logging
 
 import torch
 
-from farm.data_handler.data_bunch import DataBunch
-from farm.data_handler.processor import CONLLProcessor
+from farm.data_handler.data_silo import DataSilo
+from farm.data_handler.processor import BertStyleLMProcessor
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
-from farm.modeling.prediction_head import TokenClassificationHead
+from farm.modeling.prediction_head import BertLMHead, TextClassificationHead
 from farm.modeling.tokenization import BertTokenizer
 from farm.modeling.training import Trainer, Evaluator
-from farm.run_model import calculate_optimization_steps, initialize_optimizer
+from farm.experiment import calculate_optimization_steps, initialize_optimizer
+
 from farm.utils import set_all_seeds, MLFlowLogger
 
 logging.basicConfig(
@@ -19,46 +20,49 @@ logging.basicConfig(
 )
 
 set_all_seeds(seed=42)
-
 ml_logger = MLFlowLogger(tracking_uri="http://80.158.39.167:5000/")
 ml_logger.init_experiment(
-    experiment_name="Public_FARM", run_name="Run_minimal_example_ner"
+    experiment_name="Public_FARM", run_name="Run_minimal_example_lm"
 )
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 tokenizer = BertTokenizer.from_pretrained(
-    pretrained_model_name_or_path="bert-base-german-cased", do_lower_case=False
+    pretrained_model_name_or_path="bert-base-cased", do_lower_case=False
 )
 
-processor = CONLLProcessor(
-    tokenizer=tokenizer, max_seq_len=128, data_dir="../data/conll03"
+
+processor = BertStyleLMProcessor(
+    data_dir="../data/finetune_sample", tokenizer=tokenizer, max_seq_len=128
 )
 
-# TODO Maybe data_dir should not be an argument here but in pipeline
-# Pipeline should also contain metric
-data_bunch = DataBunch(processor=processor, batch_size=32, distributed=False)
+data_silo = DataSilo(processor=processor, batch_size=32, distributed=False)
 
 # Init model
-prediction_head = TokenClassificationHead(layer_dims=[768, len(processor.label_list)])
-
 language_model = Bert.load("bert-base-german-cased")
-# language_model.save_config("save")
+
+lm_prediction_head = BertLMHead(
+    embeddings=language_model.model.embeddings,
+    hidden_size=language_model.model.config.hidden_size,
+)
+next_sentence_head = TextClassificationHead(
+    layer_dims=[language_model.model.config.hidden_size, 2], loss_ignore_index=-1
+)
 
 model = AdaptiveModel(
     language_model=language_model,
-    prediction_heads=[prediction_head],
+    prediction_heads=[lm_prediction_head, next_sentence_head],
     embeds_dropout_prob=0.1,
-    lm_output_types=["per_token"],
+    lm_output_types=["per_token", "per_sequence"],
     device=device,
 )
 
 # Init optimizer
 num_train_optimization_steps = calculate_optimization_steps(
-    n_examples=data_bunch.n_samples("train"),
+    n_examples=data_silo.n_samples("train"),
     batch_size=16,
     grad_acc_steps=1,
-    n_epochs=1,
+    n_epochs=10,
     local_rank=-1,
 )
 
@@ -74,24 +78,27 @@ optimizer, warmup_linear = initialize_optimizer(
 
 
 evaluator_dev = Evaluator(
-    data_loader=data_bunch.get_data_loader("dev"),
+    data_loader=data_silo.get_data_loader("dev"),
     label_list=processor.label_list,
     device=device,
     metrics=processor.metrics,
+    classification_report=False,
 )
 
+
 evaluator_test = Evaluator(
-    data_loader=data_bunch.get_data_loader("test"),
+    data_loader=data_silo.get_data_loader("test"),
     label_list=processor.label_list,
     device=device,
     metrics=processor.metrics,
+    classification_report=False,
 )
 
 trainer = Trainer(
     optimizer=optimizer,
-    data_bunch=data_bunch,
+    data_silo=data_silo,
     evaluator_dev=evaluator_dev,
-    epochs=1,
+    epochs=10,
     n_gpu=1,
     grad_acc_steps=1,
     fp16=False,

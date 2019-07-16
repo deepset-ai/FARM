@@ -2,7 +2,7 @@ import logging
 import os
 import torch
 
-from farm.data_handler.data_bunch import DataBunch
+from farm.data_handler.data_silo import DataSilo
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import LanguageModel
 from farm.modeling.optimization import BertAdam, WarmupLinearSchedule
@@ -31,7 +31,7 @@ logging.basicConfig(
 )
 
 
-def run_model(args):
+def run_experiment(args):
 
     validate_args(args)
     directory_setup(output_dir=args.output_dir, do_train=args.do_train)
@@ -56,13 +56,13 @@ def run_model(args):
         data_dir=args.data_dir,
     )
 
-    data_bunch = DataBunch(
+    data_silo = DataSilo(
         processor=processor, batch_size=args.batch_size, distributed=distributed
     )
 
     class_weights = None
     if args.balance_classes:
-        class_weights = data_bunch.class_weights
+        class_weights = data_silo.class_weights
 
     model = get_adaptive_model(
         lm_output_type=args.lm_output_type,
@@ -79,7 +79,7 @@ def run_model(args):
 
     # Init optimizer
     num_train_optimization_steps = calculate_optimization_steps(
-        n_examples=data_bunch.n_samples("train"),
+        n_examples=data_silo.n_samples("train"),
         batch_size=args.batch_size,
         grad_acc_steps=args.gradient_accumulation_steps,
         n_epochs=args.epochs,
@@ -97,14 +97,14 @@ def run_model(args):
     )
 
     evaluator_dev = Evaluator(
-        data_loader=data_bunch.get_data_loader("dev"),
+        data_loader=data_silo.get_data_loader("dev"),
         label_list=processor.label_list,
         device=device,
         metrics=processor.metrics,
     )
 
     evaluator_test = Evaluator(
-        data_loader=data_bunch.get_data_loader("test"),
+        data_loader=data_silo.get_data_loader("test"),
         label_list=processor.label_list,
         device=device,
         metrics=processor.metrics,
@@ -112,7 +112,7 @@ def run_model(args):
 
     trainer = Trainer(
         optimizer=optimizer,
-        data_bunch=data_bunch,
+        data_silo=data_silo,
         evaluator_dev=evaluator_dev,
         epochs=args.epochs,
         n_gpu=n_gpu,

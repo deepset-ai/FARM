@@ -13,7 +13,7 @@ from farm.utils import MLFlowLogger as MlLogger
 logger = logging.getLogger(__name__)
 
 
-class DataBunch(object):
+class DataSilo(object):
     """ Loads the train, dev and test sets from file, calculates statistics from the data, casts datasets to
     PyTorch DataLoader objects. """
 

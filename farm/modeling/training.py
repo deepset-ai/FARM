@@ -59,7 +59,7 @@ class Trainer:
     def __init__(
         self,
         optimizer,
-        data_bunch,
+        data_silo,
         evaluator_dev,
         epochs,
         n_gpu,
@@ -70,7 +70,7 @@ class Trainer:
         device,
         evaluate_every=100,
     ):
-        self.data_bunch = data_bunch
+        self.data_silo = data_silo
         self.evaluator_dev = evaluator_dev
         self.epochs = int(epochs)
         self.optimizer = optimizer
@@ -81,7 +81,7 @@ class Trainer:
         self.learning_rate = learning_rate
         self.warmup_linear = warmup_linear
         self.global_step = 0
-        self.data_loader_train = data_bunch.get_data_loader("train")
+        self.data_loader_train = data_silo.get_data_loader("train")
         self.device = device
         self.log_params()
 
