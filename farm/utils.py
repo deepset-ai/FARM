@@ -114,3 +114,10 @@ class TensorBoardLogger(BaseMLLogger):
     def log_params(cls, params):
         for key, value in params.items():
             TensorBoardLogger.summary_writer.add_text(tag=key, text_string=str(value))
+
+
+def to_numpy(container):
+    try:
+        return container.cpu().numpy()
+    except AttributeError:
+        return container

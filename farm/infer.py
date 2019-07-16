@@ -1,9 +1,5 @@
-import json
-import os
-
 import torch
-from dotmap import DotMap
-from scipy.special import softmax
+
 from torch.utils.data.sampler import SequentialSampler
 
 from farm.data_handler.dataloader import NamedDataLoader

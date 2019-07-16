@@ -8,10 +8,7 @@ from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
 from farm.modeling.prediction_head import TextClassificationHead
 from farm.modeling.tokenization import BertTokenizer
-from farm.modeling.training import (
-    Trainer,
-    Evaluator,
-)
+from farm.train import Trainer
 from farm.experiment import initialize_optimizer, calculate_optimization_steps
 from farm.utils import set_all_seeds, MLFlowLogger
 from farm.data_handler.processor import GNADProcessor
@@ -73,27 +70,11 @@ optimizer, warmup_linear = initialize_optimizer(
     fp16=False,
     num_train_optimization_steps=num_train_optimization_steps)
 
-# TODO: maybe have a pipeline params object to collapse some of these arguments?
-evaluator_dev = Evaluator(
-    data_loader=data_silo.get_data_loader("dev"),
-    label_list=processor.label_list,
-    device=device,
-    metrics=processor.metrics)
-
-evaluator_test = Evaluator(
-    data_loader=data_silo.get_data_loader("test"),
-    label_list=processor.label_list,
-    device=device,
-    metrics=processor.metrics)
-
 trainer = Trainer(
     optimizer=optimizer,
     data_silo=data_silo,
-    evaluator_dev=evaluator_dev,
     epochs=1,
     n_gpu=1,
-    grad_acc_steps=1,
-    fp16=False,
     learning_rate=2e-5,  # Why is this also passed to initialize optimizer?
     warmup_linear=warmup_linear,
     evaluate_every=100,
@@ -101,23 +82,7 @@ trainer = Trainer(
 
 model = trainer.train(model)
 
-model.save("save/model_1")
-processor.save("save/model_1")
-
-# FROM HUGGING FACE
-# model_to_save = model.module if hasattr(model, 'module') else model
-
-# If we save using the predefined names, we can load using `from_pretrained`
-# output_model_file = os.path.join(args.output_dir, WEIGHTS_NAME)
-# output_config_file = os.path.join(args.output_dir, CONFIG_NAME)
-# torch.save(model_to_save.state_dict(), output_model_file)
-# model_to_save.config.to_json_file(output_config_file)
-# tokenizer.save_vocabulary(args.output_dir)
-
-
-# final evaluation on test set
-results = evaluator_test.eval(model)
-#TODO this should be executed within the above call
-evaluator_test.log_results(results, "Test", trainer.global_step)
+model.save("save/doc_model_1")
+processor.save("save/doc_model_1")
 
 # fmt: on

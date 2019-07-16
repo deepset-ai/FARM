@@ -9,15 +9,15 @@ from farm.modeling.optimization import BertAdam, WarmupLinearSchedule
 from farm.modeling.prediction_head import PredictionHead
 from farm.modeling.tokenization import BertTokenizer
 from farm.data_handler.processor import Processor
-from farm.modeling.training import Trainer, Evaluator
-from farm.modeling.training import WrappedDataParallel
+from farm.train import Trainer
+from farm.train import WrappedDataParallel
 from farm.utils import set_all_seeds, initialize_device_settings
 from farm.utils import MLFlowLogger as MlLogger
 
 logger = logging.getLogger(__name__)
 
 try:
-    from farm.modeling.training import WrappedDDP
+    from farm.train import WrappedDDP
 except ImportError:
     logger.info(
         "Importing Data Loader for Distributed Training failed. Apex not installed?"
@@ -96,24 +96,9 @@ def run_experiment(args):
         num_train_optimization_steps=num_train_optimization_steps,
     )
 
-    evaluator_dev = Evaluator(
-        data_loader=data_silo.get_data_loader("dev"),
-        label_list=processor.label_list,
-        device=device,
-        metrics=processor.metrics,
-    )
-
-    evaluator_test = Evaluator(
-        data_loader=data_silo.get_data_loader("test"),
-        label_list=processor.label_list,
-        device=device,
-        metrics=processor.metrics,
-    )
-
     trainer = Trainer(
         optimizer=optimizer,
         data_silo=data_silo,
-        evaluator_dev=evaluator_dev,
         epochs=args.epochs,
         n_gpu=n_gpu,
         grad_acc_steps=args.gradient_accumulation_steps,
@@ -128,9 +113,6 @@ def run_experiment(args):
 
     processor.save(f"save/{args.name}")
     model.save(f"save/{args.name}")
-
-    results = evaluator_test.eval(model)
-    evaluator_test.log_results(results, "Test", trainer.global_step)
 
 
 def get_adaptive_model(

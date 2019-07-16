@@ -8,7 +8,7 @@ from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
 from farm.modeling.prediction_head import TokenClassificationHead
 from farm.modeling.tokenization import BertTokenizer
-from farm.modeling.training import Trainer, Evaluator
+from farm.train import Trainer
 from farm.experiment import calculate_optimization_steps, initialize_optimizer
 from farm.utils import set_all_seeds, MLFlowLogger
 
@@ -72,29 +72,11 @@ optimizer, warmup_linear = initialize_optimizer(
     num_train_optimization_steps=num_train_optimization_steps,
 )
 
-
-evaluator_dev = Evaluator(
-    data_loader=data_silo.get_data_loader("dev"),
-    label_list=processor.label_list,
-    device=device,
-    metrics=processor.metrics,
-)
-
-evaluator_test = Evaluator(
-    data_loader=data_silo.get_data_loader("test"),
-    label_list=processor.label_list,
-    device=device,
-    metrics=processor.metrics,
-)
-
 trainer = Trainer(
     optimizer=optimizer,
     data_silo=data_silo,
-    evaluator_dev=evaluator_dev,
     epochs=1,
     n_gpu=1,
-    grad_acc_steps=1,
-    fp16=False,
     learning_rate=2e-5,  # Why is this also passed to initialize optimizer?
     warmup_linear=warmup_linear,
     evaluate_every=100,
@@ -103,5 +85,5 @@ trainer = Trainer(
 
 model = trainer.train(model)
 
-results = evaluator_test.eval(model)
-evaluator_test.log_results(results, "Test", trainer.global_step)
+model.save("save/ner_model_1")
+processor.save("save/ner_model_1")
