@@ -55,7 +55,6 @@ class Trainer:
         epochs,
         n_gpu,
         device,
-        learning_rate,
         warmup_linear=0.1,
         evaluate_every=100,
         evaluator_dev=None,
@@ -70,7 +69,7 @@ class Trainer:
         self.n_gpu = n_gpu
         self.grad_acc_steps = grad_acc_steps
         self.fp16 = fp16
-        self.learning_rate = learning_rate
+        self.learning_rate = self.optimizer.get_lr()
         self.warmup_linear = warmup_linear
         self.global_step = 0
         self.data_loader_train = data_silo.get_data_loader("train")

@@ -58,22 +58,13 @@ model = AdaptiveModel(
 )
 
 # Init optimizer
-num_train_optimization_steps = calculate_optimization_steps(
-    n_examples=data_silo.n_samples("train"),
-    batch_size=16,
-    grad_acc_steps=1,
-    n_epochs=10,
-    local_rank=-1,
-)
-
-# TODO: warmup linear is sometimes NONE depending on fp16 - is there a neater way to handle this?
 optimizer, warmup_linear = initialize_optimizer(
     model=model,
     learning_rate=2e-5,
     warmup_proportion=0.1,
-    loss_scale=0,
-    fp16=False,
-    num_train_optimization_steps=num_train_optimization_steps,
+    n_examples=data_silo.n_samples("train"),
+    batch_size=16,
+    n_epochs=1,
 )
 
 trainer = Trainer(
@@ -81,7 +72,6 @@ trainer = Trainer(
     data_silo=data_silo,
     epochs=10,
     n_gpu=1,
-    learning_rate=2e-5,  # Why is this also passed to initialize optimizer?
     warmup_linear=warmup_linear,
     evaluate_every=100,
     device=device,
