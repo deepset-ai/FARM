@@ -29,7 +29,7 @@ set_all_seeds(seed=42)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 tokenizer = BertTokenizer.from_pretrained(
-    pretrained_model_name_or_path="bert-base-cased-de-2b-end",
+    pretrained_model_name_or_path="bert-base-german-cased",
     do_lower_case=False)
 
 processor = GNADProcessor(tokenizer=tokenizer,
@@ -46,7 +46,7 @@ data_bunch = DataBunch(
 # Init model
 prediction_head = TextClassificationHead(layer_dims=[768, 9])
 
-language_model = Bert.load("bert-base-cased-de-2b-end")
+language_model = Bert.load("bert-base-german-cased")
 
 # TODO where are balance class weights?
 model = AdaptiveModel(
@@ -100,6 +100,20 @@ trainer = Trainer(
     device=device)
 
 model = trainer.train(model)
+
+model.save("save/model_1")
+processor.save("save/model_1")
+
+# FROM HUGGING FACE
+# model_to_save = model.module if hasattr(model, 'module') else model
+
+# If we save using the predefined names, we can load using `from_pretrained`
+# output_model_file = os.path.join(args.output_dir, WEIGHTS_NAME)
+# output_config_file = os.path.join(args.output_dir, CONFIG_NAME)
+# torch.save(model_to_save.state_dict(), output_model_file)
+# model_to_save.config.to_json_file(output_config_file)
+# tokenizer.save_vocabulary(args.output_dir)
+
 
 # final evaluation on test set
 results = evaluator_test.eval(model)

@@ -28,7 +28,7 @@ ml_logger.init_experiment(
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 tokenizer = BertTokenizer.from_pretrained(
-    pretrained_model_name_or_path="bert-base-cased-de-2b-end", do_lower_case=False
+    pretrained_model_name_or_path="bert-base-german-cased", do_lower_case=False
 )
 
 processor = CONLLProcessor(
@@ -42,7 +42,7 @@ data_bunch = DataBunch(processor=processor, batch_size=32, distributed=False)
 # Init model
 prediction_head = TokenClassificationHead(layer_dims=[768, len(processor.label_list)])
 
-language_model = Bert.load("bert-base-cased-de-2b-end")
+language_model = Bert.load("bert-base-german-cased")
 # language_model.save_config("save")
 
 model = AdaptiveModel(

@@ -65,32 +65,27 @@ def samples_to_features_sequence(
         assert len(padding_mask) == max_seq_len
         assert len(segment_ids) == max_seq_len
 
-        if target == "classification":
-            label_ids = label_map[sample.clear_text["label"]]
-        elif target == "regression":
-            label_ids = float(sample.clear_text["label"])
-        else:
-            # TODO Add multilabel here
-            raise KeyError(target)
+        # For inference mode
+        try:
+            if target == "classification":
+                label_ids = label_map[sample.clear_text["label"]]
+            elif target == "regression":
+                label_ids = float(sample.clear_text["label"])
+            else:
+                # TODO Add multilabel here
+                raise KeyError(target)
+        except KeyError:
+            label_ids = None
 
-        # TODO: This indexing will break
-        # if ex_index < 2:
-        #     logger.info("*** Example ***")
-        #     logger.info("guid: %s" % (sample.guid))
-        #     logger.info("tokens: %s" % " ".join([str(x) for x in tokens]))
-        #     logger.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
-        #     logger.info("padding_mask: %s" % " ".join([str(x) for x in padding_mask]))
-        #     logger.info("segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
-        #     logger.info("label: %s (id = %d)" % (sample.label, label_id))
+        feat_dict = {
+            "input_ids": input_ids,
+            "padding_mask": padding_mask,
+            "segment_ids": segment_ids,
+        }
 
-        features.append(
-            {
-                "input_ids": input_ids,
-                "padding_mask": padding_mask,
-                "segment_ids": segment_ids,
-                "label_ids": label_ids,
-            }
-        )
+        if label_ids is not None:
+            feat_dict["label_ids"] = label_ids
+        features.append(feat_dict)
     return features
 
 
@@ -127,12 +122,17 @@ def samples_to_features_ner(
         # Convert to input and labels to ids, generate masks
         # Todo: Something is odd here because [PAD] is index one in the vocab of tokenizer but we are padding with 0, or maybe it doesnt matter because its masked out anyways
         input_ids = tokenizer.convert_tokens_to_ids(tokens)
-        label_ids = [label_list.index(lt) for lt in labels_token]
+        if labels_word:
+            label_ids = [label_list.index(lt) for lt in labels_token]
+        # Inference mode
+        else:
+            label_ids = None
         segment_ids = [0] * max_seq_len
 
         # Pad
         input_ids = pad(input_ids, max_seq_len, 0)
-        label_ids = pad(label_ids, max_seq_len, 0)
+        if label_ids:
+            label_ids = pad(label_ids, max_seq_len, 0)
         initial_mask = pad(initial_mask, max_seq_len, 0)
         padding_mask = pad(padding_mask, max_seq_len, 0)
 
@@ -140,10 +140,11 @@ def samples_to_features_ner(
             "input_ids": input_ids,
             "padding_mask": padding_mask,
             "segment_ids": segment_ids,
-            "label_ids": label_ids,
             "initial_mask": initial_mask,
         }
 
+        if label_ids:
+            feature_dict["label_ids"] = label_ids
         feature_objects.append(feature_dict)
 
     return feature_objects

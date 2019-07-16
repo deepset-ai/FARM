@@ -1,6 +1,19 @@
 from torch import nn
+
+from farm.modeling.prediction_head import (
+    TextClassificationHead,
+    PredictionHead,
+    TokenClassificationHead,
+)
+from farm.modeling.language_model import LanguageModel
+from farm.file_utils import create_folder
+import os
+import logging
+
 from farm.utils import MLFlowLogger as MlLogger
-from farm.modeling.prediction_head import PredictionHead
+
+
+logger = logging.getLogger(__name__)
 
 
 class AdaptiveModel(nn.Module):
@@ -20,16 +33,34 @@ class AdaptiveModel(nn.Module):
         self.prediction_heads = [ph.to(device) for ph in prediction_heads]
         self.num_labels = [head.num_labels for head in prediction_heads]
         self.dropout = nn.Dropout(embeds_dropout_prob)
-        self.lm_output_types = lm_output_types
+        self.lm_output_types = (
+            [lm_output_types] if isinstance(lm_output_types, str) else lm_output_types
+        )
 
         self.log_params()
 
     def save(self, save_dir):
-        raise NotImplementedError()
+        create_folder(save_dir)
+        self.language_model.save(save_dir)
+        for ph in self.prediction_heads:
+            ph.save(save_dir)
+            # Need to save config and pipeline
 
     @classmethod
-    def load(cls, load_dir):
-        raise NotImplementedError()
+    def load(cls, load_dir, device):
+        # Prediction heads
+        ph_model_files, ph_config_files = cls._get_prediction_head_files(load_dir)
+        prediction_heads = []
+        ph_output_type = []
+        for model_file, config_file in zip(ph_model_files, ph_config_files):
+            head = PredictionHead.load(model_file=model_file, config_file=config_file)
+            prediction_heads.append(head)
+            ph_output_type.append(head.ph_output_type)
+
+        # Language Model
+        language_model = LanguageModel.load(load_dir)
+
+        return cls(language_model, prediction_heads, 0.1, ph_output_type, device)
 
     def logits_to_loss_per_head(self, logits, **kwargs):
         # collect losses from all heads
@@ -84,6 +115,28 @@ class AdaptiveModel(nn.Module):
             all_logits.append(head(output))
 
         return all_logits
+
+    @classmethod
+    def _get_prediction_head_files(cls, load_dir):
+        files = os.listdir(load_dir)
+        model_files = [
+            os.path.join(load_dir, f)
+            for f in files
+            if ".bin" in f and "prediction_head" in f
+        ]
+        config_files = [
+            os.path.join(load_dir, f)
+            for f in files
+            if "config.json" in f and "prediction_head" in f
+        ]
+        # sort them to get correct order in case of multiple prediction heads
+        model_files.sort()
+        config_files.sort()
+
+        assert len(model_files) == len(config_files)
+        logger.info(f"Found files for loading {len(model_files)} prediction heads")
+
+        return model_files, config_files
 
     def log_params(self):
         params = {

@@ -22,6 +22,7 @@ import os
 import shutil
 import tarfile
 import tempfile
+import json
 
 import torch
 from pytorch_pretrained_bert.modeling import (
@@ -35,7 +36,7 @@ from pytorch_pretrained_bert.modeling import (
 )
 from torch import nn
 
-from farm.file_utils import cached_path, WEIGHTS_NAME, CONFIG_NAME
+from farm.file_utils import cached_path
 
 logger = logging.getLogger(__name__)
 
@@ -47,24 +48,37 @@ PRETRAINED_MODEL_ARCHIVE_MAP = {
     "bert-base-multilingual-uncased": "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-multilingual-uncased.tar.gz",
     "bert-base-multilingual-cased": "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-multilingual-cased.tar.gz",
     "bert-base-chinese": "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-chinese.tar.gz",
-    "bert-base-cased-de-v0-1": "s3://int-models-bert/bert-base-cased-de-v0-1/bert-base-cased-de-v0-1.tar.gz",
-    "bert-base-cased-de-1a-start": "s3://int-models-bert/bert-base-cased-de-1a-start/bert-base-cased-de-1a-start.tar.gz",
-    "bert-base-cased-de-1a-10k": "s3://int-models-bert/bert-base-cased-de-1a-10k/bert-base-cased-de-1a-10k.tar.gz",
-    "bert-base-cased-de-1a-20k": "s3://int-models-bert/bert-base-cased-de-1a-20k/bert-base-cased-de-1a-20k.tar.gz",
-    "bert-base-cased-de-1a-50k": "s3://int-models-bert/bert-base-cased-de-1a-50k/bert-base-cased-de-1a-50k.tar.gz",
-    "bert-base-cased-de-1a-end": "s3://int-models-bert/bert-base-cased-de-1a-end/bert-base-cased-de-1a-end.tar.gz",
-    "bert-base-cased-de-1b-end": "s3://int-models-bert/bert-base-cased-de-1b-end/bert-base-cased-de-1b-end.tar.gz",
-    "bert-base-cased-de-1b-best": "s3://int-models-bert/bert-base-cased-de-1b-best/bert-base-cased-de-1b-best.tar.gz",
-    "bert-base-cased-de-2a-end": "s3://int-models-bert/bert-base-cased-de-2a-end/bert-base-cased-de-2a-end.tar.gz",
-    "bert-base-cased-de-2b-end": "s3://int-models-bert/bert-base-cased-de-2b-end/bert-base-cased-de-2b-end.tar.gz",
+    "bert-base-german-cased": "s3://int-models-bert/bert-base-cased-de-2b-end/bert-base-cased-de-2b-end.tar.gz",
 }
 
-BERT_CONFIG_NAME = "bert_config.json"
+CONFIG_NAMES = ["bert_config.json", "language_model_config.json"]
+WEIGHTS_NAMES = ["pytorch_model.bin", "language_model.bin"]
 TF_WEIGHTS_NAME = "model.ckpt"
 
 
 class LanguageModel(nn.Module):
     """ Takes a tokenized sentence as input and returns vectors that represents the input semantically. """
+
+    subclasses = {}
+
+    def __init_subclass__(cls, **kwargs):
+        """ This automatically keeps track of all available subclasses.
+        Enables generic load() or all specific LanguageModel implementation.
+        """
+        super().__init_subclass__(**kwargs)
+        cls.subclasses[cls.__name__] = cls
+
+    @classmethod
+    def load(cls, load_dir):
+        config_file = os.path.join(load_dir, "language_model_config.json")
+        if os.path.exists(config_file):
+            # it's a local directory
+            config = json.load(open(config_file))
+            language_model = cls.subclasses[config["name"]].load(load_dir)
+        else:
+            # it's a model name which we try to resolve from s3. for now only works for bert models
+            language_model = cls.subclasses["Bert"].load(load_dir)
+        return language_model
 
     def freeze(self, layers):
         raise NotImplementedError()
@@ -72,19 +86,50 @@ class LanguageModel(nn.Module):
     def unfreeze(self):
         raise NotImplementedError()
 
-    @classmethod
-    def load(cls, load_dir):
-        raise NotImplementedError()
-
     def save_config(self, save_dir):
         raise NotImplementedError()
 
-    def checkpoint(self, save_dir):
-        """
-        Todo: How do we want to implement this? Should probably have a switch to turn off and on checkpointing
-        People will want to checkpoint if finetuning but not if LM is frozen
-        """
-        raise NotImplementedError()
+    def save(self, save_dir):
+        # Save Weights
+        save_name = os.path.join(save_dir, "language_model.bin")
+        torch.save(self.state_dict(), save_name)
+        self.save_config(save_dir)
+
+    @classmethod
+    def _infer_language_from_name(cls, name):
+        known_languages = (
+            "german",
+            "english",
+            "chinese",
+            "indian",
+            "french",
+            "polish",
+            "spanish",
+            "multilingual",
+        )
+        matches = [lang for lang in known_languages if lang in name]
+        if len(matches) == 0:
+            language = "english"
+            logger.warning(
+                "Could not automatically detect from language model name what language it is. \n"
+                "We guess it's an *ENGLISH* model ... \n"
+                "If not: Init the language model by supplying the 'language' param.\n"
+                "Example: Bert.load('my_mysterious_model_name', language='de')"
+            )
+        elif len(matches) > 1:
+            raise ValueError(
+                "Could not automatically detect from language model name what language it is.\n"
+                f"Found multiple matches: {matches}\n"
+                "Please init the language model by manually supplying the 'language' as a parameter.\n"
+                "Example: Bert.load('my_mysterious_model_name', language='de')"
+            )
+        else:
+            language = matches[0]
+            logger.info(
+                f"Automatically detected language from language model name: {language}"
+            )
+
+        return language
 
 
 class Bert(LanguageModel):
@@ -94,11 +139,20 @@ class Bert(LanguageModel):
     def __init__(self):
         super(Bert, self).__init__()
         self.model = None
+        self.name = "bert"
 
     @classmethod
-    def load(cls, pretrained_model_name_or_path):
+    def load(cls, pretrained_model_name_or_path, language=None):
         bert = cls()
         bert.model = BertModel.from_pretrained(pretrained_model_name_or_path)
+        # set language by checking in bert.model.config
+        if hasattr(bert.model.config, "language"):
+            # it is our FARM style config
+            language = bert.model.config.language
+        else:
+            # it is a huggingface style config
+            language = cls._infer_language_from_name(pretrained_model_name_or_path)
+        bert.language = language
         return bert
 
     def forward(
@@ -107,7 +161,7 @@ class Bert(LanguageModel):
         segment_ids,
         padding_mask,
         output_all_encoded_layers=False,
-        **kwargs
+        **kwargs,
     ):
         return self.model(
             input_ids,
@@ -117,10 +171,11 @@ class Bert(LanguageModel):
         )
 
     def save_config(self, save_dir):
-        # TODO: Maybe we want to initialize at higher so that switching in a new config can give us a whole new class of lm
-        output_config_name = os.path.join(save_dir, "language_model_config.json")
-        with open(output_config_name, "w") as file:
-            string = self.model.config.to_json_string(file)
+        save_filename = os.path.join(save_dir, "language_model_config.json")
+        with open(save_filename, "w") as file:
+            setattr(self.model.config, "name", self.__class__.__name__)
+            setattr(self.model.config, "language", self.language)
+            string = self.model.config.to_json_string()
             file.write(string)
 
 
@@ -238,16 +293,21 @@ class BertPreTrainedModel(nn.Module):
                 # archive.extractall(tempdir)
             serialization_dir = tempdir
         # Load config
-        config_file = os.path.join(serialization_dir, CONFIG_NAME)
-        if not os.path.exists(config_file):
-            # Backward compatibility with old naming format
-            config_file = os.path.join(serialization_dir, BERT_CONFIG_NAME)
+        for config_name in CONFIG_NAMES:
+            config_file = os.path.join(serialization_dir, config_name)
+            if os.path.exists(config_file):
+                break
+            # # Backward compatibility with old naming format
+            # config_file = os.path.join(serialization_dir, BERT_CONFIG_NAMES)
         config = BertConfig.from_json_file(config_file)
         logger.info("Model config {}".format(config))
         # Instantiate model.
         model = cls(config, *inputs, **kwargs)
         if state_dict is None and not from_tf:
-            weights_path = os.path.join(serialization_dir, WEIGHTS_NAME)
+            for weights_name in WEIGHTS_NAMES:
+                weights_path = os.path.join(serialization_dir, weights_name)
+                if os.path.exists(weights_path):
+                    break
             state_dict = torch.load(weights_path, map_location="cpu")
         if tempdir:
             # Clean up temp dir

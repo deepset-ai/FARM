@@ -39,7 +39,7 @@ processor = BertStyleLMProcessor(
 data_bunch = DataBunch(processor=processor, batch_size=32, distributed=False)
 
 # Init model
-language_model = Bert.load("bert-base-cased-de-2b-end")
+language_model = Bert.load("bert-base-german-cased")
 
 lm_prediction_head = BertLMHead(
     embeddings=language_model.model.embeddings,

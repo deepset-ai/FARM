@@ -16,13 +16,14 @@
 
   "task": {
     "name":             {"value": null, "default": "GermEval18Coarse", "desc": "GermEval18Coarse: binary offensive language detection."},
+    "processor_name":             {"value": null, "default": "GermEval18CoarseProcessor", "desc": "GermEval18Coarse: binary offensive language detection."},
     "do_eval":          {"value": null, "default": true, "desc": "Whether to run eval on the dev set."},
     "do_train":         {"value": null, "default": true, "desc": "Whether to run training. Can be used to only evaluate on an already trained model."},
     "dev_size":         {"value": null, "default": 0.1,  "desc": "Split a dev set from the training set using dev_size as proportion."}
   },
 
   "parameter": {
-    "model":            {"value": "bert-base-cased-de-2b-end", "default": null,  "desc": "Bert pre-trained model selected in the list: bert-base-uncased,  bert-large-uncased,  bert-base-cased,  bert-large-cased,  bert-base-multilingual-uncased,  bert-base-multilingual-cased,  bert-base-chinese."},
+    "model":            {"value": "bert-base-german-cased", "default": null,  "desc": "Bert pre-trained model selected in the list: bert-base-uncased,  bert-large-uncased,  bert-base-cased,  bert-large-cased,  bert-base-multilingual-uncased,  bert-base-multilingual-cased,  bert-base-chinese."},
     "prediction_head":             {"value":  null, "default":  "TextClassificationHead", "desc":  "Kind of prediction head we use on top of Language Model"},
     "lm_output_type":             {"value":  null, "default":  "per_sequence", "desc":  "Language Model output."},
     "lower_case":       {"value": null,                        "default": false, "desc": "Set to true if you are using an uncased model."},

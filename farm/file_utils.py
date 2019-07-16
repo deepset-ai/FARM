@@ -47,8 +47,6 @@ try:
 except (AttributeError, ImportError):
     FARM_CACHE = os.getenv("FARM_CACHE", default_cache_path)
 
-CONFIG_NAME = "config.json"
-WEIGHTS_NAME = "pytorch_model.bin"
 
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
@@ -320,7 +318,7 @@ def read_config(path, flattend=False):
             conf_args["general"],
             **conf_args["task"],
             **conf_args["parameter"],
-            **conf_args["logging"]
+            **conf_args["logging"],
         )
         args = DotMap(flat_args, _dynamic=False)
     else:
@@ -386,3 +384,10 @@ def unnestConfig(config, flattened=False):
             unnestedConfig.append(tempconfig)
 
     return unnestedConfig
+
+
+def create_folder(dir):
+    if os.path.exists(dir):
+        logger.warning(f"Path {dir} already exists. You might be overwriting files.")
+    else:
+        os.makedirs(dir)

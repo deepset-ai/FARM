@@ -126,6 +126,7 @@ tensorflow_code
 
 # training data
 data/
+save/
 
 # models
 models/
