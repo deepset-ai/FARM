@@ -5,6 +5,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
 from torch.utils.data import DataLoader
+from torch.utils.data import random_split
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
 from farm.data_handler.dataloader import NamedDataLoader
@@ -20,57 +21,65 @@ class DataSilo(object):
     def __init__(self, processor, batch_size, distributed=False):
         self.distributed = distributed
         self.processor = processor
+        self.data = {}
         self.batch_size = batch_size
         self.class_weights = None
+        self._load_data()
 
-        self.load_data()
-
-    def load_data(self):
+    def _load_data(self):
         # fmt: off
 
+        # train data
         train_file = os.path.join(self.processor.data_dir, self.processor.train_filename)
-        test_file = os.path.join(self.processor.data_dir, self.processor.test_filename)
-
         logger.info("Loading train set from: {}".format(train_file))
+        self.data["train"], self.tensor_names = self.processor.dataset_from_file(train_file)
+
+
+        # dev data
         if not self.processor.dev_filename:
             logger.info("Loading dev set as a slice of train set")
+            self._create_dev_from_train()
         else:
             dev_file = os.path.join(self.processor.data_dir, self.processor.dev_filename)
             logger.info("Loading dev set from: {}".format(dev_file))
+            self.data["dev"], _ = self.processor.dataset_from_file(dev_file)
+
+        # test data
+        test_file = os.path.join(self.processor.data_dir, self.processor.test_filename)
         logger.info("Loading test set from: {}".format(test_file))
+        self.data["test"], _ = self.processor.dataset_from_file(test_file)
 
-        dataset_train, dataset_dev, dataset_test = self.processor.dataset_from_file()
-
-        self.calculate_statistics(dataset_train, dataset_dev, dataset_test)
-        self.calculate_class_weights(dataset_train)
-        self.initialize_data_loaders(dataset_train, dataset_dev, dataset_test)
+        # derive stats and meta data
+        self._calculate_statistics()
+        self._calculate_class_weights(self.data["train"])
+        self._initialize_data_loaders()
         # fmt: on
 
-    def initialize_data_loaders(self, dataset_train, dataset_dev, dataset_test):
+    def _initialize_data_loaders(self):
         if self.distributed:
-            sampler_train = DistributedSampler(dataset_train)
+            sampler_train = DistributedSampler(self.data["train"])
         else:
-            sampler_train = RandomSampler(dataset_train)
+            sampler_train = RandomSampler(self.data["train"])
 
         data_loader_train = NamedDataLoader(
-            dataset=dataset_train,
+            dataset=self.data["train"],
             sampler=sampler_train,
             batch_size=self.batch_size,
-            tensor_names=self.processor.tensor_names,
+            tensor_names=self.tensor_names,
         )
 
         data_loader_dev = NamedDataLoader(
-            dataset=dataset_dev,
-            sampler=SequentialSampler(dataset_dev),
+            dataset=self.data["dev"],
+            sampler=SequentialSampler(self.data["dev"]),
             batch_size=self.batch_size,
-            tensor_names=self.processor.tensor_names,
+            tensor_names=self.tensor_names,
         )
 
         data_loader_test = NamedDataLoader(
-            dataset=dataset_test,
-            sampler=SequentialSampler(dataset_test),
+            dataset=self.data["test"],
+            sampler=SequentialSampler(self.data["test"]),
             batch_size=self.batch_size,
-            tensor_names=self.processor.tensor_names,
+            tensor_names=self.tensor_names,
         )
 
         self.loaders = {
@@ -79,27 +88,41 @@ class DataSilo(object):
             "test": data_loader_test,
         }
 
-    def calculate_statistics(self, dataset_train, dataset_dev, dataset_test):
+    def _create_dev_from_train(self):
+        # TODO checks to ensure dev is loaded the right way
+        n_dev = int(self.processor.dev_split * len(self.data["train"]))
+        n_train = len(self.data["train"]) - n_dev
+
+        # Todo: Seed
+        train_dataset, dev_dataset = random_split(self.data["train"], [n_train, n_dev])
+        self.data["train"] = train_dataset
+        self.data["dev"] = dev_dataset
+
+        logger.info(
+            f"Took {n_dev} samples out of train set to create dev set (dev split = {self.processor.dev_split})"
+        )
+
+    def _calculate_statistics(self,):
         self.counts = {
-            "train": len(dataset_train),
-            "dev": len(dataset_dev),
-            "test": len(dataset_test),
+            "train": len(self.data["train"]),
+            "dev": len(self.data["dev"]),
+            "test": len(self.data["test"]),
         }
 
-        logger.info("Examples in train: {}".format(len(dataset_train)))
-        logger.info("Examples in dev  : {}".format(len(dataset_dev)))
-        logger.info("Examples in test : {}".format(len(dataset_test)))
+        logger.info("Examples in train: {}".format(len(self.data["train"])))
+        logger.info("Examples in dev  : {}".format(len(self.data["dev"])))
+        logger.info("Examples in test : {}".format(len(self.data["test"])))
 
         MlLogger.log_params(
             {
-                "n_samples_train": len(dataset_train),
-                "n_samples_dev": len(dataset_dev),
-                "n_samples_test": len(dataset_test),
+                "n_samples_train": len(self.data["train"]),
+                "n_samples_dev": len(self.data["dev"]),
+                "n_samples_test": len(self.data["test"]),
             }
         )
 
     # TODO: maybe this can be inside calculate_statistics
-    def calculate_class_weights(self, dataset):
+    def _calculate_class_weights(self, dataset):
         try:
             labels = [x[3].item() for x in dataset]
             self.class_weights = list(
@@ -110,8 +133,8 @@ class DataSilo(object):
                 "Class weighting not available for token level tasks such as NER"
             )
 
-    def get_data_loader(self, dataset):
+    def _get_data_loader(self, dataset):
         return self.loaders[dataset]
 
-    def n_samples(self, dataset):
+    def _n_samples(self, dataset):
         return self.counts[dataset]
