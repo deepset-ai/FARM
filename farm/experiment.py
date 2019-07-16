@@ -78,13 +78,6 @@ def run_experiment(args):
     )
 
     # Init optimizer
-    num_train_optimization_steps = calculate_optimization_steps(
-        n_examples=data_silo._n_samples("train"),
-        batch_size=args.batch_size,
-        grad_acc_steps=args.gradient_accumulation_steps,
-        n_epochs=args.epochs,
-        local_rank=args.local_rank,
-    )
 
     # TODO: warmup linear is sometimes NONE depending on fp16 - is there a neater way to handle this?
     optimizer, warmup_linear = initialize_optimizer(
@@ -93,7 +86,10 @@ def run_experiment(args):
         warmup_proportion=args.warmup_proportion,
         loss_scale=args.loss_scale,
         fp16=args.fp16,
-        num_train_optimization_steps=num_train_optimization_steps,
+        n_examples=data_silo.n_samples("train"),
+        batch_size=args.batch_size,
+        grad_acc_steps=args.gradient_accumulation_steps,
+        n_epochs=args.epochs,
     )
 
     trainer = Trainer(
@@ -103,7 +99,6 @@ def run_experiment(args):
         n_gpu=n_gpu,
         grad_acc_steps=args.gradient_accumulation_steps,
         fp16=args.fp16,
-        learning_rate=args.learning_rate,  # Why is this also passed to initialize optimizer?
         warmup_linear=warmup_linear,
         evaluate_every=args.eval_every,
         device=device,
@@ -185,12 +180,20 @@ def validate_args(args):
 
 def initialize_optimizer(
     model,
-    learning_rate,
-    warmup_proportion,
-    loss_scale,
-    fp16,
-    num_train_optimization_steps,
+    n_examples,
+    batch_size,
+    n_epochs,
+    warmup_proportion=0.1,
+    learning_rate=2e-5,
+    fp16=False,
+    loss_scale=0,
+    grad_acc_steps=1,
+    local_rank=-1,
 ):
+    num_train_optimization_steps = calculate_optimization_steps(
+        n_examples, batch_size, grad_acc_steps, n_epochs, local_rank
+    )
+
     # Log params
     MlLogger.log_params(
         {
