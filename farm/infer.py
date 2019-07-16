@@ -30,13 +30,13 @@ class Inferencer:
         if self.prediction_type != "sequence_classification":
             raise NotImplementedError
 
-        dataset = self.processor.dataset_from_raw_data(raw_data)
+        dataset, tensor_names = self.processor.dataset_from_raw_data(raw_data)
 
         data_loader = NamedDataLoader(
             dataset=dataset,
             sampler=SequentialSampler(dataset),
             batch_size=self.batch_size,
-            tensor_names=self.processor.tensor_names,
+            tensor_names=tensor_names,
         )
 
         preds_all = []

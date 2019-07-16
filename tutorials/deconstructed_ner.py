@@ -55,7 +55,7 @@ model = AdaptiveModel(
 
 # Init optimizer
 num_train_optimization_steps = calculate_optimization_steps(
-    n_examples=data_silo.n_samples("train"),
+    n_examples=data_silo._n_samples("train"),
     batch_size=16,
     grad_acc_steps=1,
     n_epochs=1,

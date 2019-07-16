@@ -10,7 +10,6 @@ from pytorch_pretrained_bert.tokenization import BertTokenizer
 
 from farm.data_handler.utils import read_tsv, read_docs_from_txt, read_ner_file
 from farm.file_utils import create_folder
-from torch.utils.data import random_split
 from farm.data_handler.samples import create_sample_ner, create_samples_sentence_pairs
 from farm.data_handler.input_features import (
     samples_to_features_sequence,
@@ -18,11 +17,7 @@ from farm.data_handler.input_features import (
     samples_to_features_bert_lm,
 )
 from farm.data_handler.dataset import convert_features_to_dataset
-from farm.data_handler.samples import (
-    create_sample_one_label_one_text,
-    Sample,
-    SampleBasket,
-)
+from farm.data_handler.samples import create_sample_one_label_one_text, SampleBasket
 from farm.utils import MLFlowLogger as MlLogger
 
 
@@ -51,7 +46,6 @@ class Processor(ABC):
         self.tokenizer = tokenizer
         self.max_seq_len = max_seq_len
         self.label_list = label_list
-        # TODO I would rather see the metric as a property of each prediction head (having a default value that however can be changed at init)
         self.metrics = [metrics] if isinstance(metrics, str) else metrics
         self.train_filename = train_filename
         self.dev_filename = dev_filename
@@ -60,11 +54,9 @@ class Processor(ABC):
         self.data_dir = data_dir
         self.label_dtype = label_dtype
 
-        self.data = {}
-        self.counts = {}
-        self.stage = None
+        self.baskets = []
 
-        self.log_params()
+        self._log_params()
 
     def __init_subclass__(cls, **kwargs):
         """ This automatically keeps track of all available subclasses.
@@ -116,90 +108,54 @@ class Processor(ABC):
         with open(output_config_file, "w") as file:
             json.dump(config, file)
 
-    def ensure_dev(self):
-        assert self.stage == "dataset"
-        # TODO Have some printout to say if dev is split or not
-        # TODO checks to ensure dev is loaded the right way
-
-        if "dev" not in self.data:
-            n_dev = int(self.dev_split * self.counts["train"])
-            n_train = self.counts["train"] - n_dev
-            self.counts["train"] = n_train
-            self.counts["dev"] = n_dev
-
-            # Todo: Seed
-            train_dataset, dev_dataset = random_split(
-                self.data["train"], [n_train, n_dev]
-            )
-            self.data["train"] = train_dataset
-            self.data["dev"] = dev_dataset
-
     @abc.abstractmethod
-    def read_from_file(self):
+    def _init_baskets_from_file(self, file):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def create_samples(self):
+    def _init_samples_in_baskets(self):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def featurize_samples(self):
+    def _featurize_samples(self):
         raise NotImplementedError()
 
-    def create_dataset(self):
-        for dataset_name in self.data:
-            baskets = self.data[dataset_name]
-            features_flat = []
-            for basket in baskets:
-                for sample in basket.samples:
-                    features_flat.append(sample.features)
-            self.data[dataset_name], self.tensor_names = convert_features_to_dataset(
-                features=features_flat
-            )
+    def _create_dataset(self):
+        baskets = self.baskets
+        features_flat = []
+        for basket in baskets:
+            for sample in basket.samples:
+                features_flat.append(sample.features)
+        dataset, tensor_names = convert_features_to_dataset(features=features_flat)
         self.stage = "dataset"
+        return dataset, tensor_names
 
-    def count_samples(self):
-        for dataset_name in self.data:
-            count = 0
-            baskets = self.data[dataset_name]
-            for basket in baskets:
-                count += len(basket.samples)
-            self.counts[dataset_name] = count
-
-    def dataset_from_file(self):
-        self.read_from_file()
-        self.create_samples()
-        self.count_samples()
-        self.featurize_samples()
-        self.log_samples(3)
-        self.create_dataset()
-        self.ensure_dev()
-        return self.data["train"], self.data["dev"], self.data["test"]
+    def dataset_from_file(self, file):
+        self._init_baskets_from_file(file)
+        self._init_samples_in_baskets()
+        self._featurize_samples()
+        self._log_samples(3)
+        dataset, tensor_names = self._create_dataset()
+        return dataset, tensor_names
 
     def dataset_from_raw_data(self, raw_data):
-        self.data["inference"] = [
+        self.baskets = [
             SampleBasket(raw=tr, id="infer - {}".format(i))
             for i, tr in enumerate(raw_data)
         ]
-        self.create_samples()
-        self.count_samples()
-        self.featurize_samples()
-        self.create_dataset()
-        return self.data["inference"]
+        self._init_samples_in_baskets()
+        self._featurize_samples()
+        dataset, tensor_names = self._create_dataset()
+        return dataset, tensor_names
 
-    def log_samples(self, n_samples):
-        for dataset_name, buckets in self.data.items():
-            logger.info(
-                "*** Show {} random examples from {} dataset ***".format(
-                    n_samples, dataset_name
-                )
-            )
-            for i in range(n_samples):
-                random_bucket = random.choice(buckets)
-                random_sample = random.choice(random_bucket.samples)
-                logger.info(random_sample)
+    def _log_samples(self, n_samples):
+        logger.info("*** Show {} random examples ***".format(n_samples))
+        for i in range(n_samples):
+            random_basket = random.choice(self.baskets)
+            random_sample = random.choice(random_basket.samples)
+            logger.info(random_sample)
 
-    def log_params(self):
+    def _log_params(self):
         params = {
             "processor": self.__class__.__name__,
             "tokenizer": self.tokenizer.__class__.__name__,
@@ -223,6 +179,7 @@ class GNADProcessor(Processor):
         dev_split=0.1,
     ):
 
+        # General Processor attributes
         label_list = [
             "Web",
             "Sport",
@@ -234,17 +191,15 @@ class GNADProcessor(Processor):
             "Etat",
             "Inland",
         ]
-
-        # TODO Find neater way to do this
         metric = "acc"
-        dev_split = dev_split
         label_dtype = torch.long
 
-        # custom processor attributes
-        self.target = "classification"
+        # Custom processor attributes
         self.delimiter = ";"
+        self.skip_first_line = False
+        self.text_index = 1
+        self.label_index = 0
 
-        # # TODO: Is this inheritance needed?
         super(GNADProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
@@ -258,56 +213,36 @@ class GNADProcessor(Processor):
             label_dtype=label_dtype,
         )
 
-    def read_from_file(self):
-        train_file = os.path.join(self.data_dir, self.train_filename)
-        test_file = os.path.join(self.data_dir, self.test_filename)
-
-        train_raw = read_tsv(filename=train_file, delimiter=self.delimiter)
-        self.data["train"] = [
-            SampleBasket(raw=tr, id="train - {}".format(i))
-            for i, tr in enumerate(train_raw)
+    def _init_baskets_from_file(self, file):
+        pure_name = os.path.splitext(os.path.basename(file))[0]
+        raw_data = read_tsv(
+            filename=file,
+            delimiter=self.delimiter,
+            skip_first_line=self.skip_first_line,
+        )
+        self.baskets = [
+            SampleBasket(raw=tr, id=f"{pure_name}-{i}") for i, tr in enumerate(raw_data)
         ]
 
-        test_raw = read_tsv(filename=test_file, delimiter=self.delimiter)
-        self.data["test"] = [
-            SampleBasket(raw=tr, id="test - {}".format(i))
-            for i, tr in enumerate(test_raw)
-        ]
+    def _init_samples_in_baskets(self):
+        for basket in self.baskets:
+            basket.samples = create_sample_one_label_one_text(
+                basket.raw,
+                text_index=self.text_index,
+                label_index=self.label_index,
+                basket_id=basket.id,
+            )
 
-        if self.dev_filename:
-            dev_file = os.path.join(self.data_dir, self.dev_filename)
-            dev_raw = read_tsv(filename=dev_file, delimiter=self.delimiter)
-            self.data["dev"] = [
-                SampleBasket(raw=dr, id="dev - {}".format(i))
-                for i, dr in enumerate(dev_raw)
-            ]
-
-        self.stage = "lines"
-
-    def create_samples(self):
-        for dataset_name in self.data:
-            baskets = self.data[dataset_name]
-            for basket in baskets:
-                basket.samples = create_sample_one_label_one_text(
-                    basket.raw, text_index=1, label_index=0, basket_id=basket.id
-                )
-        self.stage = "examples"
-
-    def featurize_samples(self):
-        for dataset_name in self.data:
-            baskets = self.data[dataset_name]
-            for basket in baskets:
-
-                features = samples_to_features_sequence(
-                    samples=basket.samples,
-                    label_list=self.label_list,
-                    max_seq_len=self.max_seq_len,
-                    tokenizer=self.tokenizer,
-                    target=self.target,
-                )
-                for sample, feat in zip(basket.samples, features):
-                    sample.features = feat
-        self.stage = "features"
+    def _featurize_samples(self):
+        for basket in self.baskets:
+            features = samples_to_features_sequence(
+                samples=basket.samples,
+                label_list=self.label_list,
+                max_seq_len=self.max_seq_len,
+                tokenizer=self.tokenizer,
+            )
+            for sample, feat in zip(basket.samples, features):
+                sample.features = feat
 
 
 class GermEval18CoarseProcessor(Processor):
@@ -322,25 +257,22 @@ class GermEval18CoarseProcessor(Processor):
         dev_split=0.1,
     ):
 
+        # General Processor attributes
         label_list = ["OTHER", "OFFENSE"]
-
-        # TODO Find neater way to do this
-        metric = "f1_macro"
-        dev_split = dev_split
+        metrics = "f1_macro"
         label_dtype = torch.long
 
-        self.target = "classification"
+        # Custom Processor attributes
         self.delimiter = "\t"
         self.skip_first_line = True
         self.text_index = 0
         self.label_index = 1
 
-        # # TODO: Is this inheritance needed?
         super(GermEval18CoarseProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
             label_list=label_list,
-            metrics=metric,
+            metrics=metrics,
             train_filename=train_filename,
             dev_filename=dev_filename,
             test_filename=test_filename,
@@ -349,71 +281,36 @@ class GermEval18CoarseProcessor(Processor):
             label_dtype=label_dtype,
         )
 
-    def read_from_file(self):
-        train_file = os.path.join(self.data_dir, self.train_filename)
-        test_file = os.path.join(self.data_dir, self.test_filename)
-
-        train_raw = read_tsv(
-            filename=train_file,
+    def _init_baskets_from_file(self, file):
+        pure_name = os.path.splitext(os.path.basename(file))[0]
+        raw_data = read_tsv(
+            filename=file,
             delimiter=self.delimiter,
             skip_first_line=self.skip_first_line,
         )
-        self.data["train"] = [
-            SampleBasket(raw=tr, id="train - {}".format(i))
-            for i, tr in enumerate(train_raw)
+        self.baskets = [
+            SampleBasket(raw=tr, id=f"{pure_name}-{i}") for i, tr in enumerate(raw_data)
         ]
 
-        test_raw = read_tsv(
-            filename=test_file,
-            delimiter=self.delimiter,
-            skip_first_line=self.skip_first_line,
-        )
-        self.data["test"] = [
-            SampleBasket(raw=tr, id="test - {}".format(i))
-            for i, tr in enumerate(test_raw)
-        ]
-
-        if self.dev_filename:
-            dev_file = os.path.join(self.data_dir, self.dev_filename)
-            dev_raw = read_tsv(
-                filename=dev_file,
-                delimiter=self.delimiter,
-                skip_first_line=self.skip_first_line,
+    def _init_samples_in_baskets(self):
+        for basket in self.baskets:
+            basket.samples = create_sample_one_label_one_text(
+                basket.raw,
+                text_index=self.text_index,
+                label_index=self.label_index,
+                basket_id=basket.id,
             )
-            self.data["dev"] = [
-                SampleBasket(raw=dr, id="dev - {}".format(i))
-                for i, dr in enumerate(dev_raw)
-            ]
 
-        self.stage = "lines"
-
-    def create_samples(self):
-        for dataset_name in self.data:
-            baskets = self.data[dataset_name]
-            for basket in baskets:
-                basket.samples = create_sample_one_label_one_text(
-                    basket.raw,
-                    text_index=self.text_index,
-                    label_index=self.label_index,
-                    basket_id=basket.id,
-                )
-        self.stage = "examples"
-
-    def featurize_samples(self):
-        for dataset_name in self.data:
-            baskets = self.data[dataset_name]
-            for basket in baskets:
-
-                features = samples_to_features_sequence(
-                    samples=basket.samples,
-                    label_list=self.label_list,
-                    max_seq_len=self.max_seq_len,
-                    tokenizer=self.tokenizer,
-                    target=self.target,
-                )
-                for sample, feat in zip(basket.samples, features):
-                    sample.features = feat
-        self.stage = "features"
+    def _featurize_samples(self):
+        for basket in self.baskets:
+            features = samples_to_features_sequence(
+                samples=basket.samples,
+                label_list=self.label_list,
+                max_seq_len=self.max_seq_len,
+                tokenizer=self.tokenizer,
+            )
+            for sample, feat in zip(basket.samples, features):
+                sample.features = feat
 
 
 class GermEval18FineProcessor(Processor):
@@ -428,20 +325,17 @@ class GermEval18FineProcessor(Processor):
         dev_split=0.1,
     ):
 
+        # General Processor attributes
         label_list = ["OTHER", "INSULT", "ABUSE", "PROFANITY"]
-
-        # TODO Find neater way to do this
         metric = "f1_macro"
-        dev_split = dev_split
         label_dtype = torch.long
 
-        self.target = "classification"
+        # Custom Processor attributes
         self.delimiter = "\t"
         self.skip_first_line = True
         self.text_index = 0
         self.label_index = 2
 
-        # # TODO: Is this inheritance needed?
         super(GermEval18FineProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
@@ -455,71 +349,36 @@ class GermEval18FineProcessor(Processor):
             label_dtype=label_dtype,
         )
 
-    def read_from_file(self):
-        train_file = os.path.join(self.data_dir, self.train_filename)
-        test_file = os.path.join(self.data_dir, self.test_filename)
-
-        train_raw = read_tsv(
-            filename=train_file,
+    def _init_baskets_from_file(self, file):
+        pure_name = os.path.splitext(os.path.basename(file))[0]
+        raw_data = read_tsv(
+            filename=file,
             delimiter=self.delimiter,
             skip_first_line=self.skip_first_line,
         )
-        self.data["train"] = [
-            SampleBasket(raw=tr, id="train - {}".format(i))
-            for i, tr in enumerate(train_raw)
+        self.baskets = [
+            SampleBasket(raw=tr, id=f"{pure_name}-{i}") for i, tr in enumerate(raw_data)
         ]
 
-        test_raw = read_tsv(
-            filename=test_file,
-            delimiter=self.delimiter,
-            skip_first_line=self.skip_first_line,
-        )
-        self.data["test"] = [
-            SampleBasket(raw=tr, id="test - {}".format(i))
-            for i, tr in enumerate(test_raw)
-        ]
-
-        if self.dev_filename:
-            dev_file = os.path.join(self.data_dir, self.dev_filename)
-            dev_raw = read_tsv(
-                filename=dev_file,
-                delimiter=self.delimiter,
-                skip_first_line=self.skip_first_line,
+    def _init_samples_in_baskets(self):
+        for basket in self.baskets:
+            basket.samples = create_sample_one_label_one_text(
+                basket.raw,
+                text_index=self.text_index,
+                label_index=self.label_index,
+                basket_id=basket.id,
             )
-            self.data["dev"] = [
-                SampleBasket(raw=dr, id="dev - {}".format(i))
-                for i, dr in enumerate(dev_raw)
-            ]
 
-        self.stage = "lines"
-
-    def create_samples(self):
-        for dataset_name in self.data:
-            baskets = self.data[dataset_name]
-            for basket in baskets:
-                basket.samples = create_sample_one_label_one_text(
-                    basket.raw,
-                    text_index=self.text_index,
-                    label_index=self.label_index,
-                    basket_id=basket.id,
-                )
-        self.stage = "examples"
-
-    def featurize_samples(self):
-        for dataset_name in self.data:
-            baskets = self.data[dataset_name]
-            for basket in baskets:
-
-                features = samples_to_features_sequence(
-                    samples=basket.samples,
-                    label_list=self.label_list,
-                    max_seq_len=self.max_seq_len,
-                    tokenizer=self.tokenizer,
-                    target=self.target,
-                )
-                for sample, feat in zip(basket.samples, features):
-                    sample.features = feat
-        self.stage = "features"
+    def _featurize_samples(self):
+        for basket in self.baskets:
+            features = samples_to_features_sequence(
+                samples=basket.samples,
+                label_list=self.label_list,
+                max_seq_len=self.max_seq_len,
+                tokenizer=self.tokenizer,
+            )
+            for sample, feat in zip(basket.samples, features):
+                sample.features = feat
 
 
 class CONLLProcessor(Processor):
@@ -535,7 +394,7 @@ class CONLLProcessor(Processor):
         test_file="test.txt",
         dev_split=0.0,
     ):
-
+        # General Processor attributes
         label_list = [
             "[PAD]",
             "O",
@@ -553,76 +412,51 @@ class CONLLProcessor(Processor):
             "[CLS]",
             "[SEP]",
         ]
-
-        train_filename = train_file
-        dev_filename = dev_file
-        test_filename = test_file
         label_dtype = torch.long
         metric = "seq_f1"
 
-        self.target = "classification"
+        # Custom attributes
+        self.split_text_index = 0
+        self.label_index = 1
 
         super(CONLLProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
             label_list=label_list,
             metrics=metric,
-            train_filename=train_filename,
-            dev_filename=dev_filename,
-            test_filename=test_filename,
+            train_filename=train_file,
+            dev_filename=dev_file,
+            test_filename=test_file,
             dev_split=dev_split,
             data_dir=data_dir,
             label_dtype=label_dtype,
         )
 
-    def read_from_file(self):
-        train_file = os.path.join(self.data_dir, self.train_filename)
-        test_file = os.path.join(self.data_dir, self.test_filename)
-
-        train_raw = read_ner_file(filename=train_file)
-        self.data["train"] = [
-            SampleBasket(raw=tr, id="train - {}".format(i))
-            for i, tr in enumerate(train_raw)
+    def _init_baskets_from_file(self, file):
+        pure_name = os.path.splitext(os.path.basename(file))[0]
+        raw_data = read_ner_file(filename=file)
+        self.baskets = [
+            SampleBasket(raw=tr, id=f"{pure_name}-{i}") for i, tr in enumerate(raw_data)
         ]
 
-        test_raw = read_ner_file(filename=test_file)
-        self.data["test"] = [
-            SampleBasket(raw=tr, id="test - {}".format(i))
-            for i, tr in enumerate(test_raw)
-        ]
+    def _init_samples_in_baskets(self):
+        for basket in self.baskets:
+            basket.samples = create_sample_ner(
+                split_text=basket.raw[self.split_text_index],
+                label=basket.raw[self.label_index],
+                basket_id=basket.id,
+            )
 
-        if self.dev_filename:
-            dev_file = os.path.join(self.data_dir, self.dev_filename)
-            dev_raw = read_ner_file(filename=dev_file)
-            self.data["dev"] = [
-                SampleBasket(raw=dr, id="dev - {}".format(i))
-                for i, dr in enumerate(dev_raw)
-            ]
-        self.stage = "lines"
-
-    def create_samples(self):
-        for dataset_name in self.data:
-            baskets = self.data[dataset_name]
-            for basket in baskets:
-                basket.samples = create_sample_ner(
-                    split_text=basket.raw[0], label=basket.raw[1], basket_id=basket.id
-                )
-        self.stage = "examples"
-
-    def featurize_samples(self):
-        for dataset_name in self.data:
-            baskets = self.data[dataset_name]
-            for basket in baskets:
-                features = samples_to_features_ner(
-                    samples=basket.samples,
-                    label_list=self.label_list,
-                    max_seq_len=self.max_seq_len,
-                    tokenizer=self.tokenizer,
-                    target=self.target,
-                )
-                for sample, feat in zip(basket.samples, features):
-                    sample.features = feat
-        self.stage = "features"
+    def _featurize_samples(self):
+        for basket in self.baskets:
+            features = samples_to_features_ner(
+                samples=basket.samples,
+                label_list=self.label_list,
+                max_seq_len=self.max_seq_len,
+                tokenizer=self.tokenizer,
+            )
+            for sample, feat in zip(basket.samples, features):
+                sample.features = feat
 
 
 class GermEval14Processor(Processor):
@@ -636,7 +470,7 @@ class GermEval14Processor(Processor):
         test_file="test.txt",
         dev_split=0.0,
     ):
-
+        # General Processor attributes
         label_list = [
             "[PAD]",
             "O",
@@ -655,75 +489,51 @@ class GermEval14Processor(Processor):
             "[SEP]",
         ]
 
-        train_filename = train_file
-        dev_filename = dev_file
-        test_filename = test_file
         label_dtype = torch.long
         metric = "seq_f1"
 
-        self.target = "classification"
+        # Custom attributes
+        self.split_text_index = 0
+        self.label_index = 1
 
         super(GermEval14Processor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
             label_list=label_list,
             metrics=metric,
-            train_filename=train_filename,
-            dev_filename=dev_filename,
-            test_filename=test_filename,
+            train_filename=train_file,
+            dev_filename=dev_file,
+            test_filename=test_file,
             dev_split=dev_split,
             data_dir=data_dir,
             label_dtype=label_dtype,
         )
 
-    def read_from_file(self):
-        train_file = os.path.join(self.data_dir, self.train_filename)
-        test_file = os.path.join(self.data_dir, self.test_filename)
-
-        train_raw = read_ner_file(filename=train_file)
-        self.data["train"] = [
-            SampleBasket(raw=tr, id="train - {}".format(i))
-            for i, tr in enumerate(train_raw)
+    def _init_baskets_from_file(self, file):
+        pure_name = os.path.splitext(os.path.basename(file))[0]
+        raw_data = read_ner_file(filename=file)
+        self.baskets = [
+            SampleBasket(raw=tr, id=f"{pure_name}-{i}") for i, tr in enumerate(raw_data)
         ]
 
-        test_raw = read_ner_file(filename=test_file)
-        self.data["test"] = [
-            SampleBasket(raw=tr, id="test - {}".format(i))
-            for i, tr in enumerate(test_raw)
-        ]
+    def _init_samples_in_baskets(self):
+        for basket in self.baskets:
+            basket.samples = create_sample_ner(
+                split_text=basket.raw[self.split_text_index],
+                label=basket.raw[self.label_index],
+                basket_id=basket.id,
+            )
 
-        if self.dev_filename:
-            dev_file = os.path.join(self.data_dir, self.dev_filename)
-            dev_raw = read_ner_file(filename=dev_file)
-            self.data["dev"] = [
-                SampleBasket(raw=dr, id="dev - {}".format(i))
-                for i, dr in enumerate(dev_raw)
-            ]
-        self.stage = "lines"
-
-    def create_samples(self):
-        for dataset_name in self.data:
-            baskets = self.data[dataset_name]
-            for basket in baskets:
-                basket.samples = create_sample_ner(
-                    split_text=basket.raw[0], label=basket.raw[1], basket_id=basket.id
-                )
-        self.stage = "examples"
-
-    def featurize_samples(self):
-        for dataset_name in self.data:
-            baskets = self.data[dataset_name]
-            for basket in baskets:
-                features = samples_to_features_ner(
-                    samples=basket.samples,
-                    label_list=self.label_list,
-                    max_seq_len=self.max_seq_len,
-                    tokenizer=self.tokenizer,
-                    target=self.target,
-                )
-                for sample, feat in zip(basket.samples, features):
-                    sample.features = feat
-        self.stage = "features"
+    def _featurize_samples(self):
+        for basket in self.baskets:
+            features = samples_to_features_ner(
+                samples=basket.samples,
+                label_list=self.label_list,
+                max_seq_len=self.max_seq_len,
+                tokenizer=self.tokenizer,
+            )
+            for sample, feat in zip(basket.samples, features):
+                sample.features = feat
 
 
 class BertStyleLMProcessor(Processor):
@@ -737,16 +547,14 @@ class BertStyleLMProcessor(Processor):
         test_filename="test.txt",
         dev_split=0.0,
     ):
-
-        # TODO how best to format this
+        # General Processor attributes
         label_list = []
         metrics = ["acc", "acc"]
-        self.delimiter = ""
-
-        dev_split = dev_split
         label_dtype = torch.long
 
-        # # TODO: Is this inheritance needed?
+        # Custom attributes
+        self.delimiter = ""
+
         super(BertStyleLMProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
@@ -759,49 +567,23 @@ class BertStyleLMProcessor(Processor):
             data_dir=data_dir,
             label_dtype=label_dtype,
         )
-        self.data = {}
-        self.counts = {}
-        self.stage = None
 
-    def read_from_file(self):
-        train_file = os.path.join(self.data_dir, self.train_filename)
-        test_file = os.path.join(self.data_dir, self.test_filename)
-
-        train_raw = read_docs_from_txt(filename=train_file, delimiter=self.delimiter)
-        self.data["train"] = [
-            SampleBasket(raw=tr, id="train - {}".format(i))
-            for i, tr in enumerate(train_raw)
+    def _init_baskets_from_file(self, file):
+        pure_name = os.path.splitext(os.path.basename(file))[0]
+        raw_data = read_docs_from_txt(filename=file, delimiter=self.delimiter)
+        self.baskets = [
+            SampleBasket(raw=tr, id=f"{pure_name}-{i}") for i, tr in enumerate(raw_data)
         ]
 
-        test_raw = read_docs_from_txt(filename=test_file, delimiter=self.delimiter)
-        self.data["test"] = [
-            SampleBasket(raw=tr, id="test - {}".format(i))
-            for i, tr in enumerate(test_raw)
-        ]
+    def _init_samples_in_baskets(self):
+        self.baskets = create_samples_sentence_pairs(self.baskets)
 
-        if self.dev_filename:
-            dev_file = os.path.join(self.data_dir, self.dev_filename)
-            dev_raw = read_docs_from_txt(filename=dev_file, delimiter=self.delimiter)
-            self.data["dev"] = [
-                SampleBasket(raw=dr, id="dev - {}".format(i))
-                for i, dr in enumerate(dev_raw)
-            ]
-
-        self.stage = "lines"
-
-    def create_samples(self):
-        for dataset_name, baskets in self.data.items():
-            baskets = create_samples_sentence_pairs(baskets)
-        self.stage = "examples"
-
-    def featurize_samples(self):
-        for dataset_name, baskets in self.data.items():
-            for basket in baskets:
-                features = samples_to_features_bert_lm(
-                    samples=basket.samples,
-                    max_seq_len=self.max_seq_len,
-                    tokenizer=self.tokenizer,
-                )
-                for sample, feat in zip(basket.samples, features):
-                    sample.features = feat
-        self.stage = "features"
+    def _featurize_samples(self):
+        for basket in self.baskets:
+            features = samples_to_features_bert_lm(
+                samples=basket.samples,
+                max_seq_len=self.max_seq_len,
+                tokenizer=self.tokenizer,
+            )
+            for sample, feat in zip(basket.samples, features):
+                sample.features = feat
