@@ -390,7 +390,7 @@ class CONLLProcessor(Processor):
         max_seq_len,
         data_dir,
         train_file="train.txt",
-        dev_file="valid.txt",
+        dev_file="dev.txt",
         test_file="test.txt",
         dev_split=0.0,
     ):
@@ -466,7 +466,7 @@ class GermEval14Processor(Processor):
         max_seq_len,
         data_dir,
         train_file="train.txt",
-        dev_file="valid.txt",
+        dev_file="dev.txt",
         test_file="test.txt",
         dev_split=0.0,
     ):
