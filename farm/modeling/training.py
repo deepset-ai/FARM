@@ -137,7 +137,6 @@ class Trainer:
             self.optimizer.step()
             self.optimizer.zero_grad()
 
-    # TODO Can we move this into adaptive model and return just a single loss in train()
     def adjust_loss(self, loss):
         loss = loss.mean()
         if self.grad_acc_steps > 1:
@@ -179,9 +178,10 @@ class Evaluator:
             with torch.no_grad():
 
                 logits = model.forward(**batch)
-                # todo logits_to_loss should be a single, overloaded function
+                # TODO logits_to_loss should be a single, overloaded function
                 losses_per_head = model.logits_to_loss_per_head(logits=logits, **batch)
 
+                # TODO how should this label_map work for multiple heads?
                 preds = model.logits_to_preds(
                     logits=logits, label_map=self.label_map, **batch
                 )

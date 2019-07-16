@@ -7,42 +7,66 @@ from dotmap import DotMap
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
+import logging
 
 from pytorch_pretrained_bert.modeling import BertLMPredictionHead
+
+logger = logging.getLogger(__name__)
 
 
 class PredictionHead(nn.Module):
     """ Takes word embeddings from a language model and generates logits for a given task. Can also convert logits
     to loss and and logits to predictions. """
 
-    @classmethod
-    def load(cls, load_dir):
-        # TODO: Maybe we want to initialize at higher so that switching in a new config can give us a whole new class of ph
-        filepath = os.path.join(load_dir, "prediction_head_config.json")
-        with open(filepath) as file:
-            config = json.load(file)
-        return cls(**config)
+    subclasses = {}
 
-    def save_config(self, save_dir):
-        output_config_file = os.path.join(save_dir, "prediction_head_config.json")
+    def __init_subclass__(cls, **kwargs):
+        """ This automatically keeps track of all available subclasses.
+        Enables generic load() and load_from_dir() for all specific PredictionHead implementation.
+        """
+        super().__init_subclass__(**kwargs)
+        cls.subclasses[cls.__name__] = cls
+
+    @classmethod
+    def create(cls, prediction_head_name, layer_dims, class_weights=None):
+        # TODO make we want to make this more generic. Class weights is not relevant for all heads.
+        # We could again use **kwargs
+        return cls.subclasses[prediction_head_name](
+            layer_dims=layer_dims, class_weights=class_weights
+        )
+
+    def save_config(self, save_dir, head_num=0):
+        output_config_file = os.path.join(
+            save_dir, f"prediction_head_{head_num}_config.json"
+        )
         with open(output_config_file, "w") as file:
             json.dump(self.config, file)
 
-    def checkpoint(self, save_dir, step="X"):
+    def save(self, save_dir, head_num=0):
+        output_model_file = os.path.join(save_dir, f"prediction_head_{head_num}.bin")
+        torch.save(self.state_dict(), output_model_file)
+        self.save_config(save_dir, head_num)
 
-        # Save a trained model, configuration and tokenizer
-        model_to_save = (
-            self.module if hasattr(self, "module") else self
-        )  # Only save the model it-self
+    def generate_config(self):
+        self.config = {
+            k: v
+            for k, v in self.__dict__.items()
+            if (type(v) in [str, int, bool, float])
+        }
+        self.config.update({"name": self.__class__.__name__})
 
-        # If we save using the predefined names, we can load using `from_pretrained`
-        output_model_file = os.path.join(
-            save_dir, "prediction_head_{}.bin".format(step)
+    @classmethod
+    def load(cls, model_file, config_file):
+        config = json.load(open(config_file))
+        # TODO make this more generic for other heads with more attributes
+        # e.g parse all args from config and feed them as **kwargs to subclasses constructor
+        prediction_head = cls.subclasses[config["name"]](
+            layer_dims=config["layer_dims_str"]
         )
+        logger.info("Loading prediction head from {}".format(model_file))
+        prediction_head.load_state_dict(torch.load(model_file))
+        return prediction_head
 
-        torch.save(model_to_save.state_dict(), output_model_file)
-
-    # TODO Should these be Abstract methods? i.e. enforce that they are implemented in the child class
     def logits_to_loss(self, logits, labels):
         raise NotImplementedError()
 
@@ -61,18 +85,18 @@ class TextClassificationHead(PredictionHead):
         class_weights=None,
         loss_ignore_index=-100,
         loss_reduction="none",
-        **kwargs
+        **kwargs,
     ):
         super(TextClassificationHead, self).__init__()
         # TODO MP I think it would be nicer here to pass hidden_dim and num_labels and construct layer_dims from it.
         # num_labels could in most cases also be automatically retrieved from the data processor
+        self.layer_dims_str = layer_dims
         self.layer_dims_list = ast.literal_eval(str(layer_dims))
         self.feed_forward = FeedForwardBlock(self.layer_dims_list)
-        self.generate_config()
         self.num_labels = self.layer_dims_list[-1]
         self.ph_output_type = "per_sequence"
+        self.model_type = "text_classification"
 
-        # TODO: MP why do we do reduction = "none" per default?
         # Todo do we still need to do this?
         if class_weights:
             self.balanced_weights = nn.Parameter(
@@ -87,13 +111,16 @@ class TextClassificationHead(PredictionHead):
             self.loss_fct = CrossEntropyLoss(
                 reduction=loss_reduction, ignore_index=loss_ignore_index
             )
+        self.generate_config()
 
-    def generate_config(self):
-        self.config = {
-            "type": type(self).__name__,
-            "last_initialized": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "layer_dims": str(self.layer_dims_list),
-        }
+    @classmethod
+    def load(cls, config_file, model_file):
+        config = json.load(open(config_file))
+        # TODO make this more generic for other heads with more attributes
+        prediction_head = cls(config["layer_dims_str"])
+        logger.info("Loading prediction head from {}".format(model_file))
+        prediction_head.load_state_dict(torch.load(model_file))
+        return prediction_head
 
     def forward(self, X):
         logits = self.feed_forward(X)
@@ -102,27 +129,38 @@ class TextClassificationHead(PredictionHead):
     def logits_to_loss(self, logits, label_ids, **kwargs):
         return self.loss_fct(logits, label_ids.view(-1))
 
-    def logits_to_preds(self, logits, **kwargs):
-        preds = logits.argmax(1)
+    def logits_to_preds(self, logits, label_map, **kwargs):
+        logits = logits.cpu().numpy()
+        pred_ids = logits.argmax(1)
+        preds = [label_map[x] for x in pred_ids]
+
         return preds
+
+    def prepare_labels(self, label_ids, label_map, **kwargs):
+        label_ids = label_ids.cpu().numpy()
+        labels = [label_map[x] for x in label_ids]
+        return labels
 
 
 class TokenClassificationHead(PredictionHead):
     def __init__(self, layer_dims, **kwargs):
         super(TokenClassificationHead, self).__init__()
+        # TODO having layer_dims as str and list here is not pretty. I would rather have the string only in load() and save()
+        self.layer_dims_str = layer_dims
         self.layer_dims_list = ast.literal_eval(str(layer_dims))
         self.feed_forward = FeedForwardBlock(self.layer_dims_list)
-        self.generate_config()
         self.num_labels = self.layer_dims_list[-1]
         self.loss_fct = CrossEntropyLoss(reduction="none")
         self.ph_output_type = "per_token"
+        self.model_type = "token_classification"
+        self.generate_config()
 
-    def generate_config(self):
-        self.config = {
-            "type": type(self).__name__,
-            "last_initialized": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "layer_dims": str(self.layer_dims_list),
-        }
+    @classmethod
+    def load(cls, config, checkpoint_file):
+        prediction_head = cls(config["layer_dims_str"])
+        logger.info("Loading prediction head from {}".format(checkpoint_file))
+        prediction_head.load_state_dict(torch.load(checkpoint_file))
+        return prediction_head
 
     def forward(self, X):
         logits = self.feed_forward(X)
@@ -138,7 +176,7 @@ class TokenClassificationHead(PredictionHead):
         loss = self.loss_fct(active_logits, active_labels)
         return loss
 
-    def logits_to_preds(self, logits, initial_mask, label_map, label_ids, **kwargs):
+    def logits_to_preds(self, logits, initial_mask, label_map, **kwargs):
 
         preds_word_all = []
 
@@ -221,7 +259,6 @@ class BertLMHead(PredictionHead):
         lm_preds = logits.argmax(2)
         # apply mask to get rid of predictions for non-masked tokens
         lm_preds[lm_label_ids == -1] = -1
-        # TODO: Two are returned because token level classification currently returns label ids as well. This should be changed
         return lm_preds
 
 

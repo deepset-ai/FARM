@@ -145,6 +145,9 @@ def truncate_seq_pair(tokens_a, tokens_b, max_length):
 
 
 def add_cls_sep(seq, cls_token, sep_token):
+    # Inference mode
+    if not seq:
+        return None
     ret = [cls_token]
     ret += seq
     ret += [sep_token]
@@ -160,6 +163,9 @@ def pad(seq, max_seq_len, pad_token):
 
 
 def expand_labels(labels_word, initial_mask, non_initial_token):
+    # For inference mode
+    if not labels_word:
+        return None
     labels_token = []
     word_index = 0
     for im in initial_mask:

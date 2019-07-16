@@ -18,9 +18,7 @@ logging.basicConfig(
 
 processor = ConllProcessor()
 
-tokenizer = BertTokenizer.from_pretrained(
-    "bert-base-cased-de-2b-end", do_lower_case=False
-)
+tokenizer = BertTokenizer.from_pretrained("bert-base-german-cased", do_lower_case=False)
 
 
 data_bunch = NewDataBunch.load(

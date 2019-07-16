@@ -4,9 +4,12 @@ import abc
 from abc import ABC
 import random
 import logging
+import json
+
+from pytorch_pretrained_bert.tokenization import BertTokenizer
 
 from farm.data_handler.utils import read_tsv, read_docs_from_txt, read_ner_file
-from farm.utils import MLFlowLogger as MlLogger
+from farm.file_utils import create_folder
 from torch.utils.data import random_split
 from farm.data_handler.samples import create_sample_ner, create_samples_sentence_pairs
 from farm.data_handler.input_features import (
@@ -20,13 +23,18 @@ from farm.data_handler.samples import (
     Sample,
     SampleBasket,
 )
+from farm.utils import MLFlowLogger as MlLogger
 
 
 logger = logging.getLogger(__name__)
 
+TOKENIZER_MAP = {"BertTokenizer": BertTokenizer}
+
 
 class Processor(ABC):
     # TODO think about how to define this parent class so it enforces that certain attributes are initialized
+    subclasses = {}
+
     def __init__(
         self,
         tokenizer,
@@ -57,6 +65,56 @@ class Processor(ABC):
         self.stage = None
 
         self.log_params()
+
+    def __init_subclass__(cls, **kwargs):
+        """ This automatically keeps track of all available subclasses.
+        Enables generic load() and load_from_dir() for all specific Processor implementation.
+        """
+        super().__init_subclass__(**kwargs)
+        cls.subclasses[cls.__name__] = cls
+
+    @classmethod
+    def load(cls, processor_name, data_dir, tokenizer, max_seq_len):
+        """
+        :param processor_name:
+        :param data_dir:
+        :param tokenizer:
+        :param max_seq_len:
+        :return:
+        """
+        return cls.subclasses[processor_name](
+            data_dir=data_dir, tokenizer=tokenizer, max_seq_len=max_seq_len
+        )
+
+    @classmethod
+    def load_from_dir(cls, load_dir):
+        """
+        Load infers the specific type of Processor from a config file (e.g. GNADProcessor) and loads an instance of it.
+        :param load_dir: str, directory that contains a 'processor_config.json'
+        :return: Processor, Instance of a Processor Subclass (e.g. GNADProcessor)
+        """
+        # read config
+        processor_config_file = os.path.join(load_dir, "processor_config.json")
+        config = json.load(open(processor_config_file))
+        # init tokenizer
+        tokenizer = TOKENIZER_MAP[config["tokenizer"]].from_pretrained(
+            load_dir, do_lower_case=config["lower_case"]
+        )
+        processor_type = config["processor"]
+        return cls.load(processor_type, None, tokenizer, config["max_seq_len"])
+
+    def save(self, save_dir):
+        create_folder(save_dir)
+        config = {}
+        config["tokenizer"] = self.tokenizer.__class__.__name__
+        self.tokenizer.save_vocabulary(save_dir)
+        # TODO make this generic to other tokenizers. We will probably want an own abstract Tokenizer
+        config["lower_case"] = self.tokenizer.basic_tokenizer.do_lower_case
+        config["max_seq_len"] = self.max_seq_len
+        config["processor"] = self.__class__.__name__
+        output_config_file = os.path.join(save_dir, "processor_config.json")
+        with open(output_config_file, "w") as file:
+            json.dump(config, file)
 
     def ensure_dev(self):
         assert self.stage == "dataset"
@@ -127,6 +185,7 @@ class Processor(ABC):
         self.count_samples()
         self.featurize_samples()
         self.create_dataset()
+        return self.data["inference"]
 
     def log_samples(self, n_samples):
         for dataset_name, buckets in self.data.items():

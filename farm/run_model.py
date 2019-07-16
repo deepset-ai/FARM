@@ -1,29 +1,27 @@
-# fmt: off
-
 import logging
 import os
 import torch
 
-from farm.utils import set_all_seeds, initialize_device_settings
-# from farm.data_handler.preprocessing_pipeline import PPCONLL03, PPGNAD, PPGermEval18Coarse, PPGermEval18Fine, PPGermEval14
-from farm.data_handler.processor import GNADProcessor, CONLLProcessor, GermEval14Processor, GermEval18CoarseProcessor, GermEval18FineProcessor
 from farm.data_handler.data_bunch import DataBunch
-from farm.modeling.prediction_head import TextClassificationHead, TokenClassificationHead
 from farm.modeling.adaptive_model import AdaptiveModel
-from farm.modeling.language_model import Bert
-from farm.modeling.training import Trainer, Evaluator
+from farm.modeling.language_model import LanguageModel
 from farm.modeling.optimization import BertAdam, WarmupLinearSchedule
+from farm.modeling.prediction_head import PredictionHead
 from farm.modeling.tokenization import BertTokenizer
+from farm.data_handler.processor import Processor
+from farm.modeling.training import Trainer, Evaluator
 from farm.modeling.training import WrappedDataParallel
+from farm.utils import set_all_seeds, initialize_device_settings
 from farm.utils import MLFlowLogger as MlLogger
 
-import logging
 logger = logging.getLogger(__name__)
 
 try:
     from farm.modeling.training import WrappedDDP
 except ImportError:
-    logger.info("Importing Data Loader for Distributed Training failed. Apex not installed?")
+    logger.info(
+        "Importing Data Loader for Distributed Training failed. Apex not installed?"
+    )
 
 
 logging.basicConfig(
@@ -32,6 +30,7 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
+
 def run_model(args):
 
     validate_args(args)
@@ -39,41 +38,44 @@ def run_model(args):
     distributed = bool(args.local_rank != -1)
 
     # Init device and distributed settings
-    device, n_gpu = initialize_device_settings(use_cuda=args.cuda,
-                                               local_rank=args.local_rank,
-                                               fp16=args.fp16)
+    device, n_gpu = initialize_device_settings(
+        use_cuda=args.cuda, local_rank=args.local_rank, fp16=args.fp16
+    )
 
     args.batch_size = args.batch_size // args.gradient_accumulation_steps
-    if(n_gpu > 1):
+    if n_gpu > 1:
         args.batch_size = args.batch_size * n_gpu
     set_all_seeds(args.seed)
 
     # Prepare Data
     tokenizer = BertTokenizer.from_pretrained(args.model, do_lower_case=args.lower_case)
+    processor = Processor.load(
+        processor_name=args.processor_name,
+        tokenizer=tokenizer,
+        max_seq_len=args.max_seq_len,
+        data_dir=args.data_dir,
+    )
 
-    processor = get_processor(name=args.name,
-                                 tokenizer=tokenizer,
-                                 max_seq_len=args.max_seq_len,
-                                 data_dir=args.data_dir)
-
-    data_bunch = DataBunch(processor=processor,
-                           batch_size=args.batch_size,
-                           distributed=distributed)
+    data_bunch = DataBunch(
+        processor=processor, batch_size=args.batch_size, distributed=distributed
+    )
 
     class_weights = None
     if args.balance_classes:
         class_weights = data_bunch.class_weights
 
-    model = get_adaptive_model(lm_output_type=args.lm_output_type,
-                               prediction_heads=args.prediction_head,
-                               layer_dims=args.layer_dims,
-                               model=args.model,
-                               device=device,
-                               class_weights=class_weights,
-                               fp16=args.fp16,
-                               embeds_dropout_prob=args.embeds_dropout_prob,
-                               local_rank=args.local_rank,
-                               n_gpu=n_gpu)
+    model = get_adaptive_model(
+        lm_output_type=args.lm_output_type,
+        prediction_heads=args.prediction_head,
+        layer_dims=args.layer_dims,
+        model=args.model,
+        device=device,
+        class_weights=class_weights,
+        fp16=args.fp16,
+        embeds_dropout_prob=args.embeds_dropout_prob,
+        local_rank=args.local_rank,
+        n_gpu=n_gpu,
+    )
 
     # Init optimizer
     num_train_optimization_steps = calculate_optimization_steps(
@@ -81,7 +83,8 @@ def run_model(args):
         batch_size=args.batch_size,
         grad_acc_steps=args.gradient_accumulation_steps,
         n_epochs=args.epochs,
-        local_rank=args.local_rank)
+        local_rank=args.local_rank,
+    )
 
     # TODO: warmup linear is sometimes NONE depending on fp16 - is there a neater way to handle this?
     optimizer, warmup_linear = initialize_optimizer(
@@ -90,19 +93,22 @@ def run_model(args):
         warmup_proportion=args.warmup_proportion,
         loss_scale=args.loss_scale,
         fp16=args.fp16,
-        num_train_optimization_steps=num_train_optimization_steps)
+        num_train_optimization_steps=num_train_optimization_steps,
+    )
 
     evaluator_dev = Evaluator(
         data_loader=data_bunch.get_data_loader("dev"),
         label_list=processor.label_list,
         device=device,
-        metrics=processor.metrics)
+        metrics=processor.metrics,
+    )
 
     evaluator_test = Evaluator(
         data_loader=data_bunch.get_data_loader("test"),
         label_list=processor.label_list,
         device=device,
-        metrics=processor.metrics)
+        metrics=processor.metrics,
+    )
 
     trainer = Trainer(
         optimizer=optimizer,
@@ -115,14 +121,16 @@ def run_model(args):
         learning_rate=args.learning_rate,  # Why is this also passed to initialize optimizer?
         warmup_linear=warmup_linear,
         evaluate_every=args.eval_every,
-        device=device)
+        device=device,
+    )
 
     model = trainer.train(model)
 
+    processor.save(f"save/{args.name}")
+    model.save(f"save/{args.name}")
+
     results = evaluator_test.eval(model)
     evaluator_test.log_results(results, "Test", trainer.global_step)
-
-    #TODO: Model Saving and Loading
 
 
 def get_adaptive_model(
@@ -135,31 +143,33 @@ def get_adaptive_model(
     local_rank,
     n_gpu,
     fp16=False,
-    class_weights=None
+    class_weights=None,
 ):
     parsed_lm_output_types = lm_output_type.split(",")
 
     initialized_heads = []
-    for head in prediction_heads.split(","):
-        if(head == "TokenClassificationHead"):
-            initialized_heads.append(TokenClassificationHead(layer_dims=layer_dims))
-        elif(head == "TextClassificationHead"):
-            initialized_heads.append(TextClassificationHead(layer_dims=layer_dims,
-                                                      class_weights=class_weights))
-        else:
-            raise NotImplementedError
+    for head_name in prediction_heads.split(","):
+        initialized_heads.append(
+            PredictionHead.create(
+                prediction_head_name=head_name,
+                layer_dims=layer_dims,
+                class_weights=class_weights,
+            )
+        )
 
-    language_model = Bert.load(model)
+    # TODO Make this generic for other language models
+    language_model = LanguageModel.load(model)
 
     # TODO where are balance class weights?
-    model = AdaptiveModel(language_model=language_model,
-                          prediction_heads=initialized_heads,
-                          embeds_dropout_prob=embeds_dropout_prob,
-                          lm_output_types=parsed_lm_output_types,
-                          device=device)
+    model = AdaptiveModel(
+        language_model=language_model,
+        prediction_heads=initialized_heads,
+        embeds_dropout_prob=embeds_dropout_prob,
+        lm_output_types=parsed_lm_output_types,
+        device=device,
+    )
     if fp16:
         model.half()
-    model.to(device)
 
     if local_rank > -1:
         model = WrappedDDP(model)
@@ -168,39 +178,16 @@ def get_adaptive_model(
 
     return model
 
-def get_processor(name, data_dir, tokenizer, max_seq_len):
-    # todo How to deal with the file paths???
-    if name == "Conll2003":
-        processor = CONLLProcessor(data_dir=data_dir,
-                                     tokenizer=tokenizer,
-                                     max_seq_len=max_seq_len)
-    elif name == "GNAD":
-        processor = GNADProcessor(data_dir=data_dir,
-                                  tokenizer=tokenizer,
-                                  max_seq_len=max_seq_len)
-    elif name == "GermEval18Coarse":
-        processor = GermEval18CoarseProcessor(data_dir=data_dir,
-                                      tokenizer=tokenizer,
-                                      max_seq_len=max_seq_len)
-    elif name == "GermEval18Fine":
-        processor = GermEval18FineProcessor(data_dir=data_dir,
-                                      tokenizer=tokenizer,
-                                      max_seq_len=max_seq_len)
-    elif name == "GermEval14":
-        processor = GermEval14Processor(data_dir=data_dir,
-                                          tokenizer=tokenizer,
-                                          max_seq_len=max_seq_len)
-    else:
-        raise NotImplementedError
-
-    return processor
 
 def directory_setup(output_dir, do_train):
     # Setup directory
     if os.path.exists(output_dir) and os.listdir(output_dir) and do_train:
-        raise ValueError("Output directory ({}) already exists and is not empty.".format(output_dir))
+        raise ValueError(
+            "Output directory ({}) already exists and is not empty.".format(output_dir)
+        )
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
+
 
 def validate_args(args):
     if not args.do_train and not args.do_eval:
@@ -213,6 +200,7 @@ def validate_args(args):
             )
         )
 
+
 def initialize_optimizer(
     model,
     learning_rate,
@@ -222,10 +210,14 @@ def initialize_optimizer(
     num_train_optimization_steps,
 ):
     # Log params
-    MlLogger.log_params({"learning_rate": learning_rate,
-                         "warmup_proportion": warmup_proportion,
-                         "fp16": fp16,
-                         "num_train_optimization_steps": num_train_optimization_steps})
+    MlLogger.log_params(
+        {
+            "learning_rate": learning_rate,
+            "warmup_proportion": warmup_proportion,
+            "fp16": fp16,
+            "num_train_optimization_steps": num_train_optimization_steps,
+        }
+    )
     # Prepare optimizer
     param_optimizer = list(model.named_parameters())
     no_decay = ["bias", "LayerNorm.bias", "LayerNorm.weight"]
@@ -285,8 +277,10 @@ def calculate_optimization_steps(
         optimization_steps = optimization_steps // torch.distributed.get_world_size()
     return optimization_steps
 
+
 def save_model():
     raise NotImplementedError
+
 
 def load_model():
     raise NotImplementedError
