@@ -66,7 +66,7 @@ class AdaptiveModel(nn.Module):
         # collect losses from all heads
         all_losses = []
         for head, logits_for_one_head in zip(self.prediction_heads, logits):
-            all_losses.append(head.logits_to_loss(logits_for_one_head, **kwargs))
+            all_losses.append(head.logits_to_loss(logits=logits_for_one_head, **kwargs))
         return all_losses
 
     def logits_to_loss(self, logits, **kwargs):
@@ -75,20 +75,22 @@ class AdaptiveModel(nn.Module):
         loss = sum(all_losses)
         return loss
 
-    def logits_to_preds(self, logits, **kwargs):
+    def logits_to_preds(self, logits, label_maps, **kwargs):
         all_preds = []
         # collect preds from all heads
-        for head, logits_for_one_head in zip(self.prediction_heads, logits):
-            preds = head.logits_to_preds(logits_for_one_head, **kwargs)
+        for head, logits_for_head, label_map_for_head in zip(
+            self.prediction_heads, logits, label_maps
+        ):
+            preds = head.logits_to_preds(
+                logits=logits_for_head, label_map=label_map_for_head, **kwargs
+            )
             all_preds.append(preds)
         return all_preds
 
-    def prepare_labels(self, **kwargs):
+    def prepare_labels(self, label_maps, **kwargs):
         all_labels = []
-        # if type(label_ids) != list:
-        #   label_ids = [label_ids]
-        for head in self.prediction_heads:
-            labels = head.prepare_labels(**kwargs)
+        for head, label_map_one_head in zip(self.prediction_heads, label_maps):
+            labels = head.prepare_labels(label_map=label_map_one_head, **kwargs)
             all_labels.append(labels)
         return all_labels
 
