@@ -7,7 +7,12 @@ from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import LanguageModel
 from farm.modeling.optimization import BertAdam, WarmupLinearSchedule
 from farm.modeling.prediction_head import PredictionHead
-from farm.modeling.tokenization import BertTokenizer
+from pytorch_transformers.tokenization_bert import (
+    BertTokenizer,
+    PRETRAINED_VOCAB_FILES_MAP,
+    VOCAB_FILES_NAMES,
+    PRETRAINED_POSITIONAL_EMBEDDINGS_SIZES,
+)
 from farm.data_handler.processor import Processor
 from farm.train import Trainer
 from farm.train import WrappedDataParallel
@@ -32,7 +37,6 @@ logging.basicConfig(
 
 
 def run_experiment(args):
-
     validate_args(args)
     directory_setup(output_dir=args.output_dir, do_train=args.do_train)
     distributed = bool(args.local_rank != -1)

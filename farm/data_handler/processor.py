@@ -193,7 +193,10 @@ class Processor(ABC):
         for name in names:
             value = getattr(self, name)
             params.update({name: str(value)})
-        MlLogger.log_params(params)
+        try:
+            MlLogger.log_params(params)
+        except Exception as e:
+            logger.warning(f"ML logging didn't work: {e}")
 
 
 #########################################
@@ -439,9 +442,7 @@ class CONLLProcessor(Processor):
         return dicts
 
     def _dict_to_samples(self, dict: dict) -> [Sample]:
-        text = " ".join(dict["sentence"])
-        label = dict["label"]
-        return [Sample(id=None, clear_text={"text": text, "label": label})]
+        return [Sample(id=None, clear_text=dict)]
 
     def _sample_to_features(self, sample) -> dict:
         features = samples_to_features_ner(
@@ -503,9 +504,7 @@ class GermEval14Processor(Processor):
         return dicts
 
     def _dict_to_samples(self, dict: dict) -> [Sample]:
-        text = " ".join(dict["sentence"])
-        label = dict["label"]
-        return [Sample(id=None, clear_text={"text": text, "label": label})]
+        return [Sample(id=None, clear_text=dict)]
 
     def _sample_to_features(self, sample) -> dict:
         features = samples_to_features_ner(

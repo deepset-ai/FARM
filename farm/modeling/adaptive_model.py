@@ -94,6 +94,18 @@ class AdaptiveModel(nn.Module):
             all_labels.append(labels)
         return all_labels
 
+    def formatted_preds(self, logits, label_maps, **kwargs):
+        all_preds = []
+        # collect preds from all heads
+        for head, logits_for_head, label_map_for_head in zip(
+            self.prediction_heads, logits, label_maps
+        ):
+            preds = head.formatted_preds(
+                logits=logits_for_head, label_map=label_map_for_head, **kwargs
+            )
+            all_preds.append(preds)
+        return all_preds
+
     def forward(self, **kwargs):
         # Run language model
         sequence_output, pooled_output = self.language_model(
@@ -148,4 +160,7 @@ class AdaptiveModel(nn.Module):
             ),
             "lm_output_types": ",".join(self.lm_output_types),
         }
-        MlLogger.log_params(params)
+        try:
+            MlLogger.log_params(params)
+        except Exception as e:
+            logger.warning(f"ML logging didn't work: {e}")

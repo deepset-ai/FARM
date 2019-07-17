@@ -23,11 +23,11 @@ from farm.utils import MLFlowLogger
 
 def main():
     config_files = [
-        # "tasks/ner/conll2003_de_config.json",
-        # "tasks/ner/germEval14_config.json",
-        # "tasks/seq_classification/germEval18Fine_config.json",
-        # "tasks/seq_classification/germEval18Coarse_config.json",
-        "tasks/seq_classification/gnad_config.json"
+        "experiments/ner/conll2003_de_config.json",
+        # "experiments/ner/germEval14_config.json",
+        # "experiments/seq_classification/germEval18Fine_config.json",
+        # "experiments/seq_classification/germEval18Coarse_config.json",
+        "experiments/seq_classification/gnad_config.json",
     ]
 
     for conf_file in config_files:

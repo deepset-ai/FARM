@@ -25,12 +25,15 @@ class Inferencer:
         self.name = "bert"
         self.label_map = {i: label for i, label in enumerate(self.processor.label_list)}
 
-    def run_inference(self, raw_data):
+    def run_inference(self, dicts):
 
         if self.prediction_type != "sequence_classification":
             raise NotImplementedError
 
-        dataset, tensor_names = self.processor.dataset_from_dicts(raw_data)
+        dataset, tensor_names = self.processor.dataset_from_dicts(dicts)
+        samples = []
+        for dict in dicts:
+            samples.extend(self.processor._dict_to_samples(dict))
 
         data_loader = NamedDataLoader(
             dataset=dataset,
@@ -40,18 +43,17 @@ class Inferencer:
         )
 
         preds_all = []
-        probs_all = []
         for batch in data_loader:
             batch = {key: batch[key].to(self.device) for key in batch}
 
             with torch.no_grad():
                 logits = self.model.forward(**batch)
-                preds = self.model.logits_to_preds(
-                    logits=logits, label_map=self.label_map, **batch
+                preds = self.model.formatted_preds(
+                    logits=logits,
+                    label_maps=self.processor.label_maps,
+                    samples=samples,
+                    tokenizer=self.processor.tokenizer,
+                    **batch
                 )
-                preds_all += preds
-                # TODO Probs not working yet
-                # for vec in softmax(logits, axis=1):
-                #     probs_all.append(dict(vec))
-
+                preds_all.append(preds)
         return preds_all

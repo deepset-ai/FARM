@@ -101,19 +101,18 @@ def samples_to_features_ner(
     words = sample.clear_text["text"].split(" ")
     tokens, initial_mask = words_to_tokens(words, tokenizer, max_seq_len)
 
-    labels_word = sample.clear_text["label"]
-    labels_token = expand_labels(labels_word, initial_mask, non_initial_token)
-
     # Add CLS and SEP tokens
     tokens = add_cls_sep(tokens, cls_token, sep_token)
-    labels_token = add_cls_sep(labels_token, cls_token, sep_token)
     initial_mask = [0] + initial_mask + [0]  # CLS and SEP don't count as initial tokens
     padding_mask = [1] * len(tokens)
 
     # Convert to input and labels to ids, generate masks
-    # Todo: Something is odd here because [PAD] is index one in the vocab of tokenizer but we are padding with 0, or maybe it doesnt matter because its masked out anyways
     input_ids = tokenizer.convert_tokens_to_ids(tokens)
-    if labels_word:
+
+    if "label" in sample.clear_text:
+        labels_word = sample.clear_text["label"]
+        labels_token = expand_labels(labels_word, initial_mask, non_initial_token)
+        labels_token = add_cls_sep(labels_token, cls_token, sep_token)
         label_ids = [label_list.index(lt) for lt in labels_token]
     # Inference mode
     else:

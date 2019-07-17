@@ -3,6 +3,7 @@ import datetime
 import json
 import os
 from dotmap import DotMap
+import random
 
 import torch
 from torch import nn
@@ -128,6 +129,13 @@ class TextClassificationHead(PredictionHead):
     def logits_to_loss(self, logits, label_ids, **kwargs):
         return self.loss_fct(logits, label_ids.view(-1))
 
+    def logits_to_probs(self, logits, **kwargs):
+        softmax = torch.nn.Softmax(dim=1)
+        probs = softmax(logits)
+        probs = torch.max(probs, dim=1)[0]
+        probs = probs.cpu().numpy()
+        return probs
+
     def logits_to_preds(self, logits, label_map, **kwargs):
         logits = logits.cpu().numpy()
         pred_ids = logits.argmax(1)
@@ -138,6 +146,26 @@ class TextClassificationHead(PredictionHead):
         label_ids = label_ids.cpu().numpy()
         labels = [label_map[int(x)] for x in label_ids]
         return labels
+
+    def formatted_preds(self, logits, label_map, samples, **kwargs):
+        preds = self.logits_to_preds(logits, label_map)
+        probs = self.logits_to_probs(logits)
+        contexts = [sample.clear_text["text"] for sample in samples]
+
+        assert len(preds) == len(probs) == len(contexts)
+
+        res = {"task": "text_classification", "prediction": []}
+        for pred, prob, context in zip(preds, probs, contexts):
+            res["prediction"].append(
+                {
+                    "start": None,
+                    "end": None,
+                    "context": f"{context}",
+                    "label": f"{pred}",
+                    "probability": prob,
+                }
+            )
+        return res
 
 
 class TokenClassificationHead(PredictionHead):
@@ -175,26 +203,35 @@ class TokenClassificationHead(PredictionHead):
         return loss
 
     def logits_to_preds(self, logits, initial_mask, label_map, **kwargs):
-
         preds_word_all = []
-
         preds_tokens = torch.argmax(logits, dim=2)
-
         preds_token = preds_tokens.detach().cpu().numpy()
         # used to be: padding_mask = padding_mask.detach().cpu().numpy()
         initial_mask = initial_mask.detach().cpu().numpy()
 
         for idx, im in enumerate(initial_mask):
             preds_t = preds_token[idx]
-
             # Get labels and predictions for just the word initial tokens
             preds_word_id = self.initial_token_only(preds_t, initial_mask=im)
-
             preds_word = [label_map[pwi] for pwi in preds_word_id]
-
             preds_word_all.append(preds_word)
-
         return preds_word_all
+
+    def logits_to_probs(self, logits, initial_mask, **kwargs):
+        # get per token probs
+        softmax = torch.nn.Softmax(dim=2)
+        token_probs = softmax(logits)
+        token_probs = torch.max(token_probs, dim=2)[0]
+        token_probs = token_probs.cpu().numpy()
+
+        # convert to per word probs
+        all_probs = []
+        initial_mask = initial_mask.detach().cpu().numpy()
+        for idx, im in enumerate(initial_mask):
+            probs_t = token_probs[idx]
+            probs_words = self.initial_token_only(probs_t, initial_mask=im)
+            all_probs.append(probs_words)
+        return all_probs
 
     def prepare_labels(self, label_map, label_ids, initial_mask, **kwargs):
         labels_all = []
@@ -217,6 +254,48 @@ class TokenClassificationHead(PredictionHead):
                 ret.append(s)
         return ret
 
+    def formatted_preds(
+        self, logits, label_map, tokenizer, initial_mask, input_ids, **kwargs
+    ):
+        preds = self.logits_to_preds(logits, initial_mask, label_map)
+        probs = self.logits_to_probs(logits, initial_mask)
+
+        # convert input_ids back to words
+        vocab = {v: k for k, v in tokenizer.vocab.items()}
+        input_ids = input_ids.cpu().numpy().tolist()
+        words = []
+        for seq in input_ids:
+            tokens_seq = [vocab[t] for t in seq]
+            words_seq = []
+            word = ""
+            for tok in tokens_seq:
+                if "##" in tok:
+                    word += tok.replace("##", "")
+                elif tok not in ("[SEP]", "[CLS]", "[PAD]", "[unused3001]"):
+                    if word != "":
+                        words_seq.append(word)
+                    word = tok
+            words.append(words_seq)
+
+        # contexts = [sample.clear_text["text"] for sample in samples]
+
+        # assert len(preds) == len(probs) == len(words)
+        #
+        res = {"task": "ner", "prediction": []}
+        for preds_seq, probs_seq, words_seq in zip(preds, probs, words):
+            for pred, prob, word in zip(preds_seq, probs_seq, words_seq):
+                rand_start = random.randint(0, len(words_seq))
+                res["prediction"].append(
+                    {
+                        "start": rand_start,
+                        "end": rand_start + (len(word)),
+                        "context": f"{word}",
+                        "label": f"{pred}",
+                        "probability": prob,
+                    }
+                )
+        return res
+
 
 class BertLMHead(PredictionHead):
     def __init__(self, embeddings, hidden_size, hidden_act="gelu", **kwargs):
@@ -233,13 +312,6 @@ class BertLMHead(PredictionHead):
         # self.apply(self.init_bert_weights)
         self.ph_output_type = "per_token"
         self.generate_config()
-
-    # def generate_config(self):
-    #     self.config = {
-    #         "type": type(self).__name__,
-    #         "last_initialized": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    #         "vocab_size": str(self.num_labels),
-    #     }
 
     def forward(self, X):
         lm_logits = self.model(X)
