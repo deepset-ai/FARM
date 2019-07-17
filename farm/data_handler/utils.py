@@ -29,7 +29,8 @@ def read_tsv(filename, quotechar='"', delimiter="\t", skiprows=None, columns=Non
         names=columns,
         skiprows=skiprows,
     )
-    df.drop(columns=["unused"], inplace=True)
+    if "unused" in df.columns:
+        df.drop(columns=["unused"], inplace=True)
     raw_dict = df.to_dict(orient="records")
     return raw_dict
 

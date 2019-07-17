@@ -73,9 +73,8 @@ class PredictionHead(nn.Module):
     def logits_to_preds(self, logits):
         raise NotImplementedError()
 
-    def prepare_labels(self, label_ids, **kwargs):
-        """ This should be overwritten in the case of NER in order to map token level labels to word level labels"""
-        return label_ids
+    def prepare_labels(self, label_map, **kwargs):
+        raise NotImplementedError()
 
 
 class TextClassificationHead(PredictionHead):
@@ -133,12 +132,11 @@ class TextClassificationHead(PredictionHead):
         logits = logits.cpu().numpy()
         pred_ids = logits.argmax(1)
         preds = [label_map[x] for x in pred_ids]
-
         return preds
 
-    def prepare_labels(self, label_ids, label_map, **kwargs):
+    def prepare_labels(self, label_map, label_ids, **kwargs):
         label_ids = label_ids.cpu().numpy()
-        labels = [label_map[x] for x in label_ids]
+        labels = [label_map[int(x)] for x in label_ids]
         return labels
 
 
@@ -198,7 +196,7 @@ class TokenClassificationHead(PredictionHead):
 
         return preds_word_all
 
-    def prepare_labels(self, label_ids, initial_mask, label_map, **kwargs):
+    def prepare_labels(self, label_map, label_ids, initial_mask, **kwargs):
         labels_all = []
         label_ids = label_ids.cpu().numpy()
         for label_ids_one_sample, initial_mask_one_sample in zip(
@@ -236,12 +234,12 @@ class BertLMHead(PredictionHead):
         self.ph_output_type = "per_token"
         self.generate_config()
 
-    def generate_config(self):
-        self.config = {
-            "type": type(self).__name__,
-            "last_initialized": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            "vocab_size": str(self.num_labels),
-        }
+    # def generate_config(self):
+    #     self.config = {
+    #         "type": type(self).__name__,
+    #         "last_initialized": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    #         "vocab_size": str(self.num_labels),
+    #     }
 
     def forward(self, X):
         lm_logits = self.model(X)
@@ -255,11 +253,29 @@ class BertLMHead(PredictionHead):
         per_sample_loss = masked_lm_loss.view(-1, batch_size).mean(dim=0)
         return per_sample_loss
 
-    def logits_to_preds(self, logits, lm_label_ids, **kwargs):
-        lm_preds = logits.argmax(2)
+    def logits_to_preds(self, logits, label_map, lm_label_ids, **kwargs):
+        logits = logits.cpu().numpy()
+        lm_label_ids = lm_label_ids.cpu().numpy()
+        lm_preds_ids = logits.argmax(2)
         # apply mask to get rid of predictions for non-masked tokens
-        lm_preds[lm_label_ids == -1] = -1
-        return lm_preds
+        assert lm_preds_ids.shape == lm_label_ids.shape
+        lm_preds_ids[lm_label_ids == -1] = -1
+        lm_preds_ids = lm_preds_ids.tolist()
+        preds = []
+        # we have a batch of sequences here. we need to convert for each token in each sequence.
+        for pred_ids_for_sequence in lm_preds_ids:
+            preds.append(
+                [label_map[int(x)] for x in pred_ids_for_sequence if int(x) != -1]
+            )
+        return preds
+
+    def prepare_labels(self, label_map, lm_label_ids, **kwargs):
+        label_ids = lm_label_ids.cpu().numpy().tolist()
+        labels = []
+        # we have a batch of sequences here. we need to convert for each token in each sequence.
+        for ids_for_sequence in label_ids:
+            labels.append([label_map[int(x)] for x in ids_for_sequence if int(x) != -1])
+        return labels
 
 
 class FeedForwardBlock(nn.Module):

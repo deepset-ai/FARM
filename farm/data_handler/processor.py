@@ -55,6 +55,16 @@ class Processor(ABC):
         self.dev_split = dev_split
         self.data_dir = data_dir
         self.label_dtype = label_dtype
+        self.label_maps = []
+
+        # create label maps (one per prediction head)
+        if any(isinstance(i, list) for i in label_list):
+            for labels_per_head in label_list:
+                map = {i: label for i, label in enumerate(labels_per_head)}
+                self.label_maps.append(map)
+        else:
+            map = {i: label for i, label in enumerate(label_list)}
+            self.label_maps.append(map)
 
         self.baskets = []
 
@@ -522,7 +532,7 @@ class BertStyleLMProcessor(Processor):
         dev_split=0.0,
     ):
         # General Processor attributes
-        label_list = []
+        label_list = [list(tokenizer.vocab), ["True", "False"]]  # labels for both heads
         metrics = ["acc", "acc"]
         label_dtype = torch.long
 

@@ -131,11 +131,11 @@ class DataSilo(object):
             logger.info(f"Using class weights: {self.class_weights}")
         except ValueError:
             logger.info(
-                "Class weighting not available for token level tasks such as NER"
+                "Class weighting is currently only available for sequence classification tasks "
             )
 
     def _get_data_loader(self, dataset):
         return self.loaders[dataset]
 
-    def _n_samples(self, dataset):
+    def n_samples(self, dataset):
         return self.counts[dataset]

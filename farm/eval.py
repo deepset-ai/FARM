@@ -15,11 +15,12 @@ logger = logging.getLogger(__name__)
 
 class Evaluator:
     def __init__(
-        self, data_loader, label_list, device, metrics, classification_report=True
+        self, data_loader, label_maps, device, metrics, classification_report=True
     ):
 
         self.data_loader = data_loader
-        self.label_map = {i: label for i, label in enumerate(label_list)}
+        self.label_maps = label_maps
+
         self.device = device
 
         # Where should metric be defined? When dataset loaded? In config?
@@ -48,10 +49,10 @@ class Evaluator:
 
                 # TODO how should this label_map work for multiple heads?
                 preds = model.logits_to_preds(
-                    logits=logits, label_map=self.label_map, **batch
+                    logits=logits, label_maps=self.label_maps, **batch
                 )
 
-                labels = model.prepare_labels(label_map=self.label_map, **batch)
+                labels = model.prepare_labels(label_maps=self.label_maps, **batch)
 
             # stack results of all batches per prediction head
             for head_num, head in enumerate(model.prediction_heads):

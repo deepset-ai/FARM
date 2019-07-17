@@ -80,7 +80,7 @@ class Trainer:
         if evaluator_dev is None:
             evaluator_dev = Evaluator(
                 data_loader=self.data_silo._get_data_loader("dev"),
-                label_list=self.data_silo.processor.label_list,
+                label_maps=self.data_silo.processor.label_maps,
                 device=device,
                 metrics=self.data_silo.processor.metrics,
             )
@@ -90,7 +90,7 @@ class Trainer:
         if evaluator_test is None:
             evaluator_test = Evaluator(
                 data_loader=self.data_silo._get_data_loader("test"),
-                label_list=self.data_silo.processor.label_list,
+                label_maps=self.data_silo.processor.label_maps,
                 device=device,
                 metrics=self.data_silo.processor.metrics,
             )
