@@ -6,23 +6,16 @@ logger = logging.getLogger(__name__)
 
 
 class SampleBasket:
-    def __init__(self,
-                 id,
-                 raw,
-                 samples=None):
+    def __init__(self, id: str, raw: dict, samples=None):
         self.id = id
         self.raw = raw
         self.samples = samples
 
 
-
 class Sample(object):
     """A single training/test example."""
 
-    def __init__(self,
-                 id,
-                 clear_text,
-                 features=None):
+    def __init__(self, id, clear_text, features=None):
 
         self.id = id
         self.clear_text = clear_text
@@ -50,36 +43,32 @@ class Sample(object):
         return s
 
 
-
-def create_sample_one_label_one_text(raw_data, text_index, label_index, basket_id):
-
-    # text = " ".join(raw_data[text_index:])
-    text = raw_data[text_index]
-    label = raw_data[label_index]
-
-    return [Sample(id=basket_id + "-0",
-                    clear_text={"text": text,
-                                "label": label})]
-
-
-def create_sample_ner(split_text, label, basket_id):
-
-    text = " ".join(split_text)
-    label = label
-
-    return [Sample(id=basket_id + "-0",
-                   clear_text={"text": text,
-                               "label": label})]
-
+# # def create_sample_one_label_one_text(raw_dict, text_column="text", label_column="label"):
+# #     # text = " ".join(raw_data[text_index:])
+# #     text = raw_dict[text_column]
+# #     label = raw_dict[label_column]
+# #
+# #     return [Sample(id=None,
+# #                     clear_text={"text": text,
+# #                                 "label": label})]
+#
+#
+# def create_sample_ner(raw_dict):
+#
+#     text = " ".join(raw_dict["sentence"])
+#     label = raw_dict["label"]
+#
+#     return [Sample(id=None,
+#                    clear_text={"text": text,
+#                                "label": label})]
 
 
 def create_samples_sentence_pairs(baskets):
     """Creates examples for Language Model Finetuning that consist of two sentences and the isNext label indicating if
      the two are subsequent sentences from one doc"""
-    # sample_to_docs = lines[1]
-    all_docs = [b.raw for b in baskets]
+    all_docs = [b.raw["doc"] for b in baskets]
     for basket in baskets:
-        doc = basket.raw
+        doc = basket.raw["doc"]
         basket.samples = []
         for idx in range(len(doc) - 1):
             id = "%s-%s" % (basket.id, idx)

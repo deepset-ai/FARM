@@ -1,12 +1,10 @@
-import csv
 import logging
 import os
-import sys
 import tarfile
 import tempfile
 from tqdm import tqdm
 import random
-
+import pandas as pd
 from farm.file_utils import http_get
 
 logger = logging.getLogger(__name__)
@@ -18,19 +16,22 @@ DOWNSTREAM_TASK_MAP = {
     "germeval18": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/germeval18.tar.gz",
 }
 
-
-def read_tsv(filename, quotechar=None, delimiter="\t", skip_first_line=False):
+# TODO skip_first_line is not used here? Do processors expext this to work?
+def read_tsv(filename, quotechar='"', delimiter="\t", skiprows=None, columns=None):
     """Reads a tab separated value file. Tries to download the data if filename is not found"""
     if not (os.path.exists(filename)):
         download_extract_downstream_data(filename)
-    with open(filename, "r", encoding="utf-8") as f:
-        reader = csv.reader(f, delimiter=delimiter, quotechar=quotechar)
-        lines = []
-        for i, line in enumerate(reader):
-            if i == 0:
-                continue
-            lines.append(line)
-        return lines
+    df = pd.read_csv(
+        filename,
+        sep=delimiter,
+        encoding="utf-8",
+        quotechar=quotechar,
+        names=columns,
+        skiprows=skiprows,
+    )
+    df.drop(columns=["unused"], inplace=True)
+    raw_dict = df.to_dict(orient="records")
+    return raw_dict
 
 
 def read_ner_file(filename, **kwargs):
@@ -49,7 +50,7 @@ def read_ner_file(filename, **kwargs):
     for line in f:
         if len(line) == 0 or line.startswith("-DOCSTART") or line[0] == "\n":
             if len(sentence) > 0:
-                data.append((sentence, label))
+                data.append({"sentence": sentence, "label": label})
                 sentence = []
                 label = []
             continue
@@ -58,7 +59,7 @@ def read_ner_file(filename, **kwargs):
         label.append(splits[-1][:-1])
 
     if len(sentence) > 0:
-        data.append((sentence, label))
+        data.append({"sentence": sentence, "label": label})
     return data
 
 
@@ -93,7 +94,7 @@ def read_docs_from_txt(filename, delimiter="", encoding="utf-8"):
         for line in tqdm(f, desc="Loading Dataset", total=corpus_lines):
             line = line.strip()
             if line == delimiter:
-                all_docs.append(doc)
+                all_docs.append({"doc": doc})
                 doc = []
                 # # remove last added sample because there won't be a subsequent line anymore in the doc
                 # sample_to_doc.pop()
@@ -106,7 +107,7 @@ def read_docs_from_txt(filename, delimiter="", encoding="utf-8"):
 
         # if last row in file is not empty
         if all_docs[-1] != doc:
-            all_docs.append(doc)
+            all_docs.append({"doc": doc})
             # sample_to_doc.pop()
 
     # data = (all_docs, sample_to_doc)

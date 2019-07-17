@@ -128,6 +128,7 @@ class DataSilo(object):
             self.class_weights = list(
                 compute_class_weight("balanced", np.unique(labels), labels)
             )
+            logger.info(f"Using class weights: {self.class_weights}")
         except ValueError:
             logger.info(
                 "Class weighting not available for token level tasks such as NER"
