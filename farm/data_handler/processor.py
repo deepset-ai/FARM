@@ -10,16 +10,17 @@ from pytorch_pretrained_bert.tokenization import BertTokenizer
 
 from farm.data_handler.utils import read_tsv, read_docs_from_txt, read_ner_file
 from farm.file_utils import create_folder
-from farm.data_handler.samples import create_sample_ner, create_samples_sentence_pairs
+from farm.data_handler.samples import create_samples_sentence_pairs
 from farm.data_handler.input_features import (
-    samples_to_features_sequence,
+    sample_to_features_sequence,
     samples_to_features_ner,
     samples_to_features_bert_lm,
 )
 from farm.data_handler.dataset import convert_features_to_dataset
-from farm.data_handler.samples import create_sample_one_label_one_text, SampleBasket
+from farm.data_handler.samples import SampleBasket
 from farm.utils import MLFlowLogger as MlLogger
 
+from farm.data_handler.samples import Sample
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,7 @@ TOKENIZER_MAP = {"BertTokenizer": BertTokenizer}
 
 class Processor(ABC):
     # TODO think about how to define this parent class so it enforces that certain attributes are initialized
+    # It's not an abstract class anymore!
     subclasses = {}
 
     def __init__(
@@ -109,16 +111,34 @@ class Processor(ABC):
             json.dump(config, file)
 
     @abc.abstractmethod
+    def _file_to_dicts(self, file: str) -> [dict]:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def _dict_to_samples(self, dict: dict) -> [Sample]:
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def _sample_to_features(self, sample: Sample) -> dict:
+        raise NotImplementedError()
+
     def _init_baskets_from_file(self, file):
-        raise NotImplementedError()
+        dicts = self._file_to_dicts(file)
+        dataset_name = os.path.splitext(os.path.basename(file))[0]
+        self.baskets = [
+            SampleBasket(raw=tr, id=f"{dataset_name}-{i}") for i, tr in enumerate(dicts)
+        ]
 
-    @abc.abstractmethod
     def _init_samples_in_baskets(self):
-        raise NotImplementedError()
+        for basket in self.baskets:
+            basket.samples = self._dict_to_samples(basket.raw)
+            for num, sample in enumerate(basket.samples):
+                sample.id = f"{basket.id}-{num}"
 
-    @abc.abstractmethod
     def _featurize_samples(self):
-        raise NotImplementedError()
+        for basket in self.baskets:
+            for sample in basket.samples:
+                sample.features = self._sample_to_features(sample=sample)
 
     def _create_dataset(self):
         baskets = self.baskets
@@ -127,7 +147,6 @@ class Processor(ABC):
             for sample in basket.samples:
                 features_flat.append(sample.features)
         dataset, tensor_names = convert_features_to_dataset(features=features_flat)
-        self.stage = "dataset"
         return dataset, tensor_names
 
     def dataset_from_file(self, file):
@@ -138,10 +157,10 @@ class Processor(ABC):
         dataset, tensor_names = self._create_dataset()
         return dataset, tensor_names
 
-    def dataset_from_raw_data(self, raw_data):
+    def dataset_from_dicts(self, dicts):
         self.baskets = [
             SampleBasket(raw=tr, id="infer - {}".format(i))
-            for i, tr in enumerate(raw_data)
+            for i, tr in enumerate(dicts)
         ]
         self._init_samples_in_baskets()
         self._featurize_samples()
@@ -167,6 +186,9 @@ class Processor(ABC):
         MlLogger.log_params(params)
 
 
+#########################################
+# Sequence Classification Processors ####
+#########################################
 class GNADProcessor(Processor):
     def __init__(
         self,
@@ -196,9 +218,9 @@ class GNADProcessor(Processor):
 
         # Custom processor attributes
         self.delimiter = ";"
-        self.skip_first_line = False
-        self.text_index = 1
-        self.label_index = 0
+        self.quote_char = "'"
+        self.skiprows = [0]
+        self.columns = ["label", "text"]
 
         super(GNADProcessor, self).__init__(
             tokenizer=tokenizer,
@@ -213,39 +235,40 @@ class GNADProcessor(Processor):
             label_dtype=label_dtype,
         )
 
-    def _init_baskets_from_file(self, file):
-        pure_name = os.path.splitext(os.path.basename(file))[0]
-        raw_data = read_tsv(
+    def _file_to_dicts(self, file: str) -> [dict]:
+        dicts = read_tsv(
             filename=file,
             delimiter=self.delimiter,
-            skip_first_line=self.skip_first_line,
+            skiprows=self.skiprows,
+            quotechar=self.quote_char,
+            columns=self.columns,
         )
-        self.baskets = [
-            SampleBasket(raw=tr, id=f"{pure_name}-{i}") for i, tr in enumerate(raw_data)
-        ]
+        return dicts
 
-    def _init_samples_in_baskets(self):
-        for basket in self.baskets:
-            basket.samples = create_sample_one_label_one_text(
-                basket.raw,
-                text_index=self.text_index,
-                label_index=self.label_index,
-                basket_id=basket.id,
-            )
+    def _dict_to_samples(self, dict: dict) -> [Sample]:
+        return [Sample(id=None, clear_text=dict)]
 
-    def _featurize_samples(self):
-        for basket in self.baskets:
-            features = samples_to_features_sequence(
-                samples=basket.samples,
-                label_list=self.label_list,
-                max_seq_len=self.max_seq_len,
-                tokenizer=self.tokenizer,
-            )
-            for sample, feat in zip(basket.samples, features):
-                sample.features = feat
+    def _sample_to_features(self, sample) -> dict:
+        features = sample_to_features_sequence(
+            sample=sample,
+            label_list=self.label_list,
+            max_seq_len=self.max_seq_len,
+            tokenizer=self.tokenizer,
+        )
+        return features
 
 
 class GermEval18CoarseProcessor(Processor):
+    # General Processor attributes
+    label_list = ["OTHER", "OFFENSE"]
+    metrics = "f1_macro"
+    label_dtype = torch.long
+
+    # Custom Processor attributes
+    delimiter = "\t"
+    skiprows = [0]
+    columns = ["text", "label", "unused"]
+
     def __init__(
         self,
         tokenizer,
@@ -257,60 +280,39 @@ class GermEval18CoarseProcessor(Processor):
         dev_split=0.1,
     ):
 
-        # General Processor attributes
-        label_list = ["OTHER", "OFFENSE"]
-        metrics = "f1_macro"
-        label_dtype = torch.long
-
-        # Custom Processor attributes
-        self.delimiter = "\t"
-        self.skip_first_line = True
-        self.text_index = 0
-        self.label_index = 1
-
         super(GermEval18CoarseProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
-            label_list=label_list,
-            metrics=metrics,
+            label_list=self.label_list,
+            metrics=self.metrics,
             train_filename=train_filename,
             dev_filename=dev_filename,
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
-            label_dtype=label_dtype,
+            label_dtype=self.label_dtype,
         )
 
-    def _init_baskets_from_file(self, file):
-        pure_name = os.path.splitext(os.path.basename(file))[0]
-        raw_data = read_tsv(
+    def _file_to_dicts(self, file: str) -> dict:
+        dicts = read_tsv(
             filename=file,
             delimiter=self.delimiter,
-            skip_first_line=self.skip_first_line,
+            skiprows=self.skiprows,
+            columns=self.columns,
         )
-        self.baskets = [
-            SampleBasket(raw=tr, id=f"{pure_name}-{i}") for i, tr in enumerate(raw_data)
-        ]
+        return dicts
 
-    def _init_samples_in_baskets(self):
-        for basket in self.baskets:
-            basket.samples = create_sample_one_label_one_text(
-                basket.raw,
-                text_index=self.text_index,
-                label_index=self.label_index,
-                basket_id=basket.id,
-            )
+    def _dict_to_samples(self, dict: dict) -> [Sample]:
+        return [Sample(id=None, clear_text=dict)]
 
-    def _featurize_samples(self):
-        for basket in self.baskets:
-            features = samples_to_features_sequence(
-                samples=basket.samples,
-                label_list=self.label_list,
-                max_seq_len=self.max_seq_len,
-                tokenizer=self.tokenizer,
-            )
-            for sample, feat in zip(basket.samples, features):
-                sample.features = feat
+    def _sample_to_features(self, sample) -> dict:
+        features = sample_to_features_sequence(
+            sample=sample,
+            label_list=self.label_list,
+            max_seq_len=self.max_seq_len,
+            tokenizer=self.tokenizer,
+        )
+        return features
 
 
 class GermEval18FineProcessor(Processor):
@@ -332,9 +334,10 @@ class GermEval18FineProcessor(Processor):
 
         # Custom Processor attributes
         self.delimiter = "\t"
-        self.skip_first_line = True
-        self.text_index = 0
-        self.label_index = 2
+        self.skiprows = [0]
+        # self.text_index = 0
+        # self.label_index = 2
+        self.columns = ["text", "unused", "label"]
 
         super(GermEval18FineProcessor, self).__init__(
             tokenizer=tokenizer,
@@ -349,38 +352,31 @@ class GermEval18FineProcessor(Processor):
             label_dtype=label_dtype,
         )
 
-    def _init_baskets_from_file(self, file):
-        pure_name = os.path.splitext(os.path.basename(file))[0]
-        raw_data = read_tsv(
+    def _file_to_dicts(self, file: str) -> dict:
+        dicts = read_tsv(
             filename=file,
             delimiter=self.delimiter,
-            skip_first_line=self.skip_first_line,
+            skiprows=self.skiprows,
+            columns=self.columns,
         )
-        self.baskets = [
-            SampleBasket(raw=tr, id=f"{pure_name}-{i}") for i, tr in enumerate(raw_data)
-        ]
+        return dicts
 
-    def _init_samples_in_baskets(self):
-        for basket in self.baskets:
-            basket.samples = create_sample_one_label_one_text(
-                basket.raw,
-                text_index=self.text_index,
-                label_index=self.label_index,
-                basket_id=basket.id,
-            )
+    def _dict_to_samples(self, dict: dict) -> [Sample]:
+        return [Sample(id=None, clear_text=dict)]
 
-    def _featurize_samples(self):
-        for basket in self.baskets:
-            features = samples_to_features_sequence(
-                samples=basket.samples,
-                label_list=self.label_list,
-                max_seq_len=self.max_seq_len,
-                tokenizer=self.tokenizer,
-            )
-            for sample, feat in zip(basket.samples, features):
-                sample.features = feat
+    def _sample_to_features(self, sample) -> dict:
+        features = sample_to_features_sequence(
+            sample=sample,
+            label_list=self.label_list,
+            max_seq_len=self.max_seq_len,
+            tokenizer=self.tokenizer,
+        )
+        return features
 
 
+#####################
+# NER Processors ####
+#####################
 class CONLLProcessor(Processor):
     """ Used to handle the CoNLL 2003 dataset (https://www.clips.uantwerpen.be/conll2003/ner/)"""
 
@@ -415,10 +411,6 @@ class CONLLProcessor(Processor):
         label_dtype = torch.long
         metric = "seq_f1"
 
-        # Custom attributes
-        self.split_text_index = 0
-        self.label_index = 1
-
         super(CONLLProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
@@ -432,31 +424,23 @@ class CONLLProcessor(Processor):
             label_dtype=label_dtype,
         )
 
-    def _init_baskets_from_file(self, file):
-        pure_name = os.path.splitext(os.path.basename(file))[0]
-        raw_data = read_ner_file(filename=file)
-        self.baskets = [
-            SampleBasket(raw=tr, id=f"{pure_name}-{i}") for i, tr in enumerate(raw_data)
-        ]
+    def _file_to_dicts(self, file: str) -> [dict]:
+        dicts = read_ner_file(filename=file)
+        return dicts
 
-    def _init_samples_in_baskets(self):
-        for basket in self.baskets:
-            basket.samples = create_sample_ner(
-                split_text=basket.raw[self.split_text_index],
-                label=basket.raw[self.label_index],
-                basket_id=basket.id,
-            )
+    def _dict_to_samples(self, dict: dict) -> [Sample]:
+        text = " ".join(dict["sentence"])
+        label = dict["label"]
+        return [Sample(id=None, clear_text={"text": text, "label": label})]
 
-    def _featurize_samples(self):
-        for basket in self.baskets:
-            features = samples_to_features_ner(
-                samples=basket.samples,
-                label_list=self.label_list,
-                max_seq_len=self.max_seq_len,
-                tokenizer=self.tokenizer,
-            )
-            for sample, feat in zip(basket.samples, features):
-                sample.features = feat
+    def _sample_to_features(self, sample) -> dict:
+        features = samples_to_features_ner(
+            sample=sample,
+            label_list=self.label_list,
+            max_seq_len=self.max_seq_len,
+            tokenizer=self.tokenizer,
+        )
+        return features
 
 
 class GermEval14Processor(Processor):
@@ -488,13 +472,8 @@ class GermEval14Processor(Processor):
             "[CLS]",
             "[SEP]",
         ]
-
         label_dtype = torch.long
         metric = "seq_f1"
-
-        # Custom attributes
-        self.split_text_index = 0
-        self.label_index = 1
 
         super(GermEval14Processor, self).__init__(
             tokenizer=tokenizer,
@@ -509,33 +488,28 @@ class GermEval14Processor(Processor):
             label_dtype=label_dtype,
         )
 
-    def _init_baskets_from_file(self, file):
-        pure_name = os.path.splitext(os.path.basename(file))[0]
-        raw_data = read_ner_file(filename=file)
-        self.baskets = [
-            SampleBasket(raw=tr, id=f"{pure_name}-{i}") for i, tr in enumerate(raw_data)
-        ]
+    def _file_to_dicts(self, file: str) -> [dict]:
+        dicts = read_ner_file(filename=file)
+        return dicts
 
-    def _init_samples_in_baskets(self):
-        for basket in self.baskets:
-            basket.samples = create_sample_ner(
-                split_text=basket.raw[self.split_text_index],
-                label=basket.raw[self.label_index],
-                basket_id=basket.id,
-            )
+    def _dict_to_samples(self, dict: dict) -> [Sample]:
+        text = " ".join(dict["sentence"])
+        label = dict["label"]
+        return [Sample(id=None, clear_text={"text": text, "label": label})]
 
-    def _featurize_samples(self):
-        for basket in self.baskets:
-            features = samples_to_features_ner(
-                samples=basket.samples,
-                label_list=self.label_list,
-                max_seq_len=self.max_seq_len,
-                tokenizer=self.tokenizer,
-            )
-            for sample, feat in zip(basket.samples, features):
-                sample.features = feat
+    def _sample_to_features(self, sample) -> dict:
+        features = samples_to_features_ner(
+            sample=sample,
+            label_list=self.label_list,
+            max_seq_len=self.max_seq_len,
+            tokenizer=self.tokenizer,
+        )
+        return features
 
 
+#####################
+# LM Processors ####
+#####################
 class BertStyleLMProcessor(Processor):
     def __init__(
         self,
@@ -568,22 +542,21 @@ class BertStyleLMProcessor(Processor):
             label_dtype=label_dtype,
         )
 
-    def _init_baskets_from_file(self, file):
-        pure_name = os.path.splitext(os.path.basename(file))[0]
-        raw_data = read_docs_from_txt(filename=file, delimiter=self.delimiter)
-        self.baskets = [
-            SampleBasket(raw=tr, id=f"{pure_name}-{i}") for i, tr in enumerate(raw_data)
-        ]
+    def _file_to_dicts(self, file: str) -> list:
+        dicts = read_docs_from_txt(filename=file, delimiter=self.delimiter)
+        return dicts
 
     def _init_samples_in_baskets(self):
+        """ Overriding the method of the parent class here, because in this case we cannot simply convert one dict to samples.
+        We need to know about the other dicts as well since we want with prob 50% to use sentences of other docs!
+        So we operate directly on the baskets"""
         self.baskets = create_samples_sentence_pairs(self.baskets)
 
-    def _featurize_samples(self):
-        for basket in self.baskets:
-            features = samples_to_features_bert_lm(
-                samples=basket.samples,
-                max_seq_len=self.max_seq_len,
-                tokenizer=self.tokenizer,
-            )
-            for sample, feat in zip(basket.samples, features):
-                sample.features = feat
+    def _dict_to_samples(self, dict):
+        raise NotImplementedError
+
+    def _sample_to_features(self, sample) -> dict:
+        features = samples_to_features_bert_lm(
+            sample=sample, max_seq_len=self.max_seq_len, tokenizer=self.tokenizer
+        )
+        return features
