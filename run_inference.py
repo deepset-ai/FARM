@@ -1,6 +1,6 @@
 from farm.infer import Inferencer
 
-load_dir = "save/CONLL2003"
+load_dir = "save/bert-de-CONLL2003"
 # load_dir = "save/GNAD"
 
 # raw_data = [

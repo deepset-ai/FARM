@@ -7,12 +7,7 @@ from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import LanguageModel
 from farm.modeling.optimization import BertAdam, WarmupLinearSchedule
 from farm.modeling.prediction_head import PredictionHead
-from pytorch_transformers.tokenization_bert import (
-    BertTokenizer,
-    PRETRAINED_VOCAB_FILES_MAP,
-    VOCAB_FILES_NAMES,
-    PRETRAINED_POSITIONAL_EMBEDDINGS_SIZES,
-)
+from farm.modeling.tokenization import BertTokenizer
 from farm.data_handler.processor import Processor
 from farm.train import Trainer
 from farm.train import WrappedDataParallel
@@ -110,8 +105,11 @@ def run_experiment(args):
 
     model = trainer.train(model)
 
-    processor.save(f"save/{args.name}")
-    model.save(f"save/{args.name}")
+    model_name = (
+        f"{model.language_model.name}-{model.language_model.language}-{args.name}"
+    )
+    processor.save(f"save/{model_name}")
+    model.save(f"save/{model_name}")
 
 
 def get_adaptive_model(

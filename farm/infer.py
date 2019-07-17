@@ -18,18 +18,16 @@ class Inferencer:
 
         self.processor = Processor.load_from_dir(load_dir)
         self.model = AdaptiveModel.load(load_dir, device)
+        self.model.eval()
         self.batch_size = batch_size
         self.device = device
         self.language = self.model.language_model.language
-        self.prediction_type = "sequence_classification"
-        self.name = "bert"
-        self.label_map = {i: label for i, label in enumerate(self.processor.label_list)}
+        # TODO adjust for multiple prediction heads
+        self.prediction_type = self.model.prediction_heads[0].model_type
+        self.name = load_dir
+        self.label_map = self.processor.label_maps[0]
 
     def run_inference(self, dicts):
-
-        if self.prediction_type != "sequence_classification":
-            raise NotImplementedError
-
         dataset, tensor_names = self.processor.dataset_from_dicts(dicts)
         samples = []
         for dict in dicts:
