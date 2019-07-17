@@ -42,8 +42,8 @@ class AdaptiveModel(nn.Module):
     def save(self, save_dir):
         create_folder(save_dir)
         self.language_model.save(save_dir)
-        for ph in self.prediction_heads:
-            ph.save(save_dir)
+        for i, ph in enumerate(self.prediction_heads):
+            ph.save(save_dir, i)
             # Need to save config and pipeline
 
     @classmethod
@@ -135,7 +135,12 @@ class AdaptiveModel(nn.Module):
         model_files.sort()
         config_files.sort()
 
-        assert len(model_files) == len(config_files)
+        error_str = (
+            "There is a mismatch in number of model files and config files. "
+            "This might be because the Language Model Prediction Head "
+            "does not currently support saving and loading"
+        )
+        assert len(model_files) == len(config_files), error_str
         logger.info(f"Found files for loading {len(model_files)} prediction heads")
 
         return model_files, config_files
