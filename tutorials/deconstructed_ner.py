@@ -45,6 +45,8 @@ prediction_head = TokenClassificationHead(layer_dims=[768, len(processor.label_l
 language_model = Bert.load("bert-base-german-cased")
 # language_model.save_config("save")
 
+# model = AdaptiveModel.load("save/ner_model_1", device)
+
 model = AdaptiveModel(
     language_model=language_model,
     prediction_heads=[prediction_head],

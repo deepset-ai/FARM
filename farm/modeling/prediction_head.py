@@ -10,6 +10,7 @@ from torch.nn import CrossEntropyLoss
 import logging
 
 from pytorch_pretrained_bert.modeling import BertLMPredictionHead
+from farm.data_handler.utils import is_json
 
 logger = logging.getLogger(__name__)
 
@@ -48,21 +49,17 @@ class PredictionHead(nn.Module):
         self.save_config(save_dir, head_num)
 
     def generate_config(self):
-        self.config = {
-            k: v
-            for k, v in self.__dict__.items()
-            if (type(v) in [str, int, bool, float])
-        }
-        self.config.update({"name": self.__class__.__name__})
+        config = {}
+        for key, value in self.__dict__.items():
+            if is_json(value) and key[0] != "_":
+                config[key] = value
+        config["name"] = self.__class__.__name__
+        self.config = config
 
     @classmethod
     def load(cls, model_file, config_file):
         config = json.load(open(config_file))
-        # TODO make this more generic for other heads with more attributes
-        # e.g parse all args from config and feed them as **kwargs to subclasses constructor
-        prediction_head = cls.subclasses[config["name"]](
-            layer_dims=config["layer_dims_str"]
-        )
+        prediction_head = cls.subclasses[config["name"]](**config)
         logger.info("Loading prediction head from {}".format(model_file))
         prediction_head.load_state_dict(torch.load(model_file))
         return prediction_head
@@ -89,7 +86,7 @@ class TextClassificationHead(PredictionHead):
         super(TextClassificationHead, self).__init__()
         # TODO MP I think it would be nicer here to pass hidden_dim and num_labels and construct layer_dims from it.
         # num_labels could in most cases also be automatically retrieved from the data processor
-        self.layer_dims_str = layer_dims
+        self.layer_dims = layer_dims
         self.layer_dims_list = ast.literal_eval(str(layer_dims))
         self.feed_forward = FeedForwardBlock(self.layer_dims_list)
         self.num_labels = self.layer_dims_list[-1]
@@ -111,15 +108,6 @@ class TextClassificationHead(PredictionHead):
                 reduction=loss_reduction, ignore_index=loss_ignore_index
             )
         self.generate_config()
-
-    @classmethod
-    def load(cls, config_file, model_file):
-        config = json.load(open(config_file))
-        # TODO make this more generic for other heads with more attributes
-        prediction_head = cls(config["layer_dims_str"])
-        logger.info("Loading prediction head from {}".format(model_file))
-        prediction_head.load_state_dict(torch.load(model_file))
-        return prediction_head
 
     def forward(self, X):
         logits = self.feed_forward(X)
@@ -144,7 +132,7 @@ class TokenClassificationHead(PredictionHead):
     def __init__(self, layer_dims, **kwargs):
         super(TokenClassificationHead, self).__init__()
         # TODO having layer_dims as str and list here is not pretty. I would rather have the string only in load() and save()
-        self.layer_dims_str = layer_dims
+        self.layer_dims = layer_dims
         self.layer_dims_list = ast.literal_eval(str(layer_dims))
         self.feed_forward = FeedForwardBlock(self.layer_dims_list)
         self.num_labels = self.layer_dims_list[-1]
@@ -152,13 +140,6 @@ class TokenClassificationHead(PredictionHead):
         self.ph_output_type = "per_token"
         self.model_type = "token_classification"
         self.generate_config()
-
-    @classmethod
-    def load(cls, config, checkpoint_file):
-        prediction_head = cls(config["layer_dims_str"])
-        logger.info("Loading prediction head from {}".format(checkpoint_file))
-        prediction_head.load_state_dict(torch.load(checkpoint_file))
-        return prediction_head
 
     def forward(self, X):
         logits = self.feed_forward(X)
@@ -234,12 +215,13 @@ class BertLMHead(PredictionHead):
         self.ph_output_type = "per_token"
         self.generate_config()
 
-    # def generate_config(self):
-    #     self.config = {
-    #         "type": type(self).__name__,
-    #         "last_initialized": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-    #         "vocab_size": str(self.num_labels),
-    #     }
+    def save(self, save_dir, head_num=0):
+        logger.warning("The weights of BertLMHead are not saved")
+        self.save_config(save_dir, head_num)
+
+    @classmethod
+    def load(cls, model_file, config_file):
+        raise NotImplementedError("BertLMHead does not currently support loading")
 
     def forward(self, X):
         lm_logits = self.model(X)

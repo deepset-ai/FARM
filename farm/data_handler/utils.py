@@ -5,6 +5,8 @@ import tempfile
 from tqdm import tqdm
 import random
 import pandas as pd
+import json
+
 from farm.file_utils import http_get
 
 logger = logging.getLogger(__name__)
@@ -301,3 +303,11 @@ def mask_random_words(tokens, tokenizer):
             output_label.append(-1)
 
     return tokens, output_label
+
+
+def is_json(x):
+    try:
+        json.dumps(x)
+        return True
+    except:
+        return False
