@@ -1,16 +1,14 @@
 import ast
-import datetime
 import json
+import logging
 import os
-from dotmap import DotMap
-import random
 
 import torch
+from dotmap import DotMap
+from pytorch_pretrained_bert.modeling import BertLMPredictionHead
 from torch import nn
 from torch.nn import CrossEntropyLoss
-import logging
 
-from pytorch_pretrained_bert.modeling import BertLMPredictionHead
 from farm.utils import convert_iob_to_simple_tags
 
 logger = logging.getLogger(__name__)
@@ -58,7 +56,7 @@ class PredictionHead(nn.Module):
         self.config.update({"name": self.__class__.__name__})
 
     @classmethod
-    def load(cls, model_file, config_file):
+    def load(cls, model_file, config_file, device):
         config = json.load(open(config_file))
         # TODO make this more generic for other heads with more attributes
         # e.g parse all args from config and feed them as **kwargs to subclasses constructor
@@ -66,7 +64,7 @@ class PredictionHead(nn.Module):
             layer_dims=config["layer_dims_str"]
         )
         logger.info("Loading prediction head from {}".format(model_file))
-        prediction_head.load_state_dict(torch.load(model_file))
+        prediction_head.load_state_dict(torch.load(model_file, map_location=device))
         return prediction_head
 
     def logits_to_loss(self, logits, labels):
@@ -155,9 +153,9 @@ class TextClassificationHead(PredictionHead):
 
         assert len(preds) == len(probs) == len(contexts)
 
-        res = {"task": "text_classification", "prediction": []}
+        res = {"task": "text_classification", "predictions": []}
         for pred, prob, context in zip(preds, probs, contexts):
-            res["prediction"].append(
+            res["predictions"].append(
                 {
                     "start": None,
                     "end": None,
@@ -325,7 +323,7 @@ class TokenClassificationHead(PredictionHead):
         #     #     if start_of_word:
         #     #         sample.pred.append(preds)
         # sample.pred +=
-        res = {"task": "ner", "prediction": []}
+        res = {"task": "ner", "predictions": []}
         for preds_seq, probs_seq, sample, spans_seq in zip(
             preds, probs, samples, spans
         ):
@@ -342,7 +340,7 @@ class TokenClassificationHead(PredictionHead):
                         "probability": prob,
                     }
                 )
-            res["prediction"].append(seq_res)
+            res["predictions"].append(seq_res)
         return res
 
 
