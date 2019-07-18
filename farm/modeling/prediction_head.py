@@ -262,30 +262,7 @@ class TokenClassificationHead(PredictionHead):
         preds = self.logits_to_preds(logits, initial_mask, label_map)
         probs = self.logits_to_probs(logits, initial_mask)
 
-        # convert input_ids back to words
-
-        # align prediction bach to orginal spans
-        # vocab = {v: k for k, v in tokenizer.vocab.items()}
-        # input_ids = input_ids.cpu().numpy().tolist()
-        # words = []
-        # for seq in input_ids:
-        #     tokens_seq = [vocab[t] for t in seq]
-        #     words_seq = []
-        #     word = ""
-        #     for tok in tokens_seq:
-        #         if "##" in tok:
-        #             word += tok.replace("##", "")
-        #         elif tok not in ("[SEP]", "[CLS]", "[PAD]", "[unused3001]"):
-        #             if word != "":
-        #                 words_seq.append(word)
-        #             word = tok
-        #     if word != "":
-        #         words_seq.append(word)
-        #     words.append(words_seq)
-
-        # assert len(preds) == len(probs) == len(words)
-
-        # # align back with original input
+        # align back with original input by getting the original word spans
         spans = []
         for sample, sample_preds in zip(samples, preds):
             word_spans = []
@@ -308,23 +285,6 @@ class TokenClassificationHead(PredictionHead):
 
         assert len(preds) == len(probs) == len(spans)
 
-        # for sample, sample_preds in zip(samples, preds):
-        #     #sample.tokenized["preds"] = [-1 for _ in (sample.tokenized["tokens"])]
-        #     for num_word, pred in enumerate(sample_preds):
-        #         # get word
-        #         idx = sample.tokenized["start_of_word"].index(num_word)
-        #         word =
-        #         # get start end of IOB span
-        #         start =
-        #         end =
-
-        # # simplify IOB
-        #         idx = sample.tokenized["start_of_word"].index(num_word)
-        #         sample.tokenized["preds"][idx] = pred
-        #     # for start_of_word in sample.tokenized["start_of_word"]:
-        #     #     if start_of_word:
-        #     #         sample.pred.append(preds)
-        # sample.pred +=
         res = {"task": "ner", "prediction": []}
         for preds_seq, probs_seq, sample, spans_seq in zip(
             preds, probs, samples, spans
