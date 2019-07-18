@@ -10,15 +10,25 @@ from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
 from farm.data_handler.dataloader import NamedDataLoader
 from farm.utils import MLFlowLogger as MlLogger
+from farm.data_handler.processor import Processor
 
 logger = logging.getLogger(__name__)
 
 
 class DataSilo(object):
-    """ Loads the train, dev and test sets from file, calculates statistics from the data, casts datasets to
-    PyTorch DataLoader objects. """
+    """ Generates and stores PyTorch DataLoader objects for the train, dev and test datasets.
+    Relies upon functionality in the processor to do the conversion of the data """
 
     def __init__(self, processor, batch_size, distributed=False):
+        """
+        :param processor: A dataset specific Processor object which will turn input (file or dict) into a Pytorch Dataset.
+        :type processor: Processor
+        :param batch_size: The size of batch that should be returned by the DataLoaders.
+        :type batch_size: int
+        :param distributed: Set to True if the program is running in a distributed setting.
+        :type distributed: bool
+
+        """
         self.distributed = distributed
         self.processor = processor
         self.data = {}

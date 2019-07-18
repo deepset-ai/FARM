@@ -130,3 +130,7 @@ save/
 
 # models
 models/
+
+#mlruns
+mlruns/
+.DS_Store
