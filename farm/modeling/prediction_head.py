@@ -11,6 +11,7 @@ from torch.nn import CrossEntropyLoss
 import logging
 
 from pytorch_pretrained_bert.modeling import BertLMPredictionHead
+from farm.utils import convert_iob_to_simple_tags
 
 logger = logging.getLogger(__name__)
 
@@ -255,45 +256,93 @@ class TokenClassificationHead(PredictionHead):
         return ret
 
     def formatted_preds(
-        self, logits, label_map, tokenizer, initial_mask, input_ids, **kwargs
+        self, logits, label_map, tokenizer, initial_mask, input_ids, samples, **kwargs
     ):
+        # TODO check if label map is really translating correct here. We get weird predictions
         preds = self.logits_to_preds(logits, initial_mask, label_map)
         probs = self.logits_to_probs(logits, initial_mask)
 
         # convert input_ids back to words
-        vocab = {v: k for k, v in tokenizer.vocab.items()}
-        input_ids = input_ids.cpu().numpy().tolist()
-        words = []
-        for seq in input_ids:
-            tokens_seq = [vocab[t] for t in seq]
-            words_seq = []
-            word = ""
-            for tok in tokens_seq:
-                if "##" in tok:
-                    word += tok.replace("##", "")
-                elif tok not in ("[SEP]", "[CLS]", "[PAD]", "[unused3001]"):
-                    if word != "":
-                        words_seq.append(word)
-                    word = tok
-            words.append(words_seq)
 
-        # contexts = [sample.clear_text["text"] for sample in samples]
+        # align prediction bach to orginal spans
+        # vocab = {v: k for k, v in tokenizer.vocab.items()}
+        # input_ids = input_ids.cpu().numpy().tolist()
+        # words = []
+        # for seq in input_ids:
+        #     tokens_seq = [vocab[t] for t in seq]
+        #     words_seq = []
+        #     word = ""
+        #     for tok in tokens_seq:
+        #         if "##" in tok:
+        #             word += tok.replace("##", "")
+        #         elif tok not in ("[SEP]", "[CLS]", "[PAD]", "[unused3001]"):
+        #             if word != "":
+        #                 words_seq.append(word)
+        #             word = tok
+        #     if word != "":
+        #         words_seq.append(word)
+        #     words.append(words_seq)
 
         # assert len(preds) == len(probs) == len(words)
-        #
+
+        # # align back with original input
+        spans = []
+        for sample, sample_preds in zip(samples, preds):
+            word_spans = []
+            span = None
+            for token, offset, start_of_word in zip(
+                sample.tokenized["tokens"],
+                sample.tokenized["offsets"],
+                sample.tokenized["start_of_word"],
+            ):
+                if start_of_word:
+                    # previous word has ended unless it's the very first word
+                    if span is not None:
+                        word_spans.append(span)
+                    span = {"start": offset, "end": offset + len(token)}
+                else:
+                    # expand the span to include the subword-token
+                    span["end"] = offset + len(token.replace("##", ""))
+            word_spans.append(span)
+            spans.append(word_spans)
+
+        assert len(preds) == len(probs) == len(spans)
+
+        # for sample, sample_preds in zip(samples, preds):
+        #     #sample.tokenized["preds"] = [-1 for _ in (sample.tokenized["tokens"])]
+        #     for num_word, pred in enumerate(sample_preds):
+        #         # get word
+        #         idx = sample.tokenized["start_of_word"].index(num_word)
+        #         word =
+        #         # get start end of IOB span
+        #         start =
+        #         end =
+
+        # # simplify IOB
+        #         idx = sample.tokenized["start_of_word"].index(num_word)
+        #         sample.tokenized["preds"][idx] = pred
+        #     # for start_of_word in sample.tokenized["start_of_word"]:
+        #     #     if start_of_word:
+        #     #         sample.pred.append(preds)
+        # sample.pred +=
         res = {"task": "ner", "prediction": []}
-        for preds_seq, probs_seq, words_seq in zip(preds, probs, words):
-            for pred, prob, word in zip(preds_seq, probs_seq, words_seq):
-                rand_start = random.randint(0, len(words_seq))
-                res["prediction"].append(
+        for preds_seq, probs_seq, sample, spans_seq in zip(
+            preds, probs, samples, spans
+        ):
+            tags, spans_seq = convert_iob_to_simple_tags(preds_seq, spans_seq)
+            seq_res = []
+            for tag, prob, span in zip(tags, probs_seq, spans_seq):
+                context = sample.clear_text["text"][span["start"] : span["end"]]
+                seq_res.append(
                     {
-                        "start": rand_start,
-                        "end": rand_start + (len(word)),
-                        "context": f"{word}",
-                        "label": f"{pred}",
+                        "start": span["start"],
+                        "end": span["end"],
+                        "context": f"{context}",
+                        "label": f"{tag}",
                         "probability": prob,
                     }
                 )
+            res["prediction"].append(seq_res)
         return res
 
 

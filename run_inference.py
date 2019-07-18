@@ -1,7 +1,8 @@
 from farm.infer import Inferencer
 
-load_dir = "save/bert-de-CONLL2003"
-# load_dir = "save/GNAD"
+load_dir = "save/bert-german-CONLL2003"
+# load_dir = "save/bert-german-GNAD"
+# load_dir = "save/bert-german-GermEval18Fine"
 
 # raw_data = [
 #     [None, "This is one sentence"],
@@ -15,8 +16,10 @@ load_dir = "save/bert-de-CONLL2003"
 #     ["This is a third sentence", None],
 # ]
 
-# TODO NER expects "sentence", DOC Class "text" => should unify this
-dicts = [{"text": "This is one sentence"}, {"text": "This is another sentence"}]
+dicts = [
+    {"text": "Schartau sagte dem Tagesspiegel."},
+    {"text": "Martin spielt Fussball"},
+]
 model = Inferencer(load_dir)
 
 # samples = [{"texts": "Barack Obama was a president of the US"}]

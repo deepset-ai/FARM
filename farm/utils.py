@@ -121,3 +121,84 @@ def to_numpy(container):
         return container.cpu().numpy()
     except AttributeError:
         return container
+
+
+def convert_iob_to_simple_tags(preds, spans):
+    simple_tags = []
+    merged_spans = []
+    open_tag = False
+    for pred, span in zip(preds, spans):
+        # no entity
+        if not ("B-" in pred or "I-" in pred):
+            if open_tag:
+                # end of one tag
+                merged_spans.append(cur_span)
+                simple_tags.append(cur_tag)
+                open_tag = False
+            continue
+
+        # new span starting
+        elif "B-" in pred:
+            if open_tag:
+                # end of one tag
+                merged_spans.append(cur_span)
+                simple_tags.append(cur_tag)
+            cur_tag = pred.replace("B-", "")
+            cur_span = span
+            open_tag = True
+
+        elif "I-" in pred:
+            this_tag = pred.replace("I-", "")
+            if open_tag and this_tag == cur_tag:
+                cur_span["end"] = span["end"]
+            elif open_tag:
+                # end of one tag
+                merged_spans.append(cur_span)
+                simple_tags.append(cur_tag)
+                open_tag = False
+    if open_tag:
+        merged_spans.append(cur_span)
+        simple_tags.append(cur_tag)
+        open_tag = False
+    return simple_tags, merged_spans
+
+
+# def convert_iob_to_simple_tags(preds, words):
+#     simple_tags = []
+#     spans = []
+#     open_tag = False
+#     for pred, word in zip(preds, words):
+#         # no entity
+#         if not ("B-" in pred or "I-" in pred):
+#             if open_tag:
+#                 # end of one tag
+#                 spans.append(cur_span)
+#                 simple_tags.append(cur_tag)
+#                 open_tag = False
+#             continue
+#
+#         # new span starting
+#         elif "B-" in pred:
+#             if open_tag:
+#                 # end of one tag
+#                 spans.append(cur_span)
+#                 simple_tags.append(cur_tag)
+#                 open_tag = False
+#             cur_tag = pred.replace("B-", "")
+#             cur_span = [word]
+#             open_tag = True
+#
+#         elif "I-" in pred:
+#             this_tag = pred.replace("I-", "")
+#             if open_tag and this_tag == cur_tag:
+#                 cur_span.append(word)
+#             elif open_tag:
+#                 # end of one tag
+#                 spans.append(cur_span)
+#                 simple_tags.append(cur_tag)
+#                 open_tag = False
+#     if open_tag:
+#         spans.append(cur_span)
+#         simple_tags.append(cur_tag)
+#         open_tag = False
+#     return simple_tags, spans

@@ -8,7 +8,12 @@ import json
 
 from pytorch_pretrained_bert.tokenization import BertTokenizer
 
-from farm.data_handler.utils import read_tsv, read_docs_from_txt, read_ner_file
+from farm.data_handler.utils import (
+    read_tsv,
+    read_docs_from_txt,
+    read_ner_file,
+    words_to_tokens,
+)
 from farm.file_utils import create_folder
 from farm.data_handler.samples import create_samples_sentence_pairs
 from farm.data_handler.input_features import (
@@ -442,7 +447,21 @@ class CONLLProcessor(Processor):
         return dicts
 
     def _dict_to_samples(self, dict: dict) -> [Sample]:
-        return [Sample(id=None, clear_text=dict)]
+        words = dict["text"].split(" ")
+        word_offsets = []
+        cumulated = 0
+        for idx, word in enumerate(words):
+            word_offsets.append(cumulated)
+            cumulated += len(word) + 1  # 1 because we so far have whitespace tokenizer
+        tokens, offsets, start_of_word = words_to_tokens(
+            words, word_offsets, self.tokenizer, self.max_seq_len
+        )
+        tokenized = {
+            "tokens": tokens,
+            "offsets": offsets,
+            "start_of_word": start_of_word,
+        }
+        return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
 
     def _sample_to_features(self, sample) -> dict:
         features = samples_to_features_ner(

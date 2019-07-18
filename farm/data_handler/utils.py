@@ -183,29 +183,42 @@ def expand_labels(labels_word, initial_mask, non_initial_token):
     return labels_token
 
 
-def words_to_tokens(words, tokenizer, max_seq_length):
-    tokens_all = []
-    initial_mask = []
-    for w in words:
+def words_to_tokens(words, word_offsets, tokenizer, max_seq_len):
+    tokens = []
+    token_offsets = []
+    start_of_word = []
+    # word_nums = range(0, len(words))
+    # initial_mask = []
+    for w, w_off in zip(words, word_offsets):
+        # Get tokens of single word
         tokens_word = tokenizer.tokenize(w)
 
         # Sometimes the tokenizer returns no tokens
         if len(tokens_word) == 0:
             continue
+        tokens += tokens_word
 
-        n_non_initial_tokens = len(tokens_word) - 1
-        initial_mask += [1]
-        for _ in range(n_non_initial_tokens):
-            initial_mask += [0]
-        tokens_all += tokens_word
+        # get gloabl offset for each token in word + save marker for first tokens of a word
+        first_tok = True
+        for tok in tokens_word:
+            token_offsets.append(w_off)
+            w_off += len(tok.replace("##", ""))
+            if first_tok:
+                start_of_word.append(True)
+                first_tok = False
+            else:
+                start_of_word.append(False)
+            # n_non_initial_tokens = len(tokens_word) - 1
+        # initial_mask += [1]
+        # for _ in range(n_non_initial_tokens):
+        #    initial_mask += [0]
 
     # Clip at max_seq_length. The "-2" is for CLS and SEP token
-    tokens_all = tokens_all[: max_seq_length - 2]
-    initial_mask = initial_mask[: max_seq_length - 2]
+    tokens = tokens[: max_seq_len - 2]
+    # initial_mask = initial_mask[: max_seq_length - 2]
 
-    assert len(tokens_all) == len(initial_mask)
-
-    return tokens_all, initial_mask
+    assert len(tokens) == len(token_offsets) == len(start_of_word)
+    return tokens, token_offsets, start_of_word
 
 
 def get_sentence_pair(doc, all_docs, idx):

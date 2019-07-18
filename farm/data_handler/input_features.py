@@ -20,7 +20,7 @@ def sample_to_features_sequence(
     label_map = {label: i for i, label in enumerate(label_list)}
 
     tokens = tokenizer.tokenize(sample.clear_text["text"])
-
+    # tokens = sample.tokenized["word_pieces"]
     # Account for [CLS] and [SEP] with "- 2"
     if len(tokens) > max_seq_len - 2:
         tokens = tokens[: (max_seq_len - 2)]
@@ -98,9 +98,13 @@ def samples_to_features_ner(
 ):
 
     # Tokenize words and extend the labels so they are aligned with the tokens
-    words = sample.clear_text["text"].split(" ")
-    tokens, initial_mask = words_to_tokens(words, tokenizer, max_seq_len)
+    # words = sample.clear_text["text"].split(" ")
+    # tokens, initial_mask = words_to_tokens(words, tokenizer, max_seq_len)
 
+    tokens = sample.tokenized["tokens"]
+    initial_mask = [1 if x >= 0 else 0 for x in sample.tokenized["start_of_word"]]
+
+    # initial_mask =
     # Add CLS and SEP tokens
     tokens = add_cls_sep(tokens, cls_token, sep_token)
     initial_mask = [0] + initial_mask + [0]  # CLS and SEP don't count as initial tokens

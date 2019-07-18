@@ -15,11 +15,12 @@ class SampleBasket:
 class Sample(object):
     """A single training/test example."""
 
-    def __init__(self, id, clear_text, features=None):
+    def __init__(self, id, clear_text, tokenized=None, features=None):
 
         self.id = id
         self.clear_text = clear_text
         self.features = features
+        self.tokenized = tokenized
 
     def __str__(self):
         if self.clear_text:
