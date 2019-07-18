@@ -12,7 +12,7 @@ from farm.data_handler.utils import read_tsv, read_docs_from_txt, read_ner_file
 from farm.file_utils import create_folder
 from farm.data_handler.samples import create_samples_sentence_pairs
 from farm.data_handler.input_features import (
-    sample_to_features_sequence,
+    sample_to_features_text,
     samples_to_features_ner,
     samples_to_features_bert_lm,
 )
@@ -28,8 +28,13 @@ TOKENIZER_MAP = {"BertTokenizer": BertTokenizer}
 
 
 class Processor(ABC):
-    # TODO think about how to define this parent class so it enforces that certain attributes are initialized
-    # It's not an abstract class anymore!
+    """
+    Is used to generate PyTorch Datasets from input data. An implementation of this abstract class should be created
+    for each new data source. Must have dataset_from_file(), dataset_from_dicts(), load(),
+    load_from_file() and save() implemented in order to be compatible with the rest of the framework. The other
+    functions are optional
+    """
+
     subclasses = {}
 
     def __init__(
@@ -45,6 +50,30 @@ class Processor(ABC):
         data_dir,
         label_dtype=torch.long,
     ):
+        """
+        Initialize the abstract framework for a Processor
+
+        :param tokenizer: Used to split a sentence (str) into tokens.
+        :param max_seq_len: Samples are truncated after this many tokens.
+        :type max_seq_len: int
+        :param label_list: List of all unique target labels.
+        :type label_list: list
+        :param metrics: The metric used for evaluation, one per prediction head. Choose from TODO XXXX.
+        :type metrics: list or str
+        :param train_filename: The name of the file containing training data.
+        :type train_filename: str
+        :param dev_filename:The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
+        will be a slice of the train set.
+        :type dev_filename: str or None
+        :param test_filename: The name of the file containing test data.
+        :type: test_filename: str
+        :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
+        :type dev_split: float
+        :param data_dir: The directory in which the train, test and perhaps dev files can be found.
+        :type data_dir: str
+        :param label_dtype: The torch dtype for the labels.
+
+        """
         self.tokenizer = tokenizer
         self.max_seq_len = max_seq_len
         self.label_list = label_list
@@ -85,6 +114,7 @@ class Processor(ABC):
         :param tokenizer:
         :param max_seq_len:
         :return:
+        :rtype
         """
         return cls.subclasses[processor_name](
             data_dir=data_dir, tokenizer=tokenizer, max_seq_len=max_seq_len
@@ -120,15 +150,12 @@ class Processor(ABC):
         with open(output_config_file, "w") as file:
             json.dump(config, file)
 
-    @abc.abstractmethod
     def _file_to_dicts(self, file: str) -> [dict]:
         raise NotImplementedError()
 
-    @abc.abstractmethod
     def _dict_to_samples(self, dict: dict) -> [Sample]:
         raise NotImplementedError()
 
-    @abc.abstractmethod
     def _sample_to_features(self, sample: Sample) -> dict:
         raise NotImplementedError()
 
@@ -160,6 +187,12 @@ class Processor(ABC):
         return dataset, tensor_names
 
     def dataset_from_file(self, file):
+        """
+
+        :param file:
+        :return: dataset:
+        :rtype: dataset:
+        """
         self._init_baskets_from_file(file)
         self._init_samples_in_baskets()
         self._featurize_samples()
@@ -259,7 +292,7 @@ class GNADProcessor(Processor):
         return [Sample(id=None, clear_text=dict)]
 
     def _sample_to_features(self, sample) -> dict:
-        features = sample_to_features_sequence(
+        features = sample_to_features_text(
             sample=sample,
             label_list=self.label_list,
             max_seq_len=self.max_seq_len,
@@ -316,7 +349,7 @@ class GermEval18CoarseProcessor(Processor):
         return [Sample(id=None, clear_text=dict)]
 
     def _sample_to_features(self, sample) -> dict:
-        features = sample_to_features_sequence(
+        features = sample_to_features_text(
             sample=sample,
             label_list=self.label_list,
             max_seq_len=self.max_seq_len,
@@ -375,7 +408,7 @@ class GermEval18FineProcessor(Processor):
         return [Sample(id=None, clear_text=dict)]
 
     def _sample_to_features(self, sample) -> dict:
-        features = sample_to_features_sequence(
+        features = sample_to_features_text(
             sample=sample,
             label_list=self.label_list,
             max_seq_len=self.max_seq_len,

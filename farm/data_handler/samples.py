@@ -6,6 +6,9 @@ logger = logging.getLogger(__name__)
 
 
 class SampleBasket:
+    """ A collection of training / test samples. Useful in cases where one piece of text generates
+    multiple samples to be processed such as in question answering tasks."""
+
     def __init__(self, id: str, raw: dict, samples=None):
         self.id = id
         self.raw = raw
@@ -13,9 +16,17 @@ class SampleBasket:
 
 
 class Sample(object):
-    """A single training/test example."""
+    """A single training/test sample."""
 
     def __init__(self, id, clear_text, features=None):
+        """
+        :param id: The unique id of the sample
+        :type id: str
+        :param clear_text: A dictionary containing various human readable fields (e.g. text, label)
+        :type clear_text: dict
+        :param features: A dictionary containing features needed by the model to process this sample
+        :type features: dict
+        """
 
         self.id = id
         self.clear_text = clear_text

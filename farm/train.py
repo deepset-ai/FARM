@@ -6,6 +6,7 @@ from tqdm import tqdm
 
 from farm.utils import MLFlowLogger as MlLogger
 from farm.eval import Evaluator
+from farm.data_handler.data_silo import DataSilo
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,9 @@ except ImportError:
 
 
 class Trainer:
+    """Handles the main model training procedure. This includes performing evaluation on the dev set at regular
+    intervals during training as well as evaluation on the test set at the end of training."""
+
     def __init__(
         self,
         optimizer,
@@ -62,6 +66,27 @@ class Trainer:
         fp16=False,
         grad_acc_steps=1,
     ):
+        """
+        :param optimizer: An optimizer object that determines the learning strategy to be used during training
+        :param data_silo: A DataSilo object that will contain the train, dev and test datasets as PyTorch DataLoaders
+        :type data_silo: DataSilo
+        :param epochs: How many times the training procedure will loop through the train dataset
+        :type epochs: int
+        :param n_gpu: The number of gpus available for training and evaluation.
+        :type n_gpu: int
+        :param device: The device on which the train, dev and test tensors should be hosted.
+        Choose from "cpu" and "cuda"
+        :param warmup_linear: TODO
+        :param evaluate_every: Perform dev set evaluation after this many steps of training.
+        :param evaluate_every: int
+        :param evaluator_dev: The dev set Evaluator object.
+        :type evaluator_dev: Evaluator
+        :param evaluator_test: The test set Evaluator object.
+        :type evaluator_test: Evaluator
+        :param fp16: Whether to use floating point 16 mode.
+        :type fp16: bool
+        :param grad_acc_steps: TODO
+        """
         self.data_silo = data_silo
         self.epochs = int(epochs)
         self.optimizer = optimizer

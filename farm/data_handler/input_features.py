@@ -1,5 +1,11 @@
+"""
+Contains functions that turn readable clear text input into dictionaries of features
+"""
+
+
 import logging
 
+from farm.data_handler.samples import Sample
 from farm.data_handler.utils import (
     truncate_seq_pair,
     words_to_tokens,
@@ -12,10 +18,26 @@ from farm.data_handler.utils import (
 logger = logging.getLogger(__name__)
 
 
-def sample_to_features_sequence(
+def sample_to_features_text(
     sample, label_list, max_seq_len, tokenizer, target="classification"
 ):
-    """Loads a data file into a list of `InputBatch`s."""
+    """
+    Generates a dictionary of features for a given input sample that is to be consumed by a text classification model.
+
+    :param sample: Sample object that contains human readable text and label fields from a
+    single text classification data sample
+    :type sample: Sample
+    :param label_list: A list of all unique labels
+    :type label_list: list
+    :param max_seq_len: Sequences are truncated after this many tokens
+    :type max_seq_len: int
+    :param tokenizer: A tokenizer object that can turn string sentences into a list of tokens
+    :param target: Choose from "classification" and "regression"
+    :type target: str
+    :return: feat_dict: A dictionary containing the keys "input_ids", "padding_mask" and
+    "segment_ids" (also "label_ids" if not in inference mode). The values are lists containing those features.
+    :rtype: feat_dict: dict
+    """
 
     label_map = {label: i for i, label in enumerate(label_list)}
 
@@ -96,6 +118,29 @@ def samples_to_features_ner(
     non_initial_token="X",
     **kwargs
 ):
+    """
+    Generates a dictionary of features for a given input sample that is to be consumed by an NER model.
+
+    :param sample: Sample object that contains human readable text and label fields from a
+    single NER data sample
+    :type sample: Sample
+    :param label_list: A list of all unique labels
+    :type label_list: list
+    :param max_seq_len: Sequences are truncated after this many tokens
+    :type max_seq_len: int
+    :param tokenizer: A tokenizer object that can turn string sentences into a list of tokens
+    :param cls_token: Token used to represent the beginning of the sequence
+    :type cls_token: str
+    :param pad_token: Token used to represent sequence padding
+    :type pad_token: str
+    :param sep_token: Token used to represent the border between two sequences
+    :type sep_token: str
+    :param non_initial_token: Token that is inserted into the label sequence in positions where there is a
+    non-word-initial token. This is done since the default NER performs prediction only on word initial tokens
+    :return: feature_dict: A dictionary containing the keys "input_ids", "padding_mask", "segment_ids",
+    "initial_mask" (also "label_ids" if not in inference mode). The values are lists containing those features.
+    :rtype: feature_dict: dict
+    """
 
     # Tokenize words and extend the labels so they are aligned with the tokens
     words = sample.clear_text["text"].split(" ")

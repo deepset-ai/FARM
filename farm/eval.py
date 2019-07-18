@@ -5,18 +5,32 @@ import logging
 import numpy as np
 from seqeval.metrics import classification_report as token_classification_report
 from sklearn.metrics import classification_report
+from torch.utils.data import DataLoader
 
 from farm.metrics import compute_metrics
 from farm.utils import to_numpy
 from farm.utils import MLFlowLogger as MlLogger
+from farm.modeling.adaptive_model import AdaptiveModel
 
 logger = logging.getLogger(__name__)
 
 
 class Evaluator:
+    """Handles evaluation of a given model over a specified dataset"""
+
     def __init__(
         self, data_loader, label_maps, device, metrics, classification_report=True
     ):
+        """
+        :param data_loader: The PyTorch DataLoader that will return batches of data from the evaluation dataset
+        :type data_loader: DataLoader
+        :param label_maps:
+        :param device: The device on which the tensors should be processed. Choose from "cpu" and "cuda".
+        :param metrics: The list of metrics which need to be computed, one for each prediction head.
+        :param metrics: list
+        :param classification_report: Whether a report on the classification performance should be generated.
+        :type classification_report: bool
+        """
 
         self.data_loader = data_loader
         self.label_maps = label_maps
@@ -28,6 +42,15 @@ class Evaluator:
         self.classification_report = classification_report
 
     def eval(self, model):
+        """
+        Performs evaluation on a given model.
+
+        :param model: The model on which to perform evaluation
+        :type model: AdaptiveModel
+        :return all_results: A list of dictionaries, one for each prediction head.
+        Each dictionary contains the metrics and reports generated during evaluation.
+        :rtype all_results: list of dicts
+        """
         model.eval()
 
         # init empty lists per prediction head

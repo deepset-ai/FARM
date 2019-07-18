@@ -92,6 +92,7 @@ class LanguageModel(nn.Module):
     def save(self, save_dir):
         # Save Weights
         save_name = os.path.join(save_dir, "language_model.bin")
+
         torch.save(self.state_dict(), save_name)
         self.save_config(save_dir)
 
