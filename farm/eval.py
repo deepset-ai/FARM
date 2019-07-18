@@ -100,6 +100,8 @@ class Evaluator:
                     report_fn = token_classification_report
                 elif head.ph_output_type == "per_sequence":
                     report_fn = classification_report
+                elif head.ph_output_type == "per_token_squad":
+                    report_fn = lambda *args, **kwargs: "not Implemented"
                 else:
                     raise NotImplementedError
                 result["report"] = report_fn(

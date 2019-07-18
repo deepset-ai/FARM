@@ -55,9 +55,10 @@ class DataSilo(object):
             self.data["dev"], _ = self.processor.dataset_from_file(dev_file)
 
         # test data
-        test_file = os.path.join(self.processor.data_dir, self.processor.test_filename)
-        logger.info("Loading test set from: {}".format(test_file))
-        self.data["test"], _ = self.processor.dataset_from_file(test_file)
+        if self.processor.test_filename:
+            test_file = os.path.join(self.processor.data_dir, self.processor.test_filename)
+            logger.info("Loading test set from: {}".format(test_file))
+            self.data["test"], _ = self.processor.dataset_from_file(test_file)
 
         # derive stats and meta data
         self._calculate_statistics()
@@ -85,12 +86,15 @@ class DataSilo(object):
             tensor_names=self.tensor_names,
         )
 
-        data_loader_test = NamedDataLoader(
-            dataset=self.data["test"],
-            sampler=SequentialSampler(self.data["test"]),
-            batch_size=self.batch_size,
-            tensor_names=self.tensor_names,
-        )
+        if self.processor.test_filename:
+            data_loader_test = NamedDataLoader(
+                dataset=self.data["test"],
+                sampler=SequentialSampler(self.data["test"]),
+                batch_size=self.batch_size,
+                tensor_names=self.tensor_names,
+            )
+        else:
+            data_loader_test = None
 
         self.loaders = {
             "train": data_loader_train,
@@ -116,18 +120,18 @@ class DataSilo(object):
         self.counts = {
             "train": len(self.data["train"]),
             "dev": len(self.data["dev"]),
-            "test": len(self.data["test"]),
+            "test": len(self.data.get("test", [])),
         }
 
-        logger.info("Examples in train: {}".format(len(self.data["train"])))
-        logger.info("Examples in dev  : {}".format(len(self.data["dev"])))
-        logger.info("Examples in test : {}".format(len(self.data["test"])))
+        logger.info("Examples in train: {}".format(self.counts["train"]))
+        logger.info("Examples in dev  : {}".format(self.counts["dev"]))
+        logger.info("Examples in test : {}".format(self.counts["test"]))
 
         MlLogger.log_params(
             {
-                "n_samples_train": len(self.data["train"]),
-                "n_samples_dev": len(self.data["dev"]),
-                "n_samples_test": len(self.data["test"]),
+                "n_samples_train": self.counts["train"],
+                "n_samples_dev": self.counts["train"],
+                "n_samples_test": self.counts["train"],
             }
         )
 
