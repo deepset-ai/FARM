@@ -1,17 +1,12 @@
+import logging
+import os
+
 from torch import nn
 
-from farm.modeling.prediction_head import (
-    TextClassificationHead,
-    PredictionHead,
-    TokenClassificationHead,
-)
-from farm.modeling.language_model import LanguageModel
 from farm.file_utils import create_folder
-import os
-import logging
-
+from farm.modeling.language_model import LanguageModel
+from farm.modeling.prediction_head import PredictionHead
 from farm.utils import MLFlowLogger as MlLogger
-
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +48,9 @@ class AdaptiveModel(nn.Module):
         prediction_heads = []
         ph_output_type = []
         for model_file, config_file in zip(ph_model_files, ph_config_files):
-            head = PredictionHead.load(model_file=model_file, config_file=config_file)
+            head = PredictionHead.load(
+                model_file=model_file, config_file=config_file, device=device
+            )
             prediction_heads.append(head)
             ph_output_type.append(head.ph_output_type)
 
