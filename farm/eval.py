@@ -47,7 +47,6 @@ class Evaluator:
                 # TODO logits_to_loss should be a single, overloaded function
                 losses_per_head = model.logits_to_loss_per_head(logits=logits, **batch)
 
-                # TODO how should this label_map work for multiple heads?
                 preds = model.logits_to_preds(
                     logits=logits, label_maps=self.label_maps, **batch
                 )
@@ -89,7 +88,7 @@ class Evaluator:
     @staticmethod
     def log_results(results, dataset_name, steps, logging=True, print=True):
         logger.info(
-            "***** Evaluation Results on {} data after {} steps *****".format(
+            "\n***** Evaluation Results on {} data after {} steps *****".format(
                 dataset_name, steps
             )
         )

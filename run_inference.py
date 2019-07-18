@@ -17,8 +17,8 @@ load_dir = "save/bert-german-CONLL2003"
 # ]
 
 dicts = [
-    {"text": "Schartau sagte dem Tagesspiegel."},
-    {"text": "Martin spielt Fussball"},
+    {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot ist"},
+    {"text": "Martin Müller spielt Fussball"},
 ]
 model = Inferencer(load_dir)
 

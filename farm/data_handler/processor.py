@@ -423,8 +423,6 @@ class CONLLProcessor(Processor):
             "X",
             "B-OTH",
             "I-OTH",
-            "[CLS]",
-            "[SEP]",
         ]
         label_dtype = torch.long
         metric = "seq_f1"
@@ -499,8 +497,6 @@ class GermEval14Processor(Processor):
             "X",
             "B-OTH",
             "I-OTH",
-            "[CLS]",
-            "[SEP]",
         ]
         label_dtype = torch.long
         metric = "seq_f1"

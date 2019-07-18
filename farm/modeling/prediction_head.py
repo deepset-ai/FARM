@@ -255,10 +255,7 @@ class TokenClassificationHead(PredictionHead):
                 ret.append(s)
         return ret
 
-    def formatted_preds(
-        self, logits, label_map, tokenizer, initial_mask, input_ids, samples, **kwargs
-    ):
-        # TODO check if label map is really translating correct here. We get weird predictions
+    def formatted_preds(self, logits, label_map, initial_mask, samples, **kwargs):
         preds = self.logits_to_preds(logits, initial_mask, label_map)
         probs = self.logits_to_probs(logits, initial_mask)
 

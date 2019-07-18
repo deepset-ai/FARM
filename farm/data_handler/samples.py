@@ -35,11 +35,19 @@ class Sample(object):
             )
         else:
             feature_str = "None"
+
+        if self.tokenized:
+            tokenized_str = "\n \t".join(
+                [k + ": " + str(v) for k, v in self.tokenized.items()]
+            )
+        else:
+            tokenized_str = "None"
         s = (
             "*** Example ***\n"
-            "ID: {}\n"
-            "Clear Text: \n \t{}\n"
-            "Features: \n \t{}".format(self.id, clear_text_str, feature_str)
+            f"ID: {self.id}\n"
+            f"Clear Text: \n \t{clear_text_str}\n"
+            f"Tokenized: \n \t {tokenized_str}\n"
+            f"Features: \n \t{feature_str}"
         )
         return s
 

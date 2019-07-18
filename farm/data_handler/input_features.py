@@ -102,7 +102,7 @@ def samples_to_features_ner(
     # tokens, initial_mask = words_to_tokens(words, tokenizer, max_seq_len)
 
     tokens = sample.tokenized["tokens"]
-    initial_mask = [1 if x >= 0 else 0 for x in sample.tokenized["start_of_word"]]
+    initial_mask = [int(x) for x in sample.tokenized["start_of_word"]]
 
     # initial_mask =
     # Add CLS and SEP tokens
@@ -116,7 +116,7 @@ def samples_to_features_ner(
     if "label" in sample.clear_text:
         labels_word = sample.clear_text["label"]
         labels_token = expand_labels(labels_word, initial_mask, non_initial_token)
-        labels_token = add_cls_sep(labels_token, cls_token, sep_token)
+        # labels_token = add_cls_sep(labels_token, cls_token, sep_token)
         label_ids = [label_list.index(lt) for lt in labels_token]
     # Inference mode
     else:

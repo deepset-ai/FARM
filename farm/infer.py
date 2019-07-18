@@ -7,6 +7,7 @@ from farm.modeling.adaptive_model import AdaptiveModel
 
 from farm.utils import initialize_device_settings
 from farm.data_handler.processor import Processor
+from farm.utils import set_all_seeds
 
 
 class Inferencer:
@@ -26,6 +27,7 @@ class Inferencer:
         self.prediction_type = self.model.prediction_heads[0].model_type
         self.name = load_dir
         self.label_map = self.processor.label_maps[0]
+        set_all_seeds(42, 1)
 
     def run_inference(self, dicts):
         dataset, tensor_names = self.processor.dataset_from_dicts(dicts)
