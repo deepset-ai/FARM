@@ -156,7 +156,6 @@ class Bert(LanguageModel):
             # it is a huggingface style config
             language = cls._infer_language_from_name(pretrained_model_name_or_path)
         bert.language = language
-        bert.model.eval()
         return bert
 
     def forward(
