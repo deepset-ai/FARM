@@ -1,3 +1,4 @@
+import os
 import torch
 
 from torch.utils.data.sampler import SequentialSampler
@@ -24,7 +25,7 @@ class Inferencer:
         self.language = self.model.language_model.language
         # TODO adjust for multiple prediction heads
         self.prediction_type = self.model.prediction_heads[0].model_type
-        self.name = load_dir
+        self.name = os.path.basename(load_dir)
         self.label_map = self.processor.label_maps[0]
 
     def run_inference(self, dicts):
@@ -53,5 +54,5 @@ class Inferencer:
                     tokenizer=self.processor.tokenizer,
                     **batch
                 )
-                preds_all.append(preds)
+                preds_all.extend(preds)
         return preds_all

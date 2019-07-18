@@ -1,10 +1,11 @@
 import logging
-
-import numpy
-from flask import Flask, request
+from pathlib import Path
+import json
+import numpy as np
+from flask import Flask, request, make_response
 from flask_restplus import Api, Resource
-
-from farm.inference import Inferencer
+from flask_cors import CORS
+from farm.infer import Inferencer
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -13,12 +14,17 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
+MODELS_DIR = "save"
 INFERENCERS = {}
-load_dirs = ["save"]
+
+path = Path(MODELS_DIR)
+load_dirs = [f for f in path.iterdir() if f.is_dir()]
+
 for idx, model_dir in enumerate(load_dirs):
-    INFERENCERS[idx + 1] = Inferencer(model_dir)
+    INFERENCERS[idx + 1] = Inferencer(str(model_dir))
 
 app = Flask(__name__)
+CORS(app)
 api = Api(app, debug=True, validate=True, version="1.0", title="FARM NLP APIs")
 app.config["JSON_SORT_KEYS"] = True
 app.config["RESTPLUS_VALIDATE"] = True
@@ -41,23 +47,34 @@ class ModelListEndpoint(Resource):
         return resp
 
 
-@api.route("/models/<int:model_id>/sequence-classification")
-class SequenceClassificationEndpoint(Resource):
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, np.float32):
+            return str(obj)
+        return json.JSONEncoder.default(self, obj)
+
+
+@api.representation("application/json")
+def resp_json(data, code, headers=None):
+    resp = make_response(json.dumps(data, cls=NumpyEncoder), code)
+    resp.headers.extend(headers or {})
+    return resp
+
+
+@api.route("/models/<int:model_id>/inference")
+class InferenceEndpoint(Resource):
     def post(self, model_id):
         model = INFERENCERS.get(model_id, None)
         if not model:
             return "Model not found", 404
 
-        samples = request.get_json().get("input_samples", None)
-        if not samples:
+        dicts = request.get_json().get("input", None)
+        if not dicts:
             return {}
-        raw_data = [sample["texts"] for sample in samples]
-        result = model.run_inference(raw_data=raw_data)
-
-        for key, value in result.items():
-            if isinstance(value, numpy.floating):
-                result[key] = "%.2f" % value
-        return {"predictions": result}
+        results = model.run_inference(dicts=dicts)
+        return results[0]
 
 
 if __name__ == "__main__":
