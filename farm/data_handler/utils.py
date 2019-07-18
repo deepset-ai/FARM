@@ -1,5 +1,7 @@
 import logging
 import os
+import json
+from requests import get
 import tarfile
 import tempfile
 from tqdm import tqdm
@@ -13,16 +15,19 @@ logger = logging.getLogger(__name__)
 
 DOWNSTREAM_TASK_MAP = {
     "gnad": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/gnad.tar.gz",
-    "conll03-de": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/conll03de.tar.gz",
     "germeval14": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/germeval14.tar.gz",
     "germeval18": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/germeval18.tar.gz",
+    "squad20": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/squad20.tar.gz",
+    "conll03detrain": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/training_data_for_Stanford_NER/NER-de-train-conll-formated.txt",
+    "conll03dedev": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/training_data_for_Stanford_NER/NER-de-dev-conll-formated.txt",
+    "conll03detest": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/training_data_for_Stanford_NER/NER-de-test-conll-formated.txt",
 }
 
 # TODO skip_first_line is not used here? Do processors expext this to work?
 def read_tsv(filename, quotechar='"', delimiter="\t", skiprows=None, columns=None):
     """Reads a tab separated value file. Tries to download the data if filename is not found"""
     if not (os.path.exists(filename)):
-        download_extract_downstream_data(filename)
+        _download_extract_downstream_data(filename)
     df = pd.read_csv(
         filename,
         sep=delimiter,
@@ -44,7 +49,7 @@ def read_ner_file(filename, **kwargs):
     [ ['EU', 'B-ORG'], ['rejects', 'O'], ['German', 'B-MISC'], ['call', 'O'], ['to', 'O'], ['boycott', 'O'], ['British', 'B-MISC'], ['lamb', 'O'], ['.', 'O'] ]
     """
     if not (os.path.exists(filename)):
-        download_extract_downstream_data(filename)
+        _download_extract_downstream_data(filename)
     f = open(filename)
 
     data = []
@@ -66,7 +71,16 @@ def read_ner_file(filename, **kwargs):
     return data
 
 
-def download_extract_downstream_data(input_file):
+def read_squad_file(filename):
+    """Read a SQuAD json file"""
+    if not (os.path.exists(filename)):
+        _download_extract_downstream_data(filename)
+    with open(filename, "r", encoding="utf-8") as reader:
+        input_data = json.load(reader)["data"]
+    return input_data
+
+
+def _download_extract_downstream_data(input_file):
     # download archive to temp dir and extract to correct position
     full_path = os.path.realpath(input_file)
     directory = os.path.dirname(full_path)
@@ -75,7 +89,13 @@ def download_extract_downstream_data(input_file):
     logger.info(
         "downloading and extracting file {} to dir {}".format(taskname, datadir)
     )
-    if taskname not in DOWNSTREAM_TASK_MAP:
+    if "conll03de" in taskname:
+        # conll03 is copyrighted, but luckily somebody put it on github. Kudos!
+        if not os.path.exists(directory):
+            os.mkdir(directory)
+        for dataset in ["train", "dev", "test"]:
+            _conll03get(dataset, directory)
+    elif taskname not in DOWNSTREAM_TASK_MAP:
         logger.error("Cannot download {}. Unknown data source.".format(taskname))
     else:
         with tempfile.NamedTemporaryFile() as temp_file:
@@ -85,6 +105,15 @@ def download_extract_downstream_data(input_file):
             tfile = tarfile.open(temp_file.name)
             tfile.extractall(datadir)
         # temp_file gets deleted here
+
+
+def _conll03get(dataset, directory):
+    # open in binary mode
+    with open(os.path.join(directory, f"{dataset}.txt"), "wb") as file:
+        # get request
+        response = get(DOWNSTREAM_TASK_MAP[f"conll03de{dataset}"])
+        # write to file
+        file.write(response.content)
 
 
 def read_docs_from_txt(filename, delimiter="", encoding="utf-8"):
@@ -311,3 +340,40 @@ def is_json(x):
         return True
     except:
         return False
+
+
+def words_to_tokens(words, word_offsets, tokenizer, max_seq_len):
+    tokens = []
+    token_offsets = []
+    start_of_word = []
+    # word_nums = range(0, len(words))
+    # initial_mask = []
+    for w, w_off in zip(words, word_offsets):
+        # Get tokens of single word
+        tokens_word = tokenizer.tokenize(w)
+        # Sometimes the tokenizer returns no tokens
+        if len(tokens_word) == 0:
+            continue
+        tokens += tokens_word
+        # get gloabl offset for each token in word + save marker for first tokens of a word
+        first_tok = True
+        for tok in tokens_word:
+            token_offsets.append(w_off)
+            w_off += len(tok.replace("##", ""))
+            if first_tok:
+                start_of_word.append(True)
+                first_tok = False
+            else:
+                start_of_word.append(False)
+            # n_non_initial_tokens = len(tokens_word) - 1
+        # initial_mask += [1]
+        # for _ in range(n_non_initial_tokens):
+        #    initial_mask += [0]
+    # Clip at max_seq_length. The "-2" is for CLS and SEP token
+    # TODO make clipping only dependant on max seq length. E.g. question asnwering has 2 SEP tokens...
+    tokens = tokens[: max_seq_len - 2]
+    token_offsets = token_offsets[: max_seq_len - 2]
+    start_of_word = start_of_word[: max_seq_len - 2]
+    # initial_mask = initial_mask[: max_seq_length - 2]
+    assert len(tokens) == len(token_offsets) == len(start_of_word)
+    return tokens, token_offsets, start_of_word

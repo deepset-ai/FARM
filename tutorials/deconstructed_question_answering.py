@@ -4,10 +4,10 @@ import logging
 import torch
 
 from farm.data_handler.data_silo import DataSilo
-from farm.data_handler.processor import CONLLProcessor, GermEval14Processor
+from farm.data_handler.processor import SquadProcessor
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
-from farm.modeling.prediction_head import TokenClassificationHead
+from farm.modeling.prediction_head import QuestionAnsweringHead
 from farm.modeling.tokenization import BertTokenizer
 from farm.train import Trainer
 from farm.experiment import calculate_optimization_steps, initialize_optimizer
@@ -20,25 +20,34 @@ logging.basicConfig(
 )
 
 ml_logger = MLFlowLogger(tracking_uri="http://80.158.39.167:5000/")
-ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_minimal_example_ner")
+ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_question_answering")
 
 ##########################
 ########## Settings
 ##########################
 set_all_seeds(seed=42)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-n_epochs = 4
-batch_size = 32
-evaluate_every = 50
-lang_model = "bert-base-german-cased"
+#device = torch.device("cpu")
+batch_size = 16
+n_epochs = 5
+evaluate_every = 30
+base_LM_model = "bert-base-cased"
+train_filename="train-v2.0.json"
+dev_filename="dev-v2.0.json"
+save_dir = "../save/qa_model_full"
 
 
 tokenizer = BertTokenizer.from_pretrained(
-    pretrained_model_name_or_path=lang_model, do_lower_case=False
+    pretrained_model_name_or_path=base_LM_model, do_lower_case=False
 )
 
-processor = CONLLProcessor(
-    tokenizer=tokenizer, max_seq_len=128, data_dir="../data/conll03de"
+processor = SquadProcessor(
+    tokenizer=tokenizer,
+    max_seq_len=256,
+    train_filename=train_filename,
+    dev_filename=dev_filename,
+    test_filename=None,
+    data_dir="../data/squad20",
 )
 
 # TODO Maybe data_dir should not be an argument here but in pipeline
@@ -46,12 +55,10 @@ processor = CONLLProcessor(
 data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=False)
 
 # Init model
-prediction_head = TokenClassificationHead(layer_dims=[768, len(processor.label_list)])
+prediction_head = QuestionAnsweringHead(layer_dims=[768, len(processor.label_list)])
 
-language_model = Bert.load(lang_model)
+language_model = Bert.load(base_LM_model)
 # language_model.save_config("save")
-
-# model = AdaptiveModel.load("save/ner_model_1", device)
 
 model = AdaptiveModel(
     language_model=language_model,
@@ -64,8 +71,8 @@ model = AdaptiveModel(
 # Init optimizer
 optimizer, warmup_linear = initialize_optimizer(
     model=model,
-    learning_rate=2e-5,
-    warmup_proportion=0.1,
+    learning_rate=1e-5,
+    warmup_proportion=0.2,
     n_examples=data_silo.n_samples("train"),
     batch_size=batch_size,
     n_epochs=n_epochs,
@@ -75,7 +82,7 @@ optimizer, warmup_linear = initialize_optimizer(
 trainer = Trainer(
     optimizer=optimizer,
     data_silo=data_silo,
-    epochs=n_epochs,
+    epochs=1,
     n_gpu=1,
     warmup_linear=warmup_linear,
     evaluate_every=evaluate_every,
@@ -84,5 +91,5 @@ trainer = Trainer(
 
 model = trainer.train(model)
 
-model.save("save/ner_model_1")
-processor.save("save/ner_model_1")
+model.save(save_dir)
+processor.save(save_dir)

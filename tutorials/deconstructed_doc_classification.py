@@ -11,7 +11,7 @@ from farm.modeling.tokenization import BertTokenizer
 from farm.train import Trainer
 from farm.experiment import initialize_optimizer, calculate_optimization_steps
 from farm.utils import set_all_seeds, MLFlowLogger
-from farm.data_handler.processor import GNADProcessor
+from farm.data_handler.processor import GNADProcessor, GermEval18CoarseProcessor, GermEval18FineProcessor
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
@@ -19,31 +19,36 @@ logging.basicConfig(
     level=logging.INFO)
 
 ml_logger = MLFlowLogger(tracking_uri="http://80.158.39.167:5000/")
-ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_minimal_example")
+ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_doc_classification")
 
+##########################
+########## Settings
+##########################
 set_all_seeds(seed=42)
-
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+n_epochs = 1
+batch_size = 32
+evaluate_every = 30
+lang_model = "bert-base-german-cased"
 
 tokenizer = BertTokenizer.from_pretrained(
-    pretrained_model_name_or_path="bert-base-german-cased",
+    pretrained_model_name_or_path=lang_model,
     do_lower_case=False)
 
-processor = GNADProcessor(tokenizer=tokenizer,
+processor = GermEval18CoarseProcessor(tokenizer=tokenizer,
                           max_seq_len=128,
-                          data_dir="../data/gnad",
-                          train_filename="train.csv")
+                          data_dir="../data/germeval18")
 
 # Pipeline should also contain metric
 data_silo = DataSilo(
     processor=processor,
-    batch_size=32,
+    batch_size=batch_size,
     distributed=False)
 
 # Init model
-prediction_head = TextClassificationHead(layer_dims=[768, 9])
+prediction_head = TextClassificationHead(layer_dims=[768, len(processor.label_list)])
 
-language_model = Bert.load("bert-base-german-cased")
+language_model = Bert.load(lang_model)
 
 # TODO where are balance class weights?
 model = AdaptiveModel(
@@ -59,16 +64,16 @@ optimizer, warmup_linear = initialize_optimizer(
     learning_rate=2e-5,
     warmup_proportion=0.1,
     n_examples=data_silo.n_samples("train"),
-    batch_size=16,
+    batch_size=batch_size,
     n_epochs=1)
 
 trainer = Trainer(
     optimizer=optimizer,
     data_silo=data_silo,
-    epochs=1,
+    epochs=n_epochs,
     n_gpu=1,
     warmup_linear=warmup_linear,
-    evaluate_every=100,
+    evaluate_every=evaluate_every,
     device=device)
 
 model = trainer.train(model)

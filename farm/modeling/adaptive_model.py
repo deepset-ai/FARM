@@ -123,6 +123,8 @@ class AdaptiveModel(nn.Module):
                 output = self.dropout(sequence_output)
             elif lm_out == "per_sequence":
                 output = self.dropout(pooled_output)
+            elif lm_out == "per_token_squad":
+                output = self.dropout(sequence_output)
             else:
                 raise ValueError(
                     "Unknown extraction strategy from language model: {}".format(lm_out)

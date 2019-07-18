@@ -139,16 +139,17 @@ class Trainer:
                 self.backward_propagate(per_sample_loss, step)
 
                 # Perform  evaluation
-                if self.global_step != 1 and (
-                    self.global_step % self.evaluate_every == 1
+                if self.global_step != 0 and (
+                    self.global_step % self.evaluate_every == 0
                 ):
                     result = self.evaluator_dev.eval(model)
                     self.evaluator_dev.log_results(result, "Val", self.global_step)
 
                 self.global_step += 1
 
-        result = self.evaluator_test.eval(model)
-        self.evaluator_test.log_results(result, "Test", self.global_step)
+        if self.evaluator_test.data_loader is not None:
+            result = self.evaluator_test.eval(model)
+            self.evaluator_test.log_results(result, "Test", self.global_step)
         return model
 
     def backward_propagate(self, loss, step):

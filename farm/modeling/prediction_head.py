@@ -152,7 +152,9 @@ class TokenClassificationHead(PredictionHead):
         active_loss = padding_mask.view(-1) == 1
         active_logits = logits.view(-1, self.num_labels)[active_loss]
         active_labels = label_ids.view(-1)[active_loss]
-        loss = self.loss_fct(active_logits, active_labels)
+        loss = self.loss_fct(
+            active_logits, active_labels
+        )  # loss is a 1 dimemnsional (active) token loss
         return loss
 
     def logits_to_preds(self, logits, initial_mask, label_map, **kwargs):
@@ -213,6 +215,7 @@ class BertLMHead(PredictionHead):
         # TODO Check if weight init needed!
         # self.apply(self.init_bert_weights)
         self.ph_output_type = "per_token"
+        # TODO add model type for loading self.model_type = "language_modelling"
         self.generate_config()
 
     def save(self, save_dir, head_num=0):
@@ -283,3 +286,69 @@ class FeedForwardBlock(nn.Module):
     def forward(self, X):
         logits = self.feed_forward(X)
         return logits
+
+
+class QuestionAnsweringHead(PredictionHead):
+    def __init__(self, layer_dims, **kwargs):
+        super(QuestionAnsweringHead, self).__init__()
+        self.layer_dims = layer_dims
+        self.layer_dims_list = ast.literal_eval(str(layer_dims))
+        self.feed_forward = FeedForwardBlock(self.layer_dims_list)
+        self.num_labels = self.layer_dims_list[-1]
+        self.ph_output_type = "per_token_squad"
+        self.model_type = "text_classification"
+        self.generate_config()
+
+    def forward(self, X):
+        logits = self.feed_forward(X)
+        start_logits, end_logits = logits.split(1, dim=-1)
+        start_logits = start_logits.squeeze(-1)
+        end_logits = end_logits.squeeze(-1)
+        return (start_logits, end_logits)
+
+    def logits_to_loss(self, logits, start_position, end_position, **kwargs):
+        (start_logits, end_logits) = logits
+
+        if len(start_position.size()) > 1:
+            start_position = start_position.squeeze(-1)
+        if len(end_position.size()) > 1:
+            end_position = end_position.squeeze(-1)
+        # sometimes the start/end positions are outside our model inputs, we ignore these terms
+        ignored_index = start_logits.size(1)
+        start_position.clamp_(0, ignored_index)
+        end_position.clamp_(0, ignored_index)
+
+        loss_fct = CrossEntropyLoss(ignore_index=ignored_index, reduction="none")
+        start_loss = loss_fct(start_logits, start_position)
+        end_loss = loss_fct(end_logits, end_position)
+        total_loss = (start_loss + end_loss) / 2
+        return total_loss
+
+    def logits_to_preds(self, logits, **kwargs):
+        (start_logits, end_logits) = logits
+        # TODO add checking for validity, e.g. end_idx coming after start_idx
+        start_idx = torch.argmax(start_logits, dim=1)
+        end_idx = torch.argmax(end_logits, dim=1)
+        return (start_idx, end_idx)
+
+    def prepare_labels(self, start_position, end_position, **kwargs):
+        return (start_position, end_position)
+
+    def formatted_preds(self, logits, samples, segment_ids, **kwargs) -> [str]:
+        all_preds = []
+        # TODO fix inference bug, model.forward is packing logits into list
+        logits = logits[0]
+        (start_idx, end_idx) = self.logits_to_preds(logits=logits)
+        # we have char offsets for the questions context in samples.tokenized
+        # we have start and end idx, but with the question tokens in front
+        # lets shift this by the index of first segment ID corresponding to context
+        shifts = torch.argmax(segment_ids, dim=1)
+        start_idx = (start_idx - shifts).cpu().numpy()
+        end_idx = (end_idx - shifts).cpu().numpy()
+        # TODO features and samples might not be aligned the way we still possibly split a sample into multiple features
+        for i, sample in enumerate(samples):
+            answer = " ".join(sample.tokenized["tokens"][start_idx[i] : end_idx[i]])
+            answer = answer.replace(" ##", "")
+            answer = answer.replace("##", "")
+            all_preds.append(answer)
+        return all_preds

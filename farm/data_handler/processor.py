@@ -1,26 +1,35 @@
-import torch
-import os
 import abc
-from abc import ABC
-import random
-import logging
 import json
+import logging
+import os
+import random
+from abc import ABC
 
-from pytorch_pretrained_bert.tokenization import BertTokenizer
+import torch
 
-from farm.data_handler.utils import read_tsv, read_docs_from_txt, read_ner_file
-from farm.file_utils import create_folder
-from farm.data_handler.samples import create_samples_sentence_pairs
+from farm.data_handler.dataset import convert_features_to_dataset
 from farm.data_handler.input_features import (
     sample_to_features_text,
     samples_to_features_ner,
     samples_to_features_bert_lm,
+    sample_to_features_squad,
 )
-from farm.data_handler.dataset import convert_features_to_dataset
-from farm.data_handler.samples import SampleBasket
+from farm.data_handler.samples import (
+    Sample,
+    SampleBasket,
+    create_samples_sentence_pairs,
+    create_samples_squad,
+)
+from farm.data_handler.utils import (
+    read_tsv,
+    read_docs_from_txt,
+    read_ner_file,
+    read_squad_file,
+    words_to_tokens,
+)
+from farm.file_utils import create_folder
+from farm.modeling.tokenization import BertTokenizer
 from farm.utils import MLFlowLogger as MlLogger
-
-from farm.data_handler.samples import Sample
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +191,7 @@ class Processor(ABC):
         features_flat = []
         for basket in baskets:
             for sample in basket.samples:
-                features_flat.append(sample.features)
+                features_flat.extend(sample.features)
         dataset, tensor_names = convert_features_to_dataset(features=features_flat)
         return dataset, tensor_names
 
@@ -601,5 +610,101 @@ class BertStyleLMProcessor(Processor):
     def _sample_to_features(self, sample) -> dict:
         features = samples_to_features_bert_lm(
             sample=sample, max_seq_len=self.max_seq_len, tokenizer=self.tokenizer
+        )
+        return features
+
+
+#########################################
+# SQUAD 2.0 Processor ####
+#########################################
+
+
+class SquadProcessor(Processor):
+    def __init__(
+        self,
+        tokenizer,
+        max_seq_len,
+        data_dir,
+        train_filename="train-v2.0.json",
+        dev_filename="dev-v2.0.json",
+        test_filename=None,
+        dev_split=0,
+        doc_stride=128,
+        max_query_length=64,
+    ):
+        label_list = ["start_token", "end_token"]
+
+        metrics = ["squad"]
+        self.train_filename = train_filename
+        self.dev_filename = dev_filename
+        self.test_filename = test_filename
+        dev_split = dev_split
+        label_dtype = torch.long
+        self.target = "classification"
+        self.ph_output_type = "per_token"
+        self.max_seq_len = max_seq_len
+        self.doc_stride = doc_stride
+        self.max_query_length = max_query_length
+
+        super(SquadProcessor, self).__init__(
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            label_list=label_list,
+            metrics=metrics,
+            train_filename=train_filename,
+            dev_filename=dev_filename,
+            test_filename=test_filename,
+            dev_split=dev_split,
+            data_dir=data_dir,
+            label_dtype=label_dtype,
+        )
+        self.data = {}
+        self.counts = {}
+        self.stage = None
+
+    def _file_to_dicts(self, file: str) -> [dict]:
+        dict = read_squad_file(filename=file)
+        return dict
+
+    def _dict_to_samples(self, dict: dict) -> [Sample]:
+        samples = create_samples_squad(entry=dict)
+
+        # Add offsets to each sample. Take into account question tokens coming first
+        # clear_text["qas_id"] = qas_id
+        # clear_text["question_text"] = question_text
+        # clear_text["doc_tokens"] = doc_tokens
+        # clear_text["orig_answer_text"] = orig_answer_text
+        # clear_text["start_position"] = start_position
+        # clear_text["end_position"] = end_position
+        # clear_text["is_impossible"] = is_impossible
+        for sample in samples:
+            words = sample.clear_text["doc_tokens"]
+            word_offsets = []
+            cumulated = 0
+            for idx, word in enumerate(words):
+                word_offsets.append(cumulated)
+                cumulated += (
+                    len(word) + 1
+                )  # 1 because we so far have whitespace tokenizer
+            tokens, offsets, start_of_word = words_to_tokens(
+                words, word_offsets, self.tokenizer, self.max_seq_len
+            )
+            tokenized = {
+                "tokens": tokens,
+                "offsets": offsets,
+                "start_of_word": start_of_word,
+            }
+            sample.tokenized = tokenized
+
+        return samples
+
+    def _sample_to_features(self, sample) -> dict:
+        features = sample_to_features_squad(
+            sample=sample,
+            tokenizer=self.tokenizer,
+            max_seq_len=self.max_seq_len,
+            doc_stride=self.doc_stride,
+            max_query_length=self.max_query_length,
+            dataset_name=sample.id.split("-")[0],
         )
         return features
