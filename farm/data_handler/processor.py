@@ -689,32 +689,12 @@ class SquadProcessor(Processor):
 
     def _dict_to_samples(self, dict: dict) -> [Sample]:
         samples = create_samples_squad(entry=dict)
-
-        # Add offsets to each sample. Take into account question tokens coming first
-        # clear_text["qas_id"] = qas_id
-        # clear_text["question_text"] = question_text
-        # clear_text["doc_tokens"] = doc_tokens
-        # clear_text["orig_answer_text"] = orig_answer_text
-        # clear_text["start_position"] = start_position
-        # clear_text["end_position"] = end_position
-        # clear_text["is_impossible"] = is_impossible
         for sample in samples:
-            words = sample.clear_text["doc_tokens"]
-            word_offsets = []
-            cumulated = 0
-            for idx, word in enumerate(words):
-                word_offsets.append(cumulated)
-                cumulated += (
-                    len(word) + 1
-                )  # 1 because we so far have whitespace tokenizer
-            tokens, offsets, start_of_word = words_to_tokens(
-                words, word_offsets, self.tokenizer, self.max_seq_len
+            tokenized = tokenize_with_metadata(
+                text=" ".join(sample.clear_text["doc_tokens"]),
+                tokenizer=self.tokenizer,
+                max_seq_len=self.max_seq_len,
             )
-            tokenized = {
-                "tokens": tokens,
-                "offsets": offsets,
-                "start_of_word": start_of_word,
-            }
             sample.tokenized = tokenized
 
         return samples
