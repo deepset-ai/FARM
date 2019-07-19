@@ -1,16 +1,16 @@
 import ast
-import datetime
 import json
 import os
-from dotmap import DotMap
 
 import torch
+from dotmap import DotMap
 from torch import nn
 from torch.nn import CrossEntropyLoss
 import logging
 
 from pytorch_pretrained_bert.modeling import BertLMPredictionHead
 from farm.data_handler.utils import is_json
+from farm.utils import convert_iob_to_simple_tags
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +61,7 @@ class PredictionHead(nn.Module):
         config = json.load(open(config_file))
         prediction_head = cls.subclasses[config["name"]](**config)
         logger.info("Loading prediction head from {}".format(model_file))
-        prediction_head.load_state_dict(torch.load(model_file))
+        prediction_head.load_state_dict(torch.load(model_file, map_location=device))
         return prediction_head
 
     def logits_to_loss(self, logits, labels):
@@ -84,9 +84,9 @@ class TextClassificationHead(PredictionHead):
         **kwargs,
     ):
         super(TextClassificationHead, self).__init__()
-        # TODO MP I think it would be nicer here to pass hidden_dim and num_labels and construct layer_dims from it.
         # num_labels could in most cases also be automatically retrieved from the data processor
         self.layer_dims = layer_dims
+        # TODO is this still needed?
         self.layer_dims_list = ast.literal_eval(str(layer_dims))
         self.feed_forward = FeedForwardBlock(self.layer_dims_list)
         self.num_labels = self.layer_dims_list[-1]
@@ -109,12 +109,28 @@ class TextClassificationHead(PredictionHead):
             )
         self.generate_config()
 
+    @classmethod
+    def load(cls, config_file, model_file):
+        config = json.load(open(config_file))
+        # TODO make this more generic for other heads with more attributes
+        prediction_head = cls(config["layer_dims_str"])
+        logger.info("Loading prediction head from {}".format(model_file))
+        prediction_head.load_state_dict(torch.load(model_file))
+        return prediction_head
+
     def forward(self, X):
         logits = self.feed_forward(X)
         return logits
 
     def logits_to_loss(self, logits, label_ids, **kwargs):
         return self.loss_fct(logits, label_ids.view(-1))
+
+    def logits_to_probs(self, logits, **kwargs):
+        softmax = torch.nn.Softmax(dim=1)
+        probs = softmax(logits)
+        probs = torch.max(probs, dim=1)[0]
+        probs = probs.cpu().numpy()
+        return probs
 
     def logits_to_preds(self, logits, label_map, **kwargs):
         logits = logits.cpu().numpy()
@@ -126,6 +142,26 @@ class TextClassificationHead(PredictionHead):
         label_ids = label_ids.cpu().numpy()
         labels = [label_map[int(x)] for x in label_ids]
         return labels
+
+    def formatted_preds(self, logits, label_map, samples, **kwargs):
+        preds = self.logits_to_preds(logits, label_map)
+        probs = self.logits_to_probs(logits)
+        contexts = [sample.clear_text["text"] for sample in samples]
+
+        assert len(preds) == len(probs) == len(contexts)
+
+        res = {"task": "text_classification", "predictions": []}
+        for pred, prob, context in zip(preds, probs, contexts):
+            res["predictions"].append(
+                {
+                    "start": None,
+                    "end": None,
+                    "context": f"{context}",
+                    "label": f"{pred}",
+                    "probability": prob,
+                }
+            )
+        return res
 
 
 class TokenClassificationHead(PredictionHead):
@@ -158,26 +194,35 @@ class TokenClassificationHead(PredictionHead):
         return loss
 
     def logits_to_preds(self, logits, initial_mask, label_map, **kwargs):
-
         preds_word_all = []
-
         preds_tokens = torch.argmax(logits, dim=2)
-
         preds_token = preds_tokens.detach().cpu().numpy()
         # used to be: padding_mask = padding_mask.detach().cpu().numpy()
         initial_mask = initial_mask.detach().cpu().numpy()
 
         for idx, im in enumerate(initial_mask):
             preds_t = preds_token[idx]
-
             # Get labels and predictions for just the word initial tokens
             preds_word_id = self.initial_token_only(preds_t, initial_mask=im)
-
             preds_word = [label_map[pwi] for pwi in preds_word_id]
-
             preds_word_all.append(preds_word)
-
         return preds_word_all
+
+    def logits_to_probs(self, logits, initial_mask, **kwargs):
+        # get per token probs
+        softmax = torch.nn.Softmax(dim=2)
+        token_probs = softmax(logits)
+        token_probs = torch.max(token_probs, dim=2)[0]
+        token_probs = token_probs.cpu().numpy()
+
+        # convert to per word probs
+        all_probs = []
+        initial_mask = initial_mask.detach().cpu().numpy()
+        for idx, im in enumerate(initial_mask):
+            probs_t = token_probs[idx]
+            probs_words = self.initial_token_only(probs_t, initial_mask=im)
+            all_probs.append(probs_words)
+        return all_probs
 
     def prepare_labels(self, label_map, label_ids, initial_mask, **kwargs):
         labels_all = []
@@ -199,6 +244,53 @@ class TokenClassificationHead(PredictionHead):
             if init:
                 ret.append(s)
         return ret
+
+    def formatted_preds(self, logits, label_map, initial_mask, samples, **kwargs):
+        preds = self.logits_to_preds(logits, initial_mask, label_map)
+        probs = self.logits_to_probs(logits, initial_mask)
+
+        # align back with original input by getting the original word spans
+        spans = []
+        for sample, sample_preds in zip(samples, preds):
+            word_spans = []
+            span = None
+            for token, offset, start_of_word in zip(
+                sample.tokenized["tokens"],
+                sample.tokenized["offsets"],
+                sample.tokenized["start_of_word"],
+            ):
+                if start_of_word:
+                    # previous word has ended unless it's the very first word
+                    if span is not None:
+                        word_spans.append(span)
+                    span = {"start": offset, "end": offset + len(token)}
+                else:
+                    # expand the span to include the subword-token
+                    span["end"] = offset + len(token.replace("##", ""))
+            word_spans.append(span)
+            spans.append(word_spans)
+
+        assert len(preds) == len(probs) == len(spans)
+
+        res = {"task": "ner", "prediction": []}
+        for preds_seq, probs_seq, sample, spans_seq in zip(
+            preds, probs, samples, spans
+        ):
+            tags, spans_seq = convert_iob_to_simple_tags(preds_seq, spans_seq)
+            seq_res = []
+            for tag, prob, span in zip(tags, probs_seq, spans_seq):
+                context = sample.clear_text["text"][span["start"] : span["end"]]
+                seq_res.append(
+                    {
+                        "start": span["start"],
+                        "end": span["end"],
+                        "context": f"{context}",
+                        "label": f"{tag}",
+                        "probability": prob,
+                    }
+                )
+            res["predictions"].extend(seq_res)
+        return res
 
 
 class BertLMHead(PredictionHead):

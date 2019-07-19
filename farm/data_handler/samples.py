@@ -19,18 +19,18 @@ class SampleBasket:
 class Sample(object):
     """A single training/test sample."""
 
-    def __init__(self, id, clear_text, features=None):
+    def __init__(self, id, clear_text, tokenized=None, features=None):
         """
         :param id: The unique id of the sample
         :type id: str
         :param clear_text: A dictionary containing various human readable fields (e.g. text, label)
         :type clear_text: dict
+        :param tokenized: A dictionary containing the tokenized version of clear text plus helpful meta data: offsets (start position of each token in the original text) and start_of_word (boolean if a token is the first one of a word)
+        :type tokenized: dict
         :param features: A dictionary containing features needed by the model to process this sample
         :type features: dict
+
         """
-
-    def __init__(self, id, clear_text, features=None, tokenized=None):
-
         self.id = id
         self.clear_text = clear_text
         self.features = features
@@ -51,11 +51,19 @@ class Sample(object):
             feature_str = "\n \t".join([k + ": " + str(v) for k, v in features.items()])
         else:
             feature_str = "None"
+
+        if self.tokenized:
+            tokenized_str = "\n \t".join(
+                [k + ": " + str(v) for k, v in self.tokenized.items()]
+            )
+        else:
+            tokenized_str = "None"
         s = (
             "*** Example ***\n"
-            "ID: {}\n"
-            "Clear Text: \n \t{}\n"
-            "Features: \n \t{}".format(self.id, clear_text_str, feature_str)
+            f"ID: {self.id}\n"
+            f"Clear Text: \n \t{clear_text_str}\n"
+            f"Tokenized: \n \t {tokenized_str}\n"
+            f"Features: \n \t{feature_str}"
         )
         return s
 

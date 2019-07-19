@@ -32,7 +32,6 @@ logging.basicConfig(
 
 
 def run_experiment(args):
-
     validate_args(args)
     directory_setup(output_dir=args.output_dir, do_train=args.do_train)
     distributed = bool(args.local_rank != -1)
@@ -106,8 +105,11 @@ def run_experiment(args):
 
     model = trainer.train(model)
 
-    processor.save(f"save/{args.name}")
-    model.save(f"save/{args.name}")
+    model_name = (
+        f"{model.language_model.name}-{model.language_model.language}-{args.name}"
+    )
+    processor.save(f"save/{model_name}")
+    model.save(f"save/{model_name}")
 
 
 def get_adaptive_model(

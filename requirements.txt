@@ -18,3 +18,7 @@ mlflow==1.0.0
 pytorch-pretrained-bert==0.6.2
 # accessing dictionary elements with dot notation
 dotmap==1.3.0
+# for inference-rest-apis
+flask
+flask-restplus
+flask-cors

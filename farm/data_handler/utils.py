@@ -7,8 +7,6 @@ import tempfile
 from tqdm import tqdm
 import random
 import pandas as pd
-import json
-
 from farm.file_utils import http_get
 
 logger = logging.getLogger(__name__)
@@ -23,7 +21,7 @@ DOWNSTREAM_TASK_MAP = {
     "conll03detest": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/training_data_for_Stanford_NER/NER-de-test-conll-formated.txt",
 }
 
-# TODO skip_first_line is not used here? Do processors expext this to work?
+
 def read_tsv(filename, quotechar='"', delimiter="\t", skiprows=None, columns=None):
     """Reads a tab separated value file. Tries to download the data if filename is not found"""
     if not (os.path.exists(filename)):
@@ -58,7 +56,7 @@ def read_ner_file(filename, **kwargs):
     for line in f:
         if len(line) == 0 or line.startswith("-DOCSTART") or line[0] == "\n":
             if len(sentence) > 0:
-                data.append({"sentence": sentence, "label": label})
+                data.append({"text": " ".join(sentence), "label": label})
                 sentence = []
                 label = []
             continue
@@ -67,7 +65,7 @@ def read_ner_file(filename, **kwargs):
         label.append(splits[-1][:-1])
 
     if len(sentence) > 0:
-        data.append({"sentence": sentence, "label": label})
+        data.append({"text": " ".join(sentence), "label": label})
     return data
 
 
@@ -214,29 +212,36 @@ def expand_labels(labels_word, initial_mask, non_initial_token):
     return labels_token
 
 
-# def words_to_tokens(words, tokenizer, max_seq_length):
-#     tokens_all = []
-#     initial_mask = []
-#     for w in words:
-#         tokens_word = tokenizer.tokenize(w)
-#
-#         # Sometimes the tokenizer returns no tokens
-#         if len(tokens_word) == 0:
-#             continue
-#
-#         n_non_initial_tokens = len(tokens_word) - 1
-#         initial_mask += [1]
-#         for _ in range(n_non_initial_tokens):
-#             initial_mask += [0]
-#         tokens_all += tokens_word
-#
-#     # Clip at max_seq_length. The "-2" is for CLS and SEP token
-#     tokens_all = tokens_all[: max_seq_length - 2]
-#     initial_mask = initial_mask[: max_seq_length - 2]
-#
-#     assert len(tokens_all) == len(initial_mask)
-#
-#     return tokens_all, initial_mask
+def words_to_tokens(words, word_offsets, tokenizer, max_seq_len):
+    tokens = []
+    token_offsets = []
+    start_of_word = []
+    for w, w_off in zip(words, word_offsets):
+        # Get tokens of single word
+        tokens_word = tokenizer.tokenize(w)
+
+        # Sometimes the tokenizer returns no tokens
+        if len(tokens_word) == 0:
+            continue
+        tokens += tokens_word
+
+        # get gloabl offset for each token in word + save marker for first tokens of a word
+        first_tok = True
+        for tok in tokens_word:
+            token_offsets.append(w_off)
+            w_off += len(tok.replace("##", ""))
+            if first_tok:
+                start_of_word.append(True)
+                first_tok = False
+            else:
+                start_of_word.append(False)
+
+    # Clip at max_seq_length. The "-2" is for CLS and SEP token
+    tokens = tokens[: max_seq_len - 2]
+    # initial_mask = initial_mask[: max_seq_length - 2]
+
+    assert len(tokens) == len(token_offsets) == len(start_of_word)
+    return tokens, token_offsets, start_of_word
 
 
 def get_sentence_pair(doc, all_docs, idx):
@@ -340,40 +345,3 @@ def is_json(x):
         return True
     except:
         return False
-
-
-def words_to_tokens(words, word_offsets, tokenizer, max_seq_len):
-    tokens = []
-    token_offsets = []
-    start_of_word = []
-    # word_nums = range(0, len(words))
-    # initial_mask = []
-    for w, w_off in zip(words, word_offsets):
-        # Get tokens of single word
-        tokens_word = tokenizer.tokenize(w)
-        # Sometimes the tokenizer returns no tokens
-        if len(tokens_word) == 0:
-            continue
-        tokens += tokens_word
-        # get gloabl offset for each token in word + save marker for first tokens of a word
-        first_tok = True
-        for tok in tokens_word:
-            token_offsets.append(w_off)
-            w_off += len(tok.replace("##", ""))
-            if first_tok:
-                start_of_word.append(True)
-                first_tok = False
-            else:
-                start_of_word.append(False)
-            # n_non_initial_tokens = len(tokens_word) - 1
-        # initial_mask += [1]
-        # for _ in range(n_non_initial_tokens):
-        #    initial_mask += [0]
-    # Clip at max_seq_length. The "-2" is for CLS and SEP token
-    # TODO make clipping only dependant on max seq length. E.g. question asnwering has 2 SEP tokens...
-    tokens = tokens[: max_seq_len - 2]
-    token_offsets = token_offsets[: max_seq_len - 2]
-    start_of_word = start_of_word[: max_seq_len - 2]
-    # initial_mask = initial_mask[: max_seq_length - 2]
-    assert len(tokens) == len(token_offsets) == len(start_of_word)
-    return tokens, token_offsets, start_of_word

@@ -1,25 +1,13 @@
-import abc
-import json
-import logging
-import os
-import random
-from abc import ABC
-
 import torch
+import os
+import abc
+from abc import ABC
+import random
+import logging
+import json
 
-from farm.data_handler.dataset import convert_features_to_dataset
-from farm.data_handler.input_features import (
-    sample_to_features_text,
-    samples_to_features_ner,
-    samples_to_features_bert_lm,
-    sample_to_features_squad,
-)
-from farm.data_handler.samples import (
-    Sample,
-    SampleBasket,
-    create_samples_sentence_pairs,
-    create_samples_squad,
-)
+from pytorch_pretrained_bert.tokenization import BertTokenizer
+
 from farm.data_handler.utils import (
     read_tsv,
     read_docs_from_txt,
@@ -28,8 +16,21 @@ from farm.data_handler.utils import (
     words_to_tokens,
 )
 from farm.file_utils import create_folder
-from farm.modeling.tokenization import BertTokenizer
+from farm.data_handler.samples import (
+    Sample,
+    SampleBasket,
+    create_samples_sentence_pairs,
+    create_samples_squad,
+)
+from farm.data_handler.input_features import (
+    samples_to_features_ner,
+    samples_to_features_bert_lm,
+    sample_to_features_text,
+    sample_to_features_squad,
+)
+from farm.data_handler.dataset import convert_features_to_dataset
 from farm.utils import MLFlowLogger as MlLogger
+
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ class Processor(ABC):
         label_dtype=torch.long,
     ):
         """
-        Initialize the abstract framework for a Processor
+        Initialize a generic Processor
 
         :param tokenizer: Used to split a sentence (str) into tokens.
         :param max_seq_len: Samples are truncated after this many tokens.
@@ -159,12 +160,15 @@ class Processor(ABC):
         with open(output_config_file, "w") as file:
             json.dump(config, file)
 
+    @abc.abstractmethod
     def _file_to_dicts(self, file: str) -> [dict]:
         raise NotImplementedError()
 
+    @abc.abstractmethod
     def _dict_to_samples(self, dict: dict) -> [Sample]:
         raise NotImplementedError()
 
+    @abc.abstractmethod
     def _sample_to_features(self, sample: Sample) -> dict:
         raise NotImplementedError()
 
@@ -235,7 +239,10 @@ class Processor(ABC):
         for name in names:
             value = getattr(self, name)
             params.update({name: str(value)})
-        MlLogger.log_params(params)
+        try:
+            MlLogger.log_params(params)
+        except Exception as e:
+            logger.warning(f"ML logging didn't work: {e}")
 
 
 #########################################
@@ -457,8 +464,6 @@ class CONLLProcessor(Processor):
             "X",
             "B-OTH",
             "I-OTH",
-            "[CLS]",
-            "[SEP]",
         ]
         label_dtype = torch.long
         metric = "seq_f1"
@@ -481,9 +486,21 @@ class CONLLProcessor(Processor):
         return dicts
 
     def _dict_to_samples(self, dict: dict) -> [Sample]:
-        text = " ".join(dict["sentence"])
-        label = dict["label"]
-        return [Sample(id=None, clear_text={"text": text, "label": label})]
+        words = dict["text"].split(" ")
+        word_offsets = []
+        cumulated = 0
+        for idx, word in enumerate(words):
+            word_offsets.append(cumulated)
+            cumulated += len(word) + 1  # 1 because we so far have whitespace tokenizer
+        tokens, offsets, start_of_word = words_to_tokens(
+            words, word_offsets, self.tokenizer, self.max_seq_len
+        )
+        tokenized = {
+            "tokens": tokens,
+            "offsets": offsets,
+            "start_of_word": start_of_word,
+        }
+        return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
 
     def _sample_to_features(self, sample) -> dict:
         features = samples_to_features_ner(
@@ -521,8 +538,6 @@ class GermEval14Processor(Processor):
             "X",
             "B-OTH",
             "I-OTH",
-            "[CLS]",
-            "[SEP]",
         ]
         label_dtype = torch.long
         metric = "seq_f1"
@@ -545,9 +560,7 @@ class GermEval14Processor(Processor):
         return dicts
 
     def _dict_to_samples(self, dict: dict) -> [Sample]:
-        text = " ".join(dict["sentence"])
-        label = dict["label"]
-        return [Sample(id=None, clear_text={"text": text, "label": label})]
+        return [Sample(id=None, clear_text=dict)]
 
     def _sample_to_features(self, sample) -> dict:
         features = samples_to_features_ner(

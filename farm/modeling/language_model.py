@@ -92,8 +92,10 @@ class LanguageModel(nn.Module):
     def save(self, save_dir):
         # Save Weights
         save_name = os.path.join(save_dir, "language_model.bin")
-
-        torch.save(self.state_dict(), save_name)
+        model_to_save = (
+            self.model.module if hasattr(self.model, "module") else self.model
+        )  # Only save the model it-self
+        torch.save(model_to_save.state_dict(), save_name)
         self.save_config(save_dir)
 
     @classmethod
@@ -363,13 +365,13 @@ class BertPreTrainedModel(nn.Module):
             start_prefix = "bert."
         load(model, prefix=start_prefix)
         if len(missing_keys) > 0:
-            logger.info(
+            logger.warning(
                 "Weights of {} not initialized from pretrained model: {}".format(
                     model.__class__.__name__, missing_keys
                 )
             )
         if len(unexpected_keys) > 0:
-            logger.info(
+            logger.warning(
                 "Weights from pretrained model not used in {}: {}".format(
                     model.__class__.__name__, unexpected_keys
                 )
