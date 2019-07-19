@@ -10,7 +10,6 @@ from dotmap import DotMap
 from farm.data_handler.samples import Sample
 from farm.data_handler.utils import (
     truncate_seq_pair,
-    words_to_tokens,
     expand_labels,
     add_cls_sep,
     pad,
@@ -43,7 +42,8 @@ def sample_to_features_text(
 
     label_map = {label: i for i, label in enumerate(label_list)}
 
-    tokens = tokenizer.tokenize(sample.clear_text["text"])
+    # tokens = tokenizer.tokenize(sample.clear_text["text"])
+    tokens = sample.tokenized["tokens"]
     # tokens = sample.tokenized["word_pieces"]
     # Account for [CLS] and [SEP] with "- 2"
     if len(tokens) > max_seq_len - 2:

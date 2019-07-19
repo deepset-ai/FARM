@@ -40,7 +40,7 @@ def read_tsv(filename, quotechar='"', delimiter="\t", skiprows=None, columns=Non
     return raw_dict
 
 
-def read_ner_file(filename, **kwargs):
+def read_ner_file(filename, sep="\t", **kwargs):
     """
     read file
     return format :
@@ -60,7 +60,7 @@ def read_ner_file(filename, **kwargs):
                 sentence = []
                 label = []
             continue
-        splits = line.split(" ")
+        splits = line.split(sep)
         sentence.append(splits[0])
         label.append(splits[-1][:-1])
 
@@ -210,39 +210,6 @@ def expand_labels(labels_word, initial_mask, non_initial_token):
 
     assert len(labels_token) == len(initial_mask)
     return labels_token
-
-
-def words_to_tokens(words, word_offsets, tokenizer, max_seq_len):
-    tokens = []
-    token_offsets = []
-    start_of_word = []
-    for w, w_off in zip(words, word_offsets):
-        # Get tokens of single word
-        tokens_word = tokenizer.tokenize(w)
-
-        # Sometimes the tokenizer returns no tokens
-        if len(tokens_word) == 0:
-            continue
-        tokens += tokens_word
-
-        # get gloabl offset for each token in word + save marker for first tokens of a word
-        first_tok = True
-        for tok in tokens_word:
-            token_offsets.append(w_off)
-            w_off += len(tok.replace("##", ""))
-            if first_tok:
-                start_of_word.append(True)
-                first_tok = False
-            else:
-                start_of_word.append(False)
-
-    # Clip at max_seq_length. The "-2" is for CLS and SEP token
-    tokens = tokens[: max_seq_len - 2]
-    token_offsets = token_offsets[: max_seq_len - 2]
-    start_of_word = start_of_word[: max_seq_len - 2]
-
-    assert len(tokens) == len(token_offsets) == len(start_of_word)
-    return tokens, token_offsets, start_of_word
 
 
 def get_sentence_pair(doc, all_docs, idx):
