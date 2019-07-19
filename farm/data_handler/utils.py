@@ -87,7 +87,7 @@ def _download_extract_downstream_data(input_file):
     logger.info(
         "downloading and extracting file {} to dir {}".format(taskname, datadir)
     )
-    if "conll03de" in taskname:
+    if "conll03" in taskname and "de" in taskname:
         # conll03 is copyrighted, but luckily somebody put it on github. Kudos!
         if not os.path.exists(directory):
             os.mkdir(directory)
@@ -238,7 +238,8 @@ def words_to_tokens(words, word_offsets, tokenizer, max_seq_len):
 
     # Clip at max_seq_length. The "-2" is for CLS and SEP token
     tokens = tokens[: max_seq_len - 2]
-    # initial_mask = initial_mask[: max_seq_length - 2]
+    token_offsets = token_offsets[: max_seq_len - 2]
+    start_of_word = start_of_word[: max_seq_len - 2]
 
     assert len(tokens) == len(token_offsets) == len(start_of_word)
     return tokens, token_offsets, start_of_word
@@ -262,21 +263,6 @@ def get_sentence_pair(doc, all_docs, idx):
     assert len(sent_1) > 0
     assert len(sent_2) > 0
     return sent_1, sent_2, label
-
-
-# def _get_subsequent_sentence_pair(all_docs, sample_to_doc, idx):
-#     """
-#     Get one sample from corpus consisting of a pair of two subsequent lines from the same doc.
-#     :param idx: int, index of sample.
-#     :return: (str, str), two subsequent sentences from corpus
-#     """
-#     sample = sample_to_doc[idx]
-#     t1 = all_docs[sample["doc_id"]][sample["line"]]
-#     t2 = all_docs[sample["doc_id"]][sample["line"] + 1]
-#
-#     # used later to avoid random nextSentence from same doc
-#     doc_id = sample["doc_id"]
-#     return t1, t2, doc_id
 
 
 def _get_random_sentence(docs, forbidden_doc):
