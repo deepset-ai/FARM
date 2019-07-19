@@ -57,7 +57,7 @@ class PredictionHead(nn.Module):
         self.config = config
 
     @classmethod
-    def load(cls, model_file, config_file):
+    def load(cls, model_file, config_file, device):
         config = json.load(open(config_file))
         prediction_head = cls.subclasses[config["name"]](**config)
         logger.info("Loading prediction head from {}".format(model_file))
