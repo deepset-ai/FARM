@@ -8,11 +8,10 @@ Welcome to FARM's documentation!
 
 
 .. toctree::
-   :maxdepth: 2
-   :caption: Contents:
+   :maxdepth: 4
+   :caption: API Reference:
 
-   api
-
+   api/farm
 
 
 Indices and tables
