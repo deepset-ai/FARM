@@ -260,7 +260,7 @@ class TokenClassificationHead(PredictionHead):
 
         assert len(preds) == len(probs) == len(spans)
 
-        res = {"task": "ner", "prediction": []}
+        res = {"task": "ner", "predictions": []}
         for preds_seq, probs_seq, sample, spans_seq in zip(
             preds, probs, samples, spans
         ):
