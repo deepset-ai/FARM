@@ -28,6 +28,7 @@ class Sample(object):
         :param features: A dictionary containing features needed by the model to process this sample
         :type features: dict
         """
+
     def __init__(self, id, clear_text, features=None, tokenized=None):
 
         self.id = id
@@ -150,10 +151,11 @@ def create_samples_squad(entry):
             is_impossible = False
             if is_training:
                 is_impossible = qa["is_impossible"]
-                if (len(qa["answers"]) != 1) and (not is_impossible):
-                    raise ValueError(
-                        "For training, each question should have exactly 1 answer."
-                    )
+                # TODO check how to transform dev set with multiple possible answers, for now take only 1 answer
+                # if (len(qa["answers"]) != 1) and (not is_impossible):
+                #     raise ValueError(
+                #         "For training, each question should have exactly 1 answer."
+                #     )
                 if not is_impossible:
                     answer = qa["answers"][0]
                     orig_answer_text = answer["text"]
