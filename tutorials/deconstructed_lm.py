@@ -36,7 +36,7 @@ processor = BertStyleLMProcessor(
     data_dir="../data/finetune_sample", tokenizer=tokenizer, max_seq_len=128
 )
 
-data_silo = DataSilo(processor=processor, batch_size=32, distributed=False)
+data_silo = DataSilo(processor=processor, batch_size=32)
 
 # Init model
 language_model = Bert.load("bert-base-german-cased")
@@ -48,6 +48,8 @@ lm_prediction_head = BertLMHead(
 next_sentence_head = TextClassificationHead(
     layer_dims=[language_model.model.config.hidden_size, 2], loss_ignore_index=-1
 )
+
+# model = AdaptiveModel.load("save/lm_model_1", device)
 
 model = AdaptiveModel(
     language_model=language_model,
@@ -78,3 +80,4 @@ trainer = Trainer(
 )
 
 model = trainer.train(model)
+model.save("save/lm_model_1")

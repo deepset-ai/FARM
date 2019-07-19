@@ -56,5 +56,9 @@ class Inferencer:
                     tokenizer=self.processor.tokenizer,
                     **batch
                 )
-                preds_all.extend(preds)
+                preds_all += preds
+                # TODO Probs not working yet
+                # for vec in softmax(logits, axis=1):
+                #     probs_all.append(dict(vec))
+
         return preds_all

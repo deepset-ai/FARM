@@ -12,20 +12,25 @@ from farm.data_handler.utils import (
     read_tsv,
     read_docs_from_txt,
     read_ner_file,
+    read_squad_file,
     words_to_tokens,
 )
 from farm.file_utils import create_folder
-from farm.data_handler.samples import create_samples_sentence_pairs
+from farm.data_handler.samples import (
+    Sample,
+    SampleBasket,
+    create_samples_sentence_pairs,
+    create_samples_squad,
+)
 from farm.data_handler.input_features import (
-    sample_to_features_sequence,
     samples_to_features_ner,
     samples_to_features_bert_lm,
+    sample_to_features_text,
+    sample_to_features_squad,
 )
 from farm.data_handler.dataset import convert_features_to_dataset
-from farm.data_handler.samples import SampleBasket
 from farm.utils import MLFlowLogger as MlLogger
 
-from farm.data_handler.samples import Sample
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +38,13 @@ TOKENIZER_MAP = {"BertTokenizer": BertTokenizer}
 
 
 class Processor(ABC):
-    # TODO think about how to define this parent class so it enforces that certain attributes are initialized
-    # It's not an abstract class anymore!
+    """
+    Is used to generate PyTorch Datasets from input data. An implementation of this abstract class should be created
+    for each new data source. Must have dataset_from_file(), dataset_from_dicts(), load(),
+    load_from_file() and save() implemented in order to be compatible with the rest of the framework. The other
+    functions are optional
+    """
+
     subclasses = {}
 
     def __init__(
@@ -50,6 +60,30 @@ class Processor(ABC):
         data_dir,
         label_dtype=torch.long,
     ):
+        """
+        Initialize a generic Processor
+
+        :param tokenizer: Used to split a sentence (str) into tokens.
+        :param max_seq_len: Samples are truncated after this many tokens.
+        :type max_seq_len: int
+        :param label_list: List of all unique target labels.
+        :type label_list: list
+        :param metrics: The metric used for evaluation, one per prediction head. Choose from TODO XXXX.
+        :type metrics: list or str
+        :param train_filename: The name of the file containing training data.
+        :type train_filename: str
+        :param dev_filename:The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
+        will be a slice of the train set.
+        :type dev_filename: str or None
+        :param test_filename: The name of the file containing test data.
+        :type: test_filename: str
+        :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
+        :type dev_split: float
+        :param data_dir: The directory in which the train, test and perhaps dev files can be found.
+        :type data_dir: str
+        :param label_dtype: The torch dtype for the labels.
+
+        """
         self.tokenizer = tokenizer
         self.max_seq_len = max_seq_len
         self.label_list = label_list
@@ -90,6 +124,7 @@ class Processor(ABC):
         :param tokenizer:
         :param max_seq_len:
         :return:
+        :rtype
         """
         return cls.subclasses[processor_name](
             data_dir=data_dir, tokenizer=tokenizer, max_seq_len=max_seq_len
@@ -160,11 +195,17 @@ class Processor(ABC):
         features_flat = []
         for basket in baskets:
             for sample in basket.samples:
-                features_flat.append(sample.features)
+                features_flat.extend(sample.features)
         dataset, tensor_names = convert_features_to_dataset(features=features_flat)
         return dataset, tensor_names
 
     def dataset_from_file(self, file):
+        """
+
+        :param file:
+        :return: dataset:
+        :rtype: dataset:
+        """
         self._init_baskets_from_file(file)
         self._init_samples_in_baskets()
         self._featurize_samples()
@@ -267,7 +308,7 @@ class GNADProcessor(Processor):
         return [Sample(id=None, clear_text=dict)]
 
     def _sample_to_features(self, sample) -> dict:
-        features = sample_to_features_sequence(
+        features = sample_to_features_text(
             sample=sample,
             label_list=self.label_list,
             max_seq_len=self.max_seq_len,
@@ -324,7 +365,7 @@ class GermEval18CoarseProcessor(Processor):
         return [Sample(id=None, clear_text=dict)]
 
     def _sample_to_features(self, sample) -> dict:
-        features = sample_to_features_sequence(
+        features = sample_to_features_text(
             sample=sample,
             label_list=self.label_list,
             max_seq_len=self.max_seq_len,
@@ -383,7 +424,7 @@ class GermEval18FineProcessor(Processor):
         return [Sample(id=None, clear_text=dict)]
 
     def _sample_to_features(self, sample) -> dict:
-        features = sample_to_features_sequence(
+        features = sample_to_features_text(
             sample=sample,
             label_list=self.label_list,
             max_seq_len=self.max_seq_len,
@@ -582,5 +623,101 @@ class BertStyleLMProcessor(Processor):
     def _sample_to_features(self, sample) -> dict:
         features = samples_to_features_bert_lm(
             sample=sample, max_seq_len=self.max_seq_len, tokenizer=self.tokenizer
+        )
+        return features
+
+
+#########################################
+# SQUAD 2.0 Processor ####
+#########################################
+
+
+class SquadProcessor(Processor):
+    def __init__(
+        self,
+        tokenizer,
+        max_seq_len,
+        data_dir,
+        train_filename="train-v2.0.json",
+        dev_filename="dev-v2.0.json",
+        test_filename=None,
+        dev_split=0,
+        doc_stride=128,
+        max_query_length=64,
+    ):
+        label_list = ["start_token", "end_token"]
+
+        metrics = ["squad"]
+        self.train_filename = train_filename
+        self.dev_filename = dev_filename
+        self.test_filename = test_filename
+        dev_split = dev_split
+        label_dtype = torch.long
+        self.target = "classification"
+        self.ph_output_type = "per_token"
+        self.max_seq_len = max_seq_len
+        self.doc_stride = doc_stride
+        self.max_query_length = max_query_length
+
+        super(SquadProcessor, self).__init__(
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            label_list=label_list,
+            metrics=metrics,
+            train_filename=train_filename,
+            dev_filename=dev_filename,
+            test_filename=test_filename,
+            dev_split=dev_split,
+            data_dir=data_dir,
+            label_dtype=label_dtype,
+        )
+        self.data = {}
+        self.counts = {}
+        self.stage = None
+
+    def _file_to_dicts(self, file: str) -> [dict]:
+        dict = read_squad_file(filename=file)
+        return dict
+
+    def _dict_to_samples(self, dict: dict) -> [Sample]:
+        samples = create_samples_squad(entry=dict)
+
+        # Add offsets to each sample. Take into account question tokens coming first
+        # clear_text["qas_id"] = qas_id
+        # clear_text["question_text"] = question_text
+        # clear_text["doc_tokens"] = doc_tokens
+        # clear_text["orig_answer_text"] = orig_answer_text
+        # clear_text["start_position"] = start_position
+        # clear_text["end_position"] = end_position
+        # clear_text["is_impossible"] = is_impossible
+        for sample in samples:
+            words = sample.clear_text["doc_tokens"]
+            word_offsets = []
+            cumulated = 0
+            for idx, word in enumerate(words):
+                word_offsets.append(cumulated)
+                cumulated += (
+                    len(word) + 1
+                )  # 1 because we so far have whitespace tokenizer
+            tokens, offsets, start_of_word = words_to_tokens(
+                words, word_offsets, self.tokenizer, self.max_seq_len
+            )
+            tokenized = {
+                "tokens": tokens,
+                "offsets": offsets,
+                "start_of_word": start_of_word,
+            }
+            sample.tokenized = tokenized
+
+        return samples
+
+    def _sample_to_features(self, sample) -> dict:
+        features = sample_to_features_squad(
+            sample=sample,
+            tokenizer=self.tokenizer,
+            max_seq_len=self.max_seq_len,
+            doc_stride=self.doc_stride,
+            max_query_length=self.max_query_length,
+            dataset_name=sample.id.split("-")[0],
         )
         return features

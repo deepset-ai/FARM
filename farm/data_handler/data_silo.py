@@ -10,15 +10,25 @@ from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
 from farm.data_handler.dataloader import NamedDataLoader
 from farm.utils import MLFlowLogger as MlLogger
+from farm.data_handler.processor import Processor
 
 logger = logging.getLogger(__name__)
 
 
 class DataSilo(object):
-    """ Loads the train, dev and test sets from file, calculates statistics from the data, casts datasets to
-    PyTorch DataLoader objects. """
+    """ Generates and stores PyTorch DataLoader objects for the train, dev and test datasets.
+    Relies upon functionality in the processor to do the conversion of the data """
 
     def __init__(self, processor, batch_size, distributed=False):
+        """
+        :param processor: A dataset specific Processor object which will turn input (file or dict) into a Pytorch Dataset.
+        :type processor: Processor
+        :param batch_size: The size of batch that should be returned by the DataLoaders.
+        :type batch_size: int
+        :param distributed: Set to True if the program is running in a distributed setting.
+        :type distributed: bool
+
+        """
         self.distributed = distributed
         self.processor = processor
         self.data = {}
@@ -45,9 +55,10 @@ class DataSilo(object):
             self.data["dev"], _ = self.processor.dataset_from_file(dev_file)
 
         # test data
-        test_file = os.path.join(self.processor.data_dir, self.processor.test_filename)
-        logger.info("Loading test set from: {}".format(test_file))
-        self.data["test"], _ = self.processor.dataset_from_file(test_file)
+        if self.processor.test_filename:
+            test_file = os.path.join(self.processor.data_dir, self.processor.test_filename)
+            logger.info("Loading test set from: {}".format(test_file))
+            self.data["test"], _ = self.processor.dataset_from_file(test_file)
 
         # derive stats and meta data
         self._calculate_statistics()
@@ -75,12 +86,15 @@ class DataSilo(object):
             tensor_names=self.tensor_names,
         )
 
-        data_loader_test = NamedDataLoader(
-            dataset=self.data["test"],
-            sampler=SequentialSampler(self.data["test"]),
-            batch_size=self.batch_size,
-            tensor_names=self.tensor_names,
-        )
+        if self.processor.test_filename:
+            data_loader_test = NamedDataLoader(
+                dataset=self.data["test"],
+                sampler=SequentialSampler(self.data["test"]),
+                batch_size=self.batch_size,
+                tensor_names=self.tensor_names,
+            )
+        else:
+            data_loader_test = None
 
         self.loaders = {
             "train": data_loader_train,
@@ -106,18 +120,18 @@ class DataSilo(object):
         self.counts = {
             "train": len(self.data["train"]),
             "dev": len(self.data["dev"]),
-            "test": len(self.data["test"]),
+            "test": len(self.data.get("test", [])),
         }
 
-        logger.info("Examples in train: {}".format(len(self.data["train"])))
-        logger.info("Examples in dev  : {}".format(len(self.data["dev"])))
-        logger.info("Examples in test : {}".format(len(self.data["test"])))
+        logger.info("Examples in train: {}".format(self.counts["train"]))
+        logger.info("Examples in dev  : {}".format(self.counts["dev"]))
+        logger.info("Examples in test : {}".format(self.counts["test"]))
 
         MlLogger.log_params(
             {
-                "n_samples_train": len(self.data["train"]),
-                "n_samples_dev": len(self.data["dev"]),
-                "n_samples_test": len(self.data["test"]),
+                "n_samples_train": self.counts["train"],
+                "n_samples_dev": self.counts["train"],
+                "n_samples_test": self.counts["train"],
             }
         )
 

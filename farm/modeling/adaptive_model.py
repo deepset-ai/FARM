@@ -23,6 +23,21 @@ class AdaptiveModel(nn.Module):
         lm_output_types,
         device,
     ):
+        """
+        :param language_model: Any model that turns token ids into vector representations
+        :type language_model: LanguageModel
+        :param prediction_heads: A list of models that take embeddings and return logits for a given task
+        :type prediction_heads: list
+        :param embeds_dropout_prob: The probability that a value in the embeddings returned by the
+        language model will be zeroed.
+        :param embeds_dropout_prob: float
+        :param lm_output_types: How to extract the embeddings from the final layer of the language model. When set
+        to "per_token", one embedding will be extracted per input token. If set to "per_sequence", a single embedding
+        will be extracted to represent the full input sequence. Can either be a single string, or a list of strings,
+        one for each prediction head.
+        :type lm_output_types: list or str
+        :param device: The device on which this model will operate. Either "cpu" or "cuda".
+        """
         super(AdaptiveModel, self).__init__()
         self.language_model = language_model.to(device)
         self.prediction_heads = [ph.to(device) for ph in prediction_heads]
@@ -37,8 +52,8 @@ class AdaptiveModel(nn.Module):
     def save(self, save_dir):
         create_folder(save_dir)
         self.language_model.save(save_dir)
-        for ph in self.prediction_heads:
-            ph.save(save_dir)
+        for i, ph in enumerate(self.prediction_heads):
+            ph.save(save_dir, i)
             # Need to save config and pipeline
 
     @classmethod
@@ -117,6 +132,8 @@ class AdaptiveModel(nn.Module):
                 output = self.dropout(sequence_output)
             elif lm_out == "per_sequence":
                 output = self.dropout(pooled_output)
+            elif lm_out == "per_token_squad":
+                output = self.dropout(sequence_output)
             else:
                 raise ValueError(
                     "Unknown extraction strategy from language model: {}".format(lm_out)
@@ -144,7 +161,12 @@ class AdaptiveModel(nn.Module):
         model_files.sort()
         config_files.sort()
 
-        assert len(model_files) == len(config_files)
+        error_str = (
+            "There is a mismatch in number of model files and config files. "
+            "This might be because the Language Model Prediction Head "
+            "does not currently support saving and loading"
+        )
+        assert len(model_files) == len(config_files), error_str
         logger.info(f"Found files for loading {len(model_files)} prediction heads")
 
         return model_files, config_files

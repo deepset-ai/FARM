@@ -1,14 +1,15 @@
 import ast
 import json
-import logging
 import os
 
 import torch
 from dotmap import DotMap
 from torch import nn
 from torch.nn import CrossEntropyLoss
+import logging
 
 from pytorch_pretrained_bert.modeling import BertLMPredictionHead
+from farm.data_handler.utils import is_json
 from farm.utils import convert_iob_to_simple_tags
 
 logger = logging.getLogger(__name__)
@@ -48,21 +49,17 @@ class PredictionHead(nn.Module):
         self.save_config(save_dir, head_num)
 
     def generate_config(self):
-        self.config = {
-            k: v
-            for k, v in self.__dict__.items()
-            if (type(v) in [str, int, bool, float])
-        }
-        self.config.update({"name": self.__class__.__name__})
+        config = {}
+        for key, value in self.__dict__.items():
+            if is_json(value) and key[0] != "_":
+                config[key] = value
+        config["name"] = self.__class__.__name__
+        self.config = config
 
     @classmethod
-    def load(cls, model_file, config_file, device):
+    def load(cls, model_file, config_file):
         config = json.load(open(config_file))
-        # TODO make this more generic for other heads with more attributes
-        # e.g parse all args from config and feed them as **kwargs to subclasses constructor
-        prediction_head = cls.subclasses[config["name"]](
-            layer_dims=config["layer_dims_str"]
-        )
+        prediction_head = cls.subclasses[config["name"]](**config)
         logger.info("Loading prediction head from {}".format(model_file))
         prediction_head.load_state_dict(torch.load(model_file, map_location=device))
         return prediction_head
@@ -87,9 +84,9 @@ class TextClassificationHead(PredictionHead):
         **kwargs,
     ):
         super(TextClassificationHead, self).__init__()
-        # TODO MP I think it would be nicer here to pass hidden_dim and num_labels and construct layer_dims from it.
         # num_labels could in most cases also be automatically retrieved from the data processor
-        self.layer_dims_str = layer_dims
+        self.layer_dims = layer_dims
+        # TODO is this still needed?
         self.layer_dims_list = ast.literal_eval(str(layer_dims))
         self.feed_forward = FeedForwardBlock(self.layer_dims_list)
         self.num_labels = self.layer_dims_list[-1]
@@ -171,7 +168,7 @@ class TokenClassificationHead(PredictionHead):
     def __init__(self, layer_dims, **kwargs):
         super(TokenClassificationHead, self).__init__()
         # TODO having layer_dims as str and list here is not pretty. I would rather have the string only in load() and save()
-        self.layer_dims_str = layer_dims
+        self.layer_dims = layer_dims
         self.layer_dims_list = ast.literal_eval(str(layer_dims))
         self.feed_forward = FeedForwardBlock(self.layer_dims_list)
         self.num_labels = self.layer_dims_list[-1]
@@ -179,13 +176,6 @@ class TokenClassificationHead(PredictionHead):
         self.ph_output_type = "per_token"
         self.model_type = "token_classification"
         self.generate_config()
-
-    @classmethod
-    def load(cls, config, checkpoint_file):
-        prediction_head = cls(config["layer_dims_str"])
-        logger.info("Loading prediction head from {}".format(checkpoint_file))
-        prediction_head.load_state_dict(torch.load(checkpoint_file))
-        return prediction_head
 
     def forward(self, X):
         logits = self.feed_forward(X)
@@ -198,7 +188,9 @@ class TokenClassificationHead(PredictionHead):
         active_loss = padding_mask.view(-1) == 1
         active_logits = logits.view(-1, self.num_labels)[active_loss]
         active_labels = label_ids.view(-1)[active_loss]
-        loss = self.loss_fct(active_logits, active_labels)
+        loss = self.loss_fct(
+            active_logits, active_labels
+        )  # loss is a 1 dimemnsional (active) token loss
         return loss
 
     def logits_to_preds(self, logits, initial_mask, label_map, **kwargs):
@@ -315,7 +307,16 @@ class BertLMHead(PredictionHead):
         # TODO Check if weight init needed!
         # self.apply(self.init_bert_weights)
         self.ph_output_type = "per_token"
+        # TODO add model type for loading self.model_type = "language_modelling"
         self.generate_config()
+
+    def save(self, save_dir, head_num=0):
+        logger.warning("The weights of BertLMHead are not saved")
+        self.save_config(save_dir, head_num)
+
+    @classmethod
+    def load(cls, model_file, config_file):
+        raise NotImplementedError("BertLMHead does not currently support loading")
 
     def forward(self, X):
         lm_logits = self.model(X)
@@ -377,3 +378,69 @@ class FeedForwardBlock(nn.Module):
     def forward(self, X):
         logits = self.feed_forward(X)
         return logits
+
+
+class QuestionAnsweringHead(PredictionHead):
+    def __init__(self, layer_dims, **kwargs):
+        super(QuestionAnsweringHead, self).__init__()
+        self.layer_dims = layer_dims
+        self.layer_dims_list = ast.literal_eval(str(layer_dims))
+        self.feed_forward = FeedForwardBlock(self.layer_dims_list)
+        self.num_labels = self.layer_dims_list[-1]
+        self.ph_output_type = "per_token_squad"
+        self.model_type = "text_classification"
+        self.generate_config()
+
+    def forward(self, X):
+        logits = self.feed_forward(X)
+        start_logits, end_logits = logits.split(1, dim=-1)
+        start_logits = start_logits.squeeze(-1)
+        end_logits = end_logits.squeeze(-1)
+        return (start_logits, end_logits)
+
+    def logits_to_loss(self, logits, start_position, end_position, **kwargs):
+        (start_logits, end_logits) = logits
+
+        if len(start_position.size()) > 1:
+            start_position = start_position.squeeze(-1)
+        if len(end_position.size()) > 1:
+            end_position = end_position.squeeze(-1)
+        # sometimes the start/end positions are outside our model inputs, we ignore these terms
+        ignored_index = start_logits.size(1)
+        start_position.clamp_(0, ignored_index)
+        end_position.clamp_(0, ignored_index)
+
+        loss_fct = CrossEntropyLoss(ignore_index=ignored_index, reduction="none")
+        start_loss = loss_fct(start_logits, start_position)
+        end_loss = loss_fct(end_logits, end_position)
+        total_loss = (start_loss + end_loss) / 2
+        return total_loss
+
+    def logits_to_preds(self, logits, **kwargs):
+        (start_logits, end_logits) = logits
+        # TODO add checking for validity, e.g. end_idx coming after start_idx
+        start_idx = torch.argmax(start_logits, dim=1)
+        end_idx = torch.argmax(end_logits, dim=1)
+        return (start_idx, end_idx)
+
+    def prepare_labels(self, start_position, end_position, **kwargs):
+        return (start_position, end_position)
+
+    def formatted_preds(self, logits, samples, segment_ids, **kwargs) -> [str]:
+        all_preds = []
+        # TODO fix inference bug, model.forward is packing logits into list
+        logits = logits[0]
+        (start_idx, end_idx) = self.logits_to_preds(logits=logits)
+        # we have char offsets for the questions context in samples.tokenized
+        # we have start and end idx, but with the question tokens in front
+        # lets shift this by the index of first segment ID corresponding to context
+        shifts = torch.argmax(segment_ids, dim=1)
+        start_idx = (start_idx - shifts).cpu().numpy()
+        end_idx = (end_idx - shifts).cpu().numpy()
+        # TODO features and samples might not be aligned the way we still possibly split a sample into multiple features
+        for i, sample in enumerate(samples):
+            answer = " ".join(sample.tokenized["tokens"][start_idx[i] : end_idx[i]])
+            answer = answer.replace(" ##", "")
+            answer = answer.replace("##", "")
+            all_preds.append(answer)
+        return all_preds

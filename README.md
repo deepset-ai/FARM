@@ -19,6 +19,17 @@ Additional experiment tracking and visualizations support you along the way to a
 
 ## How to use it?
 
+### REST APIs for downstream tasks with Docker
+The package contains a Docker image with a Flask App for serving HTTP APIs to infer downstream tasks on trained models.
+
+To build and run Docker container from source:
+
+* Run `docker build . -t farm-api` to build the image.
+* Download the models from the link or use your own generated using the framework. For NER task, run the following command to download 
+and extract model: `wget -qO- https://farm-public.s3.eu-central-1.amazonaws.com/bert-german-CONLL2003.tar.gz | tar xvz - - -C <save-dir-path>`.
+* Run `docker run -v </save-dir-path>:/home/user/save farm-api` to run a container with the model directory mounted as a docker volume. 
+
+
 ### Quickstart
 
 ### Train a model
