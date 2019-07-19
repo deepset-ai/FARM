@@ -1,14 +1,13 @@
-import ast
 import json
+import logging
 import os
 
 import torch
 from dotmap import DotMap
+from pytorch_pretrained_bert.modeling import BertLMPredictionHead
 from torch import nn
 from torch.nn import CrossEntropyLoss
-import logging
 
-from pytorch_pretrained_bert.modeling import BertLMPredictionHead
 from farm.data_handler.utils import is_json
 from farm.utils import convert_iob_to_simple_tags
 
@@ -87,9 +86,8 @@ class TextClassificationHead(PredictionHead):
         # num_labels could in most cases also be automatically retrieved from the data processor
         self.layer_dims = layer_dims
         # TODO is this still needed?
-        self.layer_dims_list = ast.literal_eval(str(layer_dims))
-        self.feed_forward = FeedForwardBlock(self.layer_dims_list)
-        self.num_labels = self.layer_dims_list[-1]
+        self.feed_forward = FeedForwardBlock(self.layer_dims)
+        self.num_labels = self.layer_dims[-1]
         self.ph_output_type = "per_sequence"
         self.model_type = "text_classification"
         self.class_weights = class_weights
@@ -108,15 +106,6 @@ class TextClassificationHead(PredictionHead):
                 reduction=loss_reduction, ignore_index=loss_ignore_index
             )
         self.generate_config()
-
-    @classmethod
-    def load(cls, config_file, model_file):
-        config = json.load(open(config_file))
-        # TODO make this more generic for other heads with more attributes
-        prediction_head = cls(config["layer_dims_str"])
-        logger.info("Loading prediction head from {}".format(model_file))
-        prediction_head.load_state_dict(torch.load(model_file))
-        return prediction_head
 
     def forward(self, X):
         logits = self.feed_forward(X)
@@ -167,11 +156,10 @@ class TextClassificationHead(PredictionHead):
 class TokenClassificationHead(PredictionHead):
     def __init__(self, layer_dims, **kwargs):
         super(TokenClassificationHead, self).__init__()
-        # TODO having layer_dims as str and list here is not pretty. I would rather have the string only in load() and save()
+
         self.layer_dims = layer_dims
-        self.layer_dims_list = ast.literal_eval(str(layer_dims))
-        self.feed_forward = FeedForwardBlock(self.layer_dims_list)
-        self.num_labels = self.layer_dims_list[-1]
+        self.feed_forward = FeedForwardBlock(self.layer_dims)
+        self.num_labels = self.layer_dims[-1]
         self.loss_fct = CrossEntropyLoss(reduction="none")
         self.ph_output_type = "per_token"
         self.model_type = "token_classification"
@@ -272,7 +260,7 @@ class TokenClassificationHead(PredictionHead):
 
         assert len(preds) == len(probs) == len(spans)
 
-        res = {"task": "ner", "prediction": []}
+        res = {"task": "ner", "predictions": []}
         for preds_seq, probs_seq, sample, spans_seq in zip(
             preds, probs, samples, spans
         ):
@@ -384,9 +372,8 @@ class QuestionAnsweringHead(PredictionHead):
     def __init__(self, layer_dims, **kwargs):
         super(QuestionAnsweringHead, self).__init__()
         self.layer_dims = layer_dims
-        self.layer_dims_list = ast.literal_eval(str(layer_dims))
-        self.feed_forward = FeedForwardBlock(self.layer_dims_list)
-        self.num_labels = self.layer_dims_list[-1]
+        self.feed_forward = FeedForwardBlock(self.layer_dims)
+        self.num_labels = self.layer_dims[-1]
         self.ph_output_type = "per_token_squad"
         self.model_type = "text_classification"
         self.generate_config()
