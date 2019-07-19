@@ -92,8 +92,8 @@ class TextClassificationHead(PredictionHead):
         self.num_labels = self.layer_dims_list[-1]
         self.ph_output_type = "per_sequence"
         self.model_type = "text_classification"
+        self.class_weights = class_weights
 
-        # Todo do we still need to do this?
         if class_weights:
             self.balanced_weights = nn.Parameter(
                 torch.tensor(class_weights), requires_grad=False

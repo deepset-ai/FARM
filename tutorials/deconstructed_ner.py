@@ -4,14 +4,15 @@ import logging
 import torch
 
 from farm.data_handler.data_silo import DataSilo
-from farm.data_handler.processor import CONLLProcessor, GermEval14Processor
+from farm.data_handler.processor import CONLLProcessor
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
 from farm.modeling.prediction_head import TokenClassificationHead
 from farm.modeling.tokenization import BertTokenizer
 from farm.train import Trainer
-from farm.experiment import calculate_optimization_steps, initialize_optimizer
+from farm.experiment import initialize_optimizer
 from farm.utils import set_all_seeds, MLFlowLogger
+from farm.infer import Inferencer
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
@@ -32,26 +33,24 @@ batch_size = 32
 evaluate_every = 50
 lang_model = "bert-base-german-cased"
 
-
+# 1.Create a tokenizer
 tokenizer = BertTokenizer.from_pretrained(
     pretrained_model_name_or_path=lang_model, do_lower_case=False
 )
 
+# 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
 processor = CONLLProcessor(
-    tokenizer=tokenizer, max_seq_len=128, data_dir="../data/conll03de"
+    tokenizer=tokenizer, max_seq_len=128, data_dir="../data/conll03-de"
 )
 
-# TODO Maybe data_dir should not be an argument here but in pipeline
-# Pipeline should also contain metric
-data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=False)
+# 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
+data_silo = DataSilo(processor=processor, batch_size=batch_size)
 
-# Init model
-prediction_head = TokenClassificationHead(layer_dims=[768, len(processor.label_list)])
-
+# 4. Create an AdaptiveModel
+# a) which consists of a pretrained language model as a basis
 language_model = Bert.load(lang_model)
-# language_model.save_config("save")
-
-# model = AdaptiveModel.load("save/ner_model_1", device)
+# b) and a prediction head on top that is suited for our task => NER
+prediction_head = TokenClassificationHead(layer_dims=[768, len(processor.label_list)])
 
 model = AdaptiveModel(
     language_model=language_model,
@@ -61,7 +60,7 @@ model = AdaptiveModel(
     device=device,
 )
 
-# Init optimizer
+# 5. Create an optimizer
 optimizer, warmup_linear = initialize_optimizer(
     model=model,
     learning_rate=2e-5,
@@ -71,7 +70,7 @@ optimizer, warmup_linear = initialize_optimizer(
     n_epochs=n_epochs,
 )
 
-
+# 6. Feed everything to the Trainer, which keeps care of growing our model into powerful plant and evaluates it from time to time
 trainer = Trainer(
     optimizer=optimizer,
     data_silo=data_silo,
@@ -82,7 +81,19 @@ trainer = Trainer(
     device=device,
 )
 
+# 7. Let it grow
 model = trainer.train(model)
 
-model.save("save/ner_model_1")
-processor.save("save/ner_model_1")
+# 8. Hooray! You have a model. Store it:
+model.save("save/bert-german-GNAD-tutorial")
+processor.save("save/bert-german-GNAD-tutorial")
+
+
+# 9. Load it & harvest your fruits (Inference)
+basic_texts = [
+    {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot ist"},
+    {"text": "Martin Müller spielt Fussball"},
+]
+model = Inferencer("save/bert-german-GNAD-tutorial")
+result = model.run_inference(dicts=basic_texts)
+print(result)
