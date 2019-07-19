@@ -653,16 +653,42 @@ class SquadProcessor(Processor):
         doc_stride=128,
         max_query_length=64,
     ):
+        """
+        Initialize a SQuAD Processor
+
+        :param tokenizer: Used to split a sentence (str) into tokens.
+        :param max_seq_len: Samples are truncated after this many tokens.
+        :type max_seq_len: int
+        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
+        :type data_dir: str
+        :param train_filename: The name of the file containing training data.
+        :type train_filename: str
+        :param dev_filename:The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
+        will be a slice of the train set.
+        :type dev_filename: str or None
+        :param test_filename: None
+        :type: test_filename: str
+        :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
+        :type dev_split: float
+        :param data_dir: The directory in which the train, test and perhaps dev files can be found.
+        :type data_dir: str
+        :param doc_stride: When the document containing the answer is too long it gets split into part, strided by doc_stride
+        :type doc_stride: int
+        :param max_query_length: Maximum length of the question (in number of subword tokens)
+        :type max_query_length: int
+
+
+        """
         label_list = ["start_token", "end_token"]
 
         metrics = ["squad"]
         self.train_filename = train_filename
         self.dev_filename = dev_filename
         self.test_filename = test_filename
-        dev_split = dev_split
-        label_dtype = torch.long
+        self.dev_split = dev_split
+        label_dtype = torch.long  # TODO check if that is correct and needed
         self.target = "classification"
-        self.ph_output_type = "per_token"
+        self.ph_output_type = "per_token_squad"
         self.max_seq_len = max_seq_len
         self.doc_stride = doc_stride
         self.max_query_length = max_query_length
@@ -688,6 +714,7 @@ class SquadProcessor(Processor):
         return dict
 
     def _dict_to_samples(self, dict: dict) -> [Sample]:
+        # TODO split samples that are too long in this function, related to todo in self._sample_to_features
         samples = create_samples_squad(entry=dict)
         for sample in samples:
             tokenized = tokenize_with_metadata(
@@ -700,12 +727,12 @@ class SquadProcessor(Processor):
         return samples
 
     def _sample_to_features(self, sample) -> dict:
+        # TODO, make this function return one set of features per sample
         features = sample_to_features_squad(
             sample=sample,
             tokenizer=self.tokenizer,
             max_seq_len=self.max_seq_len,
             doc_stride=self.doc_stride,
             max_query_length=self.max_query_length,
-            dataset_name=sample.id.split("-")[0],
         )
         return features

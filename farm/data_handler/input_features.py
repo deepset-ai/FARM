@@ -283,15 +283,11 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer):
 
 
 def sample_to_features_squad(
-    sample, tokenizer, max_seq_len, doc_stride, max_query_length, dataset_name
+    sample, tokenizer, max_seq_len, doc_stride, max_query_length
 ):
     sample.clear_text = DotMap(sample.clear_text, _dynamic=False)
+    is_training = sample.clear_text.is_training
 
-    """Loads a data file into a list of `InputBatch`s."""
-    if dataset_name.find("train") > -1 or dataset_name.find("dev") > -1:
-        is_training = True
-    else:
-        is_training = False
     unique_id = 1000000000
     features = []
 

@@ -136,6 +136,7 @@ class DataSilo(object):
         )
 
     # TODO: maybe this can be inside calculate_statistics
+    # TODO: this also computes weights for QA. What is inside x[3].item() o_O ???
     def _calculate_class_weights(self, dataset):
         try:
             labels = [x[3].item() for x in dataset]

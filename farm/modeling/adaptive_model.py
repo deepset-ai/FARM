@@ -50,6 +50,12 @@ class AdaptiveModel(nn.Module):
         self.log_params()
 
     def save(self, save_dir):
+        """
+        Saves
+        :param save_dir: path to save to
+        :type save_dir: str
+        :return: into the void
+        """
         create_folder(save_dir)
         self.language_model.save(save_dir)
         for i, ph in enumerate(self.prediction_heads):
@@ -58,6 +64,22 @@ class AdaptiveModel(nn.Module):
 
     @classmethod
     def load(cls, load_dir, device):
+        """
+        Loads an AdaptiveModel from a directory.
+        The directory must contain:
+        - language_model.bin
+        - language_model_config.json
+        - prediction_head_X.bin  multiple PH possible
+        - prediction_head_X_config.json
+        - processor_config.json config for transforming input
+        - vocab.txt vocab file for language model, turning text to Wordpiece Tokens
+        :param load_dir: location where adaptive model is stored
+        :type load_dir: str
+        :param device: to which device we want to sent the model, either cpu or cuda
+        :type device: torch.device
+        :return: AdaptiveModel
+        :rtype: AdaptiveModel
+        """
         # Prediction heads
         ph_model_files, ph_config_files = cls._get_prediction_head_files(load_dir)
         prediction_heads = []
@@ -75,14 +97,31 @@ class AdaptiveModel(nn.Module):
         return cls(language_model, prediction_heads, 0.1, ph_output_type, device)
 
     def logits_to_loss_per_head(self, logits, **kwargs):
-        # collect losses from all heads
+
+        """
+        collect losses from all heads
+        :param logits: logits, can vary in shape and type, depending on task
+        :type logits: object
+        :param kwargs: placeholder for passing generic parameters
+        :type kwargs: object
+        :return: per sample per prediciton head loss
+        :rtype: torch.tensor shape: [#pred_heads, batch_size] # TODO check return type
+        """
         all_losses = []
         for head, logits_for_one_head in zip(self.prediction_heads, logits):
             all_losses.append(head.logits_to_loss(logits=logits_for_one_head, **kwargs))
         return all_losses
 
     def logits_to_loss(self, logits, **kwargs):
-        # get losses from all heads & reduce to single loss *per sample*
+        """
+        get losses from all heads & reduce to single loss *per sample*
+        :param logits: logits, can vary in shape and type, depending on task
+        :type logits: object
+        :param kwargs: placeholder for passing generic parameters
+        :type kwargs: object
+        :return: per sample loss
+        :rtype: torch.tensor shape: [batch_size]
+        """
         all_losses = self.logits_to_loss_per_head(logits, **kwargs)
         loss = sum(all_losses)
         return loss
@@ -100,6 +139,15 @@ class AdaptiveModel(nn.Module):
         return all_preds
 
     def prepare_labels(self, label_maps, **kwargs):
+        """
+        Label conversion to original label space, per prediction head
+        :param label_maps: dictionary for mapping ids to label strings
+        :type label_maps: dict[int:str]
+        :param kwargs: placeholder for passing generic parameters
+        :type kwargs: object
+        :return: labels in the right format
+        :rtype: object
+        """
         all_labels = []
         for head, label_map_one_head in zip(self.prediction_heads, label_maps):
             labels = head.prepare_labels(label_map=label_map_one_head, **kwargs)
@@ -107,6 +155,17 @@ class AdaptiveModel(nn.Module):
         return all_labels
 
     def formatted_preds(self, logits, label_maps, **kwargs):
+        """
+        Format predictions for inference
+        :param logits: model logits
+        :type logits: torch.tensor
+        :param label_maps: dictionary for mapping ids to label strings
+        :type label_maps: dict[int:str]
+        :param kwargs: placeholder for passing generic parameters
+        :type kwargs: object
+        :return: predictions in the right format
+        :rtype: object
+        """
         all_preds = []
         # collect preds from all heads
         for head, logits_for_head, label_map_for_head in zip(
@@ -119,6 +178,13 @@ class AdaptiveModel(nn.Module):
         return all_preds
 
     def forward(self, **kwargs):
+        """
+        Run the whole model consisting of base language model and (multiple) prediction heads
+        :param kwargs: placeholder for passing generic parameters
+        :type kwargs: object
+        :return: all logits
+        :rtype: torch.tensor or mutliple tensors per prediction head
+        """
         # Run language model
         sequence_output, pooled_output = self.language_model(
             **kwargs, output_all_encoded_layers=False
@@ -132,7 +198,9 @@ class AdaptiveModel(nn.Module):
                 output = self.dropout(sequence_output)
             elif lm_out == "per_sequence":
                 output = self.dropout(pooled_output)
-            elif lm_out == "per_token_squad":
+            elif (
+                lm_out == "per_token_squad"
+            ):  # we need a per_token_squad because of variable metric computation later on...
                 output = self.dropout(sequence_output)
             else:
                 raise ValueError(
@@ -172,6 +240,10 @@ class AdaptiveModel(nn.Module):
         return model_files, config_files
 
     def log_params(self):
+        """
+        Logs paramteres to generic logger MlLogger
+        :return: just log into the void
+        """
         params = {
             "lm": self.language_model.__class__.__name__,
             "prediction_heads": ",".join(

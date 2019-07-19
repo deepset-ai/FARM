@@ -205,6 +205,7 @@ def create_samples_squad(entry):
             clear_text["start_position"] = start_position
             clear_text["end_position"] = end_position
             clear_text["is_impossible"] = is_impossible
+            clear_text["is_training"] = is_training
             example = Sample(
                 id=None, clear_text=clear_text, features=None, tokenized=None
             )
