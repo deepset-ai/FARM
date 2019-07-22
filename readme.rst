@@ -28,7 +28,7 @@ Installation
 
 We recommend using Python 3.7.::
 
-    git clone git@github.com:deepset-ai/FARM.git
+    git clone https://github.com/deepset-ai/FARM.git
     cd FARM
     pip3 install .
     pip3 install -r requirements.txt
