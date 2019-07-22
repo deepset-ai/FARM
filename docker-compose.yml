@@ -1,0 +1,10 @@
+version: '3'
+services:
+  inference-api:
+    image: "deepset/farm-inference-api:base-models"
+    ports:
+      - "5000:5000"
+  inference-ui:
+    image: "deepset/farm-inference-ui:latest"
+    ports:
+      - "3000:80"

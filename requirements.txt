@@ -1,0 +1,22 @@
+# PyTorch
+torch==1.1.0
+# progress bars in model download and training scripts
+tqdm
+# Accessing files from S3 directly.
+boto3
+# Used for downloading models over HTTP
+requests
+# Scipy & sklearn for stats in run_classifier
+scipy
+sklearn
+# Metrics or logging related
+seqeval
+mlflow==1.0.0
+# huggingface repository
+pytorch-pretrained-bert==0.6.2
+# accessing dictionary elements with dot notation
+dotmap==1.3.0
+# for inference-rest-apis
+flask
+flask-restplus
+flask-cors
