@@ -90,7 +90,7 @@ def _download_extract_downstream_data(input_file):
     if "conll03" in taskname and "de" in taskname:
         # conll03 is copyrighted, but luckily somebody put it on github. Kudos!
         if not os.path.exists(directory):
-            os.mkdirs(directory)
+            os.makedirs(directory)
         for dataset in ["train", "dev", "test"]:
             _conll03get(dataset, directory)
     elif taskname not in DOWNSTREAM_TASK_MAP:
