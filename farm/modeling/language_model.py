@@ -31,8 +31,7 @@ from pytorch_pretrained_bert.modeling import (
     load_tf_weights_in_bert,
     BertEncoder,
     BertEmbeddings,
-    BertPooler,
-    BertPreTrainedModel,
+    BertPooler
 )
 from torch import nn
 
@@ -57,7 +56,9 @@ TF_WEIGHTS_NAME = "model.ckpt"
 
 
 class LanguageModel(nn.Module):
-    """ Takes a tokenized sentence as input and returns vectors that represents the input semantically. """
+    """
+    Takes a tokenized sentence as input and returns vectors that represents the input semantically.
+    """
 
     subclasses = {}
 
@@ -185,8 +186,8 @@ class Bert(LanguageModel):
 # TODO: This class is huge and we only have it here because we need to load our models from S3. Is there a better way to do this?
 # The above PRETRAINED_MODEL_ARCHIVE_MAP cannot be used inside pytorch huggingface bert package
 class BertPreTrainedModel(nn.Module):
-    """ An abstract class to handle weights initialization and
-        a simple interface for dowloading and loading pretrained models.
+    """
+    An abstract class to handle weights initialization and a simple interface for dowloading and loading pretrained models.
     """
 
     def __init__(self, config, *inputs, **kwargs):
@@ -220,28 +221,37 @@ class BertPreTrainedModel(nn.Module):
         Instantiate a BertPreTrainedModel from a pre-trained model file or a pytorch state dict.
         Download and cache the pre-trained model file if needed.
 
-        Params:
-            pretrained_model_name_or_path: either:
-                - a str with the name of a pre-trained model to load selected in the list of:
-                    . `bert-base-uncased`
-                    . `bert-large-uncased`
-                    . `bert-base-cased`
-                    . `bert-large-cased`
-                    . `bert-base-multilingual-uncased`
-                    . `bert-base-multilingual-cased`
-                    . `bert-base-chinese`
-                - a path or url to a pretrained model archive containing:
-                    . `bert_config.json` a configuration file for the model
-                    . `pytorch_model.bin` a PyTorch dump of a BertForPreTraining instance
-                - a path or url to a pretrained model archive containing:
-                    . `bert_config.json` a configuration file for the model
-                    . `model.chkpt` a TensorFlow checkpoint
-            from_tf: should we load the weights from a locally saved TensorFlow checkpoint
-            cache_dir: an optional path to a folder in which the pre-trained models will be cached.
-            state_dict: an optional state dictionnary (collections.OrderedDict object) to use instead of Google pre-trained models
-            *inputs, **kwargs: additional input for the specific Bert class
-                (ex: num_labels for BertForSequenceClassification)
+        :param pretrained_model_name_or_path: either,
+
+
+           * a str with the name of a pre-trained model to load selected in the list of:
+
+              * `bert-base-uncased`
+              * `bert-large-uncased`
+              * `bert-base-cased`
+              * `bert-large-cased`
+              * `bert-base-multilingual-uncased`
+              * `bert-base-multilingual-cased`
+              * `bert-base-chinese`
+
+           * a path or url to a pretrained model archive containing:
+
+              * `bert_config.json` a configuration file for the model
+              * `pytorch_model.bin` a PyTorch dump of a BertForPreTraining instance
+
+           * a path or url to a pretrained model archive containing:
+
+              * `bert_config.json` a configuration file for the model
+              * `model.chkpt` a TensorFlow checkpoint
+
+        :param from_tf: should we load the weights from a locally saved TensorFlow checkpoint
+        :param cache_dir: an optional path to a folder in which the pre-trained models will be cached.
+        :param state_dict: an optional state dictionary (collections.OrderedDict object) to use instead of Google pre-trained models
+        :param inputs: additional input for the specific Bert class (ex: num_labels for BertForSequenceClassification)
+        :param kwargs: additional input for the specific Bert class (ex: num_labels for BertForSequenceClassification)
+        :return:
         """
+
         state_dict = kwargs.get("state_dict", None)
         kwargs.pop("state_dict", None)
         cache_dir = kwargs.get("cache_dir", None)
@@ -386,51 +396,15 @@ class BertPreTrainedModel(nn.Module):
 
 
 class BertModel(BertPreTrainedModel):
-    """BERT model ("Bidirectional Embedding Representations from a Transformer").
-
-    Params:
-        config: a BertConfig class instance with the configuration to build a new model
-
-    Inputs:
-        `input_ids`: a torch.LongTensor of shape [batch_size, sequence_length]
-            with the word token indices in the vocabulary(see the tokens preprocessing logic in the scripts
-            `extract_features.py`, `run_classifier.py` and `run_squad.py`)
-        `token_type_ids`: an optional torch.LongTensor of shape [batch_size, sequence_length] with the token
-            types indices selected in [0, 1]. Type 0 corresponds to a `sentence A` and type 1 corresponds to
-            a `sentence B` token (see BERT paper for more details).
-        `attention_mask`: an optional torch.LongTensor of shape [batch_size, sequence_length] with indices
-            selected in [0, 1]. It's a mask to be used if the input sequence length is smaller than the max
-            input sequence length in the current batch. It's the mask that we typically use for attention when
-            a batch has varying length sentences.
-        `output_all_encoded_layers`: boolean which controls the content of the `encoded_layers` output as described below. Default: `True`.
-
-    Outputs: Tuple of (encoded_layers, pooled_output)
-        `encoded_layers`: controled by `output_all_encoded_layers` argument:
-            - `output_all_encoded_layers=True`: outputs a list of the full sequences of encoded-hidden-states at the end
-                of each attention block (i.e. 12 full sequences for BERT-base, 24 for BERT-large), each
-                encoded-hidden-state is a torch.FloatTensor of size [batch_size, sequence_length, hidden_size],
-            - `output_all_encoded_layers=False`: outputs only the full sequence of hidden-states corresponding
-                to the last attention block of shape [batch_size, sequence_length, hidden_size],
-        `pooled_output`: a torch.FloatTensor of size [batch_size, hidden_size] which is the output of a
-            classifier pretrained on top of the hidden state associated to the first character of the
-            input (`CLS`) to train on the Next-Sentence task (see BERT's paper).
-
-    Example usage:
-    ```python
-    # Already been converted into WordPiece token ids
-    input_ids = torch.LongTensor([[31, 51, 99], [15, 5, 0]])
-    padding_mask = torch.LongTensor([[1, 1, 1], [1, 1, 0]])
-    token_type_ids = torch.LongTensor([[0, 0, 1], [0, 1, 0]])
-
-    config = modeling.BertConfig(vocab_size_or_config_json_file=32000, hidden_size=768,
-        num_hidden_layers=12, num_attention_heads=12, intermediate_size=3072)
-
-    model = modeling.BertModel(config=config)
-    all_encoder_layers, pooled_output = model(input_ids, token_type_ids, padding_mask)
-    ```
+    """
+    BERT model ("Bidirectional Embedding Representations from a Transformer").
     """
 
     def __init__(self, config):
+        """
+        :param config: a BertConfig class instance with the configuration to build a new model
+        :type config: BertConfig
+        """
         super(BertModel, self).__init__(config)
         self.embeddings = BertEmbeddings(config)
         self.encoder = BertEncoder(config)
@@ -444,6 +418,36 @@ class BertModel(BertPreTrainedModel):
         attention_mask=None,
         output_all_encoded_layers=True,
     ):
+        """
+        Example usage:
+
+        .. code-block:: python
+
+           # Already been converted into WordPiece token ids
+           input_ids = torch.LongTensor([[31, 51, 99], [15, 5, 0]])
+           padding_mask = torch.LongTensor([[1, 1, 1], [1, 1, 0]])
+           token_type_ids = torch.LongTensor([[0, 0, 1], [0, 1, 0]])
+
+           config = modeling.BertConfig(vocab_size_or_config_json_file=32000, hidden_size=768,
+            num_hidden_layers=12, num_attention_heads=12, intermediate_size=3072)
+
+           model = modeling.BertModel(config=config)
+           all_encoder_layers, pooled_output = model(input_ids, token_type_ids, padding_mask)
+
+        :param input_ids: a torch.LongTensor of shape [batch_size, sequence_length] with the word token indices in the
+                          vocabulary(see the tokens preprocessing logic in the scripts `extract_features.py`,
+                          `run_classifier.py` and `run_squad.py`)
+        :param token_type_ids: an optional torch.LongTensor of shape [batch_size, sequence_length] with the token types
+                               indices selected in [0, 1]. Type 0 corresponds to a `sentence A` and type 1 corresponds
+                               to a `sentence B` token (see BERT paper for more details)
+        :param attention_mask: an optional torch.LongTensor of shape [batch_size, sequence_length] with indices selected
+                               in [0, 1]. It's a mask to be used if the input sequence length is smaller than the max
+                               input sequence length in the current batch. It's the mask that we typically use for
+                               attention when a batch has varying length sentences.
+        :param output_all_encoded_layers: boolean which controls the content of the `encoded_layers` output as described
+                                          below. Default: `True`.
+        :return:
+        """
         if attention_mask is None:
             attention_mask = torch.ones_like(input_ids)
         if token_type_ids is None:

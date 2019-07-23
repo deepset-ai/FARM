@@ -459,7 +459,7 @@ class QuestionAnsweringHead(PredictionHead):
         self.num_labels = self.layer_dims[-1]
         self.ph_output_type = "per_token_squad"
         self.model_type = (
-            "token_classification"
+            "span_classification"
         )  # predicts start and end token of answer
         self.generate_config()
 
@@ -563,18 +563,18 @@ class QuestionAnsweringHead(PredictionHead):
         end_idx = end_idx.cpu().numpy()
         segment_ids = segment_ids.cpu().numpy()
 
-        shifts = np.argmax(segment_ids>0, axis=1)
+        shifts = np.argmax(segment_ids > 0, axis=1)
         start_idx = start_idx - shifts
         start_idx[start_idx < 0] = 0
         end_idx = end_idx - shifts
         end_idx[end_idx < 0] = 0
-        end_idx = end_idx + 1 #slicing up to and including end
+        end_idx = end_idx + 1  # slicing up to and including end
         result = {}
         result["task"] = "qa"
 
         # TODO features and samples might not be aligned. We still sometimes split a sample into multiple features
         for i, sample in enumerate(samples):
-            answer = " ".join(sample.tokenized["tokens"][start_idx[i] : end_idx[i]])
+            answer = " ".join(sample.tokenized["tokens"][start_idx[i]: end_idx[i]])
             answer = answer.replace(" ##", "")
             answer = answer.replace("##", "")
 

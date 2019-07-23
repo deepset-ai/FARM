@@ -47,8 +47,8 @@ class Evaluator:
 
         :param model: The model on which to perform evaluation
         :type model: AdaptiveModel
-        :return all_results: A list of dictionaries, one for each prediction head.
-        Each dictionary contains the metrics and reports generated during evaluation.
+        :return all_results: A list of dictionaries, one for each prediction head. Each dictionary contains the metrics
+                             and reports generated during evaluation.
         :rtype all_results: list of dicts
         """
         model.eval()

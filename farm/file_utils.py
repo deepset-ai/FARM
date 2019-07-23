@@ -340,7 +340,7 @@ def unnestConfig(config, flattened=False):
     if flattened:
         for k, v in config.items():
             if isinstance(v, list):
-                if(k != "layer_dims"): #exclude layer dims, since it is already a list
+                if k != "layer_dims":  # exclude layer dims, since it is already a list
                     nestedKeys.append(k)
                     nestedVals.append(v)
     else:
@@ -348,7 +348,9 @@ def unnestConfig(config, flattened=False):
             for k, v in gv.items():
                 if isinstance(v, list):
                     if isinstance(v, list):
-                        if (k != "layer_dims"): #exclude layer dims, since it is already a list
+                        if (
+                            k != "layer_dims"
+                        ):  # exclude layer dims, since it is already a list
                             nestedKeys.append([gk, k])
                             nestedVals.append(v)
                     elif isinstance(v, dict):
