@@ -1,7 +1,7 @@
 # fmt: off
 import logging
-
 import torch
+import pprint
 
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import SquadProcessor
@@ -28,14 +28,14 @@ ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_question_
 ##########################
 set_all_seeds(seed=42)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-batch_size = 24*4
-n_epochs = 3
-evaluate_every = 200
-n_gpu = 4
+#device = torch.device("cpu")
+batch_size = 24
+n_epochs = 2
+evaluate_every = 500
+n_gpu = 1
 base_LM_model = "bert-base-cased"
 train_filename="train-v2.0.json"
 dev_filename="dev-v2.0.json"
-save_dir = "../save/qa_model_full"
 
 # 1.Create a tokenizer
 tokenizer = BertTokenizer.from_pretrained(
@@ -91,26 +91,19 @@ trainer = Trainer(
 model = trainer.train(model)
 
 # 8. Hooray! You have a model. Store it:
-save_dir = "save/bert-english-qa-tutorial"
+save_dir = "../save/bert-english-qa-tutorial"
 model.save(save_dir)
 processor.save(save_dir)
 
 # 9. Load it & harvest your fruits (Inference)
 QA_input = [
-    {
-        "paragraphs": [
-            {
-                "qas": [
-                    {
-                        "question": "When did Beyonce start becoming popular?",
-                        "id": "123",
-                    }
-                ],
-                "context": 'Beyonc\u00e9 Giselle Knowles-Carter (/bi\u02d0\u02c8j\u0252nse\u026a/ bee-YON-say) (born September 4, 1981) is an American singer, songwriter, record producer and actress. Born and raised in Houston, Texas, she performed in various singing and dancing competitions as a child, and rose to fame in the late 1990s as lead singer of R&B girl-group Destiny\'s Child. Managed by her father, Mathew Knowles, the group became one of the world\'s best-selling girl groups of all time. Their hiatus saw the release of Beyonc\u00e9\'s debut album, Dangerously in Love (2003), which established her as a solo artist worldwide, earned five Grammy Awards and featured the Billboard Hot 100 number-one singles "Crazy in Love" and "Baby Boy".',
-            }
-        ]
-    }
-]
+        {
+            "questions": ["Who counted the game among the best ever made?"],
+            "text":  "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
+        }]
+
 model = Inferencer(save_dir)
 result = model.run_inference(dicts=QA_input)
-print(result)
+
+for x in result:
+    pprint.pprint(x)

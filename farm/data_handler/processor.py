@@ -709,12 +709,34 @@ class SquadProcessor(Processor):
         self.counts = {}
         self.stage = None
 
+
+    def dataset_from_dicts(self, dicts):
+        dicts_converted = [self._convert_inference(x) for x in dicts]
+        self.baskets = [
+            SampleBasket(raw=tr, id="infer - {}".format(i))
+            for i, tr in enumerate(dicts_converted)
+        ]
+        self._init_samples_in_baskets()
+        self._featurize_samples()
+        dataset, tensor_names = self._create_dataset()
+        return dataset, tensor_names
+
+    def _convert_inference(self, infer_dict):
+        # convert input coming from inferencer to SQuAD format
+        converted = {}
+        converted["paragraphs"] = [ {"qas": [{"question":infer_dict.get("questions",["Missing?"])[0],
+                                              "id": "unusedID"}],
+                                     "context": infer_dict.get("text","Missing!")}]
+        return converted
+
     def _file_to_dicts(self, file: str) -> [dict]:
         dict = read_squad_file(filename=file)
         return dict
 
     def _dict_to_samples(self, dict: dict) -> [Sample]:
         # TODO split samples that are too long in this function, related to todo in self._sample_to_features
+        if("paragraphs" not in dict): # TODO change this inference mode hack
+            dict = self._convert_inference(infer_dict=dict)
         samples = create_samples_squad(entry=dict)
         for sample in samples:
             tokenized = tokenize_with_metadata(
