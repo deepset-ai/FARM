@@ -1,8 +1,8 @@
 Modeling
 ========
 
-adaptive\_model
----------------
+Adaptive Model
+------------------
 
 .. automodule:: farm.modeling.adaptive_model
    :members:
@@ -10,7 +10,7 @@ adaptive\_model
    :show-inheritance:
 
 Language Model
----------------
+--------------
 
 .. automodule:: farm.modeling.language_model
    :members:
@@ -18,7 +18,7 @@ Language Model
    :show-inheritance:
 
 Prediction Head
-----------------
+---------------
 
 .. automodule:: farm.modeling.prediction_head
    :members:
