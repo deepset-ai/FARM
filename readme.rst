@@ -16,12 +16,15 @@ tasks (e.g. NER) by simply switching the prediction head.
 The standardized interfaces for language models and prediction heads allow a flexible extension by researchers and an easy adaptation for practitioners.
 Additional experiment tracking and visualizations support you along the way to adapt a SOTA model to your own NLP problem and showcase it as a PoC.  
 
+See the `full documentation <https://farm.deepset.ai>`_ for more details.
+
 Core features
 ########
 - Easy adaptation of pretrained language models (e.g. BERT) to your own use case
 - Modular design of language model and prediction heads
 - Easy experiment tracking & execution
 - Simple deployment and visualization to showcase your PoC
+
 
 Installation
 #############

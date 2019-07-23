@@ -65,7 +65,7 @@ b) and a prediction head on top that is suited for our task => Text classificati
 
     model = trainer.train(model)
 
-8. Hooray! You have a model. Store it:::
+8. Hooray! You have a model. Store it::
 
     save_dir = "save/bert-german-GNAD-tutorial"
     model.save(save_dir)
