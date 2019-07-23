@@ -48,7 +48,7 @@ PRETRAINED_MODEL_ARCHIVE_MAP = {
     "bert-base-multilingual-uncased": "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-multilingual-uncased.tar.gz",
     "bert-base-multilingual-cased": "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-multilingual-cased.tar.gz",
     "bert-base-chinese": "https://s3.amazonaws.com/models.huggingface.co/bert/bert-base-chinese.tar.gz",
-    "bert-base-german-cased": "s3://int-models-bert/bert-base-cased-de-2b-end/bert-base-cased-de-2b-end.tar.gz",
+    "bert-base-german-cased": "https://int-deepset-models-bert.s3.eu-central-1.amazonaws.com/pytorch/bert-base-german-cased.tar.gz",
 }
 
 CONFIG_NAMES = ["bert_config.json", "language_model_config.json"]

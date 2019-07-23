@@ -340,15 +340,17 @@ def unnestConfig(config, flattened=False):
     if flattened:
         for k, v in config.items():
             if isinstance(v, list):
-                nestedKeys.append(k)
-                nestedVals.append(v)
+                if(k != "layer_dims"): #exclude layer dims, since it is already a list
+                    nestedKeys.append(k)
+                    nestedVals.append(v)
     else:
         for gk, gv in config.items():
             for k, v in gv.items():
                 if isinstance(v, list):
                     if isinstance(v, list):
-                        nestedKeys.append([gk, k])
-                        nestedVals.append(v)
+                        if (k != "layer_dims"): #exclude layer dims, since it is already a list
+                            nestedKeys.append([gk, k])
+                            nestedVals.append(v)
                     elif isinstance(v, dict):
                         logger.error("Config too deep!")
 

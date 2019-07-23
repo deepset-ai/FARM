@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import numpy as np
 
 import torch
 from dotmap import DotMap
@@ -34,7 +35,7 @@ class PredictionHead(nn.Module):
         :param prediction_head_name: Classname (exact string!) of prediction head we want to create
         :type prediction_head_name: str
         :param layer_dims: describing the feed forward block structure, e.g. [768,2]
-        :type layer_dims: str
+        :type layer_dims: List[Int]
         :param class_weights: weighting (
         :paramimbalanced) classes
         :type class_weights: list[Float]
@@ -448,7 +449,7 @@ class QuestionAnsweringHead(PredictionHead):
     def __init__(self, layer_dims, **kwargs):
         """
         :param layer_dims: dimensions of Feed Forward block, e.g. [768,2], for adjusting to BERT embedding. Output should be always 2
-        :type layer_dims: str
+        :type layer_dims: List[Int]
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
         """
@@ -558,13 +559,34 @@ class QuestionAnsweringHead(PredictionHead):
         # we have char offsets for the questions context in samples.tokenized
         # we have start and end idx, but with the question tokens in front
         # lets shift this by the index of first segment ID corresponding to context
-        shifts = torch.argmax(segment_ids, dim=1)
-        start_idx = (start_idx - shifts).cpu().numpy()
-        end_idx = (end_idx - shifts).cpu().numpy()
+        start_idx = start_idx.cpu().numpy()
+        end_idx = end_idx.cpu().numpy()
+        segment_ids = segment_ids.cpu().numpy()
+
+        shifts = np.argmax(segment_ids>0, axis=1)
+        start_idx = start_idx - shifts
+        start_idx[start_idx < 0] = 0
+        end_idx = end_idx - shifts
+        end_idx[end_idx < 0] = 0
+        end_idx = end_idx + 1 #slicing up to and including end
+        result = {}
+        result["task"] = "qa"
+
         # TODO features and samples might not be aligned. We still sometimes split a sample into multiple features
         for i, sample in enumerate(samples):
             answer = " ".join(sample.tokenized["tokens"][start_idx[i] : end_idx[i]])
             answer = answer.replace(" ##", "")
             answer = answer.replace("##", "")
-            all_preds.append(answer)
-        return all_preds
+
+            question = sample.clear_text["question_text"]
+            pred = {}
+            pred["start"] = sample.tokenized["offsets"][start_idx[i]]
+            pred["end"] = sample.tokenized["offsets"][end_idx[i]]
+            pred["context"] = question
+            pred["label"] = answer
+            pred["probability"] = "unkown" # TODO add prob from logits. Dunno how though
+            answer_dugging = " ".join(sample.clear_text["doc_tokens"])[pred["start"]:pred["end"]]
+            all_preds.append(pred)
+
+        result["predictions"] = all_preds
+        return result

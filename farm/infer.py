@@ -52,7 +52,7 @@ class Inferencer:
                 preds = self.model.formatted_preds(
                     logits=logits,
                     label_maps=self.processor.label_maps,
-                    samples=samples,
+                    samples=samples, #TODO slice these samples to be in line with the batched input
                     tokenizer=self.processor.tokenizer,
                     **batch
                 )
