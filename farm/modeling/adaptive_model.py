@@ -40,7 +40,7 @@ class AdaptiveModel(nn.Module):
         """
         super(AdaptiveModel, self).__init__()
         self.language_model = language_model.to(device)
-        self.prediction_heads = [ph.to(device) for ph in prediction_heads]
+        self.prediction_heads = nn.ModuleList([ph.to(device) for ph in prediction_heads])
         self.num_labels = [head.num_labels for head in prediction_heads]
         self.dropout = nn.Dropout(embeds_dropout_prob)
         self.lm_output_types = (
