@@ -29,6 +29,7 @@ Document Classification
 a) which consists of a pretrained language model as a basis::
 
     language_model = Bert.load(lang_model)
+
 b) and a prediction head on top that is suited for our task => Text classification::
 
     prediction_head = TextClassificationHead(layer_dims=[768, len(processor.label_list)])
