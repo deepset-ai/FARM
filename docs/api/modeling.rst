@@ -1,23 +1,31 @@
 Modeling
 ========
 
-adaptive\_model
----------------
+Adaptive Model
+------------------
 
 .. automodule:: farm.modeling.adaptive_model
    :members:
    :undoc-members:
    :show-inheritance:
 
-language\_model
----------------
+Language Model
+--------------
 
 .. automodule:: farm.modeling.language_model
    :members:
    :undoc-members:
    :show-inheritance:
 
-optimization
+Prediction Head
+---------------
+
+.. automodule:: farm.modeling.prediction_head
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Optimization
 ------------
 
 .. automodule:: farm.modeling.optimization
@@ -25,15 +33,7 @@ optimization
    :undoc-members:
    :show-inheritance:
 
-prediction\_head
-----------------
-
-.. automodule:: farm.modeling.prediction_head
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-tokenization
+Tokenization
 ------------
 
 .. automodule:: farm.modeling.tokenization

@@ -2,7 +2,15 @@ Running
 =======
 
 
-eval
+Train
+-----
+
+.. automodule:: farm.train
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Eval
 ----
 
 .. automodule:: farm.eval
@@ -10,23 +18,7 @@ eval
    :undoc-members:
    :show-inheritance:
 
-experiment
-----------
-
-.. automodule:: farm.experiment
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-file\_utils
------------
-
-.. automodule:: farm.file_utils
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
-infer
+Infer
 -----
 
 .. automodule:: farm.infer
@@ -34,8 +26,15 @@ infer
    :undoc-members:
    :show-inheritance:
 
+Experiment
+----------
 
-metrics
+.. automodule:: farm.experiment
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Metrics
 -------
 
 .. automodule:: farm.metrics
@@ -43,10 +42,10 @@ metrics
    :undoc-members:
    :show-inheritance:
 
-train
------
+File utils
+-----------
 
-.. automodule:: farm.train
+.. automodule:: farm.file_utils
    :members:
    :undoc-members:
    :show-inheritance:

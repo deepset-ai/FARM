@@ -25,8 +25,7 @@ def sample_to_features_text(
     """
     Generates a dictionary of features for a given input sample that is to be consumed by a text classification model.
 
-    :param sample: Sample object that contains human readable text and label fields from a
-    single text classification data sample
+    :param sample: Sample object that contains human readable text and label fields from a single text classification data sample
     :type sample: Sample
     :param label_list: A list of all unique labels
     :type label_list: list
@@ -35,9 +34,9 @@ def sample_to_features_text(
     :param tokenizer: A tokenizer object that can turn string sentences into a list of tokens
     :param target: Choose from "classification" and "regression"
     :type target: str
-    :return: feat_dict: A dictionary containing the keys "input_ids", "padding_mask" and
-    "segment_ids" (also "label_ids" if not in inference mode). The values are lists containing those features.
-    :rtype: feat_dict: dict
+    :return: A dictionary containing the keys "input_ids", "padding_mask" and "segment_ids" (also "label_ids" if not
+             in inference mode). The values are lists containing those features.
+    :rtype: dict
     """
 
     label_map = {label: i for i, label in enumerate(label_list)}
@@ -123,8 +122,7 @@ def samples_to_features_ner(
     """
     Generates a dictionary of features for a given input sample that is to be consumed by an NER model.
 
-    :param sample: Sample object that contains human readable text and label fields from a
-    single NER data sample
+    :param sample: Sample object that contains human readable text and label fields from a single NER data sample
     :type sample: Sample
     :param label_list: A list of all unique labels
     :type label_list: list
@@ -138,10 +136,11 @@ def samples_to_features_ner(
     :param sep_token: Token used to represent the border between two sequences
     :type sep_token: str
     :param non_initial_token: Token that is inserted into the label sequence in positions where there is a
-    non-word-initial token. This is done since the default NER performs prediction only on word initial tokens
-    :return: feature_dict: A dictionary containing the keys "input_ids", "padding_mask", "segment_ids",
-    "initial_mask" (also "label_ids" if not in inference mode). The values are lists containing those features.
-    :rtype: feature_dict: dict
+                              non-word-initial token. This is done since the default NER performs prediction
+                              only on word initial tokens
+    :return: A dictionary containing the keys "input_ids", "padding_mask", "segment_ids", "initial_mask"
+             (also "label_ids" if not in inference mode). The values are lists containing those features.
+    :rtype: dict
     """
 
     # Tokenize words and extend the labels so they are aligned with the tokens
@@ -194,7 +193,7 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer):
     """
     Convert a raw sample (pair of sentences as tokenized strings) into a proper training sample with
     IDs, LM labels, padding_mask, CLS and SEP tokens etc.
-    :param example: Sample, containing sentence input as strings and is_next label
+    :param sample: Sample, containing sentence input as strings and is_next label
     :param max_seq_len: int, maximum length of sequence.
     :param tokenizer: Tokenizer
     :return: InputFeatures, containing all inputs and labels of one sample as IDs (as used for model training)

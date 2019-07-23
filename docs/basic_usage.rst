@@ -1,47 +1,8 @@
-
-.. image:: docs/logo_with_name.png
-    :width: 383
-    :height: 116
-    :align: left
-    :alt: FARM LOGO
-
-
-(**F**\ ramework for **A**\ dapting **R**\ epresentation **M**\ odels)
-
-What is it?
-########
-FARM makes cutting edge **Transfer Learning** for NLP simple. 
-It is a home for all species of pretrained language models (e.g. BERT) that can be adapted to different down-stream
-tasks (e.g. NER) by simply switching the prediction head.
-The standardized interfaces for language models and prediction heads allow a flexible extension by researchers and an easy adaptation for practitioners.
-Additional experiment tracking and visualizations support you along the way to adapt a SOTA model to your own NLP problem and showcase it as a PoC.  
-
-See the `full documentation <https://farm.deepset.ai>`_ for more details.
-
-Core features
-########
-- Easy adaptation of pretrained language models (e.g. BERT) to your own use case
-- Modular design of language model and prediction heads
-- Easy experiment tracking & execution
-- Simple deployment and visualization to showcase your PoC
-
-
-Installation
-#############
-
-The package is tested with Python 3.7.::
-
-    git clone https://github.com/deepset-ai/FARM.git
-    cd FARM
-    pip install -r requirements.txt
-    pip install .
-
-
 Basic Usage
 ############
 
 1. Train a downstream model
-**********************
+****************************
 FARM offers two modes for model training:
 
 **Option 1: Run experiment(s) from config**::
@@ -83,21 +44,13 @@ See this `tutorial <https://github.com/deepset-ai/FARM/blob/master/tutorials/1_f
 
 
 2. Run Inference (API + UI)
-**********************
+****************************
 
 * Run :code:`docker-compose up`
 * Open http://localhost:3000 in your browser
 
-.. image:: docs/inference-api-screen.png
+.. image:: inference-api-screen.png
     :alt: FARM Inferennce UI
 
 One docker container exposes a REST API (localhost:5000) and another one runs a simple demo UI (localhost:3000).
 You can use both of them individually and mount your own models. Check out the docs for details.
-
-
-Upcoming features
-###################
-- More pretrained models XLNet, XLM ...
-- SOTA adaptation strategies (Adapter Modules, Discriminative Fine-tuning ...)
-- Enabling large scale deployment for production
-- Additional Visualizations and statistics to explore and debug your model

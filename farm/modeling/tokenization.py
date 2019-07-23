@@ -136,18 +136,8 @@ def whitespace_tokenize(text):
 
 
 class BertTokenizer(PreTrainedTokenizer):
-    r"""
-    Constructs a BertTokenizer.
-    :class:`~pytorch_pretrained_bert.BertTokenizer` runs end-to-end tokenization: punctuation splitting + wordpiece
-
-    Args:
-        vocab_file: Path to a one-wordpiece-per-line vocabulary file
-        do_lower_case: Whether to lower case the input. Only has an effect when do_wordpiece_only=False
-        do_basic_tokenize: Whether to do basic tokenization before wordpiece.
-        max_len: An artificial maximum length to truncate tokenized sequences to; Effective maximum length is always the
-            minimum of this value (if specified) and the underlying BERT model's sequence length.
-        never_split: List of tokens which will never be split during tokenization. Only has an effect when
-            do_wordpiece_only=False
+    """
+    Runs end-to-end tokenization: punctuation splitting + wordpiece
     """
 
     vocab_files_names = VOCAB_FILES_NAMES
@@ -168,22 +158,17 @@ class BertTokenizer(PreTrainedTokenizer):
         tokenize_chinese_chars=True,
         **kwargs
     ):
-        """Constructs a BertTokenizer.
-
-        Args:
-            **vocab_file**: Path to a one-wordpiece-per-line vocabulary file
-            **do_lower_case**: (`optional`) boolean (default True)
-                Whether to lower case the input
-                Only has an effect when do_basic_tokenize=True
-            **do_basic_tokenize**: (`optional`) boolean (default True)
-                Whether to do basic tokenization before wordpiece.
-            **never_split**: (`optional`) list of string
-                List of tokens which will never be split during tokenization.
-                Only has an effect when do_basic_tokenize=True
-            **tokenize_chinese_chars**: (`optional`) boolean (default True)
-                Whether to tokenize Chinese characters.
-                This should likely be desactivated for Japanese:
-                see: https://github.com/huggingface/pytorch-pretrained-BERT/issues/328
+        """
+        :param vocab_file: Path to a one-wordpiece-per-line vocabulary file
+        :param do_lower_case: (`optional`) boolean (default True) Whether to lower case the input Only has an effect when do_basic_tokenize=True
+        :param do_basic_tokenize: (`optional`) boolean (default True) Whether to do basic tokenization before wordpiece.
+        :param never_split: (`optional`) list of string
+                            List of tokens which will never be split during tokenization.
+                            Only has an effect when do_basic_tokenize=True
+        :param tokenize_chinese_chars: (`optional`) boolean (default True)
+                                       Whether to tokenize Chinese characters.
+                                       This should likely be desactivated for Japanese:
+                                       see: https://github.com/huggingface/pytorch-pretrained-BERT/issues/328
         """
         super(BertTokenizer, self).__init__(
             unk_token=unk_token,

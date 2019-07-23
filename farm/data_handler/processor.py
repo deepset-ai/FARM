@@ -73,8 +73,8 @@ class Processor(ABC):
         :type metrics: list or str
         :param train_filename: The name of the file containing training data.
         :type train_filename: str
-        :param dev_filename:The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
-        will be a slice of the train set.
+        :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
+                             will be a slice of the train set.
         :type dev_filename: str or None
         :param test_filename: The name of the file containing test data.
         :type: test_filename: str
@@ -119,14 +119,6 @@ class Processor(ABC):
 
     @classmethod
     def load(cls, processor_name, data_dir, tokenizer, max_seq_len):
-        """
-        :param processor_name:
-        :param data_dir:
-        :param tokenizer:
-        :param max_seq_len:
-        :return:
-        :rtype
-        """
         return cls.subclasses[processor_name](
             data_dir=data_dir, tokenizer=tokenizer, max_seq_len=max_seq_len
         )
@@ -709,7 +701,6 @@ class SquadProcessor(Processor):
         self.counts = {}
         self.stage = None
 
-
     def dataset_from_dicts(self, dicts):
         dicts_converted = [self._convert_inference(x) for x in dicts]
         self.baskets = [
@@ -724,9 +715,17 @@ class SquadProcessor(Processor):
     def _convert_inference(self, infer_dict):
         # convert input coming from inferencer to SQuAD format
         converted = {}
-        converted["paragraphs"] = [ {"qas": [{"question":infer_dict.get("questions",["Missing?"])[0],
-                                              "id": "unusedID"}],
-                                     "context": infer_dict.get("text","Missing!")}]
+        converted["paragraphs"] = [
+            {
+                "qas": [
+                    {
+                        "question": infer_dict.get("questions", ["Missing?"])[0],
+                        "id": "unusedID",
+                    }
+                ],
+                "context": infer_dict.get("text", "Missing!"),
+            }
+        ]
         return converted
 
     def _file_to_dicts(self, file: str) -> [dict]:
@@ -735,7 +734,7 @@ class SquadProcessor(Processor):
 
     def _dict_to_samples(self, dict: dict) -> [Sample]:
         # TODO split samples that are too long in this function, related to todo in self._sample_to_features
-        if("paragraphs" not in dict): # TODO change this inference mode hack
+        if "paragraphs" not in dict:  # TODO change this inference mode hack
             dict = self._convert_inference(infer_dict=dict)
         samples = create_samples_squad(entry=dict)
         for sample in samples:

@@ -218,21 +218,8 @@ SCHEDULES = {
 
 
 class BertAdam(Optimizer):
-    """Implements BERT version of Adam algorithm with weight decay fix.
-    Params:
-        lr: learning rate
-        warmup: portion of t_total for the warmup, -1  means no warmup. Default: -1
-        t_total: total number of training steps for the learning
-            rate schedule, -1  means constant learning rate of 1. (no warmup regardless of warmup setting). Default: -1
-        schedule: schedule to use for the warmup (see above).
-            Can be `'warmup_linear'`, `'warmup_constant'`, `'warmup_cosine'`, `'none'`, `None` or a `_LRSchedule` object (see below).
-            If `None` or `'none'`, learning rate is always kept constant.
-            Default : `'warmup_linear'`
-        b1: Adams b1. Default: 0.9
-        b2: Adams b2. Default: 0.999
-        e: Adams epsilon. Default: 1e-6
-        weight_decay: Weight decay. Default: 0.01
-        max_grad_norm: Maximum norm for the gradients (-1 means no clipping). Default: 1.0
+    """
+    Implements BERT version of Adam algorithm with weight decay fix.
     """
 
     def __init__(
@@ -249,6 +236,21 @@ class BertAdam(Optimizer):
         max_grad_norm=1.0,
         **kwargs
     ):
+        """
+        :param params:
+        :param lr: learning rate
+        :param warmup: portion of t_total for the warmup, -1  means no warmup. Default: -1
+        :param t_total: total number of training steps for the learning rate schedule, -1  means constant learning rate
+                        of 1. (no warmup regardless of warmup setting). Default: -1
+        :param schedule: schedule to use for the warmup (see above). Can be `'warmup_linear'`, `'warmup_constant'`,
+                         `'warmup_cosine'`, `'none'`, `None` or a `_LRSchedule` object (see below). If `None` or
+                         `'none'`, learning rate is always kept constant. Default : `'warmup_linear'`
+        :param b1: Adams b1. Default: 0.9
+        :param b2: Adams b2. Default: 0.999
+        :param e: Adams epsilon. Default: 1e-6
+        :param weight_decay: Weight decay. Default: 0.01
+        :param max_grad_norm: Maximum norm for the gradients (-1 means no clipping). Default: 1.0
+        """
         if lr is not required and lr < 0.0:
             raise ValueError("Invalid learning rate: {} - should be >= 0.0".format(lr))
         if not isinstance(schedule, _LRSchedule) and schedule not in SCHEDULES:
