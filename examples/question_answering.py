@@ -20,7 +20,7 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-ml_logger = MLFlowLogger(tracking_uri="http://80.158.39.167:5000/")
+ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
 ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_question_answering")
 
 ##########################

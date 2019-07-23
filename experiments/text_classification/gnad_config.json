@@ -44,7 +44,7 @@
 
   "logging": {
     "eval_every":     {"value": null,                         "default": 30,   "desc": "Steps per training loop (batches) required for evaluation on dev set. Set to 0 when you do not want to do evaluation on dev set during training."}, 
-    "mlflow_url":     {"value": "http://80.158.39.167:5000/", "default": null, "desc": "Mlflow server for tracking experiments (e.g. http://80.123.45.167:5000/)"}, 
+    "mlflow_url":     {"value": "https://public-mlflow.deepset.ai/", "default": null, "desc": "Mlflow server for tracking experiments (e.g. http://80.123.45.167:5000/)"},
     "mlflow_nested":  {"value": null,                         "default": true, "desc": "Nesting mlflow experiments. For doing multiple runs across a set of hyperparameters."}, 
 
     "mlflow_experiment": {"value": "Public_FARM",              "default": null, "desc": "Experiment name used for mlflow"},
