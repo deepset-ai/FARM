@@ -19,7 +19,7 @@ logging.basicConfig(
     datefmt="%m/%d/%Y %H:%M:%S",
     level=logging.INFO)
 
-ml_logger = MLFlowLogger(tracking_uri="http://80.158.39.167:5000/")
+ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
 ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_doc_classification")
 
 ##########################
@@ -83,14 +83,14 @@ trainer = Trainer(
 model = trainer.train(model)
 
 # 8. Hooray! You have a model. Store it:
-save_dir = "save/bert-german-GNAD-tutorial"
+save_dir = "save/bert-german-doc-tutorial"
 model.save(save_dir)
 processor.save(save_dir)
 
 # 9. Load it & harvest your fruits (Inference)
 basic_texts = [
-    {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot ist"},
-    {"text": "Martin Müller spielt Fussball"},
+    {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei"},
+    {"text": "Martin Müller spielt Handball in Berlin"},
 ]
 model = Inferencer(save_dir)
 result = model.run_inference(dicts=basic_texts)
