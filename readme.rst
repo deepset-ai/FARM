@@ -26,12 +26,12 @@ Core features
 Installation
 #############
 
-We recommend using Python 3.7.::
+The package is tested with Python 3.7.::
 
     git clone https://github.com/deepset-ai/FARM.git
     cd FARM
-    pip3 install .
-    pip3 install -r requirements.txt
+    pip install -r requirements.txt
+    pip install .
 
 
 Basic Usage

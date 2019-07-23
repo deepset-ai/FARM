@@ -20,7 +20,6 @@ setup(
         "boto3",
         "requests",
         "tqdm",
-        "regex",
         "mlflow>=1.0.0",
         "scipy",
         "sklearn",

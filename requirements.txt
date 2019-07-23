@@ -1,5 +1,8 @@
+# basics
+setuptools
+wheel
 # PyTorch
-torch==1.1.0
+torch>=1.1.0
 # progress bars in model download and training scripts
 tqdm
 # Accessing files from S3 directly.
