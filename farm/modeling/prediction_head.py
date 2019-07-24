@@ -574,18 +574,24 @@ class QuestionAnsweringHead(PredictionHead):
 
         # TODO features and samples might not be aligned. We still sometimes split a sample into multiple features
         for i, sample in enumerate(samples):
-            answer = " ".join(sample.tokenized["tokens"][start_idx[i]: end_idx[i]])
-            answer = answer.replace(" ##", "")
-            answer = answer.replace("##", "")
-
-            question = sample.clear_text["question_text"]
             pred = {}
-            pred["start"] = sample.tokenized["offsets"][start_idx[i]]
-            pred["end"] = sample.tokenized["offsets"][end_idx[i]]
-            pred["context"] = question
+            pred["context"] = sample.clear_text["question_text"]
+            pred["probability"] = None # TODO add prob from logits. Dunno how though
+            try: #char offsets or indices might be out of range, then we just return no answer
+                start = sample.tokenized["offsets"][start_idx[i]]
+                end = sample.tokenized["offsets"][end_idx[i]]
+                # Todo, remove this once the predictions are corrected
+                if(start > end):
+                    start = 0
+                    end = 0
+                pred["start"] = start
+                pred["end"] = end
+                answer = " ".join(sample.clear_text["doc_tokens"])[start:end]
+                answer = answer.strip()
+            except Exception as e:
+                answer = ""
+                logger.info(e)
             pred["label"] = answer
-            pred["probability"] = "unkown" # TODO add prob from logits. Dunno how though
-            answer_dugging = " ".join(sample.clear_text["doc_tokens"])[pred["start"]:pred["end"]]
             all_preds.append(pred)
 
         result["predictions"] = all_preds
