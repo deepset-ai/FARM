@@ -135,6 +135,11 @@ class DataSilo(object):
         logger.info("Max sequence length:     {}".format(max(seq_lens)))
         logger.info("Average sequence length: {}".format(self.ave_len))
         logger.info("Proportion clipped:      {}".format(self.clipped))
+        if self.clipped > 0.5:
+            logger.info("[Farmer's Tip] {}% of your samples got cut down to {} tokens. "
+                        "Consider increasing max_seq_len. "
+                        "This will lead to higher memory consumption but is likely to "
+                        "improve your model performance".format(round(self.clipped * 100, 1), max_seq_len))
 
         MlLogger.log_params(
             {

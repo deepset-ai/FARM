@@ -39,7 +39,7 @@ tokenizer = BertTokenizer.from_pretrained(
 
 # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
 processor = GermEval18CoarseProcessor(tokenizer=tokenizer,
-                          max_seq_len=128,
+                          max_seq_len=10,
                           data_dir="../data/germeval18")
 
 # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
