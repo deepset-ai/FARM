@@ -37,8 +37,6 @@ class DataSilo(object):
         self._load_data()
 
     def _load_data(self):
-        # fmt: off
-
         # train data
         train_file = os.path.join(self.processor.data_dir, self.processor.train_filename)
         logger.info("Loading train set from: {}".format(train_file))
@@ -123,15 +121,28 @@ class DataSilo(object):
             "test": len(self.data.get("test", [])),
         }
 
+        train_input_numpy = self.data["train"][:][0].numpy()
+        seq_lens = np.sum(train_input_numpy != 0, axis=1)
+        self.ave_len = np.mean(seq_lens)
+        max_seq_len = self.data["train"][:][0].shape[1]
+        self.clipped = np.mean(seq_lens == max_seq_len)
+
+
         logger.info("Examples in train: {}".format(self.counts["train"]))
         logger.info("Examples in dev  : {}".format(self.counts["dev"]))
         logger.info("Examples in test : {}".format(self.counts["test"]))
+        logger.info("")
+        logger.info("Max sequence length:     {}".format(max(seq_lens)))
+        logger.info("Average sequence length: {}".format(self.ave_len))
+        logger.info("Proportion clipped:      {}".format(self.clipped))
 
         MlLogger.log_params(
             {
                 "n_samples_train": self.counts["train"],
                 "n_samples_dev": self.counts["train"],
                 "n_samples_test": self.counts["train"],
+                "ave_seq_len": self.ave_len,
+                "clipped": self.clipped
             }
         )
 
