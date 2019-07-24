@@ -578,9 +578,15 @@ class QuestionAnsweringHead(PredictionHead):
             pred["context"] = sample.clear_text["question_text"]
             pred["probability"] = None # TODO add prob from logits. Dunno how though
             try: #char offsets or indices might be out of range, then we just return no answer
-                pred["start"] = sample.tokenized["offsets"][start_idx[i]]
-                pred["end"] = sample.tokenized["offsets"][end_idx[i]]
-                answer = " ".join(sample.clear_text["doc_tokens"])[pred["start"]:pred["end"]]
+                start = sample.tokenized["offsets"][start_idx[i]]
+                end = sample.tokenized["offsets"][end_idx[i]]
+                # Todo, remove this once the predictions are corrected
+                if(start > end):
+                    start = 0
+                    end = 0
+                pred["start"] = start
+                pred["end"] = end
+                answer = " ".join(sample.clear_text["doc_tokens"])[start:end]
                 answer = answer.strip()
             except Exception as e:
                 answer = ""
