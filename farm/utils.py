@@ -21,7 +21,7 @@ def set_all_seeds(seed, n_gpu=0):
         torch.cuda.manual_seed_all(seed)
 
 
-def initialize_device_settings(use_cuda, local_rank, fp16):
+def initialize_device_settings(use_cuda, local_rank=-1, fp16=False):
     if not use_cuda:
         device = torch.device("cpu")
         n_gpu = 0

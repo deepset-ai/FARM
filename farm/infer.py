@@ -44,15 +44,15 @@ class Inferencer:
         )
 
         preds_all = []
-        for batch in data_loader:
+        for i,batch in enumerate(data_loader):
             batch = {key: batch[key].to(self.device) for key in batch}
-
+            batch_samples = samples[i*self.batch_size:(i+1)*self.batch_size]
             with torch.no_grad():
                 logits = self.model.forward(**batch)
                 preds = self.model.formatted_preds(
                     logits=logits,
                     label_maps=self.processor.label_maps,
-                    samples=samples,  # TODO slice these samples to be in line with the batched input
+                    samples=batch_samples,
                     tokenizer=self.processor.tokenizer,
                     **batch
                 )
