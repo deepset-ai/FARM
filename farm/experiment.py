@@ -110,12 +110,6 @@ def run_experiment(args):
         device=device,
     )
 
-    model_name = (
-        f"{model.language_model.name}-{model.language_model.language}-{args.name}"
-    )
-    processor.save(f"save/{model_name}")
-    model.save(f"save/{model_name}")
-
     model = trainer.train(model)
 
     model_name = (

@@ -1,18 +1,17 @@
 # fmt: off
 import logging
-import torch
 import pprint
 
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import SquadProcessor
+from farm.experiment import initialize_optimizer
+from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
 from farm.modeling.prediction_head import QuestionAnsweringHead
 from farm.modeling.tokenization import BertTokenizer
 from farm.train import Trainer
-from farm.experiment import initialize_optimizer
-from farm.utils import set_all_seeds, MLFlowLogger
-from farm.infer import Inferencer
+from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
@@ -27,12 +26,10 @@ ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_question_
 ########## Settings
 ##########################
 set_all_seeds(seed=42)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-#device = torch.device("cpu")
+device, n_gpu = initialize_device_settings(use_cuda=True)
 batch_size = 24
 n_epochs = 2
 evaluate_every = 500
-n_gpu = 1
 base_LM_model = "bert-base-cased"
 train_filename="train-v2.0.json"
 dev_filename="dev-v2.0.json"
