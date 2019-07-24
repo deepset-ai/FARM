@@ -26,7 +26,7 @@ ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_question_
 ########## Settings
 ##########################
 set_all_seeds(seed=42)
-device, n_gpu = initialize_device_settings(use_cuda=True, local_rank=-1, fp16=False)
+device, n_gpu = initialize_device_settings(use_cuda=True)
 batch_size = 24
 n_epochs = 2
 evaluate_every = 500
