@@ -77,10 +77,11 @@ FARM offers two modes for model training:
     # 7. Let it grow
     model = trainer.train(model)
 
-See this `tutorial <https://github.com/deepset-ai/FARM/blob/master/tutorials/1_farm_building_blocks.ipynb>`_ for details
+See this `tutorial <https://github.com/deepset-ai/FARM/blob/master/tutorials/1_farm_building_blocks.ipynb>`_ for details.
 
 *Usecases:* Custom datasets, language models, prediction heads ...
 
+Metrics and parameters of your model training get automatically logged via MLflow. We provide a `public MLflow server <https://public-mlflow.deepset.ai/>`_ for testing and learning purposes. Check it out to see your own experiment results!
 
 2. Run Inference (API + UI)
 **********************
