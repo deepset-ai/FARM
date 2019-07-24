@@ -1,19 +1,51 @@
 from farm.infer import Inferencer
 
-QA_input = [
-    {
-        "paragraphs": [
-            {
-                "qas": [
-                    {"question": "How many atoms combine to form dioxygen?", "id": 123}
-                ],
-                "context": "Oxygen is a chemical element with symbol O and atomic number 8. It is a member of the chalcogen group on the periodic table and is a highly reactive nonmetal and oxidizing agent that readily forms compounds (notably oxides) with most elements. By mass, oxygen is the third-most abundant element in the universe, after hydrogen and helium. At standard temperature and pressure, two atoms of the element bind to form dioxygen, a colorless and odorless diatomic gas with the formula O2."
-                " Diatomic oxygen gas constitutes 20.8% of the Earth's atmosphere. However, monitoring of atmospheric oxygen levels show a global downward trend, because of fossil-fuel burning. Oxygen is the most abundant element by mass in the Earth's crust as part of oxide compounds such as silicon dioxide, making up almost half of the crust's mass.",
-            }
-        ]
-    }
-]
 
-model = Inferencer("save/bert-base-english-squad2")
-result = model.run_inference(dicts=QA_input)
-assert result["predictions"][0]["label"] == "two"
+def test_ner_inference():
+    basic_texts = [
+        {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei"},
+        {"text": "Martin Müller spielt Handball in Berlin"},
+    ]
+
+    model = Inferencer("../save/bert-german-CONLL2003")
+    result = model.run_inference(dicts=basic_texts)
+    assert result[0]["predictions"][0]["label"] == "ORG"
+    assert result[0]["predictions"][0]["start"] == 15
+    assert result[0]["predictions"][0]["end"] == 18
+
+
+def test_qa_inference():
+
+    QA_input = [
+            {
+                "questions": ["Who counted the game among the best ever made?"],
+                "text":  "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
+            },
+        {
+            "questions": ["Who counted the game among the best ever made?"],
+            "text": "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
+        }
+    ]
+
+
+    model = Inferencer("../save/bert-base-english-squad2")
+    result = model.run_inference(dicts=QA_input)
+    assert result[0]["predictions"][0]["label"] == "GameTrailers"
+
+
+def test_lm_inference():
+    basic_texts = [
+        {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei"},
+        {"text": "Martin Müller spielt Handball in Berlin"},
+        {"text": "Schartau2 sagte dem Tagesspiegel, dass Fischer ein Idiot sei"},
+        {"text": "Martin2 Müller spielt Handball in Berlin"},
+        {"text": "Schartau3 sagte dem Tagesspiegel, dass Fischer ein Idiot sei"},
+        {"text": "Martin3 Müller spielt Handball in Berlin"},
+    ]
+
+    model = Inferencer("../save/bert-german-CONLL2003")
+    result = model.extract_vectors(dicts=basic_texts, extraction_strategy="per_token")
+    print(result)
+    assert len(result) == 6
+    assert result[0]["context"][0] == "Schar"
+    assert result[0]["vec"].shape == (128, 768)
