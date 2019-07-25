@@ -19,6 +19,7 @@ setup(
     keywords="BERT NLP deep learning language-model transformer",
     license="Apache",
     url="https://gitlab.com/deepset-ai/ml/lm/farm",
+    download_url="https://github.com/deepset-ai/FARM/archive/0.1.tar.gz",
     packages=find_packages(exclude=["*.tests", "*.tests.*", "tests.*", "tests"]),
     install_requires=parsed_requirements,
     python_requires=">=3.5.0",
