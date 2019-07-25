@@ -6,7 +6,7 @@ import random
 import logging
 import json
 
-from pytorch_pretrained_bert.tokenization import BertTokenizer
+from farm.modeling.tokenization import BertTokenizer
 
 from farm.modeling.tokenization import tokenize_with_metadata
 
@@ -137,6 +137,8 @@ class Processor(ABC):
         tokenizer = TOKENIZER_MAP[config["tokenizer"]].from_pretrained(
             load_dir, do_lower_case=config["lower_case"]
         )
+        if os.path.exists(os.path.join(load_dir, "custom_vocab.txt")):
+            tokenizer.add_custom_vocab(os.path.join(load_dir, "custom_vocab.txt"))
         processor_type = config["processor"]
         return cls.load(processor_type, None, tokenizer, config["max_seq_len"])
 
