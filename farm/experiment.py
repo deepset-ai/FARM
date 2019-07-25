@@ -60,6 +60,9 @@ def run_experiment(args):
         tokenizer=tokenizer,
         max_seq_len=args.max_seq_len,
         data_dir=args.data_dir,
+        train_filename=args.train_filename,
+        dev_filename=args.dev_filename,
+        test_filename=args.test_filename
     )
 
     data_silo = DataSilo(

@@ -118,9 +118,10 @@ class Processor(ABC):
         cls.subclasses[cls.__name__] = cls
 
     @classmethod
-    def load(cls, processor_name, data_dir, tokenizer, max_seq_len):
+    def load(cls, processor_name, data_dir, tokenizer, max_seq_len, train_filename, dev_filename, test_filename):
         return cls.subclasses[processor_name](
-            data_dir=data_dir, tokenizer=tokenizer, max_seq_len=max_seq_len
+            data_dir=data_dir, tokenizer=tokenizer, max_seq_len=max_seq_len, train_filename=train_filename,
+            dev_filename=dev_filename,test_filename=test_filename
         )
 
     @classmethod
