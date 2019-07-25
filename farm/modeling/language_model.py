@@ -44,6 +44,9 @@ class LanguageModel(nn.Module):
         super().__init_subclass__(**kwargs)
         cls.subclasses[cls.__name__] = cls
 
+    def forward(self):
+        raise NotImplementedError
+
     @classmethod
     def load(cls, load_dir):
         config_file = os.path.join(load_dir, "language_model_config.json")
@@ -109,6 +112,25 @@ class LanguageModel(nn.Module):
             )
 
         return language
+
+    def formatted_preds(self, input_ids, samples, extraction_strategy="pooled", **kwargs):
+        sequence_output, pooled_output = self.forward(input_ids, output_all_encoded_layers=False, **kwargs)
+
+        if extraction_strategy == "pooled":
+            vecs = pooled_output.cpu().numpy()
+        elif extraction_strategy == "per_token":
+            vecs = sequence_output.cpu().numpy()
+        else:
+            raise NotImplementedError
+
+        preds = []
+        for vec, sample in zip(vecs, samples):
+            pred = {}
+            pred["context"] = sample.tokenized["tokens"]
+            pred["vec"] = vec
+            preds.append(pred)
+
+        return preds
 
 
 class Bert(LanguageModel):

@@ -135,7 +135,7 @@ class Processor(ABC):
         config = json.load(open(processor_config_file))
         # init tokenizer
         tokenizer = TOKENIZER_MAP[config["tokenizer"]].from_pretrained(
-            load_dir, do_lower_case=config["lower_case"]
+            load_dir, do_lower_case=config["lower_case"], never_split_chars=config.get("never_split_chars")
         )
         if os.path.exists(os.path.join(load_dir, "custom_vocab.txt")):
             tokenizer.add_custom_vocab(os.path.join(load_dir, "custom_vocab.txt"))
