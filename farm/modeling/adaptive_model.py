@@ -51,7 +51,8 @@ class AdaptiveModel(nn.Module):
 
     def save(self, save_dir):
         """
-        Saves
+        Saves the language model and prediction heads. This will generate a config file
+        and model weights for each component
 
         :param save_dir: path to save to
         :type save_dir: str
@@ -66,14 +67,14 @@ class AdaptiveModel(nn.Module):
     @classmethod
     def load(cls, load_dir, device):
         """
-        Loads an AdaptiveModel from a directory.
-        The directory must contain:
-        - language_model.bin
-        - language_model_config.json
-        - prediction_head_X.bin  multiple PH possible
-        - prediction_head_X_config.json
-        - processor_config.json config for transforming input
-        - vocab.txt vocab file for language model, turning text to Wordpiece Tokens
+        Loads an AdaptiveModel from a directory. The directory must contain:
+
+        * language_model.bin
+        * language_model_config.json
+        * prediction_head_X.bin  multiple PH possible
+        * prediction_head_X_config.json
+        * processor_config.json config for transforming input
+        * vocab.txt vocab file for language model, turning text to Wordpiece Tokens
 
         :param load_dir: location where adaptive model is stored
         :type load_dir: str
@@ -101,14 +102,12 @@ class AdaptiveModel(nn.Module):
     def logits_to_loss_per_head(self, logits, **kwargs):
 
         """
-        collect losses from all heads
+        Collect losses from each prediction head.
 
         :param logits: logits, can vary in shape and type, depending on task
         :type logits: object
-        :param kwargs: placeholder for passing generic parameters
-        :type kwargs: object
-        :return: per sample per prediciton head loss
-        :rtype: torch.tensor shape: [#pred_heads, batch_size] # TODO check return type
+        :return all_losses: Per sample per prediciton head loss
+        :rtype all_losses: torch.tensor shape: [#pred_heads, batch_size] # TODO check return type
         """
         all_losses = []
         for head, logits_for_one_head in zip(self.prediction_heads, logits):
@@ -117,14 +116,14 @@ class AdaptiveModel(nn.Module):
 
     def logits_to_loss(self, logits, **kwargs):
         """
-        get losses from all heads & reduce to single loss *per sample*
+        Get losses from all heads & reduce to single loss *per sample*.
 
         :param logits: logits, can vary in shape and type, depending on task
         :type logits: object
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
-        :return: per sample loss
-        :rtype: torch.tensor shape: [batch_size]
+        :return loss: per sample loss
+        :rtype loss: torch.tensor shape: [batch_size]
         """
         all_losses = self.logits_to_loss_per_head(logits, **kwargs)
         loss = sum(all_losses)
@@ -144,7 +143,7 @@ class AdaptiveModel(nn.Module):
 
     def prepare_labels(self, label_maps, **kwargs):
         """
-        Label conversion to original label space, per prediction head
+        Label conversion to original label space, per prediction head.
 
         :param label_maps: dictionary for mapping ids to label strings
         :type label_maps: dict[int:str]
@@ -169,8 +168,8 @@ class AdaptiveModel(nn.Module):
         :type label_maps: dict[int:str]
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
-        :return: predictions in the right format
-        :rtype: object
+        :return all_preds: predictions in the right format
+        :rtype all_preds: object
         """
         all_preds = []
         # collect preds from all heads
