@@ -38,7 +38,7 @@ templates_path = ["_templates"]
 # This pattern also affects html_static_path and html_extra_path.
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
-autodoc_member_order = 'bysource'
+autodoc_member_order = "bysource"
 
 # -- Options for HTML output -------------------------------------------------
 
@@ -56,3 +56,15 @@ html_static_path = ["_static"]
 html_logo = "logo.png"
 
 html_context = {"css_files": ["_static/custom.css"]}
+
+# -- Add autodocs for __init__() methods -------------------------------------
+
+
+def skip(app, what, name, obj, would_skip, options):
+    if name == "__init__":
+        return False
+    return would_skip
+
+
+def setup(app):
+    app.connect("autodoc-skip-member", skip)
