@@ -466,6 +466,7 @@ class QuestionAnsweringHead(PredictionHead):
     def forward(self, X):
         """
         One forward pass through the prediction head model, starting with language model output on token level
+
         :param X: Output of language model, of shape [batch_size, seq_length, LM_embedding_dim]
         :type X: torch.tensor
         :return: (start_logits, end_logits), logits for the start and end of answer
@@ -480,6 +481,7 @@ class QuestionAnsweringHead(PredictionHead):
     def logits_to_loss(self, logits, start_position, end_position, **kwargs):
         """
         Combine predictions and labels to a per sample loss.
+
         :param logits: (start_logits, end_logits), logits for the start and end of answer
         :type logits: tuple[torch.tensor,torch.tensor]
         :param start_position: tensor with indices of START positions per sample
@@ -511,6 +513,7 @@ class QuestionAnsweringHead(PredictionHead):
     def logits_to_preds(self, logits, **kwargs):
         """
         Get the predicted index of start and end token of the answer.
+
         :param logits: (start_logits, end_logits), logits for the start and end of answer
         :type logits: tuple[torch.tensor,torch.tensor]
         :param kwargs: placeholder for passing generic parameters
@@ -527,6 +530,7 @@ class QuestionAnsweringHead(PredictionHead):
     def prepare_labels(self, start_position, end_position, **kwargs):
         """
         We want to pack labels into a tuple, to be compliant with later functions
+
         :param start_position: indices of answer start positions (in token space)
         :type start_position: torch.tensor
         :param end_position: indices of answer end positions (in token space)
@@ -541,6 +545,7 @@ class QuestionAnsweringHead(PredictionHead):
     def formatted_preds(self, logits, samples, segment_ids, **kwargs) -> [str]:
         """
         Format predictions into actual answer strings (substrings of context). Used for Inference!
+
         :param logits: (start_logits, end_logits), logits for the start and end of answer
         :type logits: tuple[torch.tensor,torch.tensor]
         :param samples: converted samples, to get a hook onto the actual text

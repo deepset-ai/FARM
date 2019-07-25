@@ -52,6 +52,7 @@ class AdaptiveModel(nn.Module):
     def save(self, save_dir):
         """
         Saves
+
         :param save_dir: path to save to
         :type save_dir: str
         :return: into the void
@@ -73,6 +74,7 @@ class AdaptiveModel(nn.Module):
         - prediction_head_X_config.json
         - processor_config.json config for transforming input
         - vocab.txt vocab file for language model, turning text to Wordpiece Tokens
+
         :param load_dir: location where adaptive model is stored
         :type load_dir: str
         :param device: to which device we want to sent the model, either cpu or cuda
@@ -100,6 +102,7 @@ class AdaptiveModel(nn.Module):
 
         """
         collect losses from all heads
+
         :param logits: logits, can vary in shape and type, depending on task
         :type logits: object
         :param kwargs: placeholder for passing generic parameters
@@ -115,6 +118,7 @@ class AdaptiveModel(nn.Module):
     def logits_to_loss(self, logits, **kwargs):
         """
         get losses from all heads & reduce to single loss *per sample*
+
         :param logits: logits, can vary in shape and type, depending on task
         :type logits: object
         :param kwargs: placeholder for passing generic parameters
@@ -141,6 +145,7 @@ class AdaptiveModel(nn.Module):
     def prepare_labels(self, label_maps, **kwargs):
         """
         Label conversion to original label space, per prediction head
+
         :param label_maps: dictionary for mapping ids to label strings
         :type label_maps: dict[int:str]
         :param kwargs: placeholder for passing generic parameters
@@ -157,6 +162,7 @@ class AdaptiveModel(nn.Module):
     def formatted_preds(self, logits, label_maps, **kwargs):
         """
         Format predictions for inference
+
         :param logits: model logits
         :type logits: torch.tensor
         :param label_maps: dictionary for mapping ids to label strings
@@ -180,6 +186,7 @@ class AdaptiveModel(nn.Module):
     def forward(self, **kwargs):
         """
         Run the whole model consisting of base language model and (multiple) prediction heads
+
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
         :return: all logits
@@ -242,6 +249,7 @@ class AdaptiveModel(nn.Module):
     def log_params(self):
         """
         Logs paramteres to generic logger MlLogger
+
         :return: just log into the void
         """
         params = {
