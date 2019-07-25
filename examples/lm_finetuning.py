@@ -41,15 +41,20 @@ data_silo = DataSilo(processor=processor, batch_size=32)
 
 # 4. Create an AdaptiveModel
 # a) which consists of a pretrained language model as a basis
-language_model = Bert.load("bert-base-german-cased")
+language_model = Bert.load("bert-base-cased")
 # b) and *two* prediction heads on top that are suited for our task => Language Model finetuning
-lm_prediction_head = BertLMHead(
-    embeddings=language_model.model.embeddings,
-    hidden_size=language_model.model.config.hidden_size,
-)
+# lm_prediction_head = BertLMHead(hidden_size=language_model.model.config.hidden_size,
+#                                 shared_embedding_weights=language_model.model.embeddings.word_embeddings.weight)
+lm_prediction_head = BertLMHead.load("bert-base-cased")
+
+
+#lm_prediction_head.load_weights_from_pretrained(language_model)
+#lm_prediction_head.share_embeddings(language_model.model.embeddings.word_embeddings.weight)
+
 next_sentence_head = TextClassificationHead(
     layer_dims=[language_model.model.config.hidden_size, 2], loss_ignore_index=-1
 )
+#TODO next_sentence_head.load_weights_from_pretrained()
 
 model = AdaptiveModel(
     language_model=language_model,

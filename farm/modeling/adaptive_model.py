@@ -40,7 +40,11 @@ class AdaptiveModel(nn.Module):
         """
         super(AdaptiveModel, self).__init__()
         self.language_model = language_model.to(device)
-        self.prediction_heads = [ph.to(device) for ph in prediction_heads]
+        self.prediction_heads = nn.ModuleList([ph.to(device) for ph in prediction_heads])
+        # set shared weights for LM finetuning
+        for head in self.prediction_heads:
+            if head.model_type == "language_modelling":
+                head.set_shared_weights(language_model.model.embeddings.word_embeddings.weight)
         self.num_labels = [head.num_labels for head in prediction_heads]
         self.dropout = nn.Dropout(embeds_dropout_prob)
         self.lm_output_types = (
@@ -85,20 +89,16 @@ class AdaptiveModel(nn.Module):
         language_model = LanguageModel.load(load_dir)
 
         # Prediction heads
-        ph_model_files, ph_config_files = cls._get_prediction_head_files(load_dir)
+        _, ph_config_files = cls._get_prediction_head_files(load_dir)
         prediction_heads = []
         ph_output_type = []
-        for model_file, config_file in zip(ph_model_files, ph_config_files):
-            head = PredictionHead.load(
-                model_file=model_file, config_file=config_file, device=device
-            )
+        for config_file in ph_config_files:
+            head = PredictionHead.load(config_file)
+            # set shared weights between LM and PH
             if type(head) == BertLMHead:
                 head.set_shared_weights(language_model)
-
             prediction_heads.append(head)
             ph_output_type.append(head.ph_output_type)
-
-
 
         return cls(language_model, prediction_heads, 0.1, ph_output_type, device)
 
