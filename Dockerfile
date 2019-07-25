@@ -8,4 +8,4 @@ RUN pip install -e .
 
 COPY farm /home/user/farm
 
-CMD FLASK_APP=farm.inference_rest_api flask run
+CMD FLASK_APP=farm.inference_rest_api flask run --host 0.0.0.0

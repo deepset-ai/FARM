@@ -14,13 +14,17 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
 )
 
-MODELS_DIR = "save"
+MODELS_DIRS = ["saved_models", "base_models"]
+
+model_paths = []
+for model_dir in MODELS_DIRS:
+    path = Path(model_dir)
+    if path.is_dir():
+        models = [f for f in path.iterdir() if f.is_dir()]
+        model_paths.extend(models)
+
 INFERENCERS = {}
-
-path = Path(MODELS_DIR)
-load_dirs = [f for f in path.iterdir() if f.is_dir()]
-
-for idx, model_dir in enumerate(load_dirs):
+for idx, model_dir in enumerate(model_paths):
     INFERENCERS[idx + 1] = Inferencer(str(model_dir))
 
 app = Flask(__name__)

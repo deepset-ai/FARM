@@ -115,8 +115,8 @@ def run_experiment(args):
     model_name = (
         f"{model.language_model.name}-{model.language_model.language}-{args.name}"
     )
-    processor.save(f"save/{model_name}")
-    model.save(f"save/{model_name}")
+    processor.save(f"saved_models/{model_name}")
+    model.save(f"saved_models/{model_name}")
 
 
 def get_adaptive_model(

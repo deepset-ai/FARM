@@ -88,7 +88,7 @@ trainer = Trainer(
 model = trainer.train(model)
 
 # 8. Hooray! You have a model. Store it:
-save_dir = "../save/bert-english-qa-tutorial"
+save_dir = "../saved_models/bert-english-qa-tutorial"
 model.save(save_dir)
 processor.save(save_dir)
 
