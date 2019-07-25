@@ -5,7 +5,7 @@ from torch import nn
 
 from farm.file_utils import create_folder
 from farm.modeling.language_model import LanguageModel
-from farm.modeling.prediction_head import PredictionHead
+from farm.modeling.prediction_head import PredictionHead, BertLMHead
 from farm.utils import MLFlowLogger as MlLogger
 
 logger = logging.getLogger(__name__)
@@ -80,6 +80,10 @@ class AdaptiveModel(nn.Module):
         :return: AdaptiveModel
         :rtype: AdaptiveModel
         """
+
+        # Language Model
+        language_model = LanguageModel.load(load_dir)
+
         # Prediction heads
         ph_model_files, ph_config_files = cls._get_prediction_head_files(load_dir)
         prediction_heads = []
@@ -88,11 +92,13 @@ class AdaptiveModel(nn.Module):
             head = PredictionHead.load(
                 model_file=model_file, config_file=config_file, device=device
             )
+            if type(head) == BertLMHead:
+                head.set_shared_weights(language_model)
+
             prediction_heads.append(head)
             ph_output_type.append(head.ph_output_type)
 
-        # Language Model
-        language_model = LanguageModel.load(load_dir)
+
 
         return cls(language_model, prediction_heads, 0.1, ph_output_type, device)
 
