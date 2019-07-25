@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 class AdaptiveModel(nn.Module):
     """ Combines a language model and a prediction head for an NLP task. Allows for gradient
-    flow back to the language model component"""
+    flow back to the language model component."""
 
     def __init__(
         self,
@@ -149,7 +149,7 @@ class AdaptiveModel(nn.Module):
         :type label_maps: dict[int:str]
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
-        :return: labels in the right format
+        :return all_labels: labels in the right format
         :rtype: object
         """
         all_labels = []
@@ -160,7 +160,7 @@ class AdaptiveModel(nn.Module):
 
     def formatted_preds(self, logits, label_maps, **kwargs):
         """
-        Format predictions for inference
+        Format predictions for inference.
 
         :param logits: model logits
         :type logits: torch.tensor
@@ -168,8 +168,8 @@ class AdaptiveModel(nn.Module):
         :type label_maps: dict[int:str]
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
-        :return all_preds: predictions in the right format
-        :rtype all_preds: object
+        :return: predictions in the right format
+        :rtype: object
         """
         all_preds = []
         # collect preds from all heads
