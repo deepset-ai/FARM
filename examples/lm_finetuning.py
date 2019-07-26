@@ -11,7 +11,7 @@ from farm.modeling.tokenization import BertTokenizer
 from farm.train import Trainer
 from farm.experiment import initialize_optimizer
 
-from farm.utils import set_all_seeds, MLFlowLogger
+from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
@@ -24,12 +24,19 @@ ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
 ml_logger.init_experiment(
     experiment_name="Public_FARM", run_name="Run_minimal_example_lm"
 )
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+##########################
+########## Settings
+##########################
+set_all_seeds(seed=42)
+device, n_gpu = initialize_device_settings(use_cuda=True)
+n_epochs = 1
+batch_size = 32
+evaluate_every = 30
+lang_model = "bert-base-german-cased"
 
 # 1.Create a tokenizer
 tokenizer = BertTokenizer.from_pretrained(
-    pretrained_model_name_or_path="bert-base-cased", do_lower_case=False
+    pretrained_model_name_or_path=lang_model, do_lower_case=False
 )
 
 # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
@@ -41,10 +48,10 @@ data_silo = DataSilo(processor=processor, batch_size=32)
 
 # 4. Create an AdaptiveModel
 # a) which consists of a pretrained language model as a basis
-language_model = Bert.load("bert-base-cased")
+language_model = Bert.load(lang_model)
 # b) and *two* prediction heads on top that are suited for our task => Language Model finetuning
-lm_prediction_head = BertLMHead.load("bert-base-cased")
-next_sentence_head = NextSentenceHead.load("bert-base-cased")
+lm_prediction_head = BertLMHead.load(lang_model)
+next_sentence_head = NextSentenceHead.load(lang_model)
 
 model = AdaptiveModel(
     language_model=language_model,
@@ -60,16 +67,16 @@ optimizer, warmup_linear = initialize_optimizer(
     learning_rate=2e-5,
     warmup_proportion=0.1,
     n_examples=data_silo.n_samples("train"),
-    batch_size=16,
-    n_epochs=10,
+    batch_size=batch_size,
+    n_epochs=n_epochs,
 )
 
 # 6. Feed everything to the Trainer, which keeps care of growing our model into powerful plant and evaluates it from time to time
 trainer = Trainer(
     optimizer=optimizer,
     data_silo=data_silo,
-    epochs=10,
-    n_gpu=1,
+    epochs=n_epochs,
+    n_gpu=n_gpu,
     warmup_linear=warmup_linear,
     evaluate_every=5,
     device=device,

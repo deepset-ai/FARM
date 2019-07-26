@@ -73,5 +73,5 @@ def test_ner(caplog):
     ]
     model = Inferencer(save_dir)
     result = model.run_inference(dicts=basic_texts)
-    assert result[0]["predictions"][0]["context"] == "Schartau"
-    assert abs(result[0]["predictions"][0]["probability"] - 0.1334158) <= 0.0001
+    assert result[0]["predictions"][0]["context"] == "Tagesspiegel,"
+    assert abs(result[0]["predictions"][0]["probability"] - 0.213869) <= 0.0001

@@ -74,4 +74,4 @@ def test_doc_classification(caplog):
     model = Inferencer(save_dir)
     result = model.run_inference(dicts=basic_texts)
     assert result[0]["predictions"][0]["label"] == "OTHER"
-    assert abs(result[0]["predictions"][0]["probability"] - 0.5503251) <= 0.0001
+    assert abs(result[0]["predictions"][0]["probability"] - 0.5358161) <= 0.0001
