@@ -1,18 +1,16 @@
 # fmt: off
 import logging
 
-import torch
-
 from farm.data_handler.data_silo import DataSilo
+from farm.data_handler.processor import GermEval18CoarseProcessor
+from farm.experiment import initialize_optimizer
+from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
 from farm.modeling.prediction_head import TextClassificationHead
 from farm.modeling.tokenization import BertTokenizer
 from farm.train import Trainer
-from farm.experiment import initialize_optimizer
-from farm.utils import set_all_seeds, MLFlowLogger
-from farm.data_handler.processor import GermEval18CoarseProcessor
-from farm.infer import Inferencer
+from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
@@ -26,7 +24,7 @@ ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_doc_class
 ########## Settings
 ##########################
 set_all_seeds(seed=42)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device, n_gpu = initialize_device_settings(use_cuda=True)
 n_epochs = 1
 batch_size = 32
 evaluate_every = 30
@@ -74,7 +72,7 @@ trainer = Trainer(
     optimizer=optimizer,
     data_silo=data_silo,
     epochs=n_epochs,
-    n_gpu=1,
+    n_gpu=n_gpu,
     warmup_linear=warmup_linear,
     evaluate_every=evaluate_every,
     device=device)
