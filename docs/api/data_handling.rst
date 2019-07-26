@@ -9,6 +9,7 @@ Processor
    :members:
    :undoc-members:
    :show-inheritance:
+   :exclude-members: subclasses
 
 Data Silo
 ----------
