@@ -415,7 +415,6 @@ class BertLMHead(PredictionHead):
                        hidden_act=bert_with_lm.config.hidden_act)
 
             # load weights
-            #TODO check if this is really copying the weights over
             head.dense.load_state_dict(bert_with_lm.cls.predictions.transform.dense.state_dict())
             head.LayerNorm.load_state_dict(bert_with_lm.cls.predictions.transform.LayerNorm.state_dict())
 
@@ -467,6 +466,39 @@ class BertLMHead(PredictionHead):
             labels.append([label_map[int(x)] for x in ids_for_sequence if int(x) != -1])
         return labels
 
+
+class NextSentenceHead(TextClassificationHead):
+    """
+    Almost identical to a TextClassificationHead. Only difference: we can load the weights from
+     a pretrained language model that was saved in the pytorch-transformers style (all in one model).
+    """
+    @classmethod
+    def load(cls, pretrained_model_name_or_path):
+
+        if os.path.exists(pretrained_model_name_or_path) \
+                and "config.json" in pretrained_model_name_or_path \
+                and "prediction_head" in pretrained_model_name_or_path:
+            config_file = os.path.exists(pretrained_model_name_or_path)
+            # a) FARM style
+            model_file = cls._get_model_file(config_file)
+            config = json.load(open(config_file))
+            prediction_head = cls(**config)
+            logger.info("Loading prediction head from {}".format(model_file))
+            prediction_head.load_state_dict(torch.load(model_file, map_location=torch.device("cpu")))
+        else:
+            # b) pytorch-transformers style
+            # load weights from bert model
+            # (we might change this later to load directly from a state_dict to generalize for other language models)
+            bert_with_lm = BertForPreTraining.from_pretrained(pretrained_model_name_or_path)
+
+            # init empty head
+            head = cls(layer_dims=[bert_with_lm.config.hidden_size, 2], loss_ignore_index=-1)
+
+            # load weights
+            head.feed_forward.feed_forward[0].load_state_dict(bert_with_lm.cls.seq_relationship.state_dict())
+            del bert_with_lm
+
+        return head
 
 class FeedForwardBlock(nn.Module):
     """ A feed forward neural network of variable depth and width. """

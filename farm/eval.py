@@ -132,6 +132,8 @@ class Evaluator:
                 # print via standard python logger
                 if print:
                     if metric_name == "report":
+                        if len(metric_val) > 8000:
+                            metric_val = metric_val[:7500] + "\n ............................. \n" + metric_val[-500:]
                         logger.info("{}: \n {}".format(metric_name, metric_val))
                     else:
                         logger.info("{}: {}".format(metric_name, metric_val))

@@ -65,6 +65,11 @@ class Inferencer:
         :return: dict of predictions
 
         """
+        if self.prediction_type == "embedder":
+            raise TypeError("You have called run_inference for a model without any prediction head! "
+                            "If you want to: "
+                            "a) ... extract vectors from the language model: call `Inferencer.extract_vectors(...)`"
+                            f"b) ... run inference on a downstream task: make sure your model path {self.name} contains a saved prediction head")
         dataset, tensor_names = self.processor.dataset_from_dicts(dicts)
         samples = []
         for dict in dicts:
