@@ -17,7 +17,9 @@ logger = logging.getLogger(__name__)
 
 class DataSilo(object):
     """ Generates and stores PyTorch DataLoader objects for the train, dev and test datasets.
-    Relies upon functionality in the processor to do the conversion of the data """
+    Relies upon functionality in the processor to do the conversion of the data. Will also
+    calculate and display some statistics.
+     """
 
     def __init__(self, processor, batch_size, distributed=False):
         """
@@ -169,4 +171,9 @@ class DataSilo(object):
         return self.loaders[dataset]
 
     def n_samples(self, dataset):
+        """
+        Returns the number of samples in a given dataset.
+
+        :param dataset: Choose from train, dev or test
+        """
         return self.counts[dataset]

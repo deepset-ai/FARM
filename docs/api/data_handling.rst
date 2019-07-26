@@ -27,7 +27,7 @@ Dataset
    :undoc-members:
    :show-inheritance:
 
-Dataloader
+DataLoader
 ----------
 
 .. automodule:: farm.data_handler.dataloader
