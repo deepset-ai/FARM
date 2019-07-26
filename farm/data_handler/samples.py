@@ -1,5 +1,5 @@
 from farm.data_handler.utils import get_sentence_pair
-from farm.modeling.tokenization import whitespace_tokenize
+from pytorch_transformers.tokenization_bert import whitespace_tokenize
 
 import logging
 

@@ -67,6 +67,7 @@ def sample_to_features_text(
     # used as as the "sentence vector". Note that this only makes sense because
     # the entire model is fine-tuned.
     tokens = ["[CLS]"] + tokens + ["[SEP]"]
+
     segment_ids = [0] * len(tokens)
 
     input_ids = tokenizer.convert_tokens_to_ids(tokens)

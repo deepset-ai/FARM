@@ -6,7 +6,7 @@ from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import BertStyleLMProcessor
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
-from farm.modeling.prediction_head import BertLMHead, TextClassificationHead
+from farm.modeling.prediction_head import BertLMHead, NextSentenceHead
 from farm.modeling.tokenization import BertTokenizer
 from farm.train import Trainer
 from farm.experiment import initialize_optimizer
@@ -41,15 +41,10 @@ data_silo = DataSilo(processor=processor, batch_size=32)
 
 # 4. Create an AdaptiveModel
 # a) which consists of a pretrained language model as a basis
-language_model = Bert.load("bert-base-german-cased")
+language_model = Bert.load("bert-base-cased")
 # b) and *two* prediction heads on top that are suited for our task => Language Model finetuning
-lm_prediction_head = BertLMHead(
-    embeddings=language_model.model.embeddings,
-    hidden_size=language_model.model.config.hidden_size,
-)
-next_sentence_head = TextClassificationHead(
-    layer_dims=[language_model.model.config.hidden_size, 2], loss_ignore_index=-1
-)
+lm_prediction_head = BertLMHead.load("bert-base-cased")
+next_sentence_head = NextSentenceHead.load("bert-base-cased")
 
 model = AdaptiveModel(
     language_model=language_model,
@@ -66,7 +61,7 @@ optimizer, warmup_linear = initialize_optimizer(
     warmup_proportion=0.1,
     n_examples=data_silo.n_samples("train"),
     batch_size=16,
-    n_epochs=1,
+    n_epochs=10,
 )
 
 # 6. Feed everything to the Trainer, which keeps care of growing our model into powerful plant and evaluates it from time to time
@@ -76,7 +71,7 @@ trainer = Trainer(
     epochs=10,
     n_gpu=1,
     warmup_linear=warmup_linear,
-    evaluate_every=100,
+    evaluate_every=5,
     device=device,
 )
 
@@ -84,6 +79,6 @@ trainer = Trainer(
 model = trainer.train(model)
 
 # 8. Hooray! You have a model. Store it:
-save_dir = "save/bert-german-lm-tutorial"
+save_dir = "save/bert-english-lm-tutorial"
 model.save(save_dir)
 processor.save(save_dir)
