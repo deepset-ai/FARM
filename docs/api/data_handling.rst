@@ -9,6 +9,7 @@ Processor
    :members:
    :undoc-members:
    :show-inheritance:
+   :exclude-members: subclasses
 
 Data Silo
 ----------
@@ -26,7 +27,7 @@ Dataset
    :undoc-members:
    :show-inheritance:
 
-Dataloader
+DataLoader
 ----------
 
 .. automodule:: farm.data_handler.dataloader

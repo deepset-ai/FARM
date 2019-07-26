@@ -31,16 +31,16 @@ class PredictionHead(nn.Module):
     @classmethod
     def create(cls, prediction_head_name, layer_dims, class_weights=None):
         """
-        Create subclass of Prediction Head
+        Create subclass of Prediction Head.
+
         :param prediction_head_name: Classname (exact string!) of prediction head we want to create
         :type prediction_head_name: str
         :param layer_dims: describing the feed forward block structure, e.g. [768,2]
         :type layer_dims: List[Int]
-        :param class_weights: weighting (
-        :paramimbalanced) classes
+        :param class_weights: The loss weighting to be assigned to certain label classes during training.
+           Used to correct cases where there is a strong class imbalance.
         :type class_weights: list[Float]
-        :return: Prediction Head of type prediction_head_name
-        :rtype: PredictionHead[T]
+        :return: Prediction Head of class prediction_head_name
         """
         # TODO make we want to make this more generic.
         #  1. Class weights is not relevant for all heads.
@@ -52,12 +52,12 @@ class PredictionHead(nn.Module):
 
     def save_config(self, save_dir, head_num=0):
         """
-        Saves config
-        :param save_dir: path to save config to
+        Saves the config as a json file.
+
+        :param save_dir: Path to save config to
         :type save_dir: str
-        :param head_num: which head to save
+        :param head_num: Which head to save
         :type head_num: int
-        :return: into the void
         """
         output_config_file = os.path.join(
             save_dir, f"prediction_head_{head_num}_config.json"
@@ -67,12 +67,12 @@ class PredictionHead(nn.Module):
 
     def save(self, save_dir, head_num=0):
         """
-        Saves the prediction head
+        Saves the prediction head state dict.
+
         :param save_dir: path to save prediction head to
         :type save_dir: str
         :param head_num: which head to save
         :type head_num: int
-        :return: into the void
         """
         output_model_file = os.path.join(save_dir, f"prediction_head_{head_num}.bin")
         torch.save(self.state_dict(), output_model_file)
@@ -80,8 +80,7 @@ class PredictionHead(nn.Module):
 
     def generate_config(self):
         """
-        Generates config file from Class parameters (only for sensible config parameters)
-        :return: into the void
+        Generates config file from Class parameters (only for sensible config parameters).
         """
         config = {}
         for key, value in self.__dict__.items():
@@ -93,7 +92,8 @@ class PredictionHead(nn.Module):
     @classmethod
     def load(cls, config_file):
         """
-        Loads a Prediction Head
+        Loads a Prediction Head. Infers the class of prediction head from config_file.
+
         :param config_file: location where corresponding config is stored
         :type config_file: str
         :return: PredictionHead
@@ -109,13 +109,13 @@ class PredictionHead(nn.Module):
     def logits_to_loss(self, logits, labels):
         """
         Implement this function in your special Prediction Head.
-        Should combine logits and labels with a loss fct to a per sample loss
+        Should combine logits and labels with a loss fct to a per sample loss.
+
         :param logits: logits, can vary in shape and type, depending on task
         :type logits: object
         :param labels: labels, can vary in shape and type, depending on task
         :type labels: object
-        :return: per sample loss
-        :rtype: torch.tensor shape: [batch_size]
+        :return: per sample loss as a torch.tensor of shape [batch_size]
         """
         raise NotImplementedError()
 
@@ -123,17 +123,18 @@ class PredictionHead(nn.Module):
         """
         Implement this function in your special Prediction Head.
         Should combine turn logits into predictions.
+
         :param logits: logits, can vary in shape and type, depending on task
         :type logits: object
-        :return: predictions
-        :rtype: torch.tensor shape: [batch_size]
+        :return: predictions as a torch.tensor of shape [batch_size]
         """
         raise NotImplementedError()
 
     def prepare_labels(self, **kwargs):
         """
         Some prediction heads need additional label conversion.
-        E.g. NER needs word level labels turned into subword token level labels...
+        E.g. NER needs word level labels turned into subword token level labels.
+
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
         :return: labels in the right format
@@ -550,6 +551,7 @@ class QuestionAnsweringHead(PredictionHead):
     def forward(self, X):
         """
         One forward pass through the prediction head model, starting with language model output on token level
+
         :param X: Output of language model, of shape [batch_size, seq_length, LM_embedding_dim]
         :type X: torch.tensor
         :return: (start_logits, end_logits), logits for the start and end of answer
@@ -564,6 +566,7 @@ class QuestionAnsweringHead(PredictionHead):
     def logits_to_loss(self, logits, start_position, end_position, **kwargs):
         """
         Combine predictions and labels to a per sample loss.
+
         :param logits: (start_logits, end_logits), logits for the start and end of answer
         :type logits: tuple[torch.tensor,torch.tensor]
         :param start_position: tensor with indices of START positions per sample
@@ -595,6 +598,7 @@ class QuestionAnsweringHead(PredictionHead):
     def logits_to_preds(self, logits, **kwargs):
         """
         Get the predicted index of start and end token of the answer.
+
         :param logits: (start_logits, end_logits), logits for the start and end of answer
         :type logits: tuple[torch.tensor,torch.tensor]
         :param kwargs: placeholder for passing generic parameters
@@ -611,6 +615,7 @@ class QuestionAnsweringHead(PredictionHead):
     def prepare_labels(self, start_position, end_position, **kwargs):
         """
         We want to pack labels into a tuple, to be compliant with later functions
+
         :param start_position: indices of answer start positions (in token space)
         :type start_position: torch.tensor
         :param end_position: indices of answer end positions (in token space)
@@ -625,6 +630,7 @@ class QuestionAnsweringHead(PredictionHead):
     def formatted_preds(self, logits, samples, segment_ids, **kwargs) -> [str]:
         """
         Format predictions into actual answer strings (substrings of context). Used for Inference!
+
         :param logits: (start_logits, end_logits), logits for the start and end of answer
         :type logits: tuple[torch.tensor,torch.tensor]
         :param samples: converted samples, to get a hook onto the actual text

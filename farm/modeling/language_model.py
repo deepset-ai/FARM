@@ -32,7 +32,9 @@ from pytorch_transformers.modeling_bert import BertModel, BertConfig
 
 class LanguageModel(nn.Module):
     """
-    Takes a tokenized sentence as input and returns vectors that represents the input semantically.
+    The parent class for any kind of model that can embed language into a semantic vector space. Practically
+    speaking, these models read in tokenized sentences and return vectors that capture the meaning of sentences
+    or of tokens.
     """
 
     subclasses = {}
@@ -48,27 +50,53 @@ class LanguageModel(nn.Module):
         raise NotImplementedError
 
     @classmethod
-    def load(cls, load_dir):
-        config_file = os.path.join(load_dir, "language_model_config.json")
+    def load(cls, pretrained_model_name_or_path):
+        """
+        Load a pretrained language model either by 1) specifying its name and downloading it or 2) pointing
+        to the directory it is saved in.
+
+        :param pretrained_model_name_or_path: The path of the saved pretrained model or its name. Choose from:
+
+              * `bert-base-uncased`
+              * `bert-large-uncased`
+              * `bert-base-cased`
+              * `bert-large-cased`
+              * `bert-base-multilingual-uncased`
+              * `bert-base-multilingual-cased`
+              * `bert-base-chinese`
+              * `bert-base-german-cased`
+
+        :type pretrained_model_name_or_path: str
+        """
+        config_file = os.path.join(pretrained_model_name_or_path, "language_model_config.json")
         if os.path.exists(config_file):
             # it's a local directory
             config = json.load(open(config_file))
-            language_model = cls.subclasses[config["name"]].load(load_dir)
+            language_model = cls.subclasses[config["name"]].load(pretrained_model_name_or_path)
         else:
             # it's a model name which we try to resolve from s3. for now only works for bert models
-            language_model = cls.subclasses["Bert"].load(load_dir)
+            language_model = cls.subclasses["Bert"].load(pretrained_model_name_or_path)
         return language_model
 
     def freeze(self, layers):
+        """ To be implemented"""
         raise NotImplementedError()
 
     def unfreeze(self):
+        """ To be implemented"""
         raise NotImplementedError()
 
     def save_config(self, save_dir):
+        """ To be implemented"""
         raise NotImplementedError()
 
     def save(self, save_dir):
+        """
+        Save the model state_dict and its config file so that it can be loaded again.
+
+        :param save_dir: The directory in which the model should be saved.
+        :type save_dir: str
+        """
         # Save Weights
         save_name = os.path.join(save_dir, "language_model.bin")
         model_to_save = (
@@ -114,7 +142,7 @@ class LanguageModel(nn.Module):
         return language
 
     def formatted_preds(self, input_ids, samples, extraction_strategy="pooled", **kwargs):
-        sequence_output, pooled_output = self.forward(input_ids, output_all_encoded_layers=False, **kwargs)
+        sequence_output, pooled_output = self.forward(input_ids, **kwargs)
 
         if extraction_strategy == "pooled":
             vecs = pooled_output.cpu().numpy()
@@ -166,6 +194,19 @@ class Bert(LanguageModel):
         padding_mask,
         **kwargs,
     ):
+        """
+        Perform the forward pass of the BERT model.
+
+        :param input_ids: The ids of each token in the input sequence. Is a tensor of shape [batch_size, max_seq_len]
+        :type input_ids: torch.Tensor
+        :param segment_ids: The id of the segment. For example, in next sentence prediction, the tokens in the
+           first sentence are marked with 0 and those in the second are marked with 1.
+           It is a tensor of shape [batch_size, max_seq_len]
+        :type segment_ids: torch.Tensor
+        :param padding_mask: A mask that assigns a 1 to valid input tokens and 0 to padding tokens
+           of shape [batch_size, max_seq_len]
+        :return: Embeddings for each token in the input sequence.
+        """
         output_tuple = self.model(
             input_ids,
             token_type_ids=segment_ids,

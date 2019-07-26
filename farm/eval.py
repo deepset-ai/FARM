@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class Evaluator:
-    """Handles evaluation of a given model over a specified dataset"""
+    """Handles evaluation of a given model over a specified dataset."""
 
     def __init__(
         self, data_loader, label_maps, device, metrics, classification_report=True

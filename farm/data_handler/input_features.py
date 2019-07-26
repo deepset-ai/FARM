@@ -194,6 +194,7 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer):
     """
     Convert a raw sample (pair of sentences as tokenized strings) into a proper training sample with
     IDs, LM labels, padding_mask, CLS and SEP tokens etc.
+
     :param sample: Sample, containing sentence input as strings and is_next label
     :param max_seq_len: int, maximum length of sequence.
     :param tokenizer: Tokenizer

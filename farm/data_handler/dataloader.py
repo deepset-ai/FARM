@@ -5,7 +5,7 @@ import torch
 class NamedDataLoader(DataLoader):
     """
     A modified version of the PyTorch DataLoader that returns a dictionary where the key is
-    the name of the tensor and the value is the tensor itself
+    the name of the tensor and the value is the tensor itself.
     """
 
     def __init__(self, dataset, sampler, batch_size, tensor_names):
@@ -13,9 +13,9 @@ class NamedDataLoader(DataLoader):
         :param dataset: The dataset that will be wrapped by this NamedDataLoader
         :type dataset: Dataset
         :param sampler: The sampler used by the NamedDataLoader to choose which samples to include in the batch
-        :type Sampler
+        :type sampler: Sampler
         :param batch_size: The size of the batch to be returned by the NamedDataLoader
-        :type int
+        :type batch_size: int
         :param tensor_names: The names of the tensor, in the order that the dataset returns them in.
         :type tensor_names: list
         """
@@ -51,6 +51,16 @@ class NamedDataLoader(DataLoader):
 
 
 def covert_dataset_to_dataloader(dataset, sampler, batch_size):
+    """
+    Wraps a PyTorch Dataset with a DataLoader.
+
+    :param dataset: Dataset to be wrapped.
+    :type dataset: Dataset
+    :param sampler: PyTorch sampler used to pick samples in a batch.
+    :type sampler: Sampler
+    :param batch_size: Number of samples in the batch.
+    :return: A DataLoader that wraps the input Dataset.
+    """
     sampler_initialized = sampler(dataset)
     data_loader = DataLoader(
         dataset, sampler=sampler_initialized, batch_size=batch_size
