@@ -29,7 +29,7 @@ def test_qa(caplog):
     )
     processor = SquadProcessor(
         tokenizer=tokenizer,
-        max_seq_len=256,
+        max_seq_len=64,
         train_filename="train-sample.json",
         dev_filename="dev-sample.json",
         test_filename=None,
@@ -77,5 +77,4 @@ def test_qa(caplog):
 
     model = Inferencer(save_dir)
     result = model.run_inference(dicts=QA_input)
-
     assert result[0]["predictions"][0]["label"] == 'The'

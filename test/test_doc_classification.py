@@ -17,7 +17,7 @@ def test_doc_classification(caplog):
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=False)
     n_epochs = 1
-    batch_size = 16
+    batch_size = 8
     evaluate_every = 30
     lang_model = "bert-base-german-cased"
 
@@ -26,7 +26,7 @@ def test_doc_classification(caplog):
         do_lower_case=False)
 
     processor = GermEval18CoarseProcessor(tokenizer=tokenizer,
-                              max_seq_len=128,
+                              max_seq_len=64,
                               data_dir="samples/doc_class",
                                           train_filename="train-sample.tsv",
                                           test_filename=None)
@@ -73,6 +73,5 @@ def test_doc_classification(caplog):
     ]
     model = Inferencer(save_dir)
     result = model.run_inference(dicts=basic_texts)
-
-    assert result[0]["predictions"][0]["label"] == "OFFENSE"
-    assert abs(result[0]["predictions"][0]["probability"] - 0.6196455) <= 0.0001
+    assert result[0]["predictions"][0]["label"] == "OTHER"
+    assert abs(result[0]["predictions"][0]["probability"] - 0.5503251) <= 0.0001

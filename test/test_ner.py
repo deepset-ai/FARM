@@ -28,7 +28,7 @@ def test_ner(caplog):
     )
 
     processor = GermEval14Processor(
-        tokenizer=tokenizer, max_seq_len=80, data_dir="samples/ner",train_file="train-sample.txt",
+        tokenizer=tokenizer, max_seq_len=64, data_dir="samples/ner",train_file="train-sample.txt",
         dev_file="dev-sample.txt",test_file=None
     )
 
@@ -73,6 +73,5 @@ def test_ner(caplog):
     ]
     model = Inferencer(save_dir)
     result = model.run_inference(dicts=basic_texts)
-
     assert result[0]["predictions"][0]["context"] == "Schartau"
     assert abs(result[0]["predictions"][0]["probability"] - 0.1334158) <= 0.0001
