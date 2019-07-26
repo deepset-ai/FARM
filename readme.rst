@@ -12,16 +12,21 @@ What is it?
 ########
 FARM makes cutting edge **Transfer Learning** for NLP simple. 
 It is a home for all species of pretrained language models (e.g. BERT) that can be adapted to different down-stream
-tasks (e.g. NER) by simply switching the prediction head.
-The standardized interfaces for language models and prediction heads allow a flexible extension by researchers and an easy adaptation for practitioners.
+tasks.
+The aim is to make it simple to perform document classification, NER and question answering, for example, using the one language model.
+The standardized interfaces for language models and prediction heads allow flexible extension by researchers and easy adaptation for practitioners.
 Additional experiment tracking and visualizations support you along the way to adapt a SOTA model to your own NLP problem and showcase it as a PoC.  
 
-See the `full documentation <https://farm.deepset.ai>`_ for more details.
+Have a look at `this blog post <https://www.digitalminds.io/blog/transfer_learning_entering_a_new_era_in_nlp>`_ for an introduction to Transfer Learning
+ or see the `full documentation <https://farm.deepset.ai>`_ for more details about FARM
 
 Core features
 ########
 - Easy adaptation of pretrained language models (e.g. BERT) to your own use case
+   - The Processor class makes it easy to define the data processing needed for your task
 - Modular design of language model and prediction heads
+   - The language model captures a core language understanding that can be shared across tasks
+   - A prediction head uses the output of the language model to perform specific downstream tasks and can be easily tailored to your needs
 - Easy experiment tracking & execution
 - Simple deployment and visualization to showcase your PoC
 
@@ -59,7 +64,7 @@ FARM offers two modes for model training:
     processor = CONLLProcessor(tokenizer=tokenizer, data_dir="../data/conll03-de", max_seq_len=128)
     ...
 
-    # AdaptiveModel = LanguageModel + PredictionHead(s)
+    # An AdaptiveModel is the combination of a language model and one or more prediction heads
     language_model = Bert.load(lang_model)
     prediction_head = TokenClassificationHead(layer_dims=[768, num_labels])
     model = AdaptiveModel(language_model=language_model, prediction_heads=[prediction_head], ...)
