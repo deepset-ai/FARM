@@ -20,7 +20,7 @@
   "task": {
     "type":            {"value": null, "default": "token_classification",  "desc": "Type."},
     "language":        {"value": null, "default": "en",              "desc": "Language."},
-    "name":            {"value": null, "default": "large-wholeword-SQUAD",           "desc": "Name of task."},
+    "name":            {"value": null, "default": "SQUAD",           "desc": "Name of task."},
     "processor_name":  {"value": null, "default": "SquadProcessor",  "desc": "Class name of DataProcessor."},
     "do_eval":         {"value": null, "default": true, "desc": "Whether to run eval on the dev set."},
     "do_train":        {"value": null, "default": true, "desc": "Whether to run training. Can be used to only evaluate on an already trained model."},
@@ -51,7 +51,7 @@
     "mlflow_nested":  {"value": null,                         "default": true, "desc": "Nesting mlflow experiments. For doing multiple runs across a set of hyperparameters."}, 
 
     "mlflow_experiment": {"value": "Public_FARM",     "default": null, "desc": "Experiment name used for mlflow"},
-    "mlflow_run_name":   {"value": "large squad by config", "default": null, "desc": "Name of the particular run for mlflow"}
+    "mlflow_run_name":   {"value": "squad by config", "default": null, "desc": "Name of the particular run for mlflow"}
   }
 }
 
