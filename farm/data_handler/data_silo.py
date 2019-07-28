@@ -146,8 +146,8 @@ class DataSilo(object):
         MlLogger.log_params(
             {
                 "n_samples_train": self.counts["train"],
-                "n_samples_dev": self.counts["train"],
-                "n_samples_test": self.counts["train"],
+                "n_samples_dev": self.counts["dev"],
+                "n_samples_test": self.counts["test"],
                 "ave_seq_len": self.ave_len,
                 "clipped": self.clipped
             }
