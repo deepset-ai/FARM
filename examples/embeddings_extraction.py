@@ -29,7 +29,7 @@ processor = GNADProcessor(
 # 4. Create an AdaptiveModel with  a pretrained language model as a basis
 language_model = Bert.load(lang_model)
 
-adaptiveModel = AdaptiveModel(
+adaptive_model = AdaptiveModel(
     language_model=language_model,
     prediction_heads=[],
     embeds_dropout_prob=0,
@@ -43,6 +43,6 @@ basic_texts = [
     {"text": "Martin Müller spielt Fussball"},
 ]
 
-model = Inferencer(adaptiveModel, processor)
+model = Inferencer(adaptive_model, processor)
 result = model.extract_vectors(dicts=basic_texts)
 print(result)
