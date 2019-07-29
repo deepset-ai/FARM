@@ -92,6 +92,6 @@ basic_texts = [
     {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei"},
     {"text": "Martin Müller spielt Handball in Berlin"},
 ]
-model = Inferencer("save/bert-german-ner-tutorial")
+model = Inferencer.load_from_dir("save/bert-german-ner-tutorial")
 result = model.run_inference(dicts=basic_texts)
 print(result)

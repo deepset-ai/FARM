@@ -75,6 +75,6 @@ def test_qa(caplog):
                 "text":  "The Normans (Norman: Nourmands; French: Normands; Latin: Normanni) were the people who in the 10th and 11th centuries gave their name to Normandy, a region in France. They were descended from Norse (\"Norman\" comes from \"Norseman\") raiders and pirates from Denmark, Iceland and Norway who, under their leader Rollo, agreed to swear fealty to King Charles III of West Francia. Through generations of assimilation and mixing with the native Frankish and Roman-Gaulish populations, their descendants would gradually merge with the Carolingian-based cultures of West Francia. The distinct cultural and ethnic identity of the Normans emerged initially in the first half of the 10th century, and it continued to evolve over the succeeding centuries."
             }]
 
-    model = Inferencer(save_dir)
+    model = Inferencer.load_from_dir(save_dir)
     result = model.run_inference(dicts=QA_input)
     assert result[0]["predictions"][0]["label"] == 'The'
