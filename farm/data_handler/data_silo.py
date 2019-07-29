@@ -47,8 +47,12 @@ class DataSilo(object):
 
         # dev data
         if not self.processor.dev_filename:
-            logger.info("Loading dev set as a slice of train set")
-            self._create_dev_from_train()
+            if self.processor.dev_split > 0.0:
+                logger.info("Loading dev set as a slice of train set")
+                self._create_dev_from_train()
+            else:
+                logger.info("No dev set is being loaded")
+                self.data["dev"] = None
         else:
             dev_file = os.path.join(self.processor.data_dir, self.processor.dev_filename)
             logger.info("Loading dev set from: {}".format(dev_file))
@@ -59,6 +63,9 @@ class DataSilo(object):
             test_file = os.path.join(self.processor.data_dir, self.processor.test_filename)
             logger.info("Loading test set from: {}".format(test_file))
             self.data["test"], _ = self.processor.dataset_from_file(test_file)
+        else:
+            logger.info("No test set is being loaded")
+            self.data["test"] = None
 
         # derive stats and meta data
         self._calculate_statistics()
@@ -79,12 +86,15 @@ class DataSilo(object):
             tensor_names=self.tensor_names,
         )
 
-        data_loader_dev = NamedDataLoader(
-            dataset=self.data["dev"],
-            sampler=SequentialSampler(self.data["dev"]),
-            batch_size=self.batch_size,
-            tensor_names=self.tensor_names,
-        )
+        if self.data["dev"] is not None:
+            data_loader_dev = NamedDataLoader(
+                dataset=self.data["dev"],
+                sampler=SequentialSampler(self.data["dev"]),
+                batch_size=self.batch_size,
+                tensor_names=self.tensor_names,
+            )
+        else:
+            data_loader_dev = None
 
         if self.processor.test_filename:
             data_loader_test = NamedDataLoader(
