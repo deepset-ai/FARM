@@ -1,5 +1,5 @@
 from farm.data_handler.utils import get_sentence_pair
-from farm.modeling.tokenization import whitespace_tokenize
+from pytorch_transformers.tokenization_bert import whitespace_tokenize
 
 import logging
 
@@ -7,27 +7,37 @@ logger = logging.getLogger(__name__)
 
 
 class SampleBasket:
-    """ A collection of training / test samples. Useful in cases where one piece of text generates
-    multiple samples to be processed such as in question answering tasks."""
+    """ An object that contains one source text and the one or more samples that will be processed. This
+    is needed for tasks like question answering where the source text can generate multiple input - label
+    pairs."""
 
     def __init__(self, id: str, raw: dict, samples=None):
+        """
+        :param id: A unique identifying id.
+        :type id: str
+        :param raw: Contains the various data needed to form a sample. It is ideally in human readable form.
+        :type raw: dict
+        :param samples: An optional list of Samples used to populate the basket at initialization.
+        """
         self.id = id
         self.raw = raw
         self.samples = samples
 
 
 class Sample(object):
-    """A single training/test sample."""
+    """A single training/test sample. This should contain the input and the label. Is initialized with
+    the human readable clear_text. Over the course of data preprocessing, this object is populated
+    with tokenized and featurized versions of the data."""
 
     def __init__(self, id, clear_text, tokenized=None, features=None):
         """
         :param id: The unique id of the sample
         :type id: str
-        :param clear_text: A dictionary containing various human readable fields (e.g. text, label)
+        :param clear_text: A dictionary containing various human readable fields (e.g. text, label).
         :type clear_text: dict
-        :param tokenized: A dictionary containing the tokenized version of clear text plus helpful meta data: offsets (start position of each token in the original text) and start_of_word (boolean if a token is the first one of a word)
+        :param tokenized: A dictionary containing the tokenized version of clear text plus helpful meta data: offsets (start position of each token in the original text) and start_of_word (boolean if a token is the first one of a word).
         :type tokenized: dict
-        :param features: A dictionary containing features needed by the model to process this sample
+        :param features: A dictionary containing features in a vectorized format needed by the model to process this sample.
         :type features: dict
 
         """

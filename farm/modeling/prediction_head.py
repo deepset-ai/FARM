@@ -4,8 +4,8 @@ import os
 import numpy as np
 
 import torch
-from dotmap import DotMap
-from pytorch_pretrained_bert.modeling import BertLMPredictionHead
+from pytorch_transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN
+
 from torch import nn
 from torch.nn import CrossEntropyLoss
 
@@ -31,16 +31,16 @@ class PredictionHead(nn.Module):
     @classmethod
     def create(cls, prediction_head_name, layer_dims, class_weights=None):
         """
-        Create subclass of Prediction Head
+        Create subclass of Prediction Head.
+
         :param prediction_head_name: Classname (exact string!) of prediction head we want to create
         :type prediction_head_name: str
         :param layer_dims: describing the feed forward block structure, e.g. [768,2]
         :type layer_dims: List[Int]
-        :param class_weights: weighting (
-        :paramimbalanced) classes
+        :param class_weights: The loss weighting to be assigned to certain label classes during training.
+           Used to correct cases where there is a strong class imbalance.
         :type class_weights: list[Float]
-        :return: Prediction Head of type prediction_head_name
-        :rtype: PredictionHead[T]
+        :return: Prediction Head of class prediction_head_name
         """
         # TODO make we want to make this more generic.
         #  1. Class weights is not relevant for all heads.
@@ -52,12 +52,12 @@ class PredictionHead(nn.Module):
 
     def save_config(self, save_dir, head_num=0):
         """
-        Saves config
-        :param save_dir: path to save config to
+        Saves the config as a json file.
+
+        :param save_dir: Path to save config to
         :type save_dir: str
-        :param head_num: which head to save
+        :param head_num: Which head to save
         :type head_num: int
-        :return: into the void
         """
         output_config_file = os.path.join(
             save_dir, f"prediction_head_{head_num}_config.json"
@@ -67,12 +67,12 @@ class PredictionHead(nn.Module):
 
     def save(self, save_dir, head_num=0):
         """
-        Saves the prediction head
+        Saves the prediction head state dict.
+
         :param save_dir: path to save prediction head to
         :type save_dir: str
         :param head_num: which head to save
         :type head_num: int
-        :return: into the void
         """
         output_model_file = os.path.join(save_dir, f"prediction_head_{head_num}.bin")
         torch.save(self.state_dict(), output_model_file)
@@ -80,8 +80,7 @@ class PredictionHead(nn.Module):
 
     def generate_config(self):
         """
-        Generates config file from Class parameters (only for sensible config parameters)
-        :return: into the void
+        Generates config file from Class parameters (only for sensible config parameters).
         """
         config = {}
         for key, value in self.__dict__.items():
@@ -91,34 +90,32 @@ class PredictionHead(nn.Module):
         self.config = config
 
     @classmethod
-    def load(cls, model_file, config_file, device):
+    def load(cls, config_file):
         """
-        Loads a Prediction Head
-        :param model_file: location where model is stored
-        :type model_file: str
+        Loads a Prediction Head. Infers the class of prediction head from config_file.
+
         :param config_file: location where corresponding config is stored
         :type config_file: str
-        :param device: to which device we want to sent the model, either cpu or cuda
-        :type device: torch.device
         :return: PredictionHead
         :rtype: PredictionHead[T]
         """
         config = json.load(open(config_file))
         prediction_head = cls.subclasses[config["name"]](**config)
+        model_file = cls._get_model_file(config_file=config_file)
         logger.info("Loading prediction head from {}".format(model_file))
-        prediction_head.load_state_dict(torch.load(model_file, map_location=device))
+        prediction_head.load_state_dict(torch.load(model_file, map_location=torch.device("cpu")))
         return prediction_head
 
     def logits_to_loss(self, logits, labels):
         """
         Implement this function in your special Prediction Head.
-        Should combine logits and labels with a loss fct to a per sample loss
+        Should combine logits and labels with a loss fct to a per sample loss.
+
         :param logits: logits, can vary in shape and type, depending on task
         :type logits: object
         :param labels: labels, can vary in shape and type, depending on task
         :type labels: object
-        :return: per sample loss
-        :rtype: torch.tensor shape: [batch_size]
+        :return: per sample loss as a torch.tensor of shape [batch_size]
         """
         raise NotImplementedError()
 
@@ -126,17 +123,18 @@ class PredictionHead(nn.Module):
         """
         Implement this function in your special Prediction Head.
         Should combine turn logits into predictions.
+
         :param logits: logits, can vary in shape and type, depending on task
         :type logits: object
-        :return: predictions
-        :rtype: torch.tensor shape: [batch_size]
+        :return: predictions as a torch.tensor of shape [batch_size]
         """
         raise NotImplementedError()
 
     def prepare_labels(self, **kwargs):
         """
         Some prediction heads need additional label conversion.
-        E.g. NER needs word level labels turned into subword token level labels...
+        E.g. NER needs word level labels turned into subword token level labels.
+
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
         :return: labels in the right format
@@ -144,6 +142,15 @@ class PredictionHead(nn.Module):
         """
         # TODO maybe just return **kwargs to not force people to implement this
         raise NotImplementedError()
+
+    @classmethod
+    def _get_model_file(cls, config_file):
+        if "config.json" in config_file and "prediction_head" in config_file:
+            head_num = int("".join([char for char in os.path.basename(config_file) if char.isdigit()]))
+            model_file = os.path.join(os.path.dirname(config_file), f"prediction_head_{head_num}.bin")
+        else:
+            raise ValueError(f"This doesn't seem to be a proper prediction_head config file: '{config_file}'")
+        return model_file
 
 
 class TextClassificationHead(PredictionHead):
@@ -355,32 +362,77 @@ class TokenClassificationHead(PredictionHead):
 
 
 class BertLMHead(PredictionHead):
-    def __init__(self, embeddings, hidden_size, hidden_act="gelu", **kwargs):
+    def __init__(self, hidden_size, vocab_size, hidden_act="gelu", **kwargs):
         super(BertLMHead, self).__init__()
 
-        config = {"hidden_size": hidden_size, "hidden_act": hidden_act}
-        config = DotMap(config, _dynamic=False)
-        embeddings_weights = embeddings.word_embeddings.weight
-
-        self.model = BertLMPredictionHead(config, embeddings_weights)
+        self.hidden_size = hidden_size
+        self.hidden_act = hidden_act
+        self.vocab_size = vocab_size
         self.loss_fct = CrossEntropyLoss(reduction="none", ignore_index=-1)
-        self.num_labels = embeddings_weights.shape[0]  # vocab size
+        self.num_labels = vocab_size  # vocab size
         # TODO Check if weight init needed!
         # self.apply(self.init_bert_weights)
         self.ph_output_type = "per_token"
-        # TODO add model type for loading self.model_type = "language_modelling"
+
+        self.model_type = "language_modelling"
         self.generate_config()
 
-    def save(self, save_dir, head_num=0):
-        logger.warning("The weights of BertLMHead are not saved")
-        self.save_config(save_dir, head_num)
+        # NN Layers
+        # this is the "transform" module in the pytorch-transformers repo
+        self.dense = nn.Linear(self.hidden_size, self.hidden_size)
+        self.transform_act_fn = ACT2FN[self.hidden_act]
+        self.LayerNorm = BertLayerNorm(self.hidden_size, eps=1e-12)
+
+        # this is the "decoder" in the pytorch-transformers repo
+        # The output weights are the same as the input embeddings, but there is
+        # an output-only bias for each token.
+        self.decoder = nn.Linear(hidden_size,
+                                 vocab_size,
+                                 bias=False)
+        self.bias = nn.Parameter(torch.zeros(vocab_size))
 
     @classmethod
-    def load(cls, model_file, config_file):
-        raise NotImplementedError("BertLMHead does not currently support loading")
+    def load(cls, pretrained_model_name_or_path):
 
-    def forward(self, X):
-        lm_logits = self.model(X)
+        if os.path.exists(pretrained_model_name_or_path) \
+                and "config.json" in pretrained_model_name_or_path \
+                and "prediction_head" in pretrained_model_name_or_path:
+            config_file = os.path.exists(pretrained_model_name_or_path)
+            # a) FARM style
+            model_file = cls._get_model_file(config_file)
+            config = json.load(open(config_file))
+            prediction_head = cls(**config)
+            logger.info("Loading prediction head from {}".format(model_file))
+            prediction_head.load_state_dict(torch.load(model_file, map_location=torch.device("cpu")))
+        else:
+            # b) pytorch-transformers style
+            # load weights from bert model
+            # (we might change this later to load directly from a state_dict to generalize for other language models)
+            bert_with_lm = BertForPreTraining.from_pretrained(pretrained_model_name_or_path)
+
+            # init empty head
+            head = cls(hidden_size=bert_with_lm.config.hidden_size,
+                       vocab_size=bert_with_lm.config.vocab_size,
+                       hidden_act=bert_with_lm.config.hidden_act)
+
+            # load weights
+            head.dense.load_state_dict(bert_with_lm.cls.predictions.transform.dense.state_dict())
+            head.LayerNorm.load_state_dict(bert_with_lm.cls.predictions.transform.LayerNorm.state_dict())
+
+            head.decoder.load_state_dict(bert_with_lm.cls.predictions.decoder.state_dict())
+            head.bias.data.copy_(bert_with_lm.cls.predictions.bias)
+            del bert_with_lm
+
+        return head
+
+    def set_shared_weights(self, shared_embedding_weights):
+        self.decoder.weight = shared_embedding_weights
+
+    def forward(self, hidden_states):
+        hidden_states = self.dense(hidden_states)
+        hidden_states = self.transform_act_fn(hidden_states)
+        hidden_states = self.LayerNorm(hidden_states)
+        lm_logits = self.decoder(hidden_states) + self.bias
         return lm_logits
 
     def logits_to_loss(self, logits, lm_label_ids, **kwargs):
@@ -415,6 +467,39 @@ class BertLMHead(PredictionHead):
             labels.append([label_map[int(x)] for x in ids_for_sequence if int(x) != -1])
         return labels
 
+
+class NextSentenceHead(TextClassificationHead):
+    """
+    Almost identical to a TextClassificationHead. Only difference: we can load the weights from
+     a pretrained language model that was saved in the pytorch-transformers style (all in one model).
+    """
+    @classmethod
+    def load(cls, pretrained_model_name_or_path):
+
+        if os.path.exists(pretrained_model_name_or_path) \
+                and "config.json" in pretrained_model_name_or_path \
+                and "prediction_head" in pretrained_model_name_or_path:
+            config_file = os.path.exists(pretrained_model_name_or_path)
+            # a) FARM style
+            model_file = cls._get_model_file(config_file)
+            config = json.load(open(config_file))
+            prediction_head = cls(**config)
+            logger.info("Loading prediction head from {}".format(model_file))
+            prediction_head.load_state_dict(torch.load(model_file, map_location=torch.device("cpu")))
+        else:
+            # b) pytorch-transformers style
+            # load weights from bert model
+            # (we might change this later to load directly from a state_dict to generalize for other language models)
+            bert_with_lm = BertForPreTraining.from_pretrained(pretrained_model_name_or_path)
+
+            # init empty head
+            head = cls(layer_dims=[bert_with_lm.config.hidden_size, 2], loss_ignore_index=-1)
+
+            # load weights
+            head.feed_forward.feed_forward[0].load_state_dict(bert_with_lm.cls.seq_relationship.state_dict())
+            del bert_with_lm
+
+        return head
 
 class FeedForwardBlock(nn.Module):
     """ A feed forward neural network of variable depth and width. """
@@ -466,6 +551,7 @@ class QuestionAnsweringHead(PredictionHead):
     def forward(self, X):
         """
         One forward pass through the prediction head model, starting with language model output on token level
+
         :param X: Output of language model, of shape [batch_size, seq_length, LM_embedding_dim]
         :type X: torch.tensor
         :return: (start_logits, end_logits), logits for the start and end of answer
@@ -480,6 +566,7 @@ class QuestionAnsweringHead(PredictionHead):
     def logits_to_loss(self, logits, start_position, end_position, **kwargs):
         """
         Combine predictions and labels to a per sample loss.
+
         :param logits: (start_logits, end_logits), logits for the start and end of answer
         :type logits: tuple[torch.tensor,torch.tensor]
         :param start_position: tensor with indices of START positions per sample
@@ -511,6 +598,7 @@ class QuestionAnsweringHead(PredictionHead):
     def logits_to_preds(self, logits, **kwargs):
         """
         Get the predicted index of start and end token of the answer.
+
         :param logits: (start_logits, end_logits), logits for the start and end of answer
         :type logits: tuple[torch.tensor,torch.tensor]
         :param kwargs: placeholder for passing generic parameters
@@ -527,6 +615,7 @@ class QuestionAnsweringHead(PredictionHead):
     def prepare_labels(self, start_position, end_position, **kwargs):
         """
         We want to pack labels into a tuple, to be compliant with later functions
+
         :param start_position: indices of answer start positions (in token space)
         :type start_position: torch.tensor
         :param end_position: indices of answer end positions (in token space)
@@ -541,6 +630,7 @@ class QuestionAnsweringHead(PredictionHead):
     def formatted_preds(self, logits, samples, segment_ids, **kwargs) -> [str]:
         """
         Format predictions into actual answer strings (substrings of context). Used for Inference!
+
         :param logits: (start_logits, end_logits), logits for the start and end of answer
         :type logits: tuple[torch.tensor,torch.tensor]
         :param samples: converted samples, to get a hook onto the actual text

@@ -5,15 +5,15 @@ from torch import nn
 
 from farm.file_utils import create_folder
 from farm.modeling.language_model import LanguageModel
-from farm.modeling.prediction_head import PredictionHead
+from farm.modeling.prediction_head import PredictionHead, BertLMHead
 from farm.utils import MLFlowLogger as MlLogger
 
 logger = logging.getLogger(__name__)
 
 
 class AdaptiveModel(nn.Module):
-    """ Combines a language model and a prediction head for an NLP task. Allows for gradient
-    flow back to the language model component"""
+    """ Contains all the modelling needed for your NLP task. Combines a language model and a prediction head.
+    Allows for gradient flow back to the language model component."""
 
     def __init__(
         self,
@@ -29,18 +29,23 @@ class AdaptiveModel(nn.Module):
         :param prediction_heads: A list of models that take embeddings and return logits for a given task
         :type prediction_heads: list
         :param embeds_dropout_prob: The probability that a value in the embeddings returned by the
-        language model will be zeroed.
+           language model will be zeroed.
         :param embeds_dropout_prob: float
         :param lm_output_types: How to extract the embeddings from the final layer of the language model. When set
-        to "per_token", one embedding will be extracted per input token. If set to "per_sequence", a single embedding
-        will be extracted to represent the full input sequence. Can either be a single string, or a list of strings,
-        one for each prediction head.
+                                to "per_token", one embedding will be extracted per input token. If set to
+                                "per_sequence", a single embedding will be extracted to represent the full
+                                input sequence. Can either be a single string, or a list of strings,
+                                one for each prediction head.
         :type lm_output_types: list or str
         :param device: The device on which this model will operate. Either "cpu" or "cuda".
         """
         super(AdaptiveModel, self).__init__()
         self.language_model = language_model.to(device)
         self.prediction_heads = nn.ModuleList([ph.to(device) for ph in prediction_heads])
+        # set shared weights for LM finetuning
+        for head in self.prediction_heads:
+            if head.model_type == "language_modelling":
+                head.set_shared_weights(language_model.model.embeddings.word_embeddings.weight)
         self.num_labels = [head.num_labels for head in prediction_heads]
         self.dropout = nn.Dropout(embeds_dropout_prob)
         self.lm_output_types = (
@@ -51,10 +56,11 @@ class AdaptiveModel(nn.Module):
 
     def save(self, save_dir):
         """
-        Saves
+        Saves the language model and prediction heads. This will generate a config file
+        and model weights for each.
+
         :param save_dir: path to save to
         :type save_dir: str
-        :return: into the void
         """
         create_folder(save_dir)
         self.language_model.save(save_dir)
@@ -65,47 +71,46 @@ class AdaptiveModel(nn.Module):
     @classmethod
     def load(cls, load_dir, device):
         """
-        Loads an AdaptiveModel from a directory.
-        The directory must contain:
-        - language_model.bin
-        - language_model_config.json
-        - prediction_head_X.bin  multiple PH possible
-        - prediction_head_X_config.json
-        - processor_config.json config for transforming input
-        - vocab.txt vocab file for language model, turning text to Wordpiece Tokens
+        Loads an AdaptiveModel from a directory. The directory must contain:
+
+        * language_model.bin
+        * language_model_config.json
+        * prediction_head_X.bin  multiple PH possible
+        * prediction_head_X_config.json
+        * processor_config.json config for transforming input
+        * vocab.txt vocab file for language model, turning text to Wordpiece Tokens
+
         :param load_dir: location where adaptive model is stored
         :type load_dir: str
         :param device: to which device we want to sent the model, either cpu or cuda
         :type device: torch.device
-        :return: AdaptiveModel
-        :rtype: AdaptiveModel
         """
-        # Prediction heads
-        ph_model_files, ph_config_files = cls._get_prediction_head_files(load_dir)
-        prediction_heads = []
-        ph_output_type = []
-        for model_file, config_file in zip(ph_model_files, ph_config_files):
-            head = PredictionHead.load(
-                model_file=model_file, config_file=config_file, device=device
-            )
-            prediction_heads.append(head)
-            ph_output_type.append(head.ph_output_type)
 
         # Language Model
         language_model = LanguageModel.load(load_dir)
+
+        # Prediction heads
+        _, ph_config_files = cls._get_prediction_head_files(load_dir)
+        prediction_heads = []
+        ph_output_type = []
+        for config_file in ph_config_files:
+            head = PredictionHead.load(config_file)
+            # set shared weights between LM and PH
+            if type(head) == BertLMHead:
+                head.set_shared_weights(language_model)
+            prediction_heads.append(head)
+            ph_output_type.append(head.ph_output_type)
 
         return cls(language_model, prediction_heads, 0.1, ph_output_type, device)
 
     def logits_to_loss_per_head(self, logits, **kwargs):
 
         """
-        collect losses from all heads
-        :param logits: logits, can vary in shape and type, depending on task
+        Collect losses from each prediction head.
+
+        :param logits: logits, can vary in shape and type, depending on task.
         :type logits: object
-        :param kwargs: placeholder for passing generic parameters
-        :type kwargs: object
-        :return: per sample per prediciton head loss
-        :rtype: torch.tensor shape: [#pred_heads, batch_size] # TODO check return type
+        :return: The per sample per prediciton head loss whose first two dimensions have length n_pred_heads, batch_size
         """
         all_losses = []
         for head, logits_for_one_head in zip(self.prediction_heads, logits):
@@ -114,19 +119,28 @@ class AdaptiveModel(nn.Module):
 
     def logits_to_loss(self, logits, **kwargs):
         """
-        get losses from all heads & reduce to single loss *per sample*
+        Get losses from all prediction heads & reduce to single loss *per sample*.
+
         :param logits: logits, can vary in shape and type, depending on task
         :type logits: object
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
-        :return: per sample loss
-        :rtype: torch.tensor shape: [batch_size]
+        :return loss: torch.tensor that is the per sample loss (len: batch_size)
         """
         all_losses = self.logits_to_loss_per_head(logits, **kwargs)
         loss = sum(all_losses)
         return loss
 
     def logits_to_preds(self, logits, label_maps, **kwargs):
+        """
+        Get predictions from all prediction heads.
+
+        :param logits: logits, can vary in shape and type, depending on task
+        :type logits: object
+        :param label_maps: Maps from label encoding to label string
+        :param label_maps: dict
+        :return: A list of all predictions from all prediction heads
+        """
         all_preds = []
         # collect preds from all heads
         for head, logits_for_head, label_map_for_head in zip(
@@ -140,13 +154,11 @@ class AdaptiveModel(nn.Module):
 
     def prepare_labels(self, label_maps, **kwargs):
         """
-        Label conversion to original label space, per prediction head
+        Label conversion to original label space, per prediction head.
+
         :param label_maps: dictionary for mapping ids to label strings
         :type label_maps: dict[int:str]
-        :param kwargs: placeholder for passing generic parameters
-        :type kwargs: object
         :return: labels in the right format
-        :rtype: object
         """
         all_labels = []
         for head, label_map_one_head in zip(self.prediction_heads, label_maps):
@@ -156,7 +168,8 @@ class AdaptiveModel(nn.Module):
 
     def formatted_preds(self, logits, label_maps, **kwargs):
         """
-        Format predictions for inference
+        Format predictions for inference.
+
         :param logits: model logits
         :type logits: torch.tensor
         :param label_maps: dictionary for mapping ids to label strings
@@ -164,7 +177,6 @@ class AdaptiveModel(nn.Module):
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
         :return: predictions in the right format
-        :rtype: object
         """
         all_preds = []
         # collect preds from all heads
@@ -179,11 +191,11 @@ class AdaptiveModel(nn.Module):
 
     def forward(self, **kwargs):
         """
-        Run the whole model consisting of base language model and (multiple) prediction heads
-        :param kwargs: placeholder for passing generic parameters
-        :type kwargs: object
-        :return: all logits
-        :rtype: torch.tensor or mutliple tensors per prediction head
+        Push data through the whole model and returns logits. The data will propagate through the language
+        model and each of the attached prediction heads.
+
+        :param kwargs: Holds all arguments that need to be passed to the language model and prediction head(s).
+        :return: all logits as torch.tensor or multiple tensors.
         """
         # Run language model
         sequence_output, pooled_output = self.language_model(
@@ -242,7 +254,6 @@ class AdaptiveModel(nn.Module):
     def log_params(self):
         """
         Logs paramteres to generic logger MlLogger
-        :return: just log into the void
         """
         params = {
             "lm": self.language_model.__class__.__name__,

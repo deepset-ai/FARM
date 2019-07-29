@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class Evaluator:
-    """Handles evaluation of a given model over a specified dataset"""
+    """Handles evaluation of a given model over a specified dataset."""
 
     def __init__(
         self, data_loader, label_maps, device, metrics, classification_report=True
@@ -132,6 +132,8 @@ class Evaluator:
                 # print via standard python logger
                 if print:
                     if metric_name == "report":
+                        if len(metric_val) > 8000:
+                            metric_val = metric_val[:7500] + "\n ............................. \n" + metric_val[-500:]
                         logger.info("{}: \n {}".format(metric_name, metric_val))
                     else:
                         logger.info("{}: {}".format(metric_name, metric_val))

@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 class WrappedDataParallel(torch.nn.DataParallel):
     """
-    Hack to get attributes of underlying class in parallel mode. See: https://pytorch.org/tutorials/beginner/former_torchies/parallelism_tutorial.html#dataparallel
+    A way of adapting attributes of underlying class to parallel mode. See: https://pytorch.org/tutorials/beginner/former_torchies/parallelism_tutorial.html#dataparallel
 
     Gets into recursion errors. Workaround see: https://discuss.pytorch.org/t/access-att-of-model-wrapped-within-torch-nn-dataparallel-maximum-recursion-depth-exceeded/46975
     """
@@ -30,7 +30,7 @@ try:
 
     class WrappedDDP(DDP):
         """
-        Hack to get attributes of underlying class in distributed mode. Same as in WrappedDataParallel above.
+        A way of adapting attributes of underlying class to distributed mode. Same as in WrappedDataParallel above.
         Even when using distributed on a single machine with multiple GPUs, apex can speed up training significantly.
         Distributed code must be launched with "python -m torch.distributed.launch --nproc_per_node=1 run_script.py"
         """
@@ -74,11 +74,10 @@ class Trainer:
         :type epochs: int
         :param n_gpu: The number of gpus available for training and evaluation.
         :type n_gpu: int
-        :param device: The device on which the train, dev and test tensors should be hosted.
-        Choose from "cpu" and "cuda"
+        :param device: The device on which the train, dev and test tensors should be hosted. Choose from "cpu" and "cuda".
         :param warmup_linear: TODO
         :param evaluate_every: Perform dev set evaluation after this many steps of training.
-        :param evaluate_every: int
+        :type evaluate_every: int
         :param evaluator_dev: The dev set Evaluator object.
         :type evaluator_dev: Evaluator
         :param evaluator_test: The test set Evaluator object.
@@ -122,6 +121,7 @@ class Trainer:
         self.evaluator_test = evaluator_test
 
     def train(self, model):
+        """ Perform the training procedure. """
         logger.info("***** Running training *****")
         model.train()
         for epoch in range(1, self.epochs + 1):

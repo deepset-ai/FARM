@@ -6,7 +6,7 @@ import random
 import logging
 import json
 
-from pytorch_pretrained_bert.tokenization import BertTokenizer
+from farm.modeling.tokenization import BertTokenizer
 
 from farm.modeling.tokenization import tokenize_with_metadata
 
@@ -43,7 +43,7 @@ class Processor(ABC):
     Is used to generate PyTorch Datasets from input data. An implementation of this abstract class should be created
     for each new data source. Must have dataset_from_file(), dataset_from_dicts(), load(),
     load_from_file() and save() implemented in order to be compatible with the rest of the framework. The other
-    functions are optional
+    functions implement our suggested pipeline structure.
     """
 
     subclasses = {}
@@ -69,7 +69,8 @@ class Processor(ABC):
         :type max_seq_len: int
         :param label_list: List of all unique target labels.
         :type label_list: list
-        :param metrics: The metric used for evaluation, one per prediction head. Choose from TODO XXXX.
+        :param metrics: The metric used for evaluation, one per prediction head.
+                        Choose from mcc, acc, acc_f1, pear_spear, seq_f1, f1_macro, squad.
         :type metrics: list or str
         :param train_filename: The name of the file containing training data.
         :type train_filename: str
@@ -77,7 +78,7 @@ class Processor(ABC):
                              will be a slice of the train set.
         :type dev_filename: str or None
         :param test_filename: The name of the file containing test data.
-        :type: test_filename: str
+        :type test_filename: str
         :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
         :type dev_split: float
         :param data_dir: The directory in which the train, test and perhaps dev files can be found.
@@ -119,6 +120,18 @@ class Processor(ABC):
 
     @classmethod
     def load(cls, processor_name, data_dir, tokenizer, max_seq_len):
+        """
+        Loads the class of processor specified by processor name.
+
+        :param processor_name: The class of processor to be loaded.
+        :type processor_name: str
+        :param data_dir: Directory where data files are located.
+        :type data_dir: str
+        :param tokenizer: A tokenizer object
+        :param max_seq_len: Sequences longer than this will be truncated.
+        :type max_seq_len: int
+        :return: An instance of the specified processor.
+        """
         return cls.subclasses[processor_name](
             data_dir=data_dir, tokenizer=tokenizer, max_seq_len=max_seq_len
         )
@@ -126,21 +139,32 @@ class Processor(ABC):
     @classmethod
     def load_from_dir(cls, load_dir):
         """
-        Load infers the specific type of Processor from a config file (e.g. GNADProcessor) and loads an instance of it.
+         Infers the specific type of Processor from a config file (e.g. GNADProcessor) and loads an instance of it.
+
         :param load_dir: str, directory that contains a 'processor_config.json'
-        :return: Processor, Instance of a Processor Subclass (e.g. GNADProcessor)
+        :return: An instance of a Processor Subclass (e.g. GNADProcessor)
         """
         # read config
         processor_config_file = os.path.join(load_dir, "processor_config.json")
         config = json.load(open(processor_config_file))
         # init tokenizer
         tokenizer = TOKENIZER_MAP[config["tokenizer"]].from_pretrained(
-            load_dir, do_lower_case=config["lower_case"]
+            load_dir, do_lower_case=config["lower_case"], never_split_chars=config.get("never_split_chars")
         )
+        # add custom vocab to tokenizer if available
+        if os.path.exists(os.path.join(load_dir, "custom_vocab.txt")):
+            tokenizer.add_custom_vocab(os.path.join(load_dir, "custom_vocab.txt"))
         processor_type = config["processor"]
         return cls.load(processor_type, None, tokenizer, config["max_seq_len"])
 
     def save(self, save_dir):
+        """
+        Saves the vocabulary to file and also creates a json file containing all the
+        information needed to load the same processor.
+
+        :param save_dir: Directory where the files are to be saved
+        :type save_dir: str
+        """
         create_folder(save_dir)
         config = {}
         config["tokenizer"] = self.tokenizer.__class__.__name__
@@ -194,10 +218,12 @@ class Processor(ABC):
 
     def dataset_from_file(self, file):
         """
+        Contains all the functionality to turn a data file into a PyTorch Dataset and a
+        list of tensor names. This is used for training and evaluation.
 
-        :param file:
-        :return: dataset:
-        :rtype: dataset:
+        :param file: Name of the file containing the data.
+        :type file: str
+        :return: a Pytorch dataset and a list of tensor names.
         """
         self._init_baskets_from_file(file)
         self._init_samples_in_baskets()
@@ -207,6 +233,14 @@ class Processor(ABC):
         return dataset, tensor_names
 
     def dataset_from_dicts(self, dicts):
+        """
+        Contains all the functionality to turn a list of dict objects into a PyTorch Dataset and a
+        list of tensor names. This is used for inference mode.
+
+        :param dicts: List of dictionaries where each contains the data of one input sample.
+        :type dicts: list of dicts
+        :return: a Pytorch dataset and a list of tensor names.
+        """
         self.baskets = [
             SampleBasket(raw=tr, id="infer - {}".format(i))
             for i, tr in enumerate(dicts)
@@ -242,6 +276,9 @@ class Processor(ABC):
 # Sequence Classification Processors ####
 #########################################
 class GNADProcessor(Processor):
+    """
+    Used to handle the GNAD dataset
+    """
     def __init__(
         self,
         tokenizer,
@@ -315,15 +352,9 @@ class GNADProcessor(Processor):
 
 
 class GermEval18CoarseProcessor(Processor):
-    # General Processor attributes
-    label_list = ["OTHER", "OFFENSE"]
-    metrics = "f1_macro"
-    label_dtype = torch.long
-
-    # Custom Processor attributes
-    delimiter = "\t"
-    skiprows = [0]
-    columns = ["text", "label", "unused"]
+    """
+    Used to handle the GermEval18 dataset that uses the coase labels
+    """
 
     def __init__(
         self,
@@ -335,6 +366,16 @@ class GermEval18CoarseProcessor(Processor):
         test_filename="test.tsv",
         dev_split=0.1,
     ):
+
+        # General Processor attributes
+        self.label_list = ["OTHER", "OFFENSE"]
+        self.metrics = "f1_macro"
+        self.label_dtype = torch.long
+
+        # Custom Processor attributes
+        self.delimiter = "\t"
+        self.skiprows = [0]
+        self.columns = ["text", "label", "unused"]
 
         super(GermEval18CoarseProcessor, self).__init__(
             tokenizer=tokenizer,
@@ -376,6 +417,9 @@ class GermEval18CoarseProcessor(Processor):
 
 
 class GermEval18FineProcessor(Processor):
+    """
+    Used to handle the GermEval18 dataset that uses the fine labels
+    """
     def __init__(
         self,
         tokenizer,
@@ -442,7 +486,9 @@ class GermEval18FineProcessor(Processor):
 # NER Processors ####
 #####################
 class CONLLProcessor(Processor):
-    """ Used to handle the CoNLL 2003 dataset (https://www.clips.uantwerpen.be/conll2003/ner/)"""
+    """
+    Used to handle the CoNLL 2003 dataset (https://www.clips.uantwerpen.be/conll2003/ner/)
+    """
 
     def __init__(
         self,
@@ -508,6 +554,10 @@ class CONLLProcessor(Processor):
 
 
 class GermEval14Processor(Processor):
+    """
+    Used to handle the GermEval14 dataset (https://www.clips.uantwerpen.be/conll2003/ner/)
+    """
+
     def __init__(
         self,
         tokenizer,
@@ -576,6 +626,10 @@ class GermEval14Processor(Processor):
 # LM Processors ####
 #####################
 class BertStyleLMProcessor(Processor):
+    """
+    Prepares data for masked language model training and next sentence prediction in the style of BERT
+    """
+
     def __init__(
         self,
         tokenizer,
@@ -633,6 +687,7 @@ class BertStyleLMProcessor(Processor):
 
 
 class SquadProcessor(Processor):
+    """ Used to handle the SQuAD dataset"""
     def __init__(
         self,
         tokenizer,
@@ -646,8 +701,6 @@ class SquadProcessor(Processor):
         max_query_length=64,
     ):
         """
-        Initialize a SQuAD Processor
-
         :param tokenizer: Used to split a sentence (str) into tokens.
         :param max_seq_len: Samples are truncated after this many tokens.
         :type max_seq_len: int
@@ -655,11 +708,11 @@ class SquadProcessor(Processor):
         :type data_dir: str
         :param train_filename: The name of the file containing training data.
         :type train_filename: str
-        :param dev_filename:The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
-        will be a slice of the train set.
+        :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
+                             will be a slice of the train set.
         :type dev_filename: str or None
         :param test_filename: None
-        :type: test_filename: str
+        :type test_filename: str
         :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
         :type dev_split: float
         :param data_dir: The directory in which the train, test and perhaps dev files can be found.
@@ -668,8 +721,6 @@ class SquadProcessor(Processor):
         :type doc_stride: int
         :param max_query_length: Maximum length of the question (in number of subword tokens)
         :type max_query_length: int
-
-
         """
         label_list = ["start_token", "end_token"]
 
