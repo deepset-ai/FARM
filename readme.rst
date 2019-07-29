@@ -9,7 +9,7 @@
 (**F**\ ramework for **A**\ dapting **R**\ epresentation **M**\ odels)
 
 What is it?
-########
+############
 FARM makes cutting edge **Transfer Learning** for NLP simple. 
 It is a home for all species of pretrained language models (e.g. BERT) that can be adapted to different down-stream
 tasks.
@@ -21,7 +21,7 @@ Have a look at `this blog post <https://www.digitalminds.io/blog/transfer_learni
  or see the `full documentation <https://farm.deepset.ai>`_ for more details about FARM
 
 Core features
-########
+##############
 - Easy adaptation of pretrained language models (e.g. BERT) to your own use case
    - The Processor class makes it easy to define the data processing needed for your task
 - Modular design of language model and prediction heads
@@ -46,7 +46,7 @@ Basic Usage
 ############
 
 1. Train a downstream model
-**********************
+****************************
 FARM offers two modes for model training:
 
 **Option 1: Run experiment(s) from config**::
@@ -89,7 +89,7 @@ See this `tutorial <https://github.com/deepset-ai/FARM/blob/master/tutorials/1_f
 Metrics and parameters of your model training get automatically logged via MLflow. We provide a `public MLflow server <https://public-mlflow.deepset.ai/>`_ for testing and learning purposes. Check it out to see your own experiment results!
 
 2. Run Inference (API + UI)
-**********************
+****************************
 
 * Run :code:`docker-compose up`
 * Open http://localhost:3000 in your browser
