@@ -34,7 +34,11 @@ Core features
 Installation
 #############
 
-The package is tested with Python 3.7.::
+With pip::
+
+    pip install farm
+
+For the cutting edge version clone GitHub directly::
 
     git clone https://github.com/deepset-ai/FARM.git
     cd FARM
