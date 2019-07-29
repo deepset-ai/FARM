@@ -28,6 +28,8 @@ from torch import nn
 logger = logging.getLogger(__name__)
 
 from pytorch_transformers.modeling_bert import BertModel, BertConfig
+from pytorch_transformers.modeling_xlnet import XLNetModel, XLNetConfig
+
 
 
 class LanguageModel(nn.Module):
@@ -163,7 +165,7 @@ class LanguageModel(nn.Module):
 
 class Bert(LanguageModel):
     """ A BERT model (https://arxiv.org/abs/1810.04805) that wraps the HuggingFace's implementation
-    (https://github.com/huggingface/pytorch-pretrained-BERT) to fit the LanguageModel class. """
+    (https://github.com/huggingface/pytorch-transformers) to fit the LanguageModel class. """
 
     def __init__(self):
         super(Bert, self).__init__()
@@ -213,6 +215,72 @@ class Bert(LanguageModel):
             attention_mask=padding_mask,
         )
         sequence_output, pooled_output = output_tuple[0], output_tuple[1]
+        return sequence_output, pooled_output
+
+    def save_config(self, save_dir):
+        save_filename = os.path.join(save_dir, "language_model_config.json")
+        with open(save_filename, "w") as file:
+            setattr(self.model.config, "name", self.__class__.__name__)
+            setattr(self.model.config, "language", self.language)
+            string = self.model.config.to_json_string()
+            file.write(string)
+
+
+
+class XLNet(LanguageModel):
+    """ An XLNet model (https://arxiv.org/abs/1810.04805) that wraps the HuggingFace's implementation
+    (https://github.com/huggingface/pytorch-pretrained-BERT) to fit the LanguageModel class. """
+
+    def __init__(self):
+        super(XLNet, self).__init__()
+        self.model = None
+        self.name = "xlnet"
+
+    @classmethod
+    def load(cls, pretrained_model_name_or_path, language=None):
+        xlnet = cls()
+        # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
+        farm_lm_config = os.path.join(pretrained_model_name_or_path, "language_model_config.json")
+        if os.path.exists(farm_lm_config):
+            # FARM style
+            xlnet_config = XLNetConfig.from_pretrained(farm_lm_config)
+            farm_lm_model = os.path.join(pretrained_model_name_or_path, "language_model.bin")
+            xlnet.model = XLNetModel.from_pretrained(farm_lm_model, config=xlnet_config)
+            xlnet.language = xlnet.model.config.language
+        else:
+            # Pytorch-transformer Style
+            xlnet.model = XLNetModel.from_pretrained(pretrained_model_name_or_path)
+            xlnet.language = cls._infer_language_from_name(pretrained_model_name_or_path)
+        return xlnet
+
+    def forward(
+        self,
+        input_ids,
+        segment_ids,
+        padding_mask,
+        **kwargs,
+    ):
+        # TODO: Check if all params are needed
+        """
+        Perform the forward pass of the XLNet model.
+
+        :param input_ids: The ids of each token in the input sequence. Is a tensor of shape [batch_size, max_seq_len]
+        :type input_ids: torch.Tensor
+        :param segment_ids: The id of the segment. For example, in next sentence prediction, the tokens in the
+           first sentence are marked with 0 and those in the second are marked with 1.
+           It is a tensor of shape [batch_size, max_seq_len]
+        :type segment_ids: torch.Tensor
+        :param padding_mask: A mask that assigns a 1 to valid input tokens and 0 to padding tokens
+           of shape [batch_size, max_seq_len]
+        :return: Embeddings for each token in the input sequence.
+        """
+        output_tuple = self.model(
+            input_ids,
+            token_type_ids=segment_ids,
+            attention_mask=padding_mask,
+        )
+        # The order of output tensors in XLNet is different to that in BERT
+        sequence_output, pooled_output = output_tuple[0], output_tuple[0].narrow(1,0,1).squeeze()
         return sequence_output, pooled_output
 
     def save_config(self, save_dir):
