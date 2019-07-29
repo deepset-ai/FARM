@@ -83,8 +83,8 @@ trainer = Trainer(
 model = trainer.train(model)
 
 # 8. Hooray! You have a model. Store it:
-model.save("save/bert-german-ner-tutorial")
-processor.save("save/bert-german-ner-tutorial")
+model.save("saved_models/bert-german-ner-tutorial")
+processor.save("saved_models/bert-german-ner-tutorial")
 
 
 # 9. Load it & harvest your fruits (Inference)
