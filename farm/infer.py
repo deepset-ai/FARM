@@ -40,6 +40,7 @@ class Inferencer:
         :type gpu: bool
         :param name: Name for the current inferencer model, displayed in the REST API
         :type name: string
+        :return: An instance of the Inferencer.
         """
         # Init device and distributed settings
         device, n_gpu = initialize_device_settings(
