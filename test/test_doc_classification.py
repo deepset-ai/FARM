@@ -71,7 +71,7 @@ def test_doc_classification(caplog):
         {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei"},
         {"text": "Martin Müller spielt Handball in Berlin"},
     ]
-    model = Inferencer.load_from_dir(save_dir)
+    model = Inferencer.load(save_dir)
     result = model.run_inference(dicts=basic_texts)
     assert result[0]["predictions"][0]["label"] == "OTHER"
     assert abs(result[0]["predictions"][0]["probability"] - 0.5358161) <= 0.0001
