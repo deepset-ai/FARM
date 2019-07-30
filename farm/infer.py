@@ -38,6 +38,8 @@ class Inferencer:
         :type batch_size: int
         :param gpu: If GPU shall be used
         :type gpu: bool
+        :param name: Name for the current inferencer model, displayed in the REST API
+        :type name: string
         """
         # Init device and distributed settings
         device, n_gpu = initialize_device_settings(
