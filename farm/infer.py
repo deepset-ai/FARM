@@ -60,7 +60,7 @@ class Inferencer:
         set_all_seeds(42, n_gpu)
 
     @classmethod
-    def load(cls, load_dir, batch_size, gpu=False):
+    def load(cls, load_dir, batch_size=4, gpu=False):
         """
         Initializes inferencer from directory with saved model.
         :param load_dir: Directory where the saved model is located.
