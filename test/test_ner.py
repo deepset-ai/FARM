@@ -71,7 +71,7 @@ def test_ner(caplog):
     basic_texts = [
         {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei"},
     ]
-    model = Inferencer(save_dir)
+    model = Inferencer.load(save_dir)
     result = model.run_inference(dicts=basic_texts)
     assert result[0]["predictions"][0]["context"] == "Tagesspiegel,"
     assert abs(result[0]["predictions"][0]["probability"] - 0.213869) <= 0.0001
