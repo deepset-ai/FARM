@@ -37,7 +37,7 @@ adaptive_model = AdaptiveModel(
     device=device,
 )
 
-# Extract embeddings with model in inference mode
+# 5. Extract embeddings with model in inference mode
 basic_texts = [
     {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot ist"},
     {"text": "Martin Müller spielt Fussball"},

@@ -65,6 +65,8 @@ class Inferencer:
         Initializes inferencer from directory with saved model.
         :param load_dir: Directory where the saved model is located.
         :type load_dir: str
+        :param batch_size: Number of samples computed once per batch
+        :type batch_size: int
         :param gpu: If GPU shall be used
         :type gpu: bool
         :return: An instance of the Inferencer.
