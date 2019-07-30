@@ -27,7 +27,7 @@ class Inferencer:
      model.extract_vectors(dicts=basic_texts)
     ```
     """
-    def __init__(self, model, processor, batch_size=4, gpu=False):
+    def __init__(self, model, processor, batch_size=4, gpu=False, name=None):
         """
         Initializes inferencer from an AdaptiveModel and a Processor instance.
         :param model: AdaptiveModel to run in inference mode
@@ -56,11 +56,11 @@ class Inferencer:
             self.label_map = self.processor.label_maps[0]
         elif len(self.model.prediction_heads) == 0:
             self.prediction_type = "embedder"
-        # self.name = os.path.basename(load_dir)
+        self.name = name if name != None else f"anonymous-{self.prediction_type}"
         set_all_seeds(42, n_gpu)
 
     @classmethod
-    def load_from_dir(cls, load_dir, gpu=False):
+    def load(cls, load_dir, batch_size, gpu=False):
         """
         Initializes inferencer from directory with saved model.
         :param load_dir: Directory where the saved model is located.
@@ -76,7 +76,8 @@ class Inferencer:
 
         model = AdaptiveModel.load(load_dir, device)
         processor = Processor.load_from_dir(load_dir)
-        return cls(model, processor)
+        name = os.path.basename(load_dir)
+        return cls(model, processor, batch_size=batch_size, gpu=gpu, name=name)
 
     def run_inference(self, dicts):
         """

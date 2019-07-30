@@ -21,9 +21,9 @@ tokenizer = BertTokenizer.from_pretrained(
     pretrained_model_name_or_path=lang_model, do_lower_case=False
 )
 
-# 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
+# 2. Create a DataProcessor only for inference, in this case, we utilize the GNAD Processor and data_dir can be empty
 processor = GNADProcessor(
-    data_dir="../data/OLDP", tokenizer=tokenizer, max_seq_len=128
+    data_dir="", tokenizer=tokenizer, max_seq_len=128
 )
 
 # 4. Create an AdaptiveModel with  a pretrained language model as a basis
@@ -43,6 +43,6 @@ basic_texts = [
     {"text": "Martin Müller spielt Fussball"},
 ]
 
-model = Inferencer(adaptive_model, processor)
+model = Inferencer(adaptive_model, processor, gpu=True)
 result = model.extract_vectors(dicts=basic_texts)
 print(result)
