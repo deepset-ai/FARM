@@ -128,10 +128,18 @@ class DataSilo(object):
 
     def _calculate_statistics(self,):
         self.counts = {
-            "train": len(self.data["train"]),
-            "dev": len(self.data["dev"]),
-            "test": len(self.data.get("test", [])),
+            "train": len(self.data["train"])
         }
+
+        if self.data["dev"]:
+            self.counts["dev"] = len(self.data["dev"])
+        else:
+            self.counts["dev"] = 0
+
+        if self.data["test"]:
+            self.counts["test"] = len(self.data["test"])
+        else:
+            self.counts["test"] = 0
 
         train_input_numpy = self.data["train"][:][0].numpy()
         seq_lens = np.sum(train_input_numpy != 0, axis=1)
@@ -177,7 +185,7 @@ class DataSilo(object):
                 "Class weighting is currently only available for sequence classification tasks "
             )
 
-    def _get_data_loader(self, dataset):
+    def get_data_loader(self, dataset):
         return self.loaders[dataset]
 
     def n_samples(self, dataset):
