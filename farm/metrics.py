@@ -49,6 +49,8 @@ def compute_metrics(metric, preds, labels):
     # TODO this metric seems very specific for NER and doesnt work for
     elif metric == "seq_f1":
         return {"seq_f1": seq_f1_score(labels, preds)}
+    elif metric == "postprocessed_seq_f1":
+        return postprocessed_seq_f1_score(preds, labels)
     elif metric == "f1_macro":
         return f1_macro(preds, labels)
     elif metric == "squad":
@@ -57,6 +59,40 @@ def compute_metrics(metric, preds, labels):
     #     return simple_accuracy(preds, labels, ignore=-1)
     else:
         raise KeyError(metric)
+
+
+def _correct_bio_encodings(predictions):
+    for sent_index in range(len(predictions)):
+        label_started = False
+        label_class = None
+
+        for label_index in range(len(predictions[sent_index])):
+            label = predictions[sent_index][label_index]
+            if label.startswith("B-"):
+                label_started = True
+                label_class = label[2:]
+
+            elif label == "O":
+                label_started = False
+                label_class = None
+            elif label.startswith("I-"):
+                if not label_started or label[2:] != label_class:
+                    predictions[sent_index][label_index] = "O"
+                    label_started = False
+                    label_class = None
+            else:
+                assert False  # Should never be reached
+    return predictions
+
+
+def postprocessed_seq_f1_score(preds, labels):
+    preds = [
+        [token if token not in {"X", "[PAD]"} else "O" for token in sent]
+        for sent in preds
+    ]
+    preds = _correct_bio_encodings(preds)
+    f1_seq = seq_f1_score(labels, preds)
+    return {"f1_seq_p": f1_seq}
 
 
 def squad_EM(preds, labels):

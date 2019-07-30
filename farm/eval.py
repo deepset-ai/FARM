@@ -7,12 +7,21 @@ from seqeval.metrics import classification_report as token_classification_report
 from sklearn.metrics import classification_report
 from torch.utils.data import DataLoader
 
-from farm.metrics import compute_metrics
+from farm.metrics import compute_metrics, _correct_bio_encodings
 from farm.utils import to_numpy
 from farm.utils import MLFlowLogger as MlLogger
 from farm.modeling.adaptive_model import AdaptiveModel
 
 logger = logging.getLogger(__name__)
+
+
+def _token_classification_report(labels, preds, digits):
+    preds = [
+        [token if token not in {"X", "[PAD]"} else "O" for token in sent]
+        for sent in preds
+    ]
+    preds = _correct_bio_encodings(preds)
+    return token_classification_report(labels, preds, digits)
 
 
 class Evaluator:
@@ -96,7 +105,7 @@ class Evaluator:
             # Select type of report depending on prediction head output type
             if self.classification_report:
                 if head.ph_output_type == "per_token":
-                    report_fn = token_classification_report
+                    report_fn = _token_classification_report
                 elif head.ph_output_type == "per_sequence":
                     report_fn = classification_report
                 elif head.ph_output_type == "per_token_squad":
@@ -133,7 +142,11 @@ class Evaluator:
                 if print:
                     if metric_name == "report":
                         if len(metric_val) > 8000:
-                            metric_val = metric_val[:7500] + "\n ............................. \n" + metric_val[-500:]
+                            metric_val = (
+                                metric_val[:7500]
+                                + "\n ............................. \n"
+                                + metric_val[-500:]
+                            )
                         logger.info("{}: \n {}".format(metric_name, metric_val))
                     else:
                         logger.info("{}: {}".format(metric_name, metric_val))

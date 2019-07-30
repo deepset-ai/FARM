@@ -149,7 +149,9 @@ class Processor(ABC):
         config = json.load(open(processor_config_file))
         # init tokenizer
         tokenizer = TOKENIZER_MAP[config["tokenizer"]].from_pretrained(
-            load_dir, do_lower_case=config["lower_case"], never_split_chars=config.get("never_split_chars")
+            load_dir,
+            do_lower_case=config["lower_case"],
+            never_split_chars=config.get("never_split_chars"),
         )
         # add custom vocab to tokenizer if available
         if os.path.exists(os.path.join(load_dir, "custom_vocab.txt")):
@@ -279,6 +281,7 @@ class GNADProcessor(Processor):
     """
     Used to handle the GNAD dataset
     """
+
     def __init__(
         self,
         tokenizer,
@@ -420,6 +423,7 @@ class GermEval18FineProcessor(Processor):
     """
     Used to handle the GermEval18 dataset that uses the fine labels
     """
+
     def __init__(
         self,
         tokenizer,
@@ -502,7 +506,6 @@ class CONLLProcessor(Processor):
     ):
         # General Processor attributes
         label_list = [
-            "[PAD]",
             "O",
             "B-MISC",
             "I-MISC",
@@ -512,12 +515,11 @@ class CONLLProcessor(Processor):
             "I-ORG",
             "B-LOC",
             "I-LOC",
-            "X",
             "B-OTH",
             "I-OTH",
         ]
         label_dtype = torch.long
-        metric = "seq_f1"
+        metric = "postprocessed_seq_f1"
 
         super(CONLLProcessor, self).__init__(
             tokenizer=tokenizer,
@@ -570,7 +572,6 @@ class GermEval14Processor(Processor):
     ):
         # General Processor attributes
         label_list = [
-            "[PAD]",
             "O",
             "B-MISC",
             "I-MISC",
@@ -580,12 +581,11 @@ class GermEval14Processor(Processor):
             "I-ORG",
             "B-LOC",
             "I-LOC",
-            "X",
             "B-OTH",
             "I-OTH",
         ]
         label_dtype = torch.long
-        metric = "seq_f1"
+        metric = "postprocessed_seq_f1"
         self.delimiter = " "
 
         super(GermEval14Processor, self).__init__(
@@ -688,6 +688,7 @@ class BertStyleLMProcessor(Processor):
 
 class SquadProcessor(Processor):
     """ Used to handle the SQuAD dataset"""
+
     def __init__(
         self,
         tokenizer,
