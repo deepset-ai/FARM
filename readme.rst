@@ -86,7 +86,9 @@ FARM offers two modes for model training:
     # 7. Let it grow
     model = trainer.train(model)
 
-See this `tutorial <https://github.com/deepset-ai/FARM/blob/master/tutorials/1_farm_building_blocks.ipynb>`_ for details.
+See this `Jupyter notebook <https://github.com/deepset-ai/FARM/blob/master/tutorials/1_farm_building_blocks.ipynb>`_
+or the same code in a `Colab notebook <https://colab.research.google.com/drive/130_7dgVC3VdLBPhiEkGULHmqSlflhmVMfor>`_
+for an interactive tutorial.
 
 *Usecases:* Custom datasets, language models, prediction heads ...
 
