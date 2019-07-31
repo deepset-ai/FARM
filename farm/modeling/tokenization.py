@@ -125,14 +125,14 @@ class BertTokenizer(BertTokenizer):
         idx = 0
         with open(custom_vocab_file, "r", encoding="utf-8") as reader:
             while True:
-                token = reader.readline()
+                token = reader.readline().strip()
                 if not token:
                     break
 
                 if token not in unique_custom_tokens:
                     if token not in self.vocab.keys():
                         key = "[unused{}]".format(idx)
-                        custom_vocab[key] = token.strip()
+                        custom_vocab[key] = token
                         idx += 1
                         unique_custom_tokens.add(token)
                     else:
