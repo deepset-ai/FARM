@@ -34,17 +34,18 @@ Core features
 Installation
 #############
 
-With pip::
-
-    pip install farm
-
-For the cutting edge version clone GitHub directly::
+Recommended (because of active development)::
 
     git clone https://github.com/deepset-ai/FARM.git
     cd FARM
     pip install -r requirements.txt
-    pip install .
+    pip install --editable .
 
+If problems occur, please do a git pull. the --editable flag will update changes immediately.
+
+With pip::
+
+    pip install farm
 
 Basic Usage
 ############
