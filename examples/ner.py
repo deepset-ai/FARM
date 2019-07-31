@@ -83,8 +83,9 @@ trainer = Trainer(
 model = trainer.train(model)
 
 # 8. Hooray! You have a model. Store it:
-model.save("saved_models/bert-german-ner-tutorial")
-processor.save("saved_models/bert-german-ner-tutorial")
+save_dir = "saved_models/bert-german-ner-tutorial"
+model.save(save_dir)
+processor.save(save_dir)
 
 
 # 9. Load it & harvest your fruits (Inference)
@@ -92,6 +93,6 @@ basic_texts = [
     {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei"},
     {"text": "Martin Müller spielt Handball in Berlin"},
 ]
-model = Inferencer("save/bert-german-ner-tutorial")
+model = Inferencer.load(save_dir)
 result = model.run_inference(dicts=basic_texts)
 print(result)
