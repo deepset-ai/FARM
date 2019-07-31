@@ -8,10 +8,24 @@ from sklearn.metrics import matthews_corrcoef, f1_score
 def simple_accuracy(preds, labels):
     # TODO: THIS HACKY TRY CATCH IS FOR GNAD
     try:
+        # nested lists with different lengths
+        if type(preds[0]) == list:
+            preds_lengths = [len(e) for e in preds]
+            label_lengths = [len(e) for e in labels]
+            assert preds_lengths == label_lengths
+            if len(set(preds_lengths)) != 1:
+                # pad them to max length
+                max_len = max(preds_lengths)
+                preds = [e + (["[PAD]"] * (max_len - len(e))) for e in preds]
+                labels = [e + (["[PAD]"] * (max_len - len(e))) for e in labels]
+
+        # regular ndarray compatible formats
         preds = np.array(preds)
         labels = np.array(labels)
-        correct = preds == labels
-        return {"acc": correct.mean()}
+        num_pads = (labels == "[PAD]").astype(int).sum()
+        correct = (preds == labels).astype(int)
+        acc = (correct.sum() - num_pads) / (correct.size - num_pads)
+        return {"acc": acc}
     except TypeError:
         return {"acc": (preds == labels.numpy()).mean()}
 
