@@ -58,15 +58,15 @@ FARM offers two modes for model training:
 
 .. raw:: html
 
-    <img src="docs/code_snippet_experiment.png" width="80%">
+    <img src="docs/code_snippet_experiment.png">
 
 *Use cases:* Training your first model, hyperparameter optimization, evaluating a language model on multiple down-stream tasks.
 
 **Option 2: Stick together your own building blocks**
 
-.. image:: docs/code_snippet_building_blocks.png
-    :width: 418
-    :alt: Code Snippet building blocks
+.. raw:: html
+
+    <img src="docs/code_snippet_building_blocks.png">
 
 See this `Jupyter notebook <https://github.com/deepset-ai/FARM/blob/master/tutorials/1_farm_building_blocks.ipynb>`_
 or the same code in a `Colab notebook <https://colab.research.google.com/drive/130_7dgVC3VdLBPhiEkGULHmqSlflhmVM>`_
