@@ -23,7 +23,7 @@ class PredictionHead(nn.Module):
 
     def __init_subclass__(cls, **kwargs):
         """ This automatically keeps track of all available subclasses.
-        Enables generic load() and load_from_dir() for all specific PredictionHead implementation.
+        Enables generic load() for all specific PredictionHead implementation.
         """
         super().__init_subclass__(**kwargs)
         cls.subclasses[cls.__name__] = cls

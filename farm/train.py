@@ -96,14 +96,14 @@ class Trainer:
         self.learning_rate = self.optimizer.get_lr()
         self.warmup_linear = warmup_linear
         self.global_step = 0
-        self.data_loader_train = data_silo._get_data_loader("train")
+        self.data_loader_train = data_silo.get_data_loader("train")
         self.device = device
         self.log_params()
 
         # evaluator on dev set
-        if evaluator_dev is None:
+        if evaluator_dev is None and self.data_silo.get_data_loader("dev"):
             evaluator_dev = Evaluator(
-                data_loader=self.data_silo._get_data_loader("dev"),
+                data_loader=self.data_silo.get_data_loader("dev"),
                 label_maps=self.data_silo.processor.label_maps,
                 device=device,
                 metrics=self.data_silo.processor.metrics,
@@ -111,9 +111,9 @@ class Trainer:
         self.evaluator_dev = evaluator_dev
 
         # evaluator on test set
-        if evaluator_test is None:
+        if evaluator_test is None and self.data_silo.get_data_loader("test"):
             evaluator_test = Evaluator(
-                data_loader=self.data_silo._get_data_loader("test"),
+                data_loader=self.data_silo.get_data_loader("test"),
                 label_maps=self.data_silo.processor.label_maps,
                 device=device,
                 metrics=self.data_silo.processor.metrics,
@@ -139,15 +139,16 @@ class Trainer:
                 self.backward_propagate(per_sample_loss, step)
 
                 # Perform  evaluation
-                if self.global_step != 0 and (
-                    self.global_step % self.evaluate_every == 0
-                ):
-                    result = self.evaluator_dev.eval(model)
-                    self.evaluator_dev.log_results(result, "Val", self.global_step)
+                if self.evaluator_dev is not None:
+                    if self.global_step != 0 and (
+                        self.global_step % self.evaluate_every == 0
+                    ):
+                        result = self.evaluator_dev.eval(model)
+                        self.evaluator_dev.log_results(result, "Val", self.global_step)
 
                 self.global_step += 1
 
-        if self.evaluator_test.data_loader is not None:
+        if self.evaluator_test is not None:
             result = self.evaluator_test.eval(model)
             self.evaluator_test.log_results(result, "Test", self.global_step)
         return model

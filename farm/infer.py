@@ -27,23 +27,28 @@ class Inferencer:
      model.extract_vectors(dicts=basic_texts)
     ```
     """
-    def __init__(self, load_dir, batch_size=4, gpu=False):
+    def __init__(self, model, processor, batch_size=4, gpu=False, name=None):
         """
-        Initializes inferencer from directory with saved model.
-        :param load_dir: Directory containing a saved AdaptiveModel
-        :type load_dir str
+        Initializes inferencer from an AdaptiveModel and a Processor instance.
+        :param model: AdaptiveModel to run in inference mode
+        :type model AdaptiveModel
+        :param processor: A dataset specific Processor object which will turn input (file or dict) into a Pytorch Dataset.
+        :type processor: Processor
         :param batch_size: Number of samples computed once per batch
         :type batch_size: int
         :param gpu: If GPU shall be used
         :type gpu: bool
+        :param name: Name for the current inferencer model, displayed in the REST API
+        :type name: string
+        :return: An instance of the Inferencer.
         """
         # Init device and distributed settings
         device, n_gpu = initialize_device_settings(
             use_cuda=gpu, local_rank=-1, fp16=False
         )
 
-        self.processor = Processor.load_from_dir(load_dir)
-        self.model = AdaptiveModel.load(load_dir, device)
+        self.processor = processor
+        self.model = model
         self.model.eval()
         self.batch_size = batch_size
         self.device = device
@@ -54,8 +59,30 @@ class Inferencer:
             self.label_map = self.processor.label_maps[0]
         elif len(self.model.prediction_heads) == 0:
             self.prediction_type = "embedder"
-        self.name = os.path.basename(load_dir)
+        self.name = name if name != None else f"anonymous-{self.prediction_type}"
         set_all_seeds(42, n_gpu)
+
+    @classmethod
+    def load(cls, load_dir, batch_size=4, gpu=False):
+        """
+        Initializes inferencer from directory with saved model.
+        :param load_dir: Directory where the saved model is located.
+        :type load_dir: str
+        :param batch_size: Number of samples computed once per batch
+        :type batch_size: int
+        :param gpu: If GPU shall be used
+        :type gpu: bool
+        :return: An instance of the Inferencer.
+        """
+
+        device, n_gpu = initialize_device_settings(
+            use_cuda=gpu, local_rank=-1, fp16=False
+        )
+
+        model = AdaptiveModel.load(load_dir, device)
+        processor = Processor.load_from_dir(load_dir)
+        name = os.path.basename(load_dir)
+        return cls(model, processor, batch_size=batch_size, gpu=gpu, name=name)
 
     def run_inference(self, dicts):
         """
