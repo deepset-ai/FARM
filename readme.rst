@@ -57,15 +57,15 @@ FARM offers two modes for model training:
 **Option 1: Run experiment(s) from config**
 
 .. image:: docs/code_snippet_experiment.png
-    :width: 80%
+    :width: 50%
     :alt: Code Snippet experiment
 
 *Use cases:* Training your first model, hyperparameter optimization, evaluating a language model on multiple down-stream tasks.
 
 **Option 2: Stick together your own building blocks**
 
-.. image:: docs/code_snippet_experiment.png
-    :width: 80%
+.. image:: docs/code_snippet_building_blocks.png
+    :width: 50%
     :alt: Code Snippet building blocks
 
 See this `Jupyter notebook <https://github.com/deepset-ai/FARM/blob/master/tutorials/1_farm_building_blocks.ipynb>`_
