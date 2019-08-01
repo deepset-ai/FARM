@@ -56,9 +56,9 @@ FARM offers two modes for model training:
 
 **Option 1: Run experiment(s) from config**
 
-.. image:: docs/code_snippet_experiment.png
-    :width: 418
-    :alt: Code Snippet experiment
+.. raw:: html
+
+    <img src="docs/code_snippet_experiment.png" width="50%">
 
 *Use cases:* Training your first model, hyperparameter optimization, evaluating a language model on multiple down-stream tasks.
 
