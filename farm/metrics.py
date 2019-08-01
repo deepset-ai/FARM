@@ -3,30 +3,17 @@ import numpy as np
 from scipy.stats import pearsonr, spearmanr
 from seqeval.metrics import f1_score as seq_f1_score
 from sklearn.metrics import matthews_corrcoef, f1_score
-
+from farm.utils import flatten_list
 
 def simple_accuracy(preds, labels):
-    # TODO: THIS HACKY TRY CATCH IS FOR GNAD
     try:
-        # nested lists with different lengths
-        if type(preds[0]) == list:
-            preds_lengths = [len(e) for e in preds]
-            label_lengths = [len(e) for e in labels]
-            assert preds_lengths == label_lengths
-            if len(set(preds_lengths)) != 1:
-                # pad them to max length
-                max_len = max(preds_lengths)
-                preds = [e + (["[PAD]"] * (max_len - len(e))) for e in preds]
-                labels = [e + (["[PAD]"] * (max_len - len(e))) for e in labels]
-
-        # regular ndarray compatible formats
-        preds = np.array(preds)
-        labels = np.array(labels)
-        num_pads = (labels == "[PAD]").astype(int).sum()
-        correct = (preds == labels).astype(int)
-        acc = (correct.sum() - num_pads) / (correct.size - num_pads)
-        return {"acc": acc}
+        # works also with nested lists of different lengths (needed for masked LM task)
+        flat_preds = np.array(list(flatten_list(preds)))
+        flat_labels = np.array(list(flatten_list(labels)))
+        correct = flat_preds == flat_labels
+        return {"acc": correct.mean()}
     except TypeError:
+        # TODO: THIS HACKY TRY CATCH IS FOR GNAD
         return {"acc": (preds == labels.numpy()).mean()}
 
 
