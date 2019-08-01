@@ -10,12 +10,12 @@
 
 What is it?
 ############
-FARM makes cutting edge **Transfer Learning** for NLP simple. 
+FARM makes cutting edge **Transfer Learning** for NLP simple.
 It is a home for all species of pretrained language models (e.g. BERT) that can be adapted to different down-stream
 tasks.
 The aim is to make it simple to perform document classification, NER and question answering, for example, using the one language model.
 The standardized interfaces for language models and prediction heads allow flexible extension by researchers and easy adaptation for practitioners.
-Additional experiment tracking and visualizations support you along the way to adapt a SOTA model to your own NLP problem and showcase it as a PoC.  
+Additional experiment tracking and visualizations support you along the way to adapt a SOTA model to your own NLP problem and showcase it as a PoC.
 
 Have a look at `this blog post <https://www.digitalminds.io/blog/transfer_learning_entering_a_new_era_in_nlp>`_ for an introduction to Transfer Learning
  or see the `full documentation <https://farm.deepset.ai>`_ for more details about FARM
@@ -58,7 +58,7 @@ FARM offers two modes for model training:
 
 .. raw:: html
 
-    <img src="docs/code_snippet_experiment.png">
+    <img src="https://raw.githubusercontent.com/deepset-ai/FARM/master/docs/code_snippet_experiment.png">
 
 *Use cases:* Training your first model, hyperparameter optimization, evaluating a language model on multiple down-stream tasks.
 
@@ -66,7 +66,7 @@ FARM offers two modes for model training:
 
 .. raw:: html
 
-    <img src="docs/code_snippet_building_blocks.png">
+    <img src="https://raw.githubusercontent.com/deepset-ai/FARM/master/docs/code_snippet_building_blocks.png">
 
 See this `Jupyter notebook <https://github.com/deepset-ai/FARM/blob/master/tutorials/1_farm_building_blocks.ipynb>`_
 or the same code in a `Colab notebook <https://colab.research.google.com/drive/130_7dgVC3VdLBPhiEkGULHmqSlflhmVM>`_
