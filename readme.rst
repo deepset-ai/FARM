@@ -58,7 +58,7 @@ FARM offers two modes for model training:
 
 .. raw:: html
 
-    <img src="docs/code_snippet_experiment.png" width="90%">
+    <img src="docs/code_snippet_experiment.png" width="95%", height="95%">
 
 *Use cases:* Training your first model, hyperparameter optimization, evaluating a language model on multiple down-stream tasks.
 
