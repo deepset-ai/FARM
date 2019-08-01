@@ -88,6 +88,7 @@ class Inferencer:
         """
         Runs down-stream inference using the prediction head.
         :param dicts: Samples to run inference on provided as a list of dicts. One dict per sample.
+            For TextClassificationHead: If each dict contains an entry `true_label` it's value will be returned in the output.
         :type dicst: [dict]
         :return: dict of predictions
 

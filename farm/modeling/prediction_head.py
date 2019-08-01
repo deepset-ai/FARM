@@ -216,20 +216,41 @@ class TextClassificationHead(PredictionHead):
         preds = self.logits_to_preds(logits, label_map)
         probs = self.logits_to_probs(logits)
         contexts = [sample.clear_text["text"] for sample in samples]
-
-        assert len(preds) == len(probs) == len(contexts)
+        try:
+            true_labels = [sample.clear_text["true_label"] for sample in samples]
+        except KeyError:
+            true_labels = []
 
         res = {"task": "text_classification", "predictions": []}
-        for pred, prob, context in zip(preds, probs, contexts):
-            res["predictions"].append(
-                {
-                    "start": None,
-                    "end": None,
-                    "context": f"{context}",
-                    "label": f"{pred}",
-                    "probability": prob,
-                }
-            )
+
+        if len(true_labels) > 0:
+            assert len(preds) == len(probs) == len(contexts) == len(true_labels)
+
+            for pred, prob, context, y_true in zip(preds, probs, contexts, true_labels):
+                res["predictions"].append(
+                    {
+                        "start": None,
+                        "end": None,
+                        "context": f"{context}",
+                        "label": f"{pred}",
+                        "probability": prob,
+                        "true_label": f"{y_true}"
+                    }
+                )
+        else:
+            assert len(preds) == len(probs) == len(contexts)
+
+            for pred, prob, context in zip(preds, probs, contexts):
+                res["predictions"].append(
+                    {
+                        "start": None,
+                        "end": None,
+                        "context": f"{context}",
+                        "label": f"{pred}",
+                        "probability": prob
+                    }
+                )
+
         return res
 
 
