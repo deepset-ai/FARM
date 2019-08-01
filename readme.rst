@@ -54,7 +54,7 @@ Basic Usage
 ****************************
 FARM offers two modes for model training:
 
-**Option 1: Run experiment(s) from config**::
+**Option 1: Run experiment(s) from config**
 
 .. image:: docs/code_snippet_experiment.png
     :width: 80%
@@ -62,7 +62,7 @@ FARM offers two modes for model training:
 
 *Use cases:* Training your first model, hyperparameter optimization, evaluating a language model on multiple down-stream tasks.
 
-**Option 2: Stick together your own building blocks**::
+**Option 2: Stick together your own building blocks**
 
 .. image:: docs/code_snippet_experiment.png
     :width: 80%
