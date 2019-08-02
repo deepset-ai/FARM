@@ -47,7 +47,7 @@
     "mlflow_nested":  {"value": null,                         "default": true, "desc": "Nesting mlflow experiments. For doing multiple runs across a set of hyperparameters."},
 
     "mlflow_experiment": {"value": "Public_FARM",              "default": null, "desc": "Experiment name used for mlflow"},
-    "mlflow_run_name":   {"value": "germeval coarse by config", "default": null, "desc": "Name of the particular run for mlflow"}
+    "mlflow_run_name":   {"value": "germeval fine by config", "default": null, "desc": "Name of the particular run for mlflow"}
   }
 }
 
