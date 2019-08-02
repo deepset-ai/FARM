@@ -12,8 +12,9 @@ from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
 ########## Settings
 ##########################
 set_all_seeds(seed=42)
-device, n_gpu = initialize_device_settings(use_cuda=True)
 batch_size = 32
+use_gpu = True
+device, n_gpu = initialize_device_settings(use_cuda=use_gpu)
 lang_model = "bert-base-german-cased"
 
 # 1.Create a tokenizer
@@ -43,6 +44,6 @@ basic_texts = [
     {"text": "Martin Müller spielt Fussball"},
 ]
 
-model = Inferencer(adaptive_model, processor, gpu=True)
+model = Inferencer(adaptive_model, processor, gpu=use_gpu)
 result = model.extract_vectors(dicts=basic_texts)
 print(result)
