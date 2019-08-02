@@ -3,16 +3,17 @@ import numpy as np
 from scipy.stats import pearsonr, spearmanr
 from seqeval.metrics import f1_score as seq_f1_score
 from sklearn.metrics import matthews_corrcoef, f1_score
-
+from farm.utils import flatten_list
 
 def simple_accuracy(preds, labels):
-    # TODO: THIS HACKY TRY CATCH IS FOR GNAD
     try:
-        preds = np.array(preds)
-        labels = np.array(labels)
-        correct = preds == labels
+        # works also with nested lists of different lengths (needed for masked LM task)
+        flat_preds = np.array(list(flatten_list(preds)))
+        flat_labels = np.array(list(flatten_list(labels)))
+        correct = flat_preds == flat_labels
         return {"acc": correct.mean()}
     except TypeError:
+        # TODO: THIS HACKY TRY CATCH IS FOR GNAD
         return {"acc": (preds == labels.numpy()).mean()}
 
 
