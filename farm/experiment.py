@@ -48,7 +48,7 @@ def run_experiment(args):
         use_cuda=args.cuda, local_rank=args.local_rank, fp16=args.fp16
     )
 
-    args.batch_size = args.batch_size // args.gradient_accumulation_steps
+    args.batch_size = int(args.batch_size // args.gradient_accumulation_steps)
     if n_gpu > 1:
         args.batch_size = args.batch_size * n_gpu
     set_all_seeds(args.seed)
