@@ -31,6 +31,7 @@ from farm.data_handler.input_features import (
 from farm.data_handler.dataset import convert_features_to_dataset
 from farm.utils import MLFlowLogger as MlLogger
 
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +203,7 @@ class Processor(ABC):
                 sample.id = f"{basket.id}-{num}"
 
     def _featurize_samples(self):
-        for basket in self.baskets:
+        for basket in tqdm(self.baskets):
             for sample in basket.samples:
                 sample.features = self._sample_to_features(sample=sample)
 
@@ -635,8 +636,8 @@ class BertStyleLMProcessor(Processor):
         max_seq_len,
         data_dir,
         train_filename="train.txt",
-        dev_filename="dev.txt",
-        test_filename="test.txt",
+        dev_filename=None,
+        test_filename=None,
         dev_split=0.0,
     ):
         # General Processor attributes

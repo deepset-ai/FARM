@@ -19,6 +19,7 @@ DOWNSTREAM_TASK_MAP = {
     "conll03detrain": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/training_data_for_Stanford_NER/NER-de-train-conll-formated.txt",
     "conll03dedev": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/training_data_for_Stanford_NER/NER-de-dev-conll-formated.txt",
     "conll03detest": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/training_data_for_Stanford_NER/NER-de-test-conll-formated.txt",
+    "lm_finetune_nips": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/lm_finetune_nips.tar.gz",
 }
 
 
@@ -116,46 +117,30 @@ def _conll03get(dataset, directory):
 
 def read_docs_from_txt(filename, delimiter="", encoding="utf-8"):
     """Reads a text file with one sentence per line and a delimiter between docs (default: empty lines) ."""
+    if not (os.path.exists(filename)):
+        _download_extract_downstream_data(filename)
     all_docs = []
     doc = []
     corpus_lines = 0
-    # sample_to_doc = []
     with open(filename, "r", encoding=encoding) as f:
-        for line in tqdm(f, desc="Loading Dataset", total=corpus_lines):
+        for line_num, line in enumerate(tqdm(f, desc="Loading Dataset", total=corpus_lines)):
             line = line.strip()
             if line == delimiter:
-                all_docs.append({"doc": doc})
-                doc = []
-                # # remove last added sample because there won't be a subsequent line anymore in the doc
-                # sample_to_doc.pop()
+                if len(doc) > 0:
+                    all_docs.append({"doc": doc})
+                    doc = []
+                else:
+                    logger.warning(f"Found empty document in file (line {line_num}). "
+                                   f"Make sure that you comply with the format: "
+                                   f"One sentence per line and exactly *one* empty line between docs. "
+                                   f"You might have multiple subsequent empty lines.")
             else:
-                # store as one sample
-                # sample = {"doc_id": len(all_docs), "line": len(doc)}
-                # sample_to_doc.append(sample)
                 doc.append(line)
-                # corpus_lines = corpus_lines + 1
 
         # if last row in file is not empty
-        if all_docs[-1] != doc:
+        if all_docs[-1] != doc and len(doc) > 0:
             all_docs.append({"doc": doc})
-            # sample_to_doc.pop()
-
-    # data = (all_docs, sample_to_doc)
     return all_docs
-
-
-def print_example_with_features(
-    example, tokens, input_ids, padding_mask, segment_ids, label_ids, initial_mask
-):
-    logger.info("*** Example ***")
-    logger.info("guid: %s" % (example.guid))
-    logger.info("tokens: %s" % " ".join([str(x) for x in tokens]))
-    logger.info("input_ids: %s" % " ".join([str(x) for x in input_ids]))
-    logger.info("padding_mask: %s" % " ".join([str(x) for x in padding_mask]))
-    logger.info("segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
-    logger.info("label: %s" % (example.label))
-    logger.info("ids  : %s" % (label_ids))
-    logger.info("initial_mask: %s" % (initial_mask))
 
 
 def truncate_seq_pair(tokens_a, tokens_b, max_length):
@@ -241,12 +226,15 @@ def _get_random_sentence(docs, forbidden_doc):
     # corpora. However, just to be careful, we try to make sure that
     # the random document is not the same as the document we're processing.
     for _ in range(10):
-        rand_doc_idx = random.randint(0, len(docs) - 1)
+        rand_doc_idx = random.randrange(len(docs))
         rand_doc = docs[rand_doc_idx]
+        if len(rand_doc) == 0:
+            print("bla")
 
         # check if our picked random doc is really different to our initial doc
         if rand_doc != forbidden_doc:
-            sentence = rand_doc[random.randrange(len(rand_doc))]
+            rand_sent_idx = random.randrange(len(rand_doc))
+            sentence = rand_doc[rand_sent_idx]
             break
     return sentence
 
