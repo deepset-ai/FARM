@@ -636,8 +636,8 @@ class BertStyleLMProcessor(Processor):
         max_seq_len,
         data_dir,
         train_filename="train.txt",
-        dev_filename=None,
-        test_filename=None,
+        dev_filename="dev.txt",
+        test_filename="test.txt",
         dev_split=0.0,
     ):
         # General Processor attributes
