@@ -7,6 +7,7 @@ from tqdm import tqdm
 from farm.utils import MLFlowLogger as MlLogger
 from farm.eval import Evaluator
 from farm.data_handler.data_silo import DataSilo
+from farm.visual.ascii.images import GROWING_TREE
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +123,7 @@ class Trainer:
 
     def train(self, model):
         """ Perform the training procedure. """
-        logger.info("***** Running training *****")
+        logger.info(f"\n {GROWING_TREE}")
         model.train()
         for epoch in range(1, self.epochs + 1):
             for step, batch in enumerate(

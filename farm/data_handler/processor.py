@@ -5,10 +5,9 @@ from abc import ABC
 import random
 import logging
 import json
+from tqdm import tqdm
 
-from farm.modeling.tokenization import BertTokenizer
-
-from farm.modeling.tokenization import tokenize_with_metadata
+from farm.modeling.tokenization import BertTokenizer, tokenize_with_metadata
 
 from farm.data_handler.utils import (
     read_tsv,
@@ -197,7 +196,7 @@ class Processor(ABC):
         ]
 
     def _init_samples_in_baskets(self):
-        for basket in self.baskets:
+        for basket in tqdm(self.baskets):
             basket.samples = self._dict_to_samples(basket.raw)
             for num, sample in enumerate(basket.samples):
                 sample.id = f"{basket.id}-{num}"
