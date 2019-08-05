@@ -5,6 +5,7 @@ import numpy as np
 import torch
 import mlflow
 from copy import deepcopy
+from farm.visual.ascii.images import WELCOME_BARN
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +56,7 @@ class BaseMLLogger:
 
     def __init__(self, tracking_uri, **kwargs):
         self.tracking_uri = tracking_uri
+        print(WELCOME_BARN)
 
     def init_experiment(self, tracking_uri):
         raise NotImplementedError()

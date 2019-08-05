@@ -11,7 +11,7 @@ from torch.utils.data.sampler import RandomSampler, SequentialSampler
 from farm.data_handler.dataloader import NamedDataLoader
 from farm.utils import MLFlowLogger as MlLogger
 from farm.data_handler.processor import Processor
-
+from farm.visual.ascii.images import TRACTOR_SMALL
 logger = logging.getLogger(__name__)
 
 
@@ -39,11 +39,12 @@ class DataSilo(object):
         self._load_data()
 
     def _load_data(self):
+        logger.info("\nLoading data into the data silo ..."
+                    "{}".format(TRACTOR_SMALL))
         # train data
         train_file = os.path.join(self.processor.data_dir, self.processor.train_filename)
-        logger.info("Loading train set from: {}".format(train_file))
+        logger.info("Loading train set from: {} ".format(train_file))
         self.data["train"], self.tensor_names = self.processor.dataset_from_file(train_file)
-
 
         # dev data
         if not self.processor.dev_filename:

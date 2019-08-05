@@ -1,6 +1,6 @@
 from farm.data_handler.utils import get_sentence_pair
 from pytorch_transformers.tokenization_bert import whitespace_tokenize
-
+from farm.visual.ascii.images import SAMPLE
 import logging
 
 logger = logging.getLogger(__name__)
@@ -69,11 +69,12 @@ class Sample(object):
         else:
             tokenized_str = "None"
         s = (
-            "*** Example ***\n"
+            f"\n{SAMPLE}\n"
             f"ID: {self.id}\n"
             f"Clear Text: \n \t{clear_text_str}\n"
-            f"Tokenized: \n \t {tokenized_str}\n"
-            f"Features: \n \t{feature_str}"
+            f"Tokenized: \n \t{tokenized_str}\n"
+            f"Features: \n \t{feature_str}\n"
+            "_____________________________________________________"
         )
         return s
 
