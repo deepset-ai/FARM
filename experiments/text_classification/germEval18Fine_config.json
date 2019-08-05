@@ -1,8 +1,8 @@
 {
   "general": {
-    "cache_dir":  {"value": null, "default": "",                   "desc": "Path for storing pre-trained models downloaded from s3."},
+    "cache_dir":  {"value": null, "default": "",                "desc": "Path for storing pre-trained models downloaded from s3."},
     "data_dir":   {"value": null, "default": "data/germeval18", "desc": "Input directory for downstream task. Should contain train + test (+ dev) files."},
-    "output_dir": {"value": null, "default": "output",             "desc": "Output directory where model predictions and checkpoints will be saved."},
+    "output_dir": {"value": null, "default": "saved_models",    "desc": "Output directory where model predictions and checkpoints will be saved."},
 
     "cuda":        {"value": null, "default": true,  "desc": "CUDA flag,  uses CUDA if available."},
     "local_rank":  {"value": null, "default": -1,    "desc": "If local_rank == -1 -> multiGPU mode on one machine,  other values signal distributed computation across several nodes (apex install required)."},
