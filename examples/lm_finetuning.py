@@ -32,7 +32,7 @@ device, n_gpu = initialize_device_settings(use_cuda=True)
 n_epochs = 1
 batch_size = 32
 evaluate_every = 30
-lang_model = "bert-base-german-cased"
+lang_model = "bert-base-cased"
 
 # 1.Create a tokenizer
 tokenizer = BertTokenizer.from_pretrained(
@@ -41,7 +41,7 @@ tokenizer = BertTokenizer.from_pretrained(
 
 # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
 processor = BertStyleLMProcessor(
-    data_dir="../data/finetune_sample", tokenizer=tokenizer, max_seq_len=128
+    data_dir="../data/lm_finetune_nips", tokenizer=tokenizer, max_seq_len=128
 )
 # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
 data_silo = DataSilo(processor=processor, batch_size=32)
@@ -86,6 +86,6 @@ trainer = Trainer(
 model = trainer.train(model)
 
 # 8. Hooray! You have a model. Store it:
-save_dir = "saved_models/bert-german-lm-tutorial"
+save_dir = "saved_models/bert-english-lm-tutorial"
 model.save(save_dir)
 processor.save(save_dir)
