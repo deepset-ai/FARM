@@ -3,7 +3,6 @@ import os
 
 from torch import nn
 
-from farm.file_utils import create_folder
 from farm.modeling.language_model import LanguageModel
 from farm.modeling.prediction_head import PredictionHead, BertLMHead
 from farm.utils import MLFlowLogger as MlLogger
@@ -62,7 +61,7 @@ class AdaptiveModel(nn.Module):
         :param save_dir: path to save to
         :type save_dir: str
         """
-        create_folder(save_dir)
+        os.makedirs(save_dir, exist_ok=True)
         self.language_model.save(save_dir)
         for i, ph in enumerate(self.prediction_heads):
             ph.save(save_dir, i)

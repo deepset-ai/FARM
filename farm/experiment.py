@@ -1,5 +1,4 @@
 import logging
-import os
 import torch
 
 from farm.data_handler.data_silo import DataSilo
@@ -40,7 +39,6 @@ def load_experiments(file):
 
 def run_experiment(args):
     validate_args(args)
-    directory_setup(output_dir=args.output_dir, do_train=args.do_train)
     distributed = bool(args.local_rank != -1)
 
     # Init device and distributed settings
@@ -115,8 +113,8 @@ def run_experiment(args):
     model_name = (
         f"{model.language_model.name}-{model.language_model.language}-{args.name}"
     )
-    processor.save(f"saved_models/{model_name}")
-    model.save(f"saved_models/{model_name}")
+    processor.save(f"{args.output_dir}/{model_name}")
+    model.save(f"{args.output_dir}/{model_name}")
 
 
 def get_adaptive_model(
@@ -162,16 +160,6 @@ def get_adaptive_model(
         model = WrappedDataParallel(model)
 
     return model
-
-
-def directory_setup(output_dir, do_train):
-    # Setup directory
-    if os.path.exists(output_dir) and os.listdir(output_dir) and do_train:
-        raise ValueError(
-            "Output directory ({}) already exists and is not empty.".format(output_dir)
-        )
-    if not os.path.exists(output_dir):
-        os.makedirs(output_dir)
 
 
 def validate_args(args):

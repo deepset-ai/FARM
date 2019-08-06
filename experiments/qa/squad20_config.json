@@ -2,17 +2,17 @@
   "general": {
     "cache_dir":  {"value": null, "default": "",             "desc": "Path for storing pre-trained models downloaded from s3."},
     "data_dir":   {"value": null, "default": "data/squad20", "desc": "Input directory for downstream task. For SQuAD the test set is private. You need to submit models that are then evaluated."},
-    "output_dir": {"value": null, "default": "output",       "desc": "Output directory where model predictions and checkpoints will be saved."},
+    "output_dir": {"value": null, "default": "saved_models", "desc": "Output directory where model predictions and checkpoints will be saved."},
 
-    "cuda":        {"value": null, "default": true,  "desc": "CUDA flag,  uses CUDA if available."}, 
+    "cuda":        {"value": null, "default": true,  "desc": "CUDA flag,  uses CUDA if available."},
     "local_rank":  {"value": null, "default": -1,    "desc": "If local_rank == -1 -> multiGPU mode on one machine,  other values signal distributed computation across several nodes (apex install required)."},
-    "fp16":        {"value": null, "default": false, "desc": "Floating point precision. IF true it halves the precision and therefore the memory requirements,  so you can doulbe the batch size."}, 
-    "loss_scale":  {"value": null, "default": 0,     "desc": "Loss scaling to improve fp16 numeric stability. Only used when fp16 set to True. 0 (default value): dynamic loss scaling. Positive power of 2: static loss scaling value."}, 
+    "fp16":        {"value": null, "default": false, "desc": "Floating point precision. IF true it halves the precision and therefore the memory requirements,  so you can doulbe the batch size."},
+    "loss_scale":  {"value": null, "default": 0,     "desc": "Loss scaling to improve fp16 numeric stability. Only used when fp16 set to True. 0 (default value): dynamic loss scaling. Positive power of 2: static loss scaling value."},
 
-    "seed":         {"value": null, "default": 42, "desc": "Random seed for initializations."}, 
-    "server_ip":    {"value": null, "default": "", "desc": "Can be used for distant debugging."}, 
+    "seed":         {"value": null, "default": 42, "desc": "Random seed for initializations."},
+    "server_ip":    {"value": null, "default": "", "desc": "Can be used for distant debugging."},
     "server_port":  {"value": null, "default": "", "desc": "Can be used for distant debugging."}
-  }, 
+  },
 
   "task": {
     "type":            {"value": null, "default": "token_classification",  "desc": "Type."},
@@ -22,7 +22,7 @@
     "do_eval":         {"value": null, "default": true, "desc": "Whether to run eval on the dev set."},
     "do_train":        {"value": null, "default": true, "desc": "Whether to run training. Can be used to only evaluate on an already trained model."},
     "dev_size":        {"value": null, "default": 0.1,  "desc": "Split a dev set from the training set using dev_size as proportion."}
-  }, 
+  },
 
   "parameter": {
     "model":            {"value": null, "default":  "bert-base-cased",  "desc": "Bert pre-trained model selected in the list: bert-base-uncased,  bert-large-uncased,  bert-base-cased,  bert-large-cased,  bert-base-multilingual-uncased,  bert-base-multilingual-cased,  bert-base-chinese."},
@@ -30,10 +30,10 @@
     "lm_output_type":   {"value": null, "default":  "per_token_squad", "desc":  "Language Model output."},
     "lower_case":       {"value": null, "default": false, "desc": "Set to true if you are using an uncased model."},
     "max_seq_len":      {"value": null, "default": 256,   "desc": "The maximum total input sequence length after WordPiece tokenization. Some GNAD texts even extend beyond 512 tokens."},
-    "balance_classes":  {"value": null, "default": false, "desc": "Balance classes using weighted CrossEntropyLoss."}, 
+    "balance_classes":  {"value": null, "default": false, "desc": "Balance classes using weighted CrossEntropyLoss."},
 
-    "learning_rate":      {"value": null, "default": 2e-5, "desc": "The initial learning rate for Adam."}, 
-    "warmup_proportion":  {"value": null, "default": 0.1,  "desc": "Proportion of training to perform linear learning rate warmup for. E.g.,  0.1 = 10%% of training."}, 
+    "learning_rate":      {"value": null, "default": 2e-5, "desc": "The initial learning rate for Adam."},
+    "warmup_proportion":  {"value": null, "default": 0.1,  "desc": "Proportion of training to perform linear learning rate warmup for. E.g.,  0.1 = 10%% of training."},
 
     "epochs":                       {"value": null, "default": 2, "desc": "Total number of training epochs to perform."},
     "batch_size":                   {"value": null, "default": 24,  "desc": "Total batch size for training for single GPU v100. Only low values possible because of large sequence length. If using multiGPU, the total batch size will be automatically adjusted."},
@@ -45,7 +45,7 @@
   "logging": {
     "eval_every":     {"value": null,                         "default": 600,   "desc": "Steps per training loop (batches) required for evaluation on dev set. Set to 0 when you do not want to do evaluation on dev set during training."},
     "mlflow_url":     {"value": "https://public-mlflow.deepset.ai/", "default": null, "desc": "Mlflow server for tracking experiments (e.g. http://80.123.45.167:5000/)"},
-    "mlflow_nested":  {"value": null,                         "default": true, "desc": "Nesting mlflow experiments. For doing multiple runs across a set of hyperparameters."}, 
+    "mlflow_nested":  {"value": null,                         "default": true, "desc": "Nesting mlflow experiments. For doing multiple runs across a set of hyperparameters."},
 
     "mlflow_experiment": {"value": "Public_FARM",     "default": null, "desc": "Experiment name used for mlflow"},
     "mlflow_run_name":   {"value": "squad by config", "default": null, "desc": "Name of the particular run for mlflow"}
