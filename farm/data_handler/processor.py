@@ -6,6 +6,7 @@ import random
 import logging
 import json
 from tqdm import tqdm
+import multiprocessing as mp
 
 from farm.modeling.tokenization import BertTokenizer, tokenize_with_metadata
 
@@ -59,6 +60,7 @@ class Processor(ABC):
         dev_split,
         data_dir,
         label_dtype=torch.long,
+        n_jobs=1
     ):
         """
         Initialize a generic Processor
@@ -96,6 +98,11 @@ class Processor(ABC):
         self.data_dir = data_dir
         self.label_dtype = label_dtype
         self.label_maps = []
+        self.multiproc_features = []
+        if (n_jobs == -1):
+            self.n_jobs = mp.cpu_count()
+        else:
+            self.n_jobs=n_jobs
 
         # create label maps (one per prediction head)
         if any(isinstance(i, list) for i in label_list):
@@ -196,22 +203,62 @@ class Processor(ABC):
         ]
 
     def _init_samples_in_baskets(self):
-        for basket in tqdm(self.baskets):
-            basket.samples = self._dict_to_samples(basket.raw)
-            for num, sample in enumerate(basket.samples):
-                sample.id = f"{basket.id}-{num}"
+        if (self.n_jobs != 1):
+            logger.info(f"Starting parallel dataprocessing with {self.n_jobs} cores. "
+                        f"Progress bar is disabled! It might take while...")
+            with mp.Pool(processes=self.n_jobs) as p: #TODO get tqdm progress bar working inside mp
+                samples = p.map(self._multiproc_sample, self.baskets)
+            for s,b in zip(samples,self.baskets):
+                b.samples = s
+        else:
+            for basket in tqdm(self.baskets):
+                basket.samples = self._dict_to_samples(basket.raw)
+                for num, sample in enumerate(basket.samples):
+                    sample.id = f"{basket.id}-{num}"
+
+    def _multiproc_sample(self, basket):
+        samples = self._dict_to_samples(basket.raw)
+        for num, sample in enumerate(samples):
+            sample.id = f"{basket.id}-{num}"
+        return samples
 
     def _featurize_samples(self):
-        for basket in self.baskets:
-            for sample in basket.samples:
-                sample.features = self._sample_to_features(sample=sample)
+        logger.info("Featurizing samples now. Hold on!")
+        # TODO Figure out why this takes up so much memory when featurizing SQuAD
+        if(self.n_jobs != 1):
+            num_cpus = mp.cpu_count()
+            with mp.Pool(processes=num_cpus) as p:
+                temp = p.map(self._multiproc_featurize, self.baskets )
+            self.multiproc_features = temp
+        else:
+            for basket in tqdm(self.baskets):
+                for sample in basket.samples:
+                    sample.features = self._sample_to_features(sample=sample)
+
+
+    def _multiproc_featurize(self, basket):
+        all_features = []
+        for sample in basket.samples:
+            all_features.extend(self._sample_to_features(sample=sample))
+        return all_features
+
 
     def _create_dataset(self):
-        baskets = self.baskets
-        features_flat = []
-        for basket in baskets:
-            for sample in basket.samples:
-                features_flat.extend(sample.features)
+        if(self.n_jobs == 1):
+            baskets = self.baskets
+            features_flat = []
+            for basket in baskets:
+                for sample in basket.samples:
+                    features_flat.extend(sample.features)
+        else:
+            features_flat = []
+            for f in self.multiproc_features:
+                features_flat.extend(f)
+        # baskets = self.baskets
+        # features_flat = []
+        # for basket in baskets:
+        #     for sample in basket.samples:
+        #         features_flat.extend(sample.features)
         dataset, tensor_names = convert_features_to_dataset(features=features_flat)
         return dataset, tensor_names
 
@@ -287,6 +334,7 @@ class GNADProcessor(Processor):
         dev_filename=None,
         test_filename="test.csv",
         dev_split=0.1,
+        n_jobs=1
     ):
 
         # General Processor attributes
@@ -321,6 +369,7 @@ class GNADProcessor(Processor):
             dev_split=dev_split,
             data_dir=data_dir,
             label_dtype=label_dtype,
+            n_jobs=n_jobs
         )
 
     def _file_to_dicts(self, file: str) -> [dict]:
@@ -364,6 +413,7 @@ class GermEval18CoarseProcessor(Processor):
         dev_filename=None,
         test_filename="test.tsv",
         dev_split=0.1,
+        n_jobs=1
     ):
 
         # General Processor attributes
@@ -387,6 +437,7 @@ class GermEval18CoarseProcessor(Processor):
             dev_split=dev_split,
             data_dir=data_dir,
             label_dtype=self.label_dtype,
+            n_jobs=n_jobs
         )
 
     def _file_to_dicts(self, file: str) -> dict:
@@ -428,6 +479,7 @@ class GermEval18FineProcessor(Processor):
         dev_filename=None,
         test_filename="test.tsv",
         dev_split=0.1,
+        n_jobs=1
     ):
 
         # General Processor attributes
@@ -453,6 +505,7 @@ class GermEval18FineProcessor(Processor):
             dev_split=dev_split,
             data_dir=data_dir,
             label_dtype=label_dtype,
+            n_jobs=n_jobs
         )
 
     def _file_to_dicts(self, file: str) -> dict:
@@ -498,6 +551,7 @@ class CONLLProcessor(Processor):
         dev_file="dev.txt",
         test_file="test.txt",
         dev_split=0.0,
+        n_jobs=1
     ):
         # General Processor attributes
         label_list = [
@@ -529,6 +583,7 @@ class CONLLProcessor(Processor):
             dev_split=dev_split,
             data_dir=data_dir,
             label_dtype=label_dtype,
+            n_jobs=n_jobs
         )
 
     def _file_to_dicts(self, file: str) -> [dict]:
@@ -566,6 +621,7 @@ class GermEval14Processor(Processor):
         dev_file="dev.txt",
         test_file="test.txt",
         dev_split=0.0,
+        n_jobs=1
     ):
         # General Processor attributes
         label_list = [
@@ -598,6 +654,7 @@ class GermEval14Processor(Processor):
             dev_split=dev_split,
             data_dir=data_dir,
             label_dtype=label_dtype,
+            n_jobs=n_jobs
         )
 
     def _file_to_dicts(self, file: str) -> [dict]:
@@ -638,6 +695,7 @@ class BertStyleLMProcessor(Processor):
         dev_filename="dev.txt",
         test_filename="test.txt",
         dev_split=0.0,
+        n_jobs=1
     ):
         # General Processor attributes
         label_list = [list(tokenizer.vocab), ["True", "False"]]  # labels for both heads
@@ -658,6 +716,7 @@ class BertStyleLMProcessor(Processor):
             dev_split=dev_split,
             data_dir=data_dir,
             label_dtype=label_dtype,
+            n_jobs=n_jobs
         )
 
     def _file_to_dicts(self, file: str) -> list:
@@ -698,6 +757,7 @@ class SquadProcessor(Processor):
         dev_split=0,
         doc_stride=128,
         max_query_length=64,
+        n_jobs=1
     ):
         """
         :param tokenizer: Used to split a sentence (str) into tokens.
@@ -746,6 +806,7 @@ class SquadProcessor(Processor):
             dev_split=dev_split,
             data_dir=data_dir,
             label_dtype=label_dtype,
+            n_jobs=n_jobs
         )
         self.data = {}
         self.counts = {}
