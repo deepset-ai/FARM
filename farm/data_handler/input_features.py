@@ -201,15 +201,17 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer):
     :return: InputFeatures, containing all inputs and labels of one sample as IDs (as used for model training)
     """
 
-    tokens_a = tokenizer.tokenize(sample.clear_text["text_a"])
-    tokens_b = tokenizer.tokenize(sample.clear_text["text_b"])
+    tokens_a = sample.tokenized["text_a"]["tokens"]
+    tokens_b = sample.tokenized["text_b"]["tokens"]
     # Modifies `tokens_a` and `tokens_b` in place so that the total
     # length is less than the specified length.
     # Account for [CLS], [SEP], [SEP] with "- 3"
     truncate_seq_pair(tokens_a, tokens_b, max_seq_len - 3)
 
-    tokens_a, t1_label = mask_random_words(tokens_a, tokenizer)
-    tokens_b, t2_label = mask_random_words(tokens_b, tokenizer)
+    tokens_a, t1_label = mask_random_words(tokens_a, tokenizer.vocab,
+                                           token_groups=sample.tokenized["text_a"]["start_of_word"])
+    tokens_b, t2_label = mask_random_words(tokens_b, tokenizer.vocab,
+                                           token_groups=sample.tokenized["text_b"]["start_of_word"])
     # concatenate lm labels and account for CLS, SEP, SEP
     lm_label_ids = [-1] + t1_label + [-1] + t2_label + [-1]
 
