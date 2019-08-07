@@ -74,7 +74,7 @@ for an interactive tutorial.
 
 *Usecases:* Custom datasets, language models, prediction heads ...
 
-Metrics and parameters of your model training get automatically logged via MLflow. We provide a `public MLflow server <https://public-mlflow.deepset.ai/>`_ for testing and learning purposes. Check it out to see your own experiment results!
+Metrics and parameters of your model training get automatically logged via MLflow. We provide a `public MLflow server <https://public-mlflow.deepset.ai/>`_ for testing and learning purposes. Check it out to see your own experiment results! Just be aware: We will start deleting all experiments on a regular schedule to ensure decent server performance for everybody!
 
 2. Run Inference (API + UI)
 ****************************
