@@ -1,5 +1,5 @@
 
-.. image:: https://github.com/deepset-ai/FARM/blob/master/docs/logo_with_name.png?raw=true
+.. image:: https://github.com/deepset-ai/FARM/blob/master/docs/img/logo_with_name.png?raw=true
     :width: 383
     :height: 116
     :align: left
@@ -58,7 +58,7 @@ FARM offers two modes for model training:
 
 .. raw:: html
 
-    <img src="https://raw.githubusercontent.com/deepset-ai/FARM/master/docs/code_snippet_experiment.png">
+    <img src="https://raw.githubusercontent.com/deepset-ai/FARM/master/docs/img/code_snippet_experiment.png">
 
 *Use cases:* Training your first model, hyperparameter optimization, evaluating a language model on multiple down-stream tasks.
 
@@ -66,7 +66,7 @@ FARM offers two modes for model training:
 
 .. raw:: html
 
-    <img src="https://raw.githubusercontent.com/deepset-ai/FARM/master/docs/code_snippet_building_blocks.png">
+    <img src="https://raw.githubusercontent.com/deepset-ai/FARM/master/docs/img/code_snippet_building_blocks.png">
 
 See this `Jupyter notebook <https://github.com/deepset-ai/FARM/blob/master/tutorials/1_farm_building_blocks.ipynb>`_
 or the same code in a `Colab notebook <https://colab.research.google.com/drive/130_7dgVC3VdLBPhiEkGULHmqSlflhmVM>`_
@@ -82,7 +82,7 @@ Metrics and parameters of your model training get automatically logged via MLflo
 * Run :code:`docker-compose up`
 * Open http://localhost:3000 in your browser
 
-.. image:: https://github.com/deepset-ai/FARM/blob/master/docs/inference-api-screen.png?raw=true
+.. image:: https://github.com/deepset-ai/FARM/blob/master/docs/img/inference-api-screen.png?raw=true
     :alt: FARM Inferennce UI
 
 One docker container exposes a REST API (localhost:5000) and another one runs a simple demo UI (localhost:3000).

@@ -12,26 +12,31 @@ from farm.utils import set_all_seeds
 
 
 class Inferencer:
-    """ Loads a saved AdaptiveModel from disk and runs it in inference mode.
-      Can be used for a model with prediction head (down-stream predictions) and without (using LM as embedder).
-      Example usage:
-    ```python
-    # down-stream inference
-    basic_texts = [
-        {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei"},
-        {"text": "Martin Müller spielt Handball in Berlin"},
-    ]
-    model = Inferencer(your_model_dir)
-    model.run_inference(dicts=basic_texts)
-    # LM embeddings
-     model.extract_vectors(dicts=basic_texts)
-    ```
     """
+    Loads a saved AdaptiveModel from disk and runs it in inference mode. Can be used for a model with prediction head (down-stream predictions) and without (using LM as embedder).
+
+    Example usage:
+
+    .. code-block:: python
+
+       # down-stream inference
+       basic_texts = [
+           {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei"},
+           {"text": "Martin Müller spielt Handball in Berlin"},
+       ]
+       model = Inferencer(your_model_dir)
+       model.run_inference(dicts=basic_texts)
+       # LM embeddings
+       model.extract_vectors(dicts=basic_texts)
+
+    """
+
     def __init__(self, model, processor, batch_size=4, gpu=False, name=None):
         """
         Initializes inferencer from an AdaptiveModel and a Processor instance.
+
         :param model: AdaptiveModel to run in inference mode
-        :type model AdaptiveModel
+        :type model: AdaptiveModel
         :param processor: A dataset specific Processor object which will turn input (file or dict) into a Pytorch Dataset.
         :type processor: Processor
         :param batch_size: Number of samples computed once per batch
@@ -41,6 +46,7 @@ class Inferencer:
         :param name: Name for the current inferencer model, displayed in the REST API
         :type name: string
         :return: An instance of the Inferencer.
+
         """
         # Init device and distributed settings
         device, n_gpu = initialize_device_settings(
