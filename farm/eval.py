@@ -5,6 +5,7 @@ import logging
 import numpy as np
 from seqeval.metrics import classification_report as token_classification_report
 from sklearn.metrics import classification_report
+from sklearn.metrics import r2_score
 from torch.utils.data import DataLoader
 
 from farm.metrics import compute_metrics
@@ -68,7 +69,6 @@ class Evaluator:
                 logits = model.forward(**batch)
                 # TODO logits_to_loss should be a single, overloaded function
                 losses_per_head = model.logits_to_loss_per_head(logits=logits, **batch)
-
                 preds = model.logits_to_preds(
                     logits=logits, label_maps=self.label_maps, **batch
                 )
@@ -99,11 +99,21 @@ class Evaluator:
                     report_fn = classification_report
                 elif head.ph_output_type == "per_token_squad":
                     report_fn = lambda *args, **kwargs: "not Implemented"
+                elif head.ph_output_type == "regression":
+                    report_fn = r2_score
                 else:
                     raise NotImplementedError
-                result["report"] = report_fn(
-                    label_all[head_num], preds_all[head_num], digits=4
-                )
+
+                # CHANGE PARAMETERS, not all report_fn accept digits
+                if head.ph_output_type == "regression":
+                    result["report"] = report_fn(
+                        label_all[head_num], preds_all[head_num]
+                    )
+                else:
+                    result["report"] = report_fn(
+                        label_all[head_num], preds_all[head_num], digits=4
+                    )
+
             all_results.append(result)
 
         return all_results
@@ -130,7 +140,7 @@ class Evaluator:
                 # print via standard python logger
                 if print:
                     if metric_name == "report":
-                        if len(metric_val) > 8000:
+                        if isinstance(metric_val, str) and len(metric_val) > 8000:
                             metric_val = metric_val[:7500] + "\n ............................. \n" + metric_val[-500:]
                         logger.info("{}: \n {}".format(metric_name, metric_val))
                     else:

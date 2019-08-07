@@ -2,7 +2,7 @@ import torch
 import numpy as np
 from scipy.stats import pearsonr, spearmanr
 from seqeval.metrics import f1_score as seq_f1_score
-from sklearn.metrics import matthews_corrcoef, f1_score
+from sklearn.metrics import matthews_corrcoef, f1_score, mean_squared_error
 from farm.utils import flatten_list
 
 def simple_accuracy(preds, labels):
@@ -36,7 +36,6 @@ def pearson_and_spearman(preds, labels):
         "corr": (pearson_corr + spearman_corr) / 2,
     }
 
-
 def compute_metrics(metric, preds, labels):
     assert len(preds) == len(labels)
     if metric == "mcc":
@@ -54,6 +53,8 @@ def compute_metrics(metric, preds, labels):
         return f1_macro(preds, labels)
     elif metric == "squad":
         return squad(preds, labels)
+    elif metric == "mse":
+        return {"mse": mean_squared_error(preds, labels)}
     # elif metric == "masked_accuracy":
     #     return simple_accuracy(preds, labels, ignore=-1)
     else:

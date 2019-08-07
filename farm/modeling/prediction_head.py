@@ -7,7 +7,7 @@ import torch
 from pytorch_transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN
 
 from torch import nn
-from torch.nn import CrossEntropyLoss
+from torch.nn import CrossEntropyLoss, MSELoss
 
 from farm.data_handler.utils import is_json
 from farm.utils import convert_iob_to_simple_tags
@@ -151,6 +151,71 @@ class PredictionHead(nn.Module):
         else:
             raise ValueError(f"This doesn't seem to be a proper prediction_head config file: '{config_file}'")
         return model_file
+
+
+class RegressionHead(PredictionHead):
+    def __init__(
+        self,
+        layer_dims,
+        loss_ignore_index=-100,
+        loss_reduction="none",
+        **kwargs,
+    ):
+        super(RegressionHead, self).__init__()
+        # num_labels could in most cases also be automatically retrieved from the data processor
+        self.layer_dims = layer_dims
+        # TODO is this still needed?
+        self.feed_forward = FeedForwardBlock(self.layer_dims)
+
+        self.num_labels = self.layer_dims[-1]
+        self.ph_output_type = "regression"
+        self.model_type = "regression"
+        self.loss_fct = MSELoss()
+        self.generate_config()
+
+    def forward(self, x):
+        logits = self.feed_forward(x)
+        return logits
+
+    def logits_to_loss(self, logits, label_ids, **kwargs):
+        return self.loss_fct(logits, label_ids.view(-1).float())
+
+    #this function still needs to be adapted
+    def logits_to_probs(self, logits, **kwargs):
+        softmax = torch.nn.Softmax(dim=1)
+        probs = softmax(logits)
+        probs = torch.max(probs, dim=1)[0]
+        probs = probs.cpu().numpy()
+        return probs
+
+    def logits_to_preds(self, logits, label_map, **kwargs):
+        logits = logits.cpu().numpy()
+        return logits.squeeze().tolist()
+
+    def prepare_labels(self, label_map, label_ids, **kwargs):
+        label_ids = label_ids.cpu().numpy()
+        return label_ids.squeeze().tolist()
+
+    #this function still needs to be adapted
+    def formatted_preds(self, logits, label_map, samples, **kwargs):
+        preds = self.logits_to_preds(logits, label_map)
+        probs = self.logits_to_probs(logits)
+        contexts = [sample.clear_text["text"] for sample in samples]
+
+        assert len(preds) == len(probs) == len(contexts)
+
+        res = {"task": "regression", "predictions": []}
+        for pred, prob, context in zip(preds, probs, contexts):
+            res["predictions"].append(
+                {
+                    "start": None,
+                    "end": None,
+                    "context": f"{context}",
+                    "label": f"{pred}",
+                    "probability": prob,
+                }
+            )
+        return res
 
 
 class TextClassificationHead(PredictionHead):

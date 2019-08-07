@@ -771,3 +771,69 @@ class SquadProcessor(Processor):
             max_query_length=cls.max_query_length,
         )
         return features
+
+
+class RegressionProcessor(Processor):
+    """
+    Used to handle a regression dataset in tab separated text + label
+    """
+
+    def __init__(
+        self,
+        tokenizer,
+        max_seq_len,
+        data_dir,
+        train_filename="train.tsv",
+        dev_filename=None,
+        test_filename="test.tsv",
+        dev_split=0.1,
+    ):
+
+        # General Processor attributes
+        self.label_list = []
+        self.metrics = "mse"
+        self.label_dtype = torch.float
+
+        # Custom Processor attributes
+        self.delimiter = "\t"
+        self.skiprows = [0]
+        self.columns = ["text", "label", "unused"]
+
+        super(RegressionProcessor, self).__init__(
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            label_list=self.label_list,
+            metrics=self.metrics,
+            train_filename=train_filename,
+            dev_filename=dev_filename,
+            test_filename=test_filename,
+            dev_split=dev_split,
+            data_dir=data_dir,
+            label_dtype=self.label_dtype,
+        )
+
+    def _file_to_dicts(self, file: str) -> dict:
+        dicts = read_tsv(
+            filename=file,
+            delimiter=self.delimiter,
+            skiprows=self.skiprows,
+            columns=self.columns,
+        )
+        return dicts
+
+    def _dict_to_samples(self, dict: dict) -> [Sample]:
+        # this tokenization also stores offsets
+        tokenized = tokenize_with_metadata(
+            dict["text"], self.tokenizer, self.max_seq_len
+        )
+        return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
+
+    def _sample_to_features(self, sample) -> dict:
+        features = sample_to_features_text(
+            sample=sample,
+            label_list=self.label_list,
+            max_seq_len=self.max_seq_len,
+            tokenizer=self.tokenizer,
+            target="regression"
+        )
+        return features
