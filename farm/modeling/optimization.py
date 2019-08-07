@@ -234,6 +234,7 @@ class BertAdam(Optimizer):
         e=1e-6,
         weight_decay=0.01,
         max_grad_norm=1.0,
+        log_learning_rate=False,
         **kwargs
     ):
         """
@@ -285,6 +286,7 @@ class BertAdam(Optimizer):
             max_grad_norm=max_grad_norm,
         )
         super(BertAdam, self).__init__(params, defaults)
+        self.log_learning_rate = log_learning_rate
 
     def get_lr(self):
         lr = []
@@ -364,8 +366,9 @@ class BertAdam(Optimizer):
                 # bias_correction1 = 1 - beta1 ** state['step']
                 # bias_correction2 = 1 - beta2 ** state['step']
         # Custom logging functionality
-        # MlLogger.log_metrics({"learning_rate": lr_scheduled}, step=state["step"])
-        # logger.info(f'step:{state["step"]}, lr:{lr_scheduled}')
+        if self.log_learning_rate:
+            MlLogger.log_metrics({"learning_rate": lr_scheduled}, step=state["step"])
+            logger.info(f'step:{state["step"]}, lr:{lr_scheduled}')
         return loss
 
 
@@ -379,6 +382,7 @@ def initialize_optimizer(
     loss_scale=0,
     grad_acc_steps=1,
     local_rank=-1,
+    log_learning_rate=False
 ):
     num_train_optimization_steps = calculate_optimization_steps(
         n_batches, grad_acc_steps, n_epochs, local_rank
@@ -411,6 +415,8 @@ def initialize_optimizer(
         },
     ]
     if fp16:
+        if log_learning_rate:
+            logger.warning("Logging of learning rate is currently not supported for fp16!")
         try:
             from apex.optimizers import FP16_Optimizer
             from apex.optimizers import FusedAdam
@@ -440,6 +446,7 @@ def initialize_optimizer(
             lr=learning_rate,
             warmup=warmup_proportion,
             t_total=num_train_optimization_steps,
+            log_learning_rate=log_learning_rate
         )
         return optimizer, None
 
