@@ -3,7 +3,7 @@ import logging
 
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import CONLLProcessor
-from farm.experiment import initialize_optimizer
+from farm.modeling.optimization import initialize_optimizer
 from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
@@ -63,8 +63,7 @@ optimizer, warmup_linear = initialize_optimizer(
     model=model,
     learning_rate=2e-5,
     warmup_proportion=0.1,
-    n_examples=data_silo.n_samples("train"),
-    batch_size=batch_size,
+    n_batches=len(data_silo.loaders["train"]),
     n_epochs=n_epochs,
 )
 
