@@ -118,7 +118,7 @@ class Processor(ABC):
         cls.subclasses[cls.__name__] = cls
 
     @classmethod
-    def load(cls, processor_name, data_dir, tokenizer, max_seq_len):
+    def load(cls, processor_name, data_dir, tokenizer, max_seq_len, dev_split):
         """
         Loads the class of processor specified by processor name.
 
@@ -129,10 +129,15 @@ class Processor(ABC):
         :param tokenizer: A tokenizer object
         :param max_seq_len: Sequences longer than this will be truncated.
         :type max_seq_len: int
+        :param dev_split: Split a dev set from the training set using dev_split as proportion
+        :type dev_split: int
         :return: An instance of the specified processor.
         """
         return cls.subclasses[processor_name](
-            data_dir=data_dir, tokenizer=tokenizer, max_seq_len=max_seq_len
+            data_dir=data_dir,
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            dev_split=dev_split,
         )
 
     @classmethod
@@ -148,7 +153,9 @@ class Processor(ABC):
         config = json.load(open(processor_config_file))
         # init tokenizer
         tokenizer = TOKENIZER_MAP[config["tokenizer"]].from_pretrained(
-            load_dir, do_lower_case=config["lower_case"], never_split_chars=config.get("never_split_chars")
+            load_dir,
+            do_lower_case=config["lower_case"],
+            never_split_chars=config.get("never_split_chars"),
         )
         # add custom vocab to tokenizer if available
         if os.path.exists(os.path.join(load_dir, "custom_vocab.txt")):
@@ -278,6 +285,7 @@ class GNADProcessor(Processor):
     """
     Used to handle the GNAD dataset
     """
+
     def __init__(
         self,
         tokenizer,
@@ -419,6 +427,7 @@ class GermEval18FineProcessor(Processor):
     """
     Used to handle the GermEval18 dataset that uses the fine labels
     """
+
     def __init__(
         self,
         tokenizer,
@@ -687,6 +696,7 @@ class BertStyleLMProcessor(Processor):
 
 class SquadProcessor(Processor):
     """ Used to handle the SQuAD dataset"""
+
     def __init__(
         self,
         tokenizer,
