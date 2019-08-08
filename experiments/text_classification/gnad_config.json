@@ -21,7 +21,7 @@
     "processor_name":             {"value": null, "default": "GNADProcessor",                "desc": "Name of task,  to be used for loading DataProcessor."},
     "do_eval":          {"value": null, "default": true, "desc": "Whether to run eval on the dev set."},
     "do_train":         {"value": null, "default": true, "desc": "Whether to run training. Can be used to only evaluate on an already trained model."}, 
-    "dev_split":         {"value": 0.5, "default": 0.1,  "desc": "Split a dev set from the training set using dev_split as proportion."}
+    "dev_split":         {"value": 0.1, "default": 0.1,  "desc": "Split a dev set from the training set using dev_split as proportion."}
   }, 
 
   "parameter": {

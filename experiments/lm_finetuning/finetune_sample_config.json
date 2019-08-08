@@ -1,7 +1,7 @@
 {
   "general": {
     "cache_dir":   {"value": null, "default": "",                     "desc": "Path for storing pre-trained models downloaded from s3."},
-    "data_dir":    {"value": null, "default": "data/finetune_sample", "desc": "Input directory for downstream task. Should contain train + test (+ dev) files."},
+    "data_dir":    {"value": null, "default": "data/lm_finetune_nips", "desc": "Input directory for downstream task. Should contain train + test (+ dev) files."},
     "output_dir":  {"value": null, "default": "saved_models",         "desc": "Output directory where model predictions and checkpoints will be saved."},
 
     "cuda":        {"value": false, "default": true, "desc": "CUDA flag,  uses CUDA if available."},

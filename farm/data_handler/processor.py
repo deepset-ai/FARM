@@ -118,7 +118,7 @@ class Processor(ABC):
         cls.subclasses[cls.__name__] = cls
 
     @classmethod
-    def load(cls, processor_name, data_dir, tokenizer, max_seq_len, dev_split):
+    def load(cls, processor_name, data_dir, tokenizer, max_seq_len, dev_split=0):
         """
         Loads the class of processor specified by processor name.
 
@@ -129,8 +129,8 @@ class Processor(ABC):
         :param tokenizer: A tokenizer object
         :param max_seq_len: Sequences longer than this will be truncated.
         :type max_seq_len: int
-        :param dev_split: Split a dev set from the training set using dev_split as proportion
-        :type dev_split: int
+        :param dev_split: (optional) Split a dev set from the training set using dev_split as proportion
+        :type dev_split: float
         :return: An instance of the specified processor.
         """
         return cls.subclasses[processor_name](
