@@ -4,7 +4,7 @@ import torch
 from farm.data_handler.data_silo import DataSilo
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import LanguageModel
-from farm.modeling.optimization import BertAdam, WarmupLinearSchedule
+from farm.modeling.optimization import BertAdam, WarmupLinearSchedule, initialize_optimizer
 from farm.modeling.prediction_head import PredictionHead
 from farm.modeling.tokenization import BertTokenizer
 from farm.data_handler.processor import Processor
@@ -91,8 +91,7 @@ def run_experiment(args):
         warmup_proportion=args.warmup_proportion,
         loss_scale=args.loss_scale,
         fp16=args.fp16,
-        n_examples=data_silo.n_samples("train"),
-        batch_size=args.batch_size,
+        n_batches=len(data_silo.loaders["train"]),
         grad_acc_steps=args.gradient_accumulation_steps,
         n_epochs=args.epochs,
     )
@@ -173,91 +172,6 @@ def validate_args(args):
                 args.gradient_accumulation_steps
             )
         )
-
-
-def initialize_optimizer(
-    model,
-    n_examples,
-    batch_size,
-    n_epochs,
-    warmup_proportion=0.1,
-    learning_rate=2e-5,
-    fp16=False,
-    loss_scale=0,
-    grad_acc_steps=1,
-    local_rank=-1,
-):
-    num_train_optimization_steps = calculate_optimization_steps(
-        n_examples, batch_size, grad_acc_steps, n_epochs, local_rank
-    )
-
-    # Log params
-    MlLogger.log_params(
-        {
-            "learning_rate": learning_rate,
-            "warmup_proportion": warmup_proportion,
-            "fp16": fp16,
-            "num_train_optimization_steps": num_train_optimization_steps,
-        }
-    )
-    # Prepare optimizer
-    param_optimizer = list(model.named_parameters())
-    no_decay = ["bias", "LayerNorm.bias", "LayerNorm.weight"]
-    optimizer_grouped_parameters = [
-        {
-            "params": [
-                p for n, p in param_optimizer if not any(nd in n for nd in no_decay)
-            ],
-            "weight_decay": 0.01,
-        },
-        {
-            "params": [
-                p for n, p in param_optimizer if any(nd in n for nd in no_decay)
-            ],
-            "weight_decay": 0.0,
-        },
-    ]
-    if fp16:
-        try:
-            from apex.optimizers import FP16_Optimizer
-            from apex.optimizers import FusedAdam
-        except ImportError:
-            raise ImportError(
-                "Please install apex from https://www.github.com/nvidia/apex to use distributed and fp16 training."
-            )
-
-        optimizer = FusedAdam(
-            optimizer_grouped_parameters,
-            lr=learning_rate,
-            bias_correction=False,
-            max_grad_norm=1.0,
-        )
-        if loss_scale == 0:
-            optimizer = FP16_Optimizer(optimizer, dynamic_loss_scale=True)
-        else:
-            optimizer = FP16_Optimizer(optimizer, static_loss_scale=loss_scale)
-        warmup_linear = WarmupLinearSchedule(
-            warmup=warmup_proportion, t_total=num_train_optimization_steps
-        )
-        return optimizer, warmup_linear
-
-    else:
-        optimizer = BertAdam(
-            optimizer_grouped_parameters,
-            lr=learning_rate,
-            warmup=warmup_proportion,
-            t_total=num_train_optimization_steps,
-        )
-        return optimizer, None
-
-
-def calculate_optimization_steps(
-    n_examples, batch_size, grad_acc_steps, n_epochs, local_rank
-):
-    optimization_steps = int(n_examples / batch_size / grad_acc_steps) * n_epochs
-    if local_rank != -1:
-        optimization_steps = optimization_steps // torch.distributed.get_world_size()
-    return optimization_steps
 
 
 def save_model():
