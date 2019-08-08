@@ -9,7 +9,7 @@ from farm.modeling.language_model import Bert
 from farm.modeling.prediction_head import BertLMHead, NextSentenceHead
 from farm.modeling.tokenization import BertTokenizer
 from farm.train import Trainer
-from farm.experiment import initialize_optimizer
+from farm.modeling.optimization import initialize_optimizer
 
 from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
 
@@ -44,7 +44,7 @@ processor = BertStyleLMProcessor(
     data_dir="../data/lm_finetune_nips", tokenizer=tokenizer, max_seq_len=128
 )
 # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
-data_silo = DataSilo(processor=processor, batch_size=32)
+data_silo = DataSilo(processor=processor, batch_size=batch_size)
 
 # 4. Create an AdaptiveModel
 # a) which consists of a pretrained language model as a basis
@@ -66,8 +66,7 @@ optimizer, warmup_linear = initialize_optimizer(
     model=model,
     learning_rate=2e-5,
     warmup_proportion=0.1,
-    n_examples=data_silo.n_samples("train"),
-    batch_size=batch_size,
+    n_batches=len(data_silo.loaders["train"]),
     n_epochs=n_epochs,
 )
 

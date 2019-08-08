@@ -234,6 +234,7 @@ class BertAdam(Optimizer):
         e=1e-6,
         weight_decay=0.01,
         max_grad_norm=1.0,
+        log_learning_rate=False,
         **kwargs
     ):
         """
@@ -285,6 +286,7 @@ class BertAdam(Optimizer):
             max_grad_norm=max_grad_norm,
         )
         super(BertAdam, self).__init__(params, defaults)
+        self.log_learning_rate = log_learning_rate
 
     def get_lr(self):
         lr = []
@@ -329,6 +331,7 @@ class BertAdam(Optimizer):
                     # Exponential moving average of squared gradient values
                     state["next_v"] = torch.zeros_like(p.data)
 
+                state["step"] += 1
                 next_m, next_v = state["next_m"], state["next_v"]
                 beta1, beta2 = group["b1"], group["b2"]
 
@@ -355,17 +358,104 @@ class BertAdam(Optimizer):
                 lr_scheduled = group["lr"]
                 lr_scheduled *= group["schedule"].get_lr(state["step"])
 
-                # Custom logging functionality
-                # MlLogger.write_metrics({"learning_rate": lr_scheduled}, step=state["step"])
-
                 update_with_lr = lr_scheduled * update
                 p.data.add_(-update_with_lr)
-
-                state["step"] += 1
 
                 # step_size = lr_scheduled * math.sqrt(bias_correction2) / bias_correction1
                 # No bias correction
                 # bias_correction1 = 1 - beta1 ** state['step']
                 # bias_correction2 = 1 - beta2 ** state['step']
-
+        # Custom logging functionality
+        if self.log_learning_rate:
+            MlLogger.log_metrics({"learning_rate": lr_scheduled}, step=state["step"])
+            logger.info(f'step:{state["step"]}, lr:{lr_scheduled}')
         return loss
+
+
+def initialize_optimizer(
+    model,
+    n_batches,
+    n_epochs,
+    warmup_proportion=0.1,
+    learning_rate=2e-5,
+    fp16=False,
+    loss_scale=0,
+    grad_acc_steps=1,
+    local_rank=-1,
+    log_learning_rate=False
+):
+    num_train_optimization_steps = calculate_optimization_steps(
+        n_batches, grad_acc_steps, n_epochs, local_rank
+    )
+
+    # Log params
+    MlLogger.log_params(
+        {
+            "learning_rate": learning_rate,
+            "warmup_proportion": warmup_proportion,
+            "fp16": fp16,
+            "num_train_optimization_steps": num_train_optimization_steps,
+        }
+    )
+    # Prepare optimizer
+    param_optimizer = list(model.named_parameters())
+    no_decay = ["bias", "LayerNorm.bias", "LayerNorm.weight"]
+    optimizer_grouped_parameters = [
+        {
+            "params": [
+                p for n, p in param_optimizer if not any(nd in n for nd in no_decay)
+            ],
+            "weight_decay": 0.01,
+        },
+        {
+            "params": [
+                p for n, p in param_optimizer if any(nd in n for nd in no_decay)
+            ],
+            "weight_decay": 0.0,
+        },
+    ]
+    if fp16:
+        if log_learning_rate:
+            logger.warning("Logging of learning rate is currently not supported for fp16!")
+        try:
+            from apex.optimizers import FP16_Optimizer
+            from apex.optimizers import FusedAdam
+        except ImportError:
+            raise ImportError(
+                "Please install apex from https://www.github.com/nvidia/apex to use distributed and fp16 training."
+            )
+
+        optimizer = FusedAdam(
+            optimizer_grouped_parameters,
+            lr=learning_rate,
+            bias_correction=False,
+            max_grad_norm=1.0,
+        )
+        if loss_scale == 0:
+            optimizer = FP16_Optimizer(optimizer, dynamic_loss_scale=True)
+        else:
+            optimizer = FP16_Optimizer(optimizer, static_loss_scale=loss_scale)
+        warmup_linear = WarmupLinearSchedule(
+            warmup=warmup_proportion, t_total=num_train_optimization_steps
+        )
+        return optimizer, warmup_linear
+
+    else:
+        optimizer = BertAdam(
+            optimizer_grouped_parameters,
+            lr=learning_rate,
+            warmup=warmup_proportion,
+            t_total=num_train_optimization_steps,
+            log_learning_rate=log_learning_rate
+        )
+        return optimizer, None
+
+
+def calculate_optimization_steps(
+    n_batches, grad_acc_steps, n_epochs, local_rank
+):
+    optimization_steps = int(n_batches / grad_acc_steps) * n_epochs
+    if local_rank != -1:
+        optimization_steps = optimization_steps // torch.distributed.get_world_size()
+    logger.info(f"Number of optimization steps: {optimization_steps}")
+    return optimization_steps
