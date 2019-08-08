@@ -26,6 +26,7 @@ DOWNSTREAM_TASK_MAP = {
 def read_tsv(filename, quotechar='"', delimiter="\t", skiprows=None, columns=None):
     """Reads a tab separated value file. Tries to download the data if filename is not found"""
     if not (os.path.exists(filename)):
+        logger.info(f" Couldn't find {filename} locally. Trying to download ...")
         _download_extract_downstream_data(filename)
     df = pd.read_csv(
         filename,
@@ -48,6 +49,7 @@ def read_ner_file(filename, sep="\t", **kwargs):
     [ ['EU', 'B-ORG'], ['rejects', 'O'], ['German', 'B-MISC'], ['call', 'O'], ['to', 'O'], ['boycott', 'O'], ['British', 'B-MISC'], ['lamb', 'O'], ['.', 'O'] ]
     """
     if not (os.path.exists(filename)):
+        logger.info(f" Couldn't find {filename} locally. Trying to download ...")
         _download_extract_downstream_data(filename)
     f = open(filename)
 
@@ -73,6 +75,7 @@ def read_ner_file(filename, sep="\t", **kwargs):
 def read_squad_file(filename):
     """Read a SQuAD json file"""
     if not (os.path.exists(filename)):
+        logger.info(f" Couldn't find {filename} locally. Trying to download ...")
         _download_extract_downstream_data(filename)
     with open(filename, "r", encoding="utf-8") as reader:
         input_data = json.load(reader)["data"]
