@@ -258,7 +258,7 @@ def mask_random_words(tokens, vocab, token_groups=None, max_predictions_per_seq=
 
     :param tokens: tokenized sentence.
     :type tokens: [str]
-    :param vocab: vocabulary for choosing tokens for random masking and converting tokens to IDs.
+    :param vocab: vocabulary for choosing tokens for random masking.
     :type vocab: dict
     :param token_groups: If supplied, only whole groups of tokens get masked. This can be whole words but
     also other types (e.g. spans). Booleans indicate the start of a group.
@@ -284,7 +284,7 @@ def mask_random_words(tokens, vocab, token_groups=None, max_predictions_per_seq=
                       max(1, int(round(len(tokens) * masked_lm_prob))))
 
     random.shuffle(cand_indices)
-    output_label = [-1]*len(tokens)
+    output_label = [''] * len(tokens)
     num_masked = 0
 
     # 2. Mask the first groups until we reach the number of tokens we wanted to mask (num_to_mask)
@@ -312,10 +312,10 @@ def mask_random_words(tokens, vocab, token_groups=None, max_predictions_per_seq=
 
             # append current token to output (we will predict these later)
             try:
-                output_label[index] = vocab[original_token]
+                output_label[index] = original_token
             except KeyError:
                 # For unknown words (should not occur with BPE vocab)
-                output_label[index] = vocab["[UNK]"]
+                output_label[index] = "[UNK]"
                 logger.warning(
                     "Cannot find token '{}' in vocab. Using [UNK] instead".format(original_token)
                 )

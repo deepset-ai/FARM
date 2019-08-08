@@ -137,7 +137,7 @@ def create_samples_sentence_pairs(baskets, tokenizer, max_seq_len):
             }
             tokenized = {}
             tokenized["text_a"] = tokenize_with_metadata(text_a, tokenizer, max_seq_len)
-            tokenized["text_b"] = tokenize_with_metadata(text_a, tokenizer, max_seq_len)
+            tokenized["text_b"] = tokenize_with_metadata(text_b, tokenizer, max_seq_len)
             basket.samples.append(Sample(id=id, clear_text=sample_in_clear_text, tokenized=tokenized))
     return baskets
 

@@ -212,8 +212,12 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer):
                                            token_groups=sample.tokenized["text_a"]["start_of_word"])
     tokens_b, t2_label = mask_random_words(tokens_b, tokenizer.vocab,
                                            token_groups=sample.tokenized["text_b"]["start_of_word"])
+    # convert lm labels to ids
+    t1_label_ids = [-1 if tok == '' else tokenizer.vocab[tok] for tok in t1_label]
+    t2_label_ids = [-1 if tok == '' else tokenizer.vocab[tok] for tok in t2_label]
+
     # concatenate lm labels and account for CLS, SEP, SEP
-    lm_label_ids = [-1] + t1_label + [-1] + t2_label + [-1]
+    lm_label_ids = [-1] + t1_label_ids + [-1] + t2_label_ids + [-1]
 
     # The convention in BERT is:
     # (a) For sequence pairs:
