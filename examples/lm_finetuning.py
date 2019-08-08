@@ -28,8 +28,8 @@ ml_logger.init_experiment(
 ########## Settings
 ##########################
 device, n_gpu = initialize_device_settings(use_cuda=True)
-n_epochs = 10
-batch_size = 25
+n_epochs = 1
+batch_size = 32
 evaluate_every = 30
 lang_model = "bert-base-cased"
 
