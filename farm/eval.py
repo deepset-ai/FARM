@@ -99,13 +99,13 @@ class Evaluator:
                     report_fn = classification_report
                 elif head.ph_output_type == "per_token_squad":
                     report_fn = lambda *args, **kwargs: "not Implemented"
-                elif head.ph_output_type == "regression":
+                elif head.ph_output_type == "per_sequence_continuous":
                     report_fn = r2_score
                 else:
                     raise NotImplementedError
 
                 # CHANGE PARAMETERS, not all report_fn accept digits
-                if head.ph_output_type == "regression":
+                if head.ph_output_type == "per_sequence_continuous":
                     result["report"] = report_fn(
                         label_all[head_num], preds_all[head_num]
                     )

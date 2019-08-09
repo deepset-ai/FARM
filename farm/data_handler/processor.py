@@ -8,6 +8,7 @@ import json
 import time
 import inspect
 from inspect import signature
+from sklearn.preprocessing import StandardScaler
 
 from tqdm import tqdm
 import multiprocessing as mp
@@ -790,14 +791,15 @@ class RegressionProcessor(Processor):
     ):
 
         # General Processor attributes
-        self.label_list = []
+        self.label_list = ["unused"]
         self.metrics = "mse"
         self.label_dtype = torch.float
 
         # Custom Processor attributes
         self.delimiter = "\t"
         self.skiprows = [0]
-        self.columns = ["text", "label", "unused"]
+        self.columns = ["text", "label"]
+        self.scaler = StandardScaler
 
         super(RegressionProcessor, self).__init__(
             tokenizer=tokenizer,

@@ -7,7 +7,7 @@ import torch
 from pytorch_transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN
 
 from torch import nn
-from torch.nn import CrossEntropyLoss, MSELoss
+from torch.nn import CrossEntropyLoss, MSELoss, SmoothL1Loss
 
 from farm.data_handler.utils import is_json
 from farm.utils import convert_iob_to_simple_tags
@@ -166,11 +166,19 @@ class RegressionHead(PredictionHead):
         self.layer_dims = layer_dims
         # TODO is this still needed?
         self.feed_forward = FeedForwardBlock(self.layer_dims)
+        # self.feed_forward = nn.Sequential(
+        #     torch.nn.Linear(self.layer_dims[0], 256, bias=False),
+        #     torch.nn.ReLU(),
+        #     torch.nn.Linear(256, 40, bias=False),
+        #     torch.nn.ReLU(),
+        #     torch.nn.Linear(40, self.layer_dims[1], bias=False),
+        # )
+        # self.feed_forward = nn.Linear(self.layer_dims[0], self.layer_dims[1], bias=False)
 
         self.num_labels = self.layer_dims[-1]
-        self.ph_output_type = "regression"
+        self.ph_output_type = "per_sequence_continuous"
         self.model_type = "regression"
-        self.loss_fct = MSELoss()
+        self.loss_fct = MSELoss(reduction="none")
         self.generate_config()
 
     def forward(self, x):
@@ -178,7 +186,13 @@ class RegressionHead(PredictionHead):
         return logits
 
     def logits_to_loss(self, logits, label_ids, **kwargs):
-        return self.loss_fct(logits, label_ids.view(-1).float())
+        # print ("==========")
+        print (logits)
+        # print (label_ids)
+        # print (MSELoss(reduction="mean")(logits.squeeze(), label_ids.float()))
+        # print("==========")
+        # Squeeze the logits to obtain a coherent output size
+        return self.loss_fct(logits.squeeze(), label_ids.float())
 
     #this function still needs to be adapted
     def logits_to_probs(self, logits, **kwargs):
@@ -198,6 +212,8 @@ class RegressionHead(PredictionHead):
 
     #this function still needs to be adapted
     def formatted_preds(self, logits, label_map, samples, **kwargs):
+        print("THe logits")
+        print(logits)
         preds = self.logits_to_preds(logits, label_map)
         probs = self.logits_to_probs(logits)
         contexts = [sample.clear_text["text"] for sample in samples]

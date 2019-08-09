@@ -18,14 +18,14 @@ logging.basicConfig(
     level=logging.INFO)
 
 ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
-ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_doc_classification")
+ml_logger.init_experiment(experiment_name="Public_FARM_Regression", run_name="Run_doc_regression")
 
 ##########################
 ########## Settings
 ##########################
 set_all_seeds(seed=42)
-device, n_gpu = initialize_device_settings(use_cuda=False)
-n_epochs = 1
+device, n_gpu = initialize_device_settings(use_cuda=True)
+n_epochs = 2
 batch_size = 32
 evaluate_every = 30
 lang_model = "bert-base-german-cased"
@@ -48,24 +48,24 @@ data_silo = DataSilo(
 # 4. Create an AdaptiveModel
 # a) which consists of a pretrained language model as a basis
 language_model = Bert.load(lang_model)
-# b) and a prediction head on top that is suited for our task => Text classification
+# b) and a prediction head on top that is suited for our task => Text regression
 prediction_head = RegressionHead(layer_dims=[768, 1])
 
 model = AdaptiveModel(
     language_model=language_model,
     prediction_heads=[prediction_head],
     embeds_dropout_prob=0.1,
-    lm_output_types=["per_sequence"],
+    lm_output_types=["per_sequence_continuous"],
     device=device)
 
 # 5. Create an optimizer
 optimizer, warmup_linear = initialize_optimizer(
     model=model,
-    learning_rate=2e-2,
+    learning_rate=2e-4,
     warmup_proportion=0.1,
     n_examples=data_silo.n_samples("train"),
     batch_size=batch_size,
-    n_epochs=1)
+    n_epochs=n_epochs)
 
 # 6. Feed everything to the Trainer, which keeps care of growing our model into powerful plant and evaluates it from time to time
 trainer = Trainer(
