@@ -32,7 +32,6 @@ from farm.data_handler.input_features import (
 from farm.data_handler.dataset import convert_features_to_dataset
 from farm.utils import MLFlowLogger as MlLogger
 
-from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
