@@ -34,7 +34,6 @@ def test_qa(caplog):
         dev_filename="dev-sample.json",
         test_filename=None,
         data_dir="samples/qa",
-        n_jobs=1
     )
 
     data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=False)
