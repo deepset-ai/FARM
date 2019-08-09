@@ -677,7 +677,7 @@ class BertStyleLMProcessor(Processor):
         """ Overriding the method of the parent class here, because in this case we cannot simply convert one dict to samples.
         We need to know about the other dicts as well since we want with prob 50% to use sentences of other docs!
         So we operate directly on the baskets"""
-        self.baskets = create_samples_sentence_pairs(self.baskets)
+        self.baskets = create_samples_sentence_pairs(self.baskets, self.tokenizer, self.max_seq_len)
 
     def _dict_to_samples(self, dict):
         raise NotImplementedError
