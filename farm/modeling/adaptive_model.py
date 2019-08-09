@@ -3,7 +3,6 @@ import os
 
 from torch import nn
 
-from farm.file_utils import create_folder
 from farm.modeling.language_model import LanguageModel
 from farm.modeling.prediction_head import PredictionHead, BertLMHead
 from farm.utils import MLFlowLogger as MlLogger
@@ -62,7 +61,7 @@ class AdaptiveModel(nn.Module):
         :param save_dir: path to save to
         :type save_dir: str
         """
-        create_folder(save_dir)
+        os.makedirs(save_dir, exist_ok=True)
         self.language_model.save(save_dir)
         for i, ph in enumerate(self.prediction_heads):
             ph.save(save_dir, i)
@@ -95,9 +94,9 @@ class AdaptiveModel(nn.Module):
         ph_output_type = []
         for config_file in ph_config_files:
             head = PredictionHead.load(config_file)
-            # set shared weights between LM and PH
-            if type(head) == BertLMHead:
-                head.set_shared_weights(language_model)
+            # # set shared weights between LM and PH
+            # if type(head) == BertLMHead:
+            #     head.set_shared_weights(language_model)
             prediction_heads.append(head)
             ph_output_type.append(head.ph_output_type)
 
@@ -256,7 +255,8 @@ class AdaptiveModel(nn.Module):
         Logs paramteres to generic logger MlLogger
         """
         params = {
-            "lm": self.language_model.__class__.__name__,
+            "lm_type": self.language_model.__class__.__name__,
+            "lm_name": self.language_model.name,
             "prediction_heads": ",".join(
                 [head.__class__.__name__ for head in self.prediction_heads]
             ),

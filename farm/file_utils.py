@@ -388,10 +388,3 @@ def unnestConfig(config, flattened=False):
             unnestedConfig.append(tempconfig)
 
     return unnestedConfig
-
-
-def create_folder(dir):
-    if os.path.exists(dir):
-        logger.warning(f"Path {dir} already exists. You might be overwriting files.")
-    else:
-        os.makedirs(dir)

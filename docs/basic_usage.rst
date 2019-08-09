@@ -49,7 +49,7 @@ See this `tutorial <https://github.com/deepset-ai/FARM/blob/master/tutorials/1_f
 * Run :code:`docker-compose up`
 * Open http://localhost:3000 in your browser
 
-.. image:: inference-api-screen.png
+.. image:: img/inference-api-screen.png
     :alt: FARM Inferennce UI
 
 One docker container exposes a REST API (localhost:5000) and another one runs a simple demo UI (localhost:3000).

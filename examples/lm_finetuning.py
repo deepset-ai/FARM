@@ -9,7 +9,7 @@ from farm.modeling.language_model import Bert
 from farm.modeling.prediction_head import BertLMHead, NextSentenceHead
 from farm.modeling.tokenization import BertTokenizer
 from farm.train import Trainer
-from farm.experiment import initialize_optimizer
+from farm.modeling.optimization import initialize_optimizer
 
 from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
 
@@ -27,12 +27,11 @@ ml_logger.init_experiment(
 ##########################
 ########## Settings
 ##########################
-set_all_seeds(seed=42)
 device, n_gpu = initialize_device_settings(use_cuda=True)
 n_epochs = 1
 batch_size = 32
 evaluate_every = 30
-lang_model = "bert-base-german-cased"
+lang_model = "bert-base-cased"
 
 # 1.Create a tokenizer
 tokenizer = BertTokenizer.from_pretrained(
@@ -41,10 +40,10 @@ tokenizer = BertTokenizer.from_pretrained(
 
 # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
 processor = BertStyleLMProcessor(
-    data_dir="../data/finetune_sample", tokenizer=tokenizer, max_seq_len=128
+    data_dir="../data/lm_finetune_nips", tokenizer=tokenizer, max_seq_len=128
 )
 # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
-data_silo = DataSilo(processor=processor, batch_size=32)
+data_silo = DataSilo(processor=processor, batch_size=batch_size)
 
 # 4. Create an AdaptiveModel
 # a) which consists of a pretrained language model as a basis
@@ -66,8 +65,7 @@ optimizer, warmup_linear = initialize_optimizer(
     model=model,
     learning_rate=2e-5,
     warmup_proportion=0.1,
-    n_examples=data_silo.n_samples("train"),
-    batch_size=batch_size,
+    n_batches=len(data_silo.loaders["train"]),
     n_epochs=n_epochs,
 )
 
@@ -78,7 +76,7 @@ trainer = Trainer(
     epochs=n_epochs,
     n_gpu=n_gpu,
     warmup_linear=warmup_linear,
-    evaluate_every=5,
+    evaluate_every=evaluate_every,
     device=device,
 )
 
@@ -86,6 +84,6 @@ trainer = Trainer(
 model = trainer.train(model)
 
 # 8. Hooray! You have a model. Store it:
-save_dir = "saved_models/bert-german-lm-tutorial"
+save_dir = "saved_models/bert-english-lm-tutorial"
 model.save(save_dir)
 processor.save(save_dir)
