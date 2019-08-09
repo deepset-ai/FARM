@@ -173,13 +173,14 @@ class Bert(LanguageModel):
     @classmethod
     def load(cls, pretrained_model_name_or_path, language=None):
         bert = cls()
+        bert.name = pretrained_model_name_or_path
         # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
         farm_lm_config = os.path.join(pretrained_model_name_or_path, "language_model_config.json")
         if os.path.exists(farm_lm_config):
             # FARM style
             bert_config = BertConfig.from_pretrained(farm_lm_config)
             farm_lm_model = os.path.join(pretrained_model_name_or_path, "language_model.bin")
-            bert.model = BertModel.from_pretrained(farm_lm_model, config = bert_config)
+            bert.model = BertModel.from_pretrained(farm_lm_model, config=bert_config)
             bert.language = bert.model.config.language
         else:
             # Pytorch-transformer Style
