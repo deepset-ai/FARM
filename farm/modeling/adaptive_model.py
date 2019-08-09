@@ -255,7 +255,8 @@ class AdaptiveModel(nn.Module):
         Logs paramteres to generic logger MlLogger
         """
         params = {
-            "lm": self.language_model.__class__.__name__,
+            "lm_type": self.language_model.__class__.__name__,
+            "lm_name": self.language_model.name,
             "prediction_heads": ",".join(
                 [head.__class__.__name__ for head in self.prediction_heads]
             ),
