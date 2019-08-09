@@ -94,9 +94,9 @@ class AdaptiveModel(nn.Module):
         ph_output_type = []
         for config_file in ph_config_files:
             head = PredictionHead.load(config_file)
-            # set shared weights between LM and PH
-            if type(head) == BertLMHead:
-                head.set_shared_weights(language_model)
+            # # set shared weights between LM and PH
+            # if type(head) == BertLMHead:
+            #     head.set_shared_weights(language_model)
             prediction_heads.append(head)
             ph_output_type.append(head.ph_output_type)
 

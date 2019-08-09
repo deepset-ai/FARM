@@ -27,7 +27,6 @@ ml_logger.init_experiment(
 ##########################
 ########## Settings
 ##########################
-set_all_seeds(seed=42)
 device, n_gpu = initialize_device_settings(use_cuda=True)
 n_epochs = 1
 batch_size = 32
@@ -77,7 +76,7 @@ trainer = Trainer(
     epochs=n_epochs,
     n_gpu=n_gpu,
     warmup_linear=warmup_linear,
-    evaluate_every=5,
+    evaluate_every=evaluate_every,
     device=device,
 )
 
