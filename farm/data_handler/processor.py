@@ -272,6 +272,7 @@ class Processor(ABC):
     def _init_baskets_from_file(self, file):
         dicts = self._file_to_dicts(file)
         dataset_name = os.path.splitext(os.path.basename(file))[0]
+
         self.baskets = [
             SampleBasket(raw=tr, id=f"{dataset_name}-{i}") for i, tr in enumerate(dicts)
         ]
@@ -799,7 +800,7 @@ class RegressionProcessor(Processor):
         self.delimiter = "\t"
         self.skiprows = [0]
         self.columns = ["text", "label"]
-        self.scaler = StandardScaler
+        self.scaler = StandardScaler()
 
         super(RegressionProcessor, self).__init__(
             tokenizer=tokenizer,
@@ -813,6 +814,26 @@ class RegressionProcessor(Processor):
             data_dir=data_dir,
             label_dtype=self.label_dtype,
         )
+
+    def _init_baskets_from_file(self, file):
+        dicts = self._file_to_dicts(file)
+        dataset_name = os.path.splitext(os.path.basename(file))[0]
+
+        samples =[]
+        for i, tr in enumerate(dicts):
+            samples.append([tr["label"]])
+
+        if dataset_name == "train":
+            self.scaler.fit(samples)
+
+        samples = self.scaler.transform(samples)
+
+        for i, tr in enumerate(dicts):
+            dicts[i]["label"] = samples[i]
+
+        self.baskets = [
+            SampleBasket(raw=tr, id=f"{dataset_name}-{i}") for i, tr in enumerate(dicts)
+        ]
 
     def _file_to_dicts(self, file: str) -> dict:
         dicts = read_tsv(

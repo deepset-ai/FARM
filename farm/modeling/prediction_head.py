@@ -165,15 +165,15 @@ class RegressionHead(PredictionHead):
         # num_labels could in most cases also be automatically retrieved from the data processor
         self.layer_dims = layer_dims
         # TODO is this still needed?
-        self.feed_forward = FeedForwardBlock(self.layer_dims)
-        # self.feed_forward = nn.Sequential(
-        #     torch.nn.Linear(self.layer_dims[0], 256, bias=False),
-        #     torch.nn.ReLU(),
-        #     torch.nn.Linear(256, 40, bias=False),
-        #     torch.nn.ReLU(),
-        #     torch.nn.Linear(40, self.layer_dims[1], bias=False),
-        # )
-        # self.feed_forward = nn.Linear(self.layer_dims[0], self.layer_dims[1], bias=False)
+        # self.feed_forward = FeedForwardBlock(self.layer_dims)
+        self.feed_forward = nn.Sequential(
+            torch.nn.Linear(self.layer_dims[0], 256, bias=False),
+            torch.nn.ReLU(),
+            torch.nn.Linear(256, 64, bias=False),
+            torch.nn.ReLU(),
+            torch.nn.Linear(64, self.layer_dims[1], bias=False),
+        )
+        self.feed_forward = nn.Linear(self.layer_dims[0], self.layer_dims[1], bias=False)
 
         self.num_labels = self.layer_dims[-1]
         self.ph_output_type = "per_sequence_continuous"
@@ -221,14 +221,11 @@ class RegressionHead(PredictionHead):
         assert len(preds) == len(probs) == len(contexts)
 
         res = {"task": "regression", "predictions": []}
-        for pred, prob, context in zip(preds, probs, contexts):
+        for pred, context in zip(preds, contexts):
             res["predictions"].append(
                 {
-                    "start": None,
-                    "end": None,
                     "context": f"{context}",
-                    "label": f"{pred}",
-                    "probability": prob,
+                    "label": logits,
                 }
             )
         return res
