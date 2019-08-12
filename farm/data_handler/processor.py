@@ -7,6 +7,7 @@ import logging
 import json
 from tqdm import tqdm
 import multiprocessing as mp
+import functools
 
 from farm.modeling.tokenization import BertTokenizer, tokenize_with_metadata
 
@@ -30,7 +31,7 @@ from farm.data_handler.input_features import (
 )
 from farm.data_handler.dataset import convert_features_to_dataset
 from farm.utils import MLFlowLogger as MlLogger
-
+from farm.data_handler.samples import get_sentence_pair
 
 logger = logging.getLogger(__name__)
 
@@ -204,25 +205,28 @@ class Processor(ABC):
 
     def _init_samples_in_baskets(self):
         num_cpus = mp.cpu_count()
-        logger.info(f"Starting parallel dataprocessing with {num_cpus} processes ...")
+        self.logbooks = [b.raw for b in self.baskets]
+        logger.info(f"Got ya {num_cpus} parallel workers to fill the baskets with samples (chunksize = {self.chunksize}...")
+
 
         with mp.Pool(processes=num_cpus) as p:
-            samples = p.imap(self._multiproc_sample, self.baskets, chunksize=1_000)
+            samples = p.imap(self._multiproc_sample, self.baskets, chunksize=self.chunksize)
+            #samples = p.imap(functools.partial(self._multiproc_sample, optional_param=self.baskets[:10]), self.baskets, chunksize=100)
 
             for s, b in tqdm(zip(samples, self.baskets), total=len(self.baskets)):
                  b.samples = s
 
-    def _multiproc_sample(self, basket):
-        samples = self._dict_to_samples(basket.raw)
+    def _multiproc_sample(self, basket, optional_param=None):
+        samples = self._dict_to_samples(basket.raw, optional_param)
         for num, sample in enumerate(samples):
             sample.id = f"{basket.id}-{num}"
         return samples
 
     def _featurize_samples(self):
-        logger.info("Featurizing samples now. Hold on!")
         num_cpus = mp.cpu_count()
+        logger.info(f"Got ya {num_cpus} parallel workers to featurize samples in baskets (chunksize = {self.chunksize}) ...")
         with mp.Pool(processes=num_cpus) as p:
-            sample_features = p.imap(self._multiproc_featurize, self.baskets, chunksize=1_000)
+            sample_features = p.imap(self._multiproc_featurize, self.baskets, chunksize=self.chunksize)
 
             for _features, basket in tqdm(zip(sample_features, self.baskets), total=len(self.baskets)):
                 for sample in basket.samples:
@@ -673,6 +677,7 @@ class BertStyleLMProcessor(Processor):
         label_list = [list(tokenizer.vocab), ["True", "False"]]  # labels for both heads
         metrics = ["acc", "acc"]
         label_dtype = torch.long
+        self.chunksize = 1000
 
         # Custom attributes
         self.delimiter = ""
@@ -694,14 +699,33 @@ class BertStyleLMProcessor(Processor):
         dicts = read_docs_from_txt(filename=file, delimiter=self.delimiter)
         return dicts
 
-    def _init_samples_in_baskets(self):
-        """ Overriding the method of the parent class here, because in this case we cannot simply convert one dict to samples.
-        We need to know about the other dicts as well since we want with prob 50% to use sentences of other docs!
-        So we operate directly on the baskets"""
-        self.baskets = create_samples_sentence_pairs(self.baskets, self.tokenizer, self.max_seq_len)
+    # def _init_samples_in_baskets(self):
+    #     """ Overriding the method of the parent class here, because in this case we cannot simply convert one dict to samples.
+    #     We need to know about the other dicts as well since we want with prob 50% to use sentences of other docs!
+    #     So we operate directly on the baskets"""
+    #     self.baskets = create_samples_sentence_pairs(self.baskets, self.tokenizer, self.max_seq_len)
+    #
+    # def _dict_to_samples(self, dict, all_baskets=None):
+    #     raise NotImplementedError
+    def _dict_to_samples(self, dict, random_docs=None):
+        doc = dict["doc"]
+        #random_docs = [b.raw["doc"] for b in random.choices(self.baskets, k=min(len(self.baskets), 100000))]
+        #TODO if we select only a subset of docs here, we will need to pop them after each usage
+        random_docs = [b.raw["doc"] for b in self.baskets]
 
-    def _dict_to_samples(self, dict):
-        raise NotImplementedError
+        samples = []
+        for idx in range(len(doc) - 1):
+            text_a, text_b, is_next_label = get_sentence_pair(doc, random_docs, idx)
+            sample_in_clear_text = {
+                "text_a": text_a,
+                "text_b": text_b,
+                "is_next_label": is_next_label,
+            }
+            tokenized = {}
+            tokenized["text_a"] = tokenize_with_metadata(text_a, self.tokenizer, self.max_seq_len)
+            tokenized["text_b"] = tokenize_with_metadata(text_b, self.tokenizer, self.max_seq_len)
+            samples.append(Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized))
+        return samples
 
     def _sample_to_features(self, sample) -> dict:
         features = samples_to_features_bert_lm(

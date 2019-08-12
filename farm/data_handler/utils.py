@@ -233,8 +233,6 @@ def _get_random_sentence(docs, forbidden_doc):
     for _ in range(10):
         rand_doc_idx = random.randrange(len(docs))
         rand_doc = docs[rand_doc_idx]
-        if len(rand_doc) == 0:
-            print("bla")
 
         # check if our picked random doc is really different to our initial doc
         if rand_doc != forbidden_doc:

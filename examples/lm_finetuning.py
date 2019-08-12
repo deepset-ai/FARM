@@ -20,7 +20,7 @@ logging.basicConfig(
 )
 
 set_all_seeds(seed=42)
-ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
+ml_logger = MLFlowLogger(tracking_uri="")
 ml_logger.init_experiment(
     experiment_name="Public_FARM", run_name="Run_minimal_example_lm"
 )
@@ -45,45 +45,45 @@ processor = BertStyleLMProcessor(
 # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
 data_silo = DataSilo(processor=processor, batch_size=batch_size)
 
-# 4. Create an AdaptiveModel
-# a) which consists of a pretrained language model as a basis
-language_model = Bert.load(lang_model)
-# b) and *two* prediction heads on top that are suited for our task => Language Model finetuning
-lm_prediction_head = BertLMHead.load(lang_model)
-next_sentence_head = NextSentenceHead.load(lang_model)
-
-model = AdaptiveModel(
-    language_model=language_model,
-    prediction_heads=[lm_prediction_head, next_sentence_head],
-    embeds_dropout_prob=0.1,
-    lm_output_types=["per_token", "per_sequence"],
-    device=device,
-)
-
-# 5. Create an optimizer
-optimizer, warmup_linear = initialize_optimizer(
-    model=model,
-    learning_rate=2e-5,
-    warmup_proportion=0.1,
-    n_batches=len(data_silo.loaders["train"]),
-    n_epochs=n_epochs,
-)
-
-# 6. Feed everything to the Trainer, which keeps care of growing our model into powerful plant and evaluates it from time to time
-trainer = Trainer(
-    optimizer=optimizer,
-    data_silo=data_silo,
-    epochs=n_epochs,
-    n_gpu=n_gpu,
-    warmup_linear=warmup_linear,
-    evaluate_every=evaluate_every,
-    device=device,
-)
-
-# 7. Let it grow! Watch the tracked metrics live on the public mlflow server: http://80.158.39.167:5000/
-model = trainer.train(model)
-
-# 8. Hooray! You have a model. Store it:
-save_dir = "saved_models/bert-english-lm-tutorial"
-model.save(save_dir)
-processor.save(save_dir)
+# # 4. Create an AdaptiveModel
+# # a) which consists of a pretrained language model as a basis
+# language_model = Bert.load(lang_model)
+# # b) and *two* prediction heads on top that are suited for our task => Language Model finetuning
+# lm_prediction_head = BertLMHead.load(lang_model)
+# next_sentence_head = NextSentenceHead.load(lang_model)
+#
+# model = AdaptiveModel(
+#     language_model=language_model,
+#     prediction_heads=[lm_prediction_head, next_sentence_head],
+#     embeds_dropout_prob=0.1,
+#     lm_output_types=["per_token", "per_sequence"],
+#     device=device,
+# )
+#
+# # 5. Create an optimizer
+# optimizer, warmup_linear = initialize_optimizer(
+#     model=model,
+#     learning_rate=2e-5,
+#     warmup_proportion=0.1,
+#     n_batches=len(data_silo.loaders["train"]),
+#     n_epochs=n_epochs,
+# )
+#
+# # 6. Feed everything to the Trainer, which keeps care of growing our model into powerful plant and evaluates it from time to time
+# trainer = Trainer(
+#     optimizer=optimizer,
+#     data_silo=data_silo,
+#     epochs=n_epochs,
+#     n_gpu=n_gpu,
+#     warmup_linear=warmup_linear,
+#     evaluate_every=evaluate_every,
+#     device=device,
+# )
+#
+# # 7. Let it grow! Watch the tracked metrics live on the public mlflow server: http://80.158.39.167:5000/
+# model = trainer.train(model)
+#
+# # 8. Hooray! You have a model. Store it:
+# save_dir = "saved_models/bert-english-lm-tutorial"
+# model.save(save_dir)
+# processor.save(save_dir)
