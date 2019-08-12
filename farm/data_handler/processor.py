@@ -7,7 +7,7 @@ import logging
 import json
 from tqdm import tqdm
 import multiprocessing as mp
-import functools
+from functools import partial
 
 from farm.modeling.tokenization import BertTokenizer, tokenize_with_metadata
 
@@ -60,6 +60,8 @@ class Processor(ABC):
         dev_split,
         data_dir,
         label_dtype=torch.long,
+        multiprocessing_chunk_size=1_000,
+        share_all_baskets_for_multiprocessing=False,
     ):
         """
         Initialize a generic Processor
@@ -97,6 +99,8 @@ class Processor(ABC):
         self.data_dir = data_dir
         self.label_dtype = label_dtype
         self.label_maps = []
+        self.multiprocessing_chunk_size = multiprocessing_chunk_size
+        self.share_all_baskets_for_multiprocessing = share_all_baskets_for_multiprocessing
 
         # create label maps (one per prediction head)
         if any(isinstance(i, list) for i in label_list):
@@ -206,29 +210,50 @@ class Processor(ABC):
     def _init_samples_in_baskets(self):
         num_cpus = mp.cpu_count()
         self.logbooks = [b.raw for b in self.baskets]
-        logger.info(f"Got ya {num_cpus} parallel workers to fill the baskets with samples (chunksize = {self.chunksize}...")
-
+        logger.info(
+            f"Got ya {num_cpus} parallel workers to fill the baskets with samples (chunksize = {self.multiprocessing_chunk_size}..."
+        )
 
         with mp.Pool(processes=num_cpus) as p:
-            samples = p.imap(self._multiproc_sample, self.baskets, chunksize=self.chunksize)
-            #samples = p.imap(functools.partial(self._multiproc_sample, optional_param=self.baskets[:10]), self.baskets, chunksize=100)
+            with mp.Manager() as manager:
+                if self.share_all_baskets_for_multiprocessing:
+                    all_baskets = manager.list([b.raw for b in self.baskets])
+                else:
+                    all_baskets = None
 
-            for s, b in tqdm(zip(samples, self.baskets), total=len(self.baskets)):
-                 b.samples = s
+                with mp.Pool(processes=num_cpus) as p:
+                    samples = p.imap(
+                        partial(self._multiproc_sample, all_baskets=all_baskets),
+                        self.baskets,
+                        chunksize=self.multiprocessing_chunk_size,
+                    )
 
-    def _multiproc_sample(self, basket, optional_param=None):
-        samples = self._dict_to_samples(basket.raw, optional_param)
+                    for s, b in tqdm(
+                        zip(samples, self.baskets), total=len(self.baskets)
+                    ):
+                        b.samples = s
+
+    def _multiproc_sample(self, basket, all_baskets=None):
+        samples = self._dict_to_samples(basket.raw, all_baskets)
         for num, sample in enumerate(samples):
             sample.id = f"{basket.id}-{num}"
         return samples
 
     def _featurize_samples(self):
         num_cpus = mp.cpu_count()
-        logger.info(f"Got ya {num_cpus} parallel workers to featurize samples in baskets (chunksize = {self.chunksize}) ...")
+        logger.info(
+            f"Got ya {num_cpus} parallel workers to featurize samples in baskets (chunksize = {self.multiprocessing_chunk_size}) ..."
+        )
         with mp.Pool(processes=num_cpus) as p:
-            sample_features = p.imap(self._multiproc_featurize, self.baskets, chunksize=self.chunksize)
+            sample_features = p.imap(
+                self._multiproc_featurize,
+                self.baskets,
+                chunksize=self.multiprocessing_chunk_size,
+            )
 
-            for _features, basket in tqdm(zip(sample_features, self.baskets), total=len(self.baskets)):
+            for _features, basket in tqdm(
+                zip(sample_features, self.baskets), total=len(self.baskets)
+            ):
                 for sample in basket.samples:
                     sample.features = _features
 
