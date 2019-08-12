@@ -7,7 +7,7 @@ import torch
 from pytorch_transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN
 
 from torch import nn
-from torch.nn import CrossEntropyLoss, MSELoss, SmoothL1Loss
+from torch.nn import CrossEntropyLoss, MSELoss
 
 from farm.data_handler.utils import is_json
 from farm.utils import convert_iob_to_simple_tags
@@ -165,15 +165,7 @@ class RegressionHead(PredictionHead):
         # num_labels could in most cases also be automatically retrieved from the data processor
         self.layer_dims = layer_dims
         # TODO is this still needed?
-        # self.feed_forward = FeedForwardBlock(self.layer_dims)
-        self.feed_forward = nn.Sequential(
-            torch.nn.Linear(self.layer_dims[0], 256, bias=False),
-            torch.nn.ReLU(),
-            torch.nn.Linear(256, 64, bias=False),
-            torch.nn.ReLU(),
-            torch.nn.Linear(64, self.layer_dims[1], bias=False),
-        )
-        self.feed_forward = nn.Linear(self.layer_dims[0], self.layer_dims[1], bias=False)
+        self.feed_forward = FeedForwardBlock(self.layer_dims)
 
         self.num_labels = self.layer_dims[-1]
         self.ph_output_type = "per_sequence_continuous"
@@ -186,22 +178,10 @@ class RegressionHead(PredictionHead):
         return logits
 
     def logits_to_loss(self, logits, label_ids, **kwargs):
-        # print ("==========")
-        print (logits)
-        # print (label_ids)
-        # print (MSELoss(reduction="mean")(logits.squeeze(), label_ids.float()))
-        # print("==========")
         # Squeeze the logits to obtain a coherent output size
         return self.loss_fct(logits.squeeze(), label_ids.float())
 
-    #this function still needs to be adapted
-    def logits_to_probs(self, logits, **kwargs):
-        softmax = torch.nn.Softmax(dim=1)
-        probs = softmax(logits)
-        probs = torch.max(probs, dim=1)[0]
-        probs = probs.cpu().numpy()
-        return probs
-
+    # TODO add the scaler invert_transformer from the processor
     def logits_to_preds(self, logits, label_map, **kwargs):
         logits = logits.cpu().numpy()
         return logits.squeeze().tolist()
@@ -210,22 +190,18 @@ class RegressionHead(PredictionHead):
         label_ids = label_ids.cpu().numpy()
         return label_ids.squeeze().tolist()
 
-    #this function still needs to be adapted
     def formatted_preds(self, logits, label_map, samples, **kwargs):
-        print("THe logits")
-        print(logits)
         preds = self.logits_to_preds(logits, label_map)
-        probs = self.logits_to_probs(logits)
         contexts = [sample.clear_text["text"] for sample in samples]
 
-        assert len(preds) == len(probs) == len(contexts)
+        assert len(preds) == len(contexts)
 
         res = {"task": "regression", "predictions": []}
         for pred, context in zip(preds, contexts):
             res["predictions"].append(
                 {
                     "context": f"{context}",
-                    "label": logits,
+                    "label": preds,
                 }
             )
         return res

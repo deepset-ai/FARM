@@ -2,7 +2,7 @@ import torch
 import numpy as np
 from scipy.stats import pearsonr, spearmanr
 from seqeval.metrics import f1_score as seq_f1_score
-from sklearn.metrics import matthews_corrcoef, f1_score, mean_squared_error
+from sklearn.metrics import matthews_corrcoef, f1_score, mean_squared_error, r2_score
 from farm.utils import flatten_list
 
 def simple_accuracy(preds, labels):
@@ -55,6 +55,8 @@ def compute_metrics(metric, preds, labels):
         return squad(preds, labels)
     elif metric == "mse":
         return {"mse": mean_squared_error(preds, labels)}
+    elif metric == "r2":
+        return {"r2": r2_score(preds, labels)}
     # elif metric == "masked_accuracy":
     #     return simple_accuracy(preds, labels, ignore=-1)
     else:

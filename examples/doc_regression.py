@@ -25,8 +25,8 @@ ml_logger.init_experiment(experiment_name="Public_FARM_Regression", run_name="Ru
 ##########################
 set_all_seeds(seed=42)
 device, n_gpu = initialize_device_settings(use_cuda=True)
-n_epochs = 1
-batch_size = 56
+n_epochs = 5
+batch_size = 32
 evaluate_every = 30
 lang_model = "bert-base-german-cased"
 
@@ -61,7 +61,7 @@ model = AdaptiveModel(
 # 5. Create an optimizer
 optimizer, warmup_linear = initialize_optimizer(
     model=model,
-    learning_rate=2e-6,
+    learning_rate=2e-5,
     warmup_proportion=0.1,
     n_examples=data_silo.n_samples("train"),
     batch_size=batch_size,
@@ -76,8 +76,6 @@ trainer = Trainer(
     warmup_linear=warmup_linear,
     evaluate_every=evaluate_every,
     device=device)
-
-
 
 # 7. Let it grow
 model = trainer.train(model)
