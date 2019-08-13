@@ -5,6 +5,7 @@ from abc import ABC
 import random
 import logging
 import json
+import time
 from tqdm import tqdm
 import multiprocessing as mp
 from functools import partial
@@ -209,9 +210,8 @@ class Processor(ABC):
 
     def _init_samples_in_baskets(self):
         num_cpus = mp.cpu_count()
-        self.logbooks = [b.raw for b in self.baskets]
         logger.info(
-            f"Got ya {num_cpus} parallel workers to fill the baskets with samples (chunksize = {self.multiprocessing_chunk_size}..."
+            f"Got ya {num_cpus} parallel workers to fill the baskets with samples (chunksize = {self.multiprocessing_chunk_size})..."
         )
 
         with mp.Pool(processes=num_cpus) as p:
@@ -274,7 +274,7 @@ class Processor(ABC):
         dataset, tensor_names = convert_features_to_dataset(features=features_flat)
         return dataset, tensor_names
 
-    def dataset_from_file(self, file):
+    def dataset_from_file(self, file, log_time=True):
         """
         Contains all the functionality to turn a data file into a PyTorch Dataset and a
         list of tensor names. This is used for training and evaluation.
@@ -283,10 +283,23 @@ class Processor(ABC):
         :type file: str
         :return: a Pytorch dataset and a list of tensor names.
         """
-        self._init_baskets_from_file(file)
-        self._init_samples_in_baskets()
-        self._featurize_samples()
-        self._log_samples(3)
+        if log_time:
+            a = time.time()
+            self._init_baskets_from_file(file)
+            b = time.time()
+            MlLogger.log_metrics(metrics={"t_from_file": (b-a)/60}, step=0)
+            self._init_samples_in_baskets()
+            c = time.time()
+            MlLogger.log_metrics(metrics={"t_init_samples": (c-b)/60}, step=0)
+            self._featurize_samples()
+            d = time.time()
+            MlLogger.log_metrics(metrics={"t_featurize_samples": (d-c)/60}, step=0)
+            self._log_samples(3)
+        else:
+            self._init_baskets_from_file(file)
+            self._init_samples_in_baskets()
+            self._featurize_samples()
+            self._log_samples(3)
         dataset, tensor_names = self._create_dataset()
         return dataset, tensor_names
 
@@ -458,7 +471,7 @@ class GermEval18CoarseProcessor(Processor):
         )
         return dicts
 
-    def _dict_to_samples(self, dict: dict) -> [Sample]:
+    def _dict_to_samples(self, dict: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets
         tokenized = tokenize_with_metadata(
             dict["text"], self.tokenizer, self.max_seq_len
@@ -525,7 +538,7 @@ class GermEval18FineProcessor(Processor):
         )
         return dicts
 
-    def _dict_to_samples(self, dict: dict) -> [Sample]:
+    def _dict_to_samples(self, dict: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets
         tokenized = tokenize_with_metadata(
             dict["text"], self.tokenizer, self.max_seq_len
@@ -596,7 +609,7 @@ class CONLLProcessor(Processor):
         dicts = read_ner_file(filename=file)
         return dicts
 
-    def _dict_to_samples(self, dict: dict) -> [Sample]:
+    def _dict_to_samples(self, dict: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets, which helps to map our entity tags back to original positions
         tokenized = tokenize_with_metadata(
             dict["text"], self.tokenizer, self.max_seq_len
@@ -665,7 +678,7 @@ class GermEval14Processor(Processor):
         dicts = read_ner_file(filename=file, sep=self.delimiter)
         return dicts
 
-    def _dict_to_samples(self, dict: dict) -> [Sample]:
+    def _dict_to_samples(self, dict: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets, which helps to map our entity tags back to original positions
         tokenized = tokenize_with_metadata(
             dict["text"], self.tokenizer, self.max_seq_len
@@ -704,10 +717,12 @@ class BertStyleLMProcessor(Processor):
         label_list = [list(tokenizer.vocab), ["True", "False"]]  # labels for both heads
         metrics = ["acc", "acc"]
         label_dtype = torch.long
-        self.chunksize = 1000
+        chunksize = 100
 
         # Custom attributes
         self.delimiter = ""
+        BertStyleLMProcessor.tokenizer = tokenizer
+        BertStyleLMProcessor.max_seq_len = max_seq_len
 
         super(BertStyleLMProcessor, self).__init__(
             tokenizer=tokenizer,
@@ -720,43 +735,35 @@ class BertStyleLMProcessor(Processor):
             dev_split=dev_split,
             data_dir=data_dir,
             label_dtype=label_dtype,
+            share_all_baskets_for_multiprocessing=True,
+            multiprocessing_chunk_size=chunksize
         )
 
     def _file_to_dicts(self, file: str) -> list:
         dicts = read_docs_from_txt(filename=file, delimiter=self.delimiter)
         return dicts
 
-    # def _init_samples_in_baskets(self):
-    #     """ Overriding the method of the parent class here, because in this case we cannot simply convert one dict to samples.
-    #     We need to know about the other dicts as well since we want with prob 50% to use sentences of other docs!
-    #     So we operate directly on the baskets"""
-    #     self.baskets = create_samples_sentence_pairs(self.baskets, self.tokenizer, self.max_seq_len)
-    #
-    # def _dict_to_samples(self, dict, all_baskets=None):
-    #     raise NotImplementedError
-    def _dict_to_samples(self, dict, random_docs=None):
+    @classmethod
+    def _dict_to_samples(cls, dict, all_baskets=None):
         doc = dict["doc"]
-        #random_docs = [b.raw["doc"] for b in random.choices(self.baskets, k=min(len(self.baskets), 100000))]
-        #TODO if we select only a subset of docs here, we will need to pop them after each usage
-        random_docs = [b.raw["doc"] for b in self.baskets]
-
         samples = []
         for idx in range(len(doc) - 1):
-            text_a, text_b, is_next_label = get_sentence_pair(doc, random_docs, idx)
+            text_a, text_b, is_next_label = get_sentence_pair(doc, all_baskets, idx)
             sample_in_clear_text = {
                 "text_a": text_a,
                 "text_b": text_b,
                 "is_next_label": is_next_label,
             }
             tokenized = {}
-            tokenized["text_a"] = tokenize_with_metadata(text_a, self.tokenizer, self.max_seq_len)
-            tokenized["text_b"] = tokenize_with_metadata(text_b, self.tokenizer, self.max_seq_len)
+            tokenized["text_a"] = tokenize_with_metadata(text_a, cls.tokenizer, cls.max_seq_len)
+            tokenized["text_b"] = tokenize_with_metadata(text_b, cls.tokenizer, cls.max_seq_len)
             samples.append(Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized))
         return samples
 
-    def _sample_to_features(self, sample) -> dict:
+    @classmethod
+    def _sample_to_features(cls, sample) -> dict:
         features = samples_to_features_bert_lm(
-            sample=sample, max_seq_len=self.max_seq_len, tokenizer=self.tokenizer
+            sample=sample, max_seq_len=cls.max_seq_len, tokenizer=cls.tokenizer
         )
         return features
 
@@ -864,7 +871,7 @@ class SquadProcessor(Processor):
         dict = read_squad_file(filename=file)
         return dict
 
-    def _dict_to_samples(self, dict: dict) -> [Sample]:
+    def _dict_to_samples(self, dict: dict, **kwargs) -> [Sample]:
         # TODO split samples that are too long in this function, related to todo in self._sample_to_features
         if "paragraphs" not in dict:  # TODO change this inference mode hack
             dict = self._convert_inference(infer_dict=dict)
