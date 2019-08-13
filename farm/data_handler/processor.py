@@ -233,8 +233,9 @@ class Processor(ABC):
                     ):
                         b.samples = s
 
-    def _multiproc_sample(self, basket, all_baskets=None):
-        samples = self._dict_to_samples(basket.raw, all_baskets)
+    @classmethod
+    def _multiproc_sample(cls, basket, all_baskets=None):
+        samples = cls._dict_to_samples(basket.raw, all_baskets)
         for num, sample in enumerate(samples):
             sample.id = f"{basket.id}-{num}"
         return samples
@@ -257,10 +258,11 @@ class Processor(ABC):
                 for sample in basket.samples:
                     sample.features = _features
 
-    def _multiproc_featurize(self, basket):
+    @classmethod
+    def _multiproc_featurize(cls, basket):
         all_features = []
         for sample in basket.samples:
-            all_features.extend(self._sample_to_features(sample=sample))
+            all_features.extend(cls._sample_to_features(sample=sample))
         return all_features
 
     def _create_dataset(self):
