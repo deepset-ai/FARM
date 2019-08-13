@@ -80,7 +80,7 @@ trainer = Trainer(
     device=device,
 )
 
-# 7. Let it grow! Watch the tracked metrics live on the public mlflow server: http://80.158.39.167:5000/
+# 7. Let it grow! Watch the tracked metrics live on the public mlflow server: https://public-mlflow.deepset.ai
 model = trainer.train(model)
 
 # 8. Hooray! You have a model. Store it:

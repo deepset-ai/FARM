@@ -36,7 +36,7 @@ def test_qa(caplog):
         data_dir="samples/qa",
     )
 
-    data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=False)
+    data_silo = DataSilo(processor=processor, batch_size=batch_size)
     language_model = Bert.load(base_LM_model)
     prediction_head = QuestionAnsweringHead(layer_dims=[768, len(processor.label_list)])
     model = AdaptiveModel(
