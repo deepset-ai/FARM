@@ -76,10 +76,7 @@ def run_experiment(args):
         model=args.model,
         device=device,
         class_weights=class_weights,
-        fp16=args.fp16,
         embeds_dropout_prob=args.embeds_dropout_prob,
-        local_rank=args.local_rank,
-        n_gpu=n_gpu,
     )
 
     # Init optimizer
@@ -103,6 +100,7 @@ def run_experiment(args):
         n_gpu=n_gpu,
         grad_acc_steps=args.gradient_accumulation_steps,
         fp16=args.fp16,
+        local_rank=args.local_rank,
         warmup_linear=warmup_linear,
         evaluate_every=args.eval_every,
         device=device,
@@ -124,9 +122,6 @@ def get_adaptive_model(
     model,
     device,
     embeds_dropout_prob,
-    local_rank,
-    n_gpu,
-    fp16=False,
     class_weights=None,
 ):
     parsed_lm_output_types = lm_output_type.split(",")
@@ -151,14 +146,6 @@ def get_adaptive_model(
         lm_output_types=parsed_lm_output_types,
         device=device,
     )
-    if fp16:
-        model.half()
-
-    if local_rank > -1:
-        model = WrappedDDP(model)
-    elif n_gpu > 1:
-        model = WrappedDataParallel(model)
-
     return model
 
 
