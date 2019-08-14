@@ -59,7 +59,7 @@ class Inferencer:
         self.batch_size = batch_size
         self.device = device
         self.language = self.model.language_model.language
-        self.scaler = processor.scaler
+        self.scaler = processor.scaler if hasattr(processor, 'scaler') else None
         # TODO adjust for multiple prediction heads
         if len(self.model.prediction_heads) == 1:
             self.prediction_type = self.model.prediction_heads[0].model_type
