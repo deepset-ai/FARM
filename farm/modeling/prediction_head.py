@@ -197,11 +197,11 @@ class RegressionHead(PredictionHead):
 
         res = {"task": "regression", "predictions": []}
         for pred, context in zip(preds, contexts):
+            label = scaler.inverse_transform([pred])
             res["predictions"].append(
                 {
                     "context": f"{context}",
-                    "predictions": logits,
-                    # "label": scaler.inverse_transform(logits)
+                    "label": f"{label}"
                 }
             )
         return res

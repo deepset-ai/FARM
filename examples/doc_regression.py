@@ -63,8 +63,7 @@ optimizer, warmup_linear = initialize_optimizer(
     model=model,
     learning_rate=2e-5,
     warmup_proportion=0.1,
-    n_examples=data_silo.n_samples("train"),
-    batch_size=batch_size,
+    n_batches=len(data_silo.loaders["train"]),
     n_epochs=n_epochs)
 
 # 6. Feed everything to the Trainer, which keeps care of growing our model into powerful plant and evaluates it from time to time
@@ -93,9 +92,6 @@ basic_texts = [
 model = Inferencer.load(save_dir)
 result = model.run_inference(dicts=basic_texts)
 
-
 print(result)
-
-print (processor.scaler.inverse_transform(result[0]["predictions"][0]["label"]))
 
 # fmt: on
