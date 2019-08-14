@@ -8,6 +8,7 @@ import json
 import time
 import inspect
 from inspect import signature
+import numpy as np
 from sklearn.preprocessing import StandardScaler
 
 from tqdm import tqdm
@@ -815,26 +816,6 @@ class RegressionProcessor(Processor):
             label_dtype=self.label_dtype,
         )
 
-    def _init_baskets_from_file(self, file):
-        dicts = self._file_to_dicts(file)
-        dataset_name = os.path.splitext(os.path.basename(file))[0]
-
-        samples =[]
-        for i, tr in enumerate(dicts):
-            samples.append([tr["label"]])
-
-        if dataset_name == "train":
-            self.scaler.fit(samples)
-
-        samples = self.scaler.transform(samples)
-
-        for i, tr in enumerate(dicts):
-            dicts[i]["label"] = samples[i]
-
-        self.baskets = [
-            SampleBasket(raw=tr, id=f"{dataset_name}-{i}") for i, tr in enumerate(dicts)
-        ]
-
     def _file_to_dicts(self, file: str) -> dict:
         dicts = read_tsv(
             filename=file,
@@ -860,3 +841,23 @@ class RegressionProcessor(Processor):
             target="regression"
         )
         return features
+
+    def _featurize_samples(self):
+        if len(self.baskets) > 0 and len(self.baskets[0].samples) > 0 and "train" in self.baskets[0].samples[0].id:
+            train_labels = []
+            for basket in self.baskets:
+                for sample in basket.samples:
+                        train_labels.append(sample.clear_text["label"])
+
+            self.scaler.fit(np.reshape(train_labels, (-1, 1)))
+
+        for basket in tqdm(self.baskets):
+            for sample in basket.samples:
+                # Samples don't have labels during Inference mode
+                if "label" in sample.clear_text:
+                    label = sample.clear_text["label"]
+                    scaled_label = self.scaler.transform(
+                        np.reshape(label, (-1, 1))
+                    ).item()
+                    sample.clear_text["label"] = scaled_label
+                sample.features = self._sample_to_features(sample=sample)

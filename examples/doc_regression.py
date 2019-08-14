@@ -25,7 +25,7 @@ ml_logger.init_experiment(experiment_name="Public_FARM_Regression", run_name="Ru
 ##########################
 set_all_seeds(seed=42)
 device, n_gpu = initialize_device_settings(use_cuda=True)
-n_epochs = 5
+n_epochs = 1
 batch_size = 32
 evaluate_every = 30
 lang_model = "bert-base-german-cased"

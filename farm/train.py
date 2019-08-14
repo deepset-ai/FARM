@@ -108,6 +108,7 @@ class Trainer:
             evaluator_dev = Evaluator(
                 data_loader=self.data_silo.get_data_loader("dev"),
                 label_maps=self.data_silo.processor.label_maps,
+                scaler=self.data_silo.processor.scaler,
                 device=device,
                 metrics=self.data_silo.processor.metrics,
             )
@@ -118,6 +119,7 @@ class Trainer:
             evaluator_test = Evaluator(
                 data_loader=self.data_silo.get_data_loader("test"),
                 label_maps=self.data_silo.processor.label_maps,
+                scaler=self.data_silo.processor.scaler,
                 device=device,
                 metrics=self.data_silo.processor.metrics,
             )

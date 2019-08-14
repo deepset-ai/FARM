@@ -181,17 +181,16 @@ class RegressionHead(PredictionHead):
         # Squeeze the logits to obtain a coherent output size
         return self.loss_fct(logits.squeeze(), label_ids.float())
 
-    # TODO add the scaler invert_transformer from the processor
-    def logits_to_preds(self, logits, label_map, **kwargs):
-        logits = logits.cpu().numpy()
-        return logits.squeeze().tolist()
+    def logits_to_preds(self, logits, **kwargs):
+        preds = logits.cpu().numpy()
+        return preds.squeeze().tolist()
 
     def prepare_labels(self, label_map, label_ids, **kwargs):
         label_ids = label_ids.cpu().numpy()
         return label_ids.squeeze().tolist()
 
-    def formatted_preds(self, logits, label_map, samples, **kwargs):
-        preds = self.logits_to_preds(logits, label_map)
+    def formatted_preds(self, logits, scaler, samples, **kwargs):
+        preds = self.logits_to_preds(logits)
         contexts = [sample.clear_text["text"] for sample in samples]
 
         assert len(preds) == len(contexts)
@@ -201,7 +200,8 @@ class RegressionHead(PredictionHead):
             res["predictions"].append(
                 {
                     "context": f"{context}",
-                    "label": preds,
+                    "predictions": logits,
+                    # "label": scaler.inverse_transform(logits)
                 }
             )
         return res
