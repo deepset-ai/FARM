@@ -66,6 +66,7 @@ class Trainer:
         evaluator_test=None,
         fp16=False,
         grad_acc_steps=1,
+        local_rank=-1
     ):
         """
         :param optimizer: An optimizer object that determines the learning strategy to be used during training
@@ -99,6 +100,7 @@ class Trainer:
         self.global_step = 0
         self.data_loader_train = data_silo.get_data_loader("train")
         self.device = device
+        self.local_rank = local_rank
         self.log_params()
 
         # evaluator on dev set
@@ -125,6 +127,14 @@ class Trainer:
         """ Perform the training procedure. """
         logger.info(f"\n {GROWING_TREE}")
         model.train()
+        # multi GPU + distributed settings
+        if self.fp16:
+            model.half()
+        if self.local_rank > -1:
+            model = WrappedDDP(model)
+        elif self.n_gpu > 1:
+            model = WrappedDataParallel(model)
+
         for epoch in range(1, self.epochs + 1):
             for step, batch in enumerate(
                 tqdm(self.data_loader_train, desc=f"Train epoch {epoch}/{self.epochs}")
