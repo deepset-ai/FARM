@@ -27,29 +27,26 @@
 What is it?
 ############
 FARM makes cutting edge **Transfer Learning** for NLP simple.
-It is a home for all species of pretrained language models (e.g. BERT) that can be adapted to different down-stream
-tasks.
+It is a home for all species of pretrained language models (e.g. BERT) that can be adapted to **different down-stream tasks**.
 The aim is to make it simple to perform document classification, NER and question answering, for example, using the one language model.
-The standardized interfaces for language models and prediction heads allow flexible extension by researchers and easy adaptation for practitioners.
-Additional experiment tracking and visualizations support you along the way to adapt a SOTA model to your own NLP problem and showcase it as a PoC.
+The **standardized interfaces** for language models and prediction heads allow flexible extension by researchers and easy adaptation for practitioners.
+Additional experiment tracking and visualizations support you along the way to adapt a SOTA model to your own NLP problem and have a **proof-of-concept faster than ever before**.
 
 Core features
 ##############
 - **Easy adaptation of language models** (e.g. BERT) to your own use case
 - Fast integration of **custom datasets** via Processor class
-- **Modular design** of language model and prediction heads
-   - The language model captures a core language understanding that can be shared across tasks
-   - A prediction head uses the output of the language model to perform specific downstream tasks and can be easily tailored to your needs
+- **Modular design** of language model and prediction heads for **multitask learning** and **easy upgrading** to new language models
 - Easy **experiment tracking** & execution
 - Simple **deployment** and **visualization** to showcase your model
 
 Resources
 ##############
-Documentation: `Full documentation <https://farm.deepset.ai>`_
+Documentation:            `Full documentation <https://farm.deepset.ai>`_
 
-Introduction to transfer learning: `Blog <https://www.digitalminds.io/blog/transfer_learning_entering_a_new_era_in_nlp>`_
+Intro Transfer Learning:  `Blog post <https://www.digitalminds.io/blog/transfer_learning_entering_a_new_era_in_nlp>`_
 
-Tutorial: `Jupyter notebook <https://github.com/deepset-ai/FARM/blob/master/tutorials/1_farm_building_blocks.ipynb>`_ and `Colab notebook <https://colab.research.google.com/drive/130_7dgVC3VdLBPhiEkGULHmqSlflhmVM>`_
+Tutorial:                 `Jupyter notebook <https://github.com/deepset-ai/FARM/blob/master/tutorials/1_farm_building_blocks.ipynb>`_ and `Colab notebook <https://colab.research.google.com/drive/130_7dgVC3VdLBPhiEkGULHmqSlflhmVM>`_
 
 Installation
 #############
