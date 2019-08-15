@@ -8,6 +8,22 @@
 
 (**F**\ ramework for **A**\ dapting **R**\ epresentation **M**\ odels)
 
+.. image:: https://img.shields.io/github/release/deepset-ai/farm
+	:target: https://github.com/deepset-ai/FARM/releases
+	:alt: Release
+
+.. image:: https://img.shields.io/github/license/deepset-ai/farm
+	:target: https://github.com/deepset-ai/FARM/blob/master/LICENSE
+	:alt: License
+
+.. image:: https://img.shields.io/github/last-commit/deepset-ai/farm
+	:target: https://github.com/deepset-ai/FARM/commits/master
+	:alt: Last Commit
+
+.. image:: https://img.shields.io/badge/code%20style-black-000000.svg?style=flat-square
+	:target: https://github.com/ambv/black
+	:alt: Last Commit
+
 What is it?
 ############
 FARM makes cutting edge **Transfer Learning** for NLP simple.
@@ -17,7 +33,7 @@ The aim is to make it simple to perform document classification, NER and questio
 The standardized interfaces for language models and prediction heads allow flexible extension by researchers and easy adaptation for practitioners.
 Additional experiment tracking and visualizations support you along the way to adapt a SOTA model to your own NLP problem and showcase it as a PoC.
 
-Have a look at `this blog post <https://www.digitalminds.io/blog/transfer_learning_entering_a_new_era_in_nlp>`_ for an introduction to Transfer Learning
+Have a look at for an introduction to Transfer Learning
  or see the `full documentation <https://farm.deepset.ai>`_ for more details about FARM
 
 Core features
@@ -30,6 +46,11 @@ Core features
 - Easy experiment tracking & execution
 - Simple deployment and visualization to showcase your PoC
 
+Resources
+##############
+Documentation: `Full documentation <https://farm.deepset.ai>`_
+Introduction to transfer learning: `Blog <https://www.digitalminds.io/blog/transfer_learning_entering_a_new_era_in_nlp>`_
+Tutorial: `Jupyter notebook <https://github.com/deepset-ai/FARM/blob/master/tutorials/1_farm_building_blocks.ipynb>`_ and `Colab notebook <https://colab.research.google.com/drive/130_7dgVC3VdLBPhiEkGULHmqSlflhmVM>`_
 
 Installation
 #############
@@ -41,9 +62,9 @@ Recommended (because of active development)::
     pip install -r requirements.txt
     pip install --editable .
 
-If problems occur, please do a git pull. the --editable flag will update changes immediately.
+If problems occur, please do a git pull. The --editable flag will update changes immediately.
 
-With pip::
+From PyPi::
 
     pip install farm
 
@@ -67,10 +88,6 @@ FARM offers two modes for model training:
 .. raw:: html
 
     <img src="https://raw.githubusercontent.com/deepset-ai/FARM/master/docs/img/code_snippet_building_blocks.png">
-
-See this `Jupyter notebook <https://github.com/deepset-ai/FARM/blob/master/tutorials/1_farm_building_blocks.ipynb>`_
-or the same code in a `Colab notebook <https://colab.research.google.com/drive/130_7dgVC3VdLBPhiEkGULHmqSlflhmVM>`_
-for an interactive tutorial.
 
 *Usecases:* Custom datasets, language models, prediction heads ...
 
