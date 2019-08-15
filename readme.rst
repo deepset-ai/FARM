@@ -36,17 +36,18 @@ Core features
 ##############
 - **Easy adaptation of language models** (e.g. BERT) to your own use case
 - Fast integration of **custom datasets** via Processor class
-- **Modular design** of language model and prediction heads for **multitask learning** and **easy upgrading** to new language models
-- Easy **experiment tracking** & execution
+- **Modular design** of language model and prediction heads
+- Switch between heads or just combine them for  **multitask learning**
+- **Smooth upgrading** to new language models
+- Powerful **experiment tracking** & execution
 - Simple **deployment** and **visualization** to showcase your model
 
 Resources
 ##############
-Documentation:            `Full documentation <https://farm.deepset.ai>`_
-
-Intro Transfer Learning:  `Blog post <https://www.digitalminds.io/blog/transfer_learning_entering_a_new_era_in_nlp>`_
-
-Tutorial:                 `Jupyter notebook <https://github.com/deepset-ai/FARM/blob/master/tutorials/1_farm_building_blocks.ipynb>`_ and `Colab notebook <https://colab.research.google.com/drive/130_7dgVC3VdLBPhiEkGULHmqSlflhmVM>`_
+- `Documentation <https://farm.deepset.ai>`_
+- `Intro Transfer Learning (Blog) <https://www.digitalminds.io/blog/transfer_learning_entering_a_new_era_in_nlp>`_
+- `Tutorial (Jupyter notebook) <https://github.com/deepset-ai/FARM/blob/master/tutorials/1_farm_building_blocks.ipynb>`_
+- `Tutorial (Colab notebook) <https://colab.research.google.com/drive/130_7dgVC3VdLBPhiEkGULHmqSlflhmVM>`_
 
 Installation
 #############
