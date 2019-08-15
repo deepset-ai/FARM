@@ -30,7 +30,7 @@ FARM makes cutting edge **Transfer Learning** for NLP simple.
 It is a home for all species of pretrained language models (e.g. BERT) that can be adapted to **different down-stream tasks**.
 The aim is to make it simple to perform document classification, NER and question answering, for example, using the one language model.
 The **standardized interfaces** for language models and prediction heads allow flexible extension by researchers and easy adaptation for practitioners.
-Additional experiment tracking and visualizations support you along the way to adapt a SOTA model to your own NLP problem and have a **proof-of-concept faster than ever before**.
+Additional experiment tracking and visualizations support you along the way to adapt a SOTA model to your own NLP problem and have a **very fast proof-of-concept**.
 
 Core features
 ##############
