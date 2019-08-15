@@ -33,9 +33,6 @@ The aim is to make it simple to perform document classification, NER and questio
 The standardized interfaces for language models and prediction heads allow flexible extension by researchers and easy adaptation for practitioners.
 Additional experiment tracking and visualizations support you along the way to adapt a SOTA model to your own NLP problem and showcase it as a PoC.
 
-Have a look at for an introduction to Transfer Learning
- or see the `full documentation <https://farm.deepset.ai>`_ for more details about FARM
-
 Core features
 ##############
 - Easy adaptation of pretrained language models (e.g. BERT) to your own use case
@@ -54,7 +51,6 @@ Tutorial: `Jupyter notebook <https://github.com/deepset-ai/FARM/blob/master/tuto
 
 Installation
 #############
-
 Recommended (because of active development)::
 
     git clone https://github.com/deepset-ai/FARM.git
