@@ -62,7 +62,7 @@ class Processor(ABC):
         data_dir,
         label_dtype=torch.long,
         multiprocessing_chunk_size=1_000,
-        max_processes=None,
+        max_processes=128,
         share_all_baskets_for_multiprocessing=False,
     ):
         """
@@ -88,11 +88,17 @@ class Processor(ABC):
         :param data_dir: The directory in which the train, test and perhaps dev files can be found.
         :type data_dir: str
         :param label_dtype: The torch dtype for the labels.
-
+        :param max_processes: maximum number of processing to use for Multiprocessing.
+        :type max_processes: int
         """
-        self.tokenizer = tokenizer
-        self.max_seq_len = max_seq_len
-        self.metrics = [metrics] if isinstance(metrics, str) else metrics
+
+        # The Multiprocessing functions in the Class are classmethods to avoid passing(and pickling) of class-objects
+        # that are very large in size(eg, self.baskets). Since classmethods have access to only class attributes, all
+        # objects required in Multiprocessing must be set as class attributes.
+        Processor.tokenizer = tokenizer
+        Processor.max_seq_len = max_seq_len
+        Processor.label_list = label_list
+
         # data sets
         self.train_filename = train_filename
         self.dev_filename = dev_filename
@@ -100,13 +106,14 @@ class Processor(ABC):
         self.dev_split = dev_split
         self.data_dir = data_dir
         # labels
-        self.label_list = label_list
         self.label_dtype = label_dtype
         self.label_maps = []
         # multiprocessing
         self.multiprocessing_chunk_size = multiprocessing_chunk_size
         self.share_all_baskets_for_multiprocessing = share_all_baskets_for_multiprocessing
         self.max_processes = max_processes
+        # others
+        self.metrics = [metrics] if isinstance(metrics, str) else metrics
 
         # create label maps (one per prediction head)
         if any(isinstance(i, list) for i in label_list):
@@ -214,7 +221,9 @@ class Processor(ABC):
         ]
 
     def _init_samples_in_baskets(self):
-        num_cpus = min(mp.cpu_count(), self.max_processes)
+        chunks_to_process = int(len(self.baskets) / self.multiprocessing_chunk_size)
+        num_cpus = min(mp.cpu_count(), self.max_processes, chunks_to_process) or 1
+
         logger.info(
             f"Got ya {num_cpus} parallel workers to fill the baskets with samples (chunksize = {self.multiprocessing_chunk_size})..."
         )
@@ -413,19 +422,21 @@ class GNADProcessor(Processor):
         )
         return dicts
 
-    def _dict_to_samples(self, dict: dict) -> [Sample]:
+    @classmethod
+    def _dict_to_samples(cls, dict: dict, all_baskets=None) -> [Sample]:
         # this tokenization also stores offsets
         tokenized = tokenize_with_metadata(
-            dict["text"], self.tokenizer, self.max_seq_len
+            dict["text"], cls.tokenizer, cls.max_seq_len
         )
         return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
 
-    def _sample_to_features(self, sample) -> dict:
+    @classmethod
+    def _sample_to_features(cls, sample) -> dict:
         features = sample_to_features_text(
             sample=sample,
-            label_list=self.label_list,
-            max_seq_len=self.max_seq_len,
-            tokenizer=self.tokenizer,
+            label_list=cls.label_list,
+            max_seq_len=cls.max_seq_len,
+            tokenizer=cls.tokenizer,
         )
         return features
 
@@ -447,31 +458,26 @@ class GermEval18CoarseProcessor(Processor):
     ):
 
         # General Processor attributes
-        self.label_list = ["OTHER", "OFFENSE"]
-        self.metrics = "f1_macro"
-        self.label_dtype = torch.long
+        label_list = ["OTHER", "OFFENSE"]
+        metrics = "f1_macro"
+        label_dtype = torch.long
 
         # Custom Processor attributes
         self.delimiter = "\t"
         self.skiprows = [0]
         self.columns = ["text", "label", "unused"]
 
-        GermEval18CoarseProcessor.tokenizer = tokenizer
-        GermEval18CoarseProcessor.max_seq_len = max_seq_len
-        GermEval18CoarseProcessor.label_list = self.label_list
-
         super(GermEval18CoarseProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
-            label_list=self.label_list,
-            metrics=self.metrics,
+            label_list=label_list,
+            metrics=metrics,
             train_filename=train_filename,
             dev_filename=dev_filename,
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
-            label_dtype=self.label_dtype,
-            max_processes=1
+            label_dtype=label_dtype,
         )
 
     def _file_to_dicts(self, file: str) -> dict:
