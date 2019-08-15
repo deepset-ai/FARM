@@ -62,6 +62,7 @@ class Processor(ABC):
         data_dir,
         label_dtype=torch.long,
         multiprocessing_chunk_size=1_000,
+        max_processes=None,
         share_all_baskets_for_multiprocessing=False,
     ):
         """
@@ -91,17 +92,21 @@ class Processor(ABC):
         """
         self.tokenizer = tokenizer
         self.max_seq_len = max_seq_len
-        self.label_list = label_list
         self.metrics = [metrics] if isinstance(metrics, str) else metrics
+        # data sets
         self.train_filename = train_filename
         self.dev_filename = dev_filename
         self.test_filename = test_filename
         self.dev_split = dev_split
         self.data_dir = data_dir
+        # labels
+        self.label_list = label_list
         self.label_dtype = label_dtype
         self.label_maps = []
+        # multiprocessing
         self.multiprocessing_chunk_size = multiprocessing_chunk_size
         self.share_all_baskets_for_multiprocessing = share_all_baskets_for_multiprocessing
+        self.max_processes = max_processes
 
         # create label maps (one per prediction head)
         if any(isinstance(i, list) for i in label_list):
@@ -194,11 +199,11 @@ class Processor(ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def _dict_to_samples(self, dict: dict) -> [Sample]:
+    def _dict_to_samples(cls, dict: dict, all_dicts=None, **kwargs) -> [Sample]:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def _sample_to_features(self, sample: Sample) -> dict:
+    def _sample_to_features(cls, sample: Sample) -> dict:
         raise NotImplementedError()
 
     def _init_baskets_from_file(self, file):
@@ -209,7 +214,7 @@ class Processor(ABC):
         ]
 
     def _init_samples_in_baskets(self):
-        num_cpus = mp.cpu_count()
+        num_cpus = min(mp.cpu_count(), self.max_processes)
         logger.info(
             f"Got ya {num_cpus} parallel workers to fill the baskets with samples (chunksize = {self.multiprocessing_chunk_size})..."
         )
@@ -217,13 +222,13 @@ class Processor(ABC):
         with mp.Pool(processes=num_cpus) as p:
             with mp.Manager() as manager:
                 if self.share_all_baskets_for_multiprocessing:
-                    all_baskets = manager.list([b.raw for b in self.baskets])
+                    all_dicts = manager.list([b.raw for b in self.baskets])
                 else:
-                    all_baskets = None
+                    all_dicts = None
 
                 with mp.Pool(processes=num_cpus) as p:
                     samples = p.imap(
-                        partial(self._multiproc_sample, all_baskets=all_baskets),
+                        partial(self._multiproc_sample, all_dicts=all_dicts),
                         self.baskets,
                         chunksize=self.multiprocessing_chunk_size,
                     )
@@ -234,14 +239,14 @@ class Processor(ABC):
                         b.samples = s
 
     @classmethod
-    def _multiproc_sample(cls, basket, all_baskets=None):
-        samples = cls._dict_to_samples(basket.raw, all_baskets)
+    def _multiproc_sample(cls, basket, all_dicts=None):
+        samples = cls._dict_to_samples(dict=basket.raw, all_dicts=all_dicts)
         for num, sample in enumerate(samples):
             sample.id = f"{basket.id}-{num}"
         return samples
 
     def _featurize_samples(self):
-        num_cpus = mp.cpu_count()
+        num_cpus = min(mp.cpu_count(), self.max_processes)
         logger.info(
             f"Got ya {num_cpus} parallel workers to featurize samples in baskets (chunksize = {self.multiprocessing_chunk_size}) ..."
         )
@@ -265,12 +270,14 @@ class Processor(ABC):
             all_features.extend(cls._sample_to_features(sample=sample))
         return all_features
 
-    def _create_dataset(self):
-        baskets = self.baskets
+    def _create_dataset(self, keep_baskets=False):
         features_flat = []
-        for basket in baskets:
+        for basket in self.baskets:
             for sample in basket.samples:
                 features_flat.extend(sample.features)
+        if not keep_baskets:
+            # free up some RAM, we don't need baskets from here on
+            self.baskets = None
         dataset, tensor_names = convert_features_to_dataset(features=features_flat)
         return dataset, tensor_names
 
@@ -344,7 +351,7 @@ class Processor(ABC):
 
 
 #########################################
-# Sequence Classification Processors ####
+# Text Classification Processors ####
 #########################################
 class GNADProcessor(Processor):
     """
@@ -449,6 +456,10 @@ class GermEval18CoarseProcessor(Processor):
         self.skiprows = [0]
         self.columns = ["text", "label", "unused"]
 
+        GermEval18CoarseProcessor.tokenizer = tokenizer
+        GermEval18CoarseProcessor.max_seq_len = max_seq_len
+        GermEval18CoarseProcessor.label_list = self.label_list
+
         super(GermEval18CoarseProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
@@ -460,6 +471,7 @@ class GermEval18CoarseProcessor(Processor):
             dev_split=dev_split,
             data_dir=data_dir,
             label_dtype=self.label_dtype,
+            max_processes=1
         )
 
     def _file_to_dicts(self, file: str) -> dict:
@@ -471,19 +483,21 @@ class GermEval18CoarseProcessor(Processor):
         )
         return dicts
 
-    def _dict_to_samples(self, dict: dict, **kwargs) -> [Sample]:
+    @classmethod
+    def _dict_to_samples(cls, dict: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets
         tokenized = tokenize_with_metadata(
-            dict["text"], self.tokenizer, self.max_seq_len
+            dict["text"], cls.tokenizer, cls.max_seq_len
         )
         return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
 
-    def _sample_to_features(self, sample) -> dict:
+    @classmethod
+    def _sample_to_features(cls, sample) -> dict:
         features = sample_to_features_text(
             sample=sample,
-            label_list=self.label_list,
-            max_seq_len=self.max_seq_len,
-            tokenizer=self.tokenizer,
+            label_list=cls.label_list,
+            max_seq_len=cls.max_seq_len,
+            tokenizer=cls.tokenizer,
         )
         return features
 
@@ -744,11 +758,11 @@ class BertStyleLMProcessor(Processor):
         return dicts
 
     @classmethod
-    def _dict_to_samples(cls, dict, all_baskets=None):
+    def _dict_to_samples(cls, dict, all_dicts=None):
         doc = dict["doc"]
         samples = []
         for idx in range(len(doc) - 1):
-            text_a, text_b, is_next_label = get_sentence_pair(doc, all_baskets, idx)
+            text_a, text_b, is_next_label = get_sentence_pair(doc, all_dicts, idx)
             sample_in_clear_text = {
                 "text_a": text_a,
                 "text_b": text_b,
