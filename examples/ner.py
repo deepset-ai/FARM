@@ -2,7 +2,7 @@
 import logging
 
 from farm.data_handler.data_silo import DataSilo
-from farm.data_handler.processor import CONLLProcessor
+from farm.data_handler.processor import CONLLProcessor, NERProcessor
 from farm.modeling.optimization import initialize_optimizer
 from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
@@ -37,7 +37,7 @@ tokenizer = BertTokenizer.from_pretrained(
 )
 
 # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
-processor = CONLLProcessor(
+processor = NERProcessor(
     tokenizer=tokenizer, max_seq_len=128, data_dir="../data/conll03-de"
 )
 
