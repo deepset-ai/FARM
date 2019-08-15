@@ -45,7 +45,7 @@ Core features
 Resources
 ##############
 - `Full Documentation <https://farm.deepset.ai>`_
-- `Intro to Transfer Learning (Blog) <https://www.digitalminds.io/blog/transfer_learning_entering_a_new_era_in_nlp>`_
+- `Intro to Transfer Learning (Blog) <https://medium.com/voice-tech-podcast/https-medium-com-deepset-ai-transfer-learning-entering-a-new-era-in-nlp-db523d9e667b>`_
 - `Tutorial (Jupyter notebook) <https://github.com/deepset-ai/FARM/blob/master/tutorials/1_farm_building_blocks.ipynb>`_
 - `Tutorial (Colab notebook) <https://colab.research.google.com/drive/130_7dgVC3VdLBPhiEkGULHmqSlflhmVM>`_
 
