@@ -130,8 +130,8 @@ class Processor(ABC):
         :param tokenizer: A tokenizer object
         :param max_seq_len: Sequences longer than this will be truncated.
         :type max_seq_len: int
-        :param dev_split: (optional) Split a dev set from the training set using dev_split as proportion
-        :type dev_split: float
+        :param kwargs: placeholder for passing generic parameters
+        :type kwargs: object
         :return: An instance of the specified processor.
         """
         return cls.subclasses[processor_name](
@@ -173,7 +173,6 @@ class Processor(ABC):
         :type save_dir: str
         """
         os.makedirs(save_dir, exist_ok=True)
-        # TODO loop through all processor attributes and save those that need saving (all except
         config = self.generate_config()
         config["tokenizer"] = self.tokenizer.__class__.__name__
         self.tokenizer.save_vocabulary(save_dir)
@@ -543,6 +542,8 @@ class SquadProcessor(Processor):
         :type doc_stride: int
         :param max_query_length: Maximum length of the question (in number of subword tokens)
         :type max_query_length: int
+        :param kwargs: placeholder for passing generic parameters
+        :type kwargs: object
         """
         label_list = ["start_token", "end_token"]
 

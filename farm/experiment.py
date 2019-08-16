@@ -4,7 +4,11 @@ import torch
 from farm.data_handler.data_silo import DataSilo
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import LanguageModel
-from farm.modeling.optimization import BertAdam, WarmupLinearSchedule, initialize_optimizer
+from farm.modeling.optimization import (
+    BertAdam,
+    WarmupLinearSchedule,
+    initialize_optimizer,
+)
 from farm.modeling.prediction_head import PredictionHead
 from farm.modeling.tokenization import BertTokenizer
 from farm.data_handler.processor import Processor
@@ -43,25 +47,33 @@ def run_experiment(args):
 
     # Init device and distributed settings
     device, n_gpu = initialize_device_settings(
-        use_cuda=args.general.cuda, local_rank=args.general.local_rank, fp16=args.general.fp16
+        use_cuda=args.general.cuda,
+        local_rank=args.general.local_rank,
+        fp16=args.general.fp16,
     )
 
-    args.parameter.batch_size = int(args.parameter.batch_size // args.parameter.gradient_accumulation_steps)
+    args.parameter.batch_size = int(
+        args.parameter.batch_size // args.parameter.gradient_accumulation_steps
+    )
     if n_gpu > 1:
         args.parameter.batch_size = args.parameter.batch_size * n_gpu
     set_all_seeds(args.general.seed)
 
     # Prepare Data
-    tokenizer = BertTokenizer.from_pretrained(args.parameter.model, do_lower_case=args.parameter.lower_case)
+    tokenizer = BertTokenizer.from_pretrained(
+        args.parameter.model, do_lower_case=args.parameter.lower_case
+    )
     processor = Processor.load(
         tokenizer=tokenizer,
         max_seq_len=args.parameter.max_seq_len,
         data_dir=args.general.data_dir,
-        **args.task.toDict()
+        **args.task.toDict(),  # args is of type DotMap, a wrapper around Dicts to access keys as attributes
     )
 
     data_silo = DataSilo(
-        processor=processor, batch_size=args.parameter.batch_size, distributed=distributed
+        processor=processor,
+        batch_size=args.parameter.batch_size,
+        distributed=distributed,
     )
 
     class_weights = None
