@@ -15,14 +15,19 @@
   },
 
   "task": {
-    "name":            {"value": null, "default": "test_lm_finetuning",  "desc": "Either: GermEval18Coarse or GermEval18Fine."},
-    "metric":          {"value": null, "default": "f1_macro",            "desc": "GermEval18 uses macro averaged f1 score for their leaderboard."},
-    "output_mode":     {"value": null, "default": "lm",                  "desc": "Used for data loading and evaluation. Choices: classification,  ner,  TBD"},
+    "name":            {"value": null, "default": "test_lm_finetuning",  "desc": "Description."},
+    "output_mode":     {"value": null, "default": "lm",                  "desc": "Used for data loading and evaluation. Choices: classification,  ner, lm  TBD"},
     "prediction_head": {"value": null, "default": "lm",                  "desc": "Prediction head on top of vanilla LM Model,  must correspond to task and data."},
 
     "do_eval":         {"value": null, "default": false, "desc": "Whether to run eval on the dev set."},
     "do_train":        {"value": null, "default": true,  "desc": "Whether to run training. Can be used to only evaluate on an already trained model."},
-    "dev_split":       {"value": null, "default": 0.1,   "desc": "Split a dev set from the training set using dev_split as proportion."}
+
+    "processor_name":  {"value": null, "default": "BertStyleLMProcessor", "desc": "Class name of DataProcessor."},
+    "dev_split":        {"value": null, "default": 0.1,              "desc": "Split a dev set from the training set using dev_split as proportion."},
+    "train_filename":   {"value": null, "default": "train.txt",      "desc": "Filename for training."},
+    "dev_filename":     {"value": null, "default": "dev.txt",        "desc": "Filename for development."},
+    "test_filename":    {"value": null, "default": "test.txt",       "desc": "Filename for testing."},
+    "metrics":          {"value": null, "default": ["acc","acc"],       "desc": "Metric used. We need two for both prediction heads."}
   },
 
   "parameter": {

@@ -1,20 +1,20 @@
-import torch
-import os
 import abc
-from abc import ABC
-import random
-import logging
 import json
+import logging
+import os
+import random
+from abc import ABC
+from inspect import signature
+
+import torch
 from tqdm import tqdm
 
-from farm.modeling.tokenization import BertTokenizer, tokenize_with_metadata
-
-from farm.data_handler.utils import (
-    read_tsv,
-    read_docs_from_txt,
-    read_ner_file,
-    read_squad_file,
-    is_json,
+from farm.data_handler.dataset import convert_features_to_dataset
+from farm.data_handler.input_features import (
+    samples_to_features_ner,
+    samples_to_features_bert_lm,
+    sample_to_features_text,
+    sample_to_features_squad,
 )
 from farm.data_handler.samples import (
     Sample,
@@ -22,16 +22,15 @@ from farm.data_handler.samples import (
     create_samples_sentence_pairs,
     create_samples_squad,
 )
-from farm.data_handler.input_features import (
-    samples_to_features_ner,
-    samples_to_features_bert_lm,
-    sample_to_features_text,
-    sample_to_features_squad,
+from farm.data_handler.utils import (
+    read_tsv,
+    read_docs_from_txt,
+    read_ner_file,
+    read_squad_file,
+    is_json,
 )
-from farm.data_handler.dataset import convert_features_to_dataset
+from farm.modeling.tokenization import BertTokenizer, tokenize_with_metadata
 from farm.utils import MLFlowLogger as MlLogger
-
-from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +118,19 @@ class Processor(ABC):
         cls.subclasses[cls.__name__] = cls
 
     @classmethod
-    def load(cls, processor_name, data_dir, tokenizer, max_seq_len, **kwargs):
+    def load(
+        cls,
+        processor_name,
+        data_dir,
+        tokenizer,
+        max_seq_len,
+        train_filename,
+        dev_filename,
+        test_filename,
+        dev_split,
+        metrics,
+        **kwargs,
+    ):
         """
         Loads the class of processor specified by processor name.
 
@@ -130,12 +141,38 @@ class Processor(ABC):
         :param tokenizer: A tokenizer object
         :param max_seq_len: Sequences longer than this will be truncated.
         :type max_seq_len: int
+        :param train_filename: The name of the file containing training data.
+        :type train_filename: str
+        :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
+                             will be a slice of the train set.
+        :type dev_filename: str or None
+        :param test_filename: The name of the file containing test data.
+        :type test_filename: str
+        :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
+        :type dev_split: float
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
+        :param metrics: metrics used for each prediction head output
+        :type metrics: list
         :return: An instance of the specified processor.
         """
+
+        sig = signature(cls.subclasses[processor_name])
+        unused_args = {k: v for k, v in kwargs.items() if k not in sig.parameters}
+        logger.debug(
+            f"Got more parameters than needed for loading {processor_name}: {unused_args}. "
+            f"Those won't be used!"
+        )
         return cls.subclasses[processor_name](
-            data_dir=data_dir, tokenizer=tokenizer, max_seq_len=max_seq_len, **kwargs
+            data_dir=data_dir,
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            train_filename=train_filename,
+            dev_filename=dev_filename,
+            test_filename=test_filename,
+            dev_split=dev_split,
+            metrics=metrics,
+            **kwargs,
         )
 
     @classmethod
@@ -320,7 +357,6 @@ class TextClassificationProcessor(Processor):
         self.quote_char = quote_char
         self.skiprows = skiprows
         self.columns = columns
-        self.additional_params = kwargs
 
         super(TextClassificationProcessor, self).__init__(
             tokenizer=tokenizer,
@@ -402,7 +438,6 @@ class NERProcessor(Processor):
 
         # Custom processor attributes
         self.delimiter = delimiter
-        self.additional_params = kwargs
 
         super(NERProcessor, self).__init__(
             tokenizer=tokenizer,
@@ -465,8 +500,6 @@ class BertStyleLMProcessor(Processor):
         # Custom attributes
         self.delimiter = ""
 
-        self.additional_params = kwargs
-
         super(BertStyleLMProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
@@ -517,6 +550,8 @@ class SquadProcessor(Processor):
         dev_filename="dev-v2.0.json",
         test_filename=None,
         dev_split=0,
+        label_list=["start_token", "end_token"],
+        metrics=["squad"],
         doc_stride=128,
         max_query_length=64,
         **kwargs,
@@ -545,21 +580,11 @@ class SquadProcessor(Processor):
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
         """
-        label_list = ["start_token", "end_token"]
 
-        metrics = ["squad"]
-        self.train_filename = train_filename
-        self.dev_filename = dev_filename
-        self.test_filename = test_filename
-        self.dev_split = dev_split
-        label_dtype = torch.long  # TODO check if that is correct and needed
         self.target = "classification"
         self.ph_output_type = "per_token_squad"
-        self.max_seq_len = max_seq_len
         self.doc_stride = doc_stride
         self.max_query_length = max_query_length
-
-        self.additional_params = kwargs
 
         super(SquadProcessor, self).__init__(
             tokenizer=tokenizer,
@@ -571,7 +596,7 @@ class SquadProcessor(Processor):
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
-            label_dtype=label_dtype,
+            label_dtype=torch.long,  # TODO check if that is correct and needed
         )
         self.data = {}
         self.counts = {}

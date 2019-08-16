@@ -67,7 +67,12 @@ def run_experiment(args):
         tokenizer=tokenizer,
         max_seq_len=args.parameter.max_seq_len,
         data_dir=args.general.data_dir,
-        **args.task.toDict(),  # args is of type DotMap, a wrapper around Dicts to access keys as attributes
+        train_filename=args.task.train_filename,
+        dev_filename=args.task.dev_filename,
+        test_filename=args.task.test_filename,
+        dev_split=args.task.dev_split,
+        metrics=args.task.metrics,
+        **args.task.toDict(),  # args is of type DotMap and needs conversion to std python dicts
     )
 
     data_silo = DataSilo(
