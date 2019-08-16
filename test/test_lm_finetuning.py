@@ -1,16 +1,13 @@
-
 import logging
 
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import BertStyleLMProcessor
+from farm.experiment import initialize_optimizer
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
 from farm.modeling.prediction_head import BertLMHead, NextSentenceHead
 from farm.modeling.tokenization import BertTokenizer
 from farm.train import Trainer
-from farm.experiment import initialize_optimizer
-from farm.infer import Inferencer
-
 from farm.utils import set_all_seeds, initialize_device_settings
 
 
@@ -33,7 +30,7 @@ def test_lm_finetuning(caplog):
         test_filename="test-sample.txt",
         dev_filename=None,
         tokenizer=tokenizer,
-        max_seq_len=64
+        max_seq_len=64,
     )
     data_silo = DataSilo(processor=processor, batch_size=batch_size)
 
@@ -73,7 +70,7 @@ def test_lm_finetuning(caplog):
     model.save(save_dir)
     processor.save(save_dir)
 
-    #TODO: inferencer needs to get a new minimalist processor for vector extraction.
+    # TODO: inferencer needs to get a new minimalist processor for vector extraction.
     # The stored BertStyleLM is not what we need here.
 
     # basic_texts = [

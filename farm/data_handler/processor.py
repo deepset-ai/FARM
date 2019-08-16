@@ -6,6 +6,7 @@ import random
 import logging
 import json
 import time
+import inspect
 from inspect import signature
 
 from tqdm import tqdm
@@ -114,7 +115,9 @@ class Processor(ABC):
         self.label_maps = []
         # multiprocessing
         self.multiprocessing_chunk_size = multiprocessing_chunk_size
-        self.share_all_baskets_for_multiprocessing = share_all_baskets_for_multiprocessing
+        self.share_all_baskets_for_multiprocessing = (
+            share_all_baskets_for_multiprocessing
+        )
         self.max_processes = max_processes
         # others
         self.metrics = [metrics] if isinstance(metrics, str) else metrics
@@ -244,10 +247,11 @@ class Processor(ABC):
 
     def generate_config(self):
         """
-        Generates config file from Class parameters (only for sensible config parameters).
+        Generates config file from Class and instance attributes (only for sensible config parameters).
         """
         config = {}
-        for key, value in self.__dict__.items():
+        # self.__dict__ doesn't give parent class attributes
+        for key, value in inspect.getmembers(self):
             if is_json(value) and key[0] != "_":
                 config[key] = value
         return config
@@ -306,28 +310,29 @@ class Processor(ABC):
         return samples
 
     def _featurize_samples(self):
-        num_cpus = min(mp.cpu_count(), self.max_processes)
+        chunks_to_process = int(len(self.baskets) / self.multiprocessing_chunk_size)
+        num_cpus = min(mp.cpu_count(), self.max_processes, chunks_to_process) or 1
         logger.info(
             f"Got ya {num_cpus} parallel workers to featurize samples in baskets (chunksize = {self.multiprocessing_chunk_size}) ..."
         )
         with mp.Pool(processes=num_cpus) as p:
-            sample_features = p.imap(
+            all_features_gen = p.imap(
                 self._multiproc_featurize,
                 self.baskets,
                 chunksize=self.multiprocessing_chunk_size,
             )
 
-            for _features, basket in tqdm(
-                zip(sample_features, self.baskets), total=len(self.baskets)
+            for basket_features, basket in tqdm(
+                zip(all_features_gen, self.baskets), total=len(self.baskets)
             ):
-                for sample in basket.samples:
-                    sample.features = _features
+                for f, s in zip(basket_features, basket.samples):
+                    s.features = f
 
     @classmethod
     def _multiproc_featurize(cls, basket):
         all_features = []
         for sample in basket.samples:
-            all_features.extend(cls._sample_to_features(sample=sample))
+            all_features.append(cls._sample_to_features(sample=sample))
         return all_features
 
     def _create_dataset(self, keep_baskets=False):
@@ -354,13 +359,13 @@ class Processor(ABC):
             a = time.time()
             self._init_baskets_from_file(file)
             b = time.time()
-            MlLogger.log_metrics(metrics={"t_from_file": (b-a)/60}, step=0)
+            MlLogger.log_metrics(metrics={"t_from_file": (b - a) / 60}, step=0)
             self._init_samples_in_baskets()
             c = time.time()
-            MlLogger.log_metrics(metrics={"t_init_samples": (c-b)/60}, step=0)
+            MlLogger.log_metrics(metrics={"t_init_samples": (c - b) / 60}, step=0)
             self._featurize_samples()
             d = time.time()
-            MlLogger.log_metrics(metrics={"t_featurize_samples": (d-c)/60}, step=0)
+            MlLogger.log_metrics(metrics={"t_featurize_samples": (d - c) / 60}, step=0)
             self._log_samples(3)
         else:
             self._init_baskets_from_file(file)
@@ -469,9 +474,7 @@ class TextClassificationProcessor(Processor):
     @classmethod
     def _dict_to_samples(cls, dict: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets
-        tokenized = tokenize_with_metadata(
-            dict["text"], cls.tokenizer, cls.max_seq_len
-        )
+        tokenized = tokenize_with_metadata(dict["text"], cls.tokenizer, cls.max_seq_len)
         return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
 
     @classmethod
@@ -546,9 +549,7 @@ class NERProcessor(Processor):
     @classmethod
     def _dict_to_samples(cls, dict: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets, which helps to map our entity tags back to original positions
-        tokenized = tokenize_with_metadata(
-            dict["text"], cls.tokenizer, cls.max_seq_len
-        )
+        tokenized = tokenize_with_metadata(dict["text"], cls.tokenizer, cls.max_seq_len)
         return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
 
     @classmethod
@@ -622,9 +623,15 @@ class BertStyleLMProcessor(Processor):
                 "is_next_label": is_next_label,
             }
             tokenized = {}
-            tokenized["text_a"] = tokenize_with_metadata(text_a, cls.tokenizer, cls.max_seq_len)
-            tokenized["text_b"] = tokenize_with_metadata(text_b, cls.tokenizer, cls.max_seq_len)
-            samples.append(Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized))
+            tokenized["text_a"] = tokenize_with_metadata(
+                text_a, cls.tokenizer, cls.max_seq_len
+            )
+            tokenized["text_b"] = tokenize_with_metadata(
+                text_b, cls.tokenizer, cls.max_seq_len
+            )
+            samples.append(
+                Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized)
+            )
         return samples
 
     @classmethod
@@ -701,9 +708,6 @@ class SquadProcessor(Processor):
             data_dir=data_dir,
             label_dtype=torch.long,  # TODO check if that is correct and needed
         )
-        self.data = {}
-        self.counts = {}
-        self.stage = None
 
     def dataset_from_dicts(self, dicts):
         dicts_converted = [self._convert_inference(x) for x in dicts]
@@ -716,7 +720,8 @@ class SquadProcessor(Processor):
         dataset, tensor_names = self._create_dataset()
         return dataset, tensor_names
 
-    def _convert_inference(self, infer_dict):
+    @classmethod
+    def _convert_inference(cls, infer_dict):
         # convert input coming from inferencer to SQuAD format
         converted = {}
         converted["paragraphs"] = [
