@@ -63,15 +63,21 @@ def run_experiment(args):
     tokenizer = BertTokenizer.from_pretrained(
         args.parameter.model, do_lower_case=args.parameter.lower_case
     )
+    # processor = Processor.load(
+    #     tokenizer=tokenizer,
+    #     max_seq_len=args.parameter.max_seq_len,
+    #     data_dir=args.general.data_dir,
+    #     train_filename=args.task.train_filename,
+    #     dev_filename=args.task.dev_filename,
+    #     test_filename=args.task.test_filename,
+    #     dev_split=args.task.dev_split,
+    #     metrics=args.task.metrics,
+    #     **args.task.toDict(),  # args is of type DotMap and needs conversion to std python dicts
+    # )
     processor = Processor.load(
         tokenizer=tokenizer,
         max_seq_len=args.parameter.max_seq_len,
         data_dir=args.general.data_dir,
-        train_filename=args.task.train_filename,
-        dev_filename=args.task.dev_filename,
-        test_filename=args.task.test_filename,
-        dev_split=args.task.dev_split,
-        metrics=args.task.metrics,
         **args.task.toDict(),  # args is of type DotMap and needs conversion to std python dicts
     )
 
