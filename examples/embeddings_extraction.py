@@ -1,6 +1,6 @@
 import torch
 
-from farm.data_handler.processor import GNADProcessor
+from farm.data_handler.processor import TextClassificationProcessor
 from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
@@ -22,8 +22,8 @@ tokenizer = BertTokenizer.from_pretrained(
     pretrained_model_name_or_path=lang_model, do_lower_case=False
 )
 
-# 2. Create a DataProcessor only for inference, in this case, we utilize the GNAD Processor and data_dir can be empty
-processor = GNADProcessor(
+# 2. Create a DataProcessor only for inference, in this case, we utilize the TextClassificationProcessor and data_dir can be empty
+processor = TextClassificationProcessor(
     data_dir="", tokenizer=tokenizer, max_seq_len=128
 )
 

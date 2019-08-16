@@ -2,7 +2,7 @@
 import logging
 
 from farm.data_handler.data_silo import DataSilo
-from farm.data_handler.processor import CONLLProcessor, NERProcessor
+from farm.data_handler.processor import NERProcessor
 from farm.modeling.optimization import initialize_optimizer
 from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel

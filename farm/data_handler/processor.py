@@ -14,7 +14,7 @@ from farm.data_handler.utils import (
     read_docs_from_txt,
     read_ner_file,
     read_squad_file,
-    is_json
+    is_json,
 )
 from farm.data_handler.samples import (
     Sample,
@@ -135,10 +135,7 @@ class Processor(ABC):
         :return: An instance of the specified processor.
         """
         return cls.subclasses[processor_name](
-            data_dir=data_dir,
-            tokenizer=tokenizer,
-            max_seq_len=max_seq_len,
-            **kwargs
+            data_dir=data_dir, tokenizer=tokenizer, max_seq_len=max_seq_len, **kwargs
         )
 
     @classmethod
@@ -163,7 +160,9 @@ class Processor(ABC):
             tokenizer.add_custom_vocab(os.path.join(load_dir, "custom_vocab.txt"))
         # we have to delete the tokenizer string from config, because we pass it as Object
         del config["tokenizer"]
-        return cls.load(tokenizer=tokenizer, processor_name=config["processor"], **config)
+        return cls.load(
+            tokenizer=tokenizer, processor_name=config["processor"], **config
+        )
 
     def save(self, save_dir):
         """
@@ -289,6 +288,7 @@ class Processor(ABC):
         except Exception as e:
             logger.warning(f"ML logging didn't work: {e}")
 
+
 #########################################
 # Processors for simple tabular data ####
 #########################################
@@ -306,14 +306,14 @@ class TextClassificationProcessor(Processor):
         dev_filename="dev.tsv",
         test_filename="test.tsv",
         dev_split=None,
-        label_list=None,
-        metrics = ["acc"],
+        label_list=[],
+        metrics=["acc"],
         label_dtype=torch.long,
         delimiter="\t",
         quote_char="'",
         skiprows=[0],
         columns=["text", "label"],
-        **kwargs
+        **kwargs,
     ):
 
         # Custom processor attributes
@@ -362,6 +362,7 @@ class TextClassificationProcessor(Processor):
         )
         return features
 
+
 #########################################
 # Processors for NER data ####
 #########################################
@@ -394,11 +395,10 @@ class NERProcessor(Processor):
             "B-OTH",
             "I-OTH",
         ],
-        metrics = ["seq_f1"],
+        metrics=["seq_f1"],
         label_dtype=torch.long,
         delimiter="\t",
-        **kwargs
-
+        **kwargs,
     ):
 
         # Custom processor attributes
@@ -413,359 +413,6 @@ class NERProcessor(Processor):
             train_filename=train_filename,
             dev_filename=dev_filename,
             test_filename=test_filename,
-            dev_split=dev_split,
-            data_dir=data_dir,
-            label_dtype=label_dtype,
-        )
-
-    def _file_to_dicts(self, file: str) -> [dict]:
-        dicts = read_ner_file(filename=file, sep=self.delimiter)
-        return dicts
-
-    def _dict_to_samples(self, dict: dict) -> [Sample]:
-        # this tokenization also stores offsets, which helps to map our entity tags back to original positions
-        tokenized = tokenize_with_metadata(
-            dict["text"], self.tokenizer, self.max_seq_len
-        )
-        return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
-
-    def _sample_to_features(self, sample) -> dict:
-        features = samples_to_features_ner(
-            sample=sample,
-            label_list=self.label_list,
-            max_seq_len=self.max_seq_len,
-            tokenizer=self.tokenizer,
-        )
-        return features
-
-
-#########################################
-# Sequence Classification Processors ####
-#########################################
-class GNADProcessor(Processor):
-    """
-    Used to handle the GNAD dataset
-    """
-
-    def __init__(
-        self,
-        tokenizer,
-        max_seq_len,
-        data_dir,
-        train_filename="train.csv",
-        dev_filename=None,
-        test_filename="test.csv",
-        dev_split=0.1,
-    ):
-
-        # General Processor attributes
-        label_list = [
-            "Web",
-            "Sport",
-            "International",
-            "Panorama",
-            "Wissenschaft",
-            "Wirtschaft",
-            "Kultur",
-            "Etat",
-            "Inland",
-        ]
-        metric = "acc"
-        label_dtype = torch.long
-
-        # Custom processor attributes
-        self.delimiter = ";"
-        self.quote_char = "'"
-        self.skiprows = [0]
-        self.columns = ["label", "text"]
-
-        super(GNADProcessor, self).__init__(
-            tokenizer=tokenizer,
-            max_seq_len=max_seq_len,
-            label_list=label_list,
-            metrics=metric,
-            train_filename=train_filename,
-            dev_filename=dev_filename,
-            test_filename=test_filename,
-            dev_split=dev_split,
-            data_dir=data_dir,
-            label_dtype=label_dtype,
-        )
-
-    def _file_to_dicts(self, file: str) -> [dict]:
-        dicts = read_tsv(
-            filename=file,
-            delimiter=self.delimiter,
-            skiprows=self.skiprows,
-            quotechar=self.quote_char,
-            columns=self.columns,
-        )
-        return dicts
-
-    def _dict_to_samples(self, dict: dict) -> [Sample]:
-        # this tokenization also stores offsets
-        tokenized = tokenize_with_metadata(
-            dict["text"], self.tokenizer, self.max_seq_len
-        )
-        return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
-
-    def _sample_to_features(self, sample) -> dict:
-        features = sample_to_features_text(
-            sample=sample,
-            label_list=self.label_list,
-            max_seq_len=self.max_seq_len,
-            tokenizer=self.tokenizer,
-        )
-        return features
-
-
-class GermEval18CoarseProcessor(Processor):
-    """
-    Used to handle the GermEval18 dataset that uses the coase labels
-    """
-
-    def __init__(
-        self,
-        tokenizer,
-        max_seq_len,
-        data_dir,
-        train_filename="train.tsv",
-        dev_filename=None,
-        test_filename="test.tsv",
-        dev_split=0.1,
-    ):
-
-        # General Processor attributes
-        self.label_list = ["OTHER", "OFFENSE"]
-        self.metrics = "f1_macro"
-        self.label_dtype = torch.long
-
-        # Custom Processor attributes
-        self.delimiter = "\t"
-        self.skiprows = [0]
-        self.columns = ["text", "label", "unused"]
-
-        super(GermEval18CoarseProcessor, self).__init__(
-            tokenizer=tokenizer,
-            max_seq_len=max_seq_len,
-            label_list=self.label_list,
-            metrics=self.metrics,
-            train_filename=train_filename,
-            dev_filename=dev_filename,
-            test_filename=test_filename,
-            dev_split=dev_split,
-            data_dir=data_dir,
-            label_dtype=self.label_dtype,
-        )
-
-    def _file_to_dicts(self, file: str) -> dict:
-        dicts = read_tsv(
-            filename=file,
-            delimiter=self.delimiter,
-            skiprows=self.skiprows,
-            columns=self.columns,
-        )
-        return dicts
-
-    def _dict_to_samples(self, dict: dict) -> [Sample]:
-        # this tokenization also stores offsets
-        tokenized = tokenize_with_metadata(
-            dict["text"], self.tokenizer, self.max_seq_len
-        )
-        return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
-
-    def _sample_to_features(self, sample) -> dict:
-        features = sample_to_features_text(
-            sample=sample,
-            label_list=self.label_list,
-            max_seq_len=self.max_seq_len,
-            tokenizer=self.tokenizer,
-        )
-        return features
-
-
-class GermEval18FineProcessor(Processor):
-    """
-    Used to handle the GermEval18 dataset that uses the fine labels
-    """
-
-    def __init__(
-        self,
-        tokenizer,
-        max_seq_len,
-        data_dir,
-        train_filename="train.tsv",
-        dev_filename=None,
-        test_filename="test.tsv",
-        dev_split=0.1,
-    ):
-
-        # General Processor attributes
-        label_list = ["OTHER", "INSULT", "ABUSE", "PROFANITY"]
-        metric = "f1_macro"
-        label_dtype = torch.long
-
-        # Custom Processor attributes
-        self.delimiter = "\t"
-        self.skiprows = [0]
-        # self.text_index = 0
-        # self.label_index = 2
-        self.columns = ["text", "unused", "label"]
-
-        super(GermEval18FineProcessor, self).__init__(
-            tokenizer=tokenizer,
-            max_seq_len=max_seq_len,
-            label_list=label_list,
-            metrics=metric,
-            train_filename=train_filename,
-            dev_filename=dev_filename,
-            test_filename=test_filename,
-            dev_split=dev_split,
-            data_dir=data_dir,
-            label_dtype=label_dtype,
-        )
-
-    def _file_to_dicts(self, file: str) -> dict:
-        dicts = read_tsv(
-            filename=file,
-            delimiter=self.delimiter,
-            skiprows=self.skiprows,
-            columns=self.columns,
-        )
-        return dicts
-
-    def _dict_to_samples(self, dict: dict) -> [Sample]:
-        # this tokenization also stores offsets
-        tokenized = tokenize_with_metadata(
-            dict["text"], self.tokenizer, self.max_seq_len
-        )
-        return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
-
-    def _sample_to_features(self, sample) -> dict:
-        features = sample_to_features_text(
-            sample=sample,
-            label_list=self.label_list,
-            max_seq_len=self.max_seq_len,
-            tokenizer=self.tokenizer,
-        )
-        return features
-
-
-#####################
-# NER Processors ####
-#####################
-class CONLLProcessor(Processor):
-    """
-    Used to handle the CoNLL 2003 dataset (https://www.clips.uantwerpen.be/conll2003/ner/)
-    """
-
-    def __init__(
-        self,
-        tokenizer,
-        max_seq_len,
-        data_dir,
-        train_file="train.txt",
-        dev_file="dev.txt",
-        test_file="test.txt",
-        dev_split=0.0,
-    ):
-        # General Processor attributes
-        label_list = [
-            "[PAD]",
-            "O",
-            "B-MISC",
-            "I-MISC",
-            "B-PER",
-            "I-PER",
-            "B-ORG",
-            "I-ORG",
-            "B-LOC",
-            "I-LOC",
-            "X",
-            "B-OTH",
-            "I-OTH",
-        ]
-        label_dtype = torch.long
-        metric = "seq_f1"
-        self.delimiter = "\t"
-
-        super(CONLLProcessor, self).__init__(
-            tokenizer=tokenizer,
-            max_seq_len=max_seq_len,
-            label_list=label_list,
-            metrics=metric,
-            train_filename=train_file,
-            dev_filename=dev_file,
-            test_filename=test_file,
-            dev_split=dev_split,
-            data_dir=data_dir,
-            label_dtype=label_dtype,
-        )
-
-    def _file_to_dicts(self, file: str) -> [dict]:
-        dicts = read_ner_file(filename=file, sep=self.delimiter)
-        return dicts
-
-    def _dict_to_samples(self, dict: dict) -> [Sample]:
-        # this tokenization also stores offsets, which helps to map our entity tags back to original positions
-        tokenized = tokenize_with_metadata(
-            dict["text"], self.tokenizer, self.max_seq_len
-        )
-        return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
-
-    def _sample_to_features(self, sample) -> dict:
-        features = samples_to_features_ner(
-            sample=sample,
-            label_list=self.label_list,
-            max_seq_len=self.max_seq_len,
-            tokenizer=self.tokenizer,
-        )
-        return features
-
-
-class GermEval14Processor(Processor):
-    """
-    Used to handle the GermEval14 dataset (https://www.clips.uantwerpen.be/conll2003/ner/)
-    """
-
-    def __init__(
-        self,
-        tokenizer,
-        max_seq_len,
-        data_dir,
-        train_file="train.txt",
-        dev_file="dev.txt",
-        test_file="test.txt",
-        dev_split=0.0,
-    ):
-        # General Processor attributes
-        label_list = [
-            "[PAD]",
-            "O",
-            "B-MISC",
-            "I-MISC",
-            "B-PER",
-            "I-PER",
-            "B-ORG",
-            "I-ORG",
-            "B-LOC",
-            "I-LOC",
-            "X",
-            "B-OTH",
-            "I-OTH",
-        ]
-        label_dtype = torch.long
-        metric = "seq_f1"
-        self.delimiter = " "
-
-        super(GermEval14Processor, self).__init__(
-            tokenizer=tokenizer,
-            max_seq_len=max_seq_len,
-            label_list=label_list,
-            metrics=metric,
-            train_filename=train_file,
-            dev_filename=dev_file,
-            test_filename=test_file,
             dev_split=dev_split,
             data_dir=data_dir,
             label_dtype=label_dtype,
@@ -809,7 +456,7 @@ class BertStyleLMProcessor(Processor):
         dev_filename="dev.txt",
         test_filename="test.txt",
         dev_split=0.0,
-        **kwargs
+        **kwargs,
     ):
         # General Processor attributes
         label_list = [list(tokenizer.vocab), ["True", "False"]]  # labels for both heads
@@ -842,7 +489,9 @@ class BertStyleLMProcessor(Processor):
         """ Overriding the method of the parent class here, because in this case we cannot simply convert one dict to samples.
         We need to know about the other dicts as well since we want with prob 50% to use sentences of other docs!
         So we operate directly on the baskets"""
-        self.baskets = create_samples_sentence_pairs(self.baskets, self.tokenizer, self.max_seq_len)
+        self.baskets = create_samples_sentence_pairs(
+            self.baskets, self.tokenizer, self.max_seq_len
+        )
 
     def _dict_to_samples(self, dict):
         raise NotImplementedError
@@ -871,7 +520,7 @@ class SquadProcessor(Processor):
         dev_split=0,
         doc_stride=128,
         max_query_length=64,
-        **kwargs
+        **kwargs,
     ):
         """
         :param tokenizer: Used to split a sentence (str) into tokens.
