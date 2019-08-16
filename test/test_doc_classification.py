@@ -1,7 +1,7 @@
 import logging
 
 from farm.data_handler.data_silo import DataSilo
-from farm.data_handler.processor import GermEval18CoarseProcessor
+from farm.data_handler.processor import TextClassificationProcessor
 from farm.modeling.optimization import initialize_optimizer
 from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
@@ -25,11 +25,17 @@ def test_doc_classification(caplog):
         pretrained_model_name_or_path=lang_model,
         do_lower_case=False)
 
-    processor = GermEval18CoarseProcessor(tokenizer=tokenizer,
-                              max_seq_len=64,
-                              data_dir="samples/doc_class",
-                                          train_filename="train-sample.tsv",
-                                          test_filename=None)
+    processor = TextClassificationProcessor(tokenizer=tokenizer,
+                                            max_seq_len=128,
+                                            data_dir="samples/doc_class",
+                                            train_filename="train-sample.tsv",
+                                            dev_filename=None,
+                                            test_filename=None,
+                                            dev_split=0.1,
+                                            columns=["text", "label", "unused"],
+                                            label_list=["OTHER", "OFFENSE"],
+                                            metrics=["f1_macro"]
+                                            )
 
     data_silo = DataSilo(
         processor=processor,
@@ -67,10 +73,10 @@ def test_doc_classification(caplog):
     processor.save(save_dir)
 
     basic_texts = [
-        {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei"},
-        {"text": "Martin Müller spielt Handball in Berlin"},
+        {"text": "Martin Müller spielt Handball in Berlin."},
+        {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei."},
     ]
     model = Inferencer.load(save_dir)
     result = model.run_inference(dicts=basic_texts)
-    assert result[0]["predictions"][0]["label"] == "OFFENSE"
-    assert abs(result[0]["predictions"][0]["probability"] - 0.5256448) <= 0.0001
+    assert result[0]["predictions"][0]["label"] == "OTHER"
+    assert abs(result[0]["predictions"][0]["probability"] - 0.7) <= 0.1

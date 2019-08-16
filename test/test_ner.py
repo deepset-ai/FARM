@@ -1,6 +1,6 @@
 import pytest
 from farm.data_handler.data_silo import DataSilo
-from farm.data_handler.processor import GermEval14Processor
+from farm.data_handler.processor import NERProcessor
 from farm.modeling.optimization import initialize_optimizer
 from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
@@ -27,9 +27,9 @@ def test_ner(caplog):
         pretrained_model_name_or_path=lang_model, do_lower_case=False
     )
 
-    processor = GermEval14Processor(
-        tokenizer=tokenizer, max_seq_len=64, data_dir="samples/ner",train_file="train-sample.txt",
-        dev_file="dev-sample.txt",test_file=None
+    processor = NERProcessor(
+        tokenizer=tokenizer, max_seq_len=128, data_dir="samples/ner",train_filename="train-sample.txt",
+        dev_filename="dev-sample.txt",test_filename=None, delimiter=" "
     )
 
     data_silo = DataSilo(processor=processor, batch_size=batch_size)
@@ -72,5 +72,5 @@ def test_ner(caplog):
     ]
     model = Inferencer.load(save_dir)
     result = model.run_inference(dicts=basic_texts)
-    assert result[0]["predictions"][0]["context"] == "Tagesspiegel,"
+    assert result[0]["predictions"][0]["context"] == "sagte"
     assert abs(result[0]["predictions"][0]["probability"] - 0.213869) <= 0.0001
