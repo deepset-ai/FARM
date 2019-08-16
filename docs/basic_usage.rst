@@ -17,7 +17,7 @@ FARM offers two modes for model training:
 
     # Basic building blocks for data handling
     tokenizer = BertTokenizer.from_pretrained(pretrained_model_name_or_path=lang_model)
-    processor = CONLLProcessor(tokenizer=tokenizer, data_dir="../data/conll03-de", max_seq_len=128)
+    processor = NERProcessor(tokenizer=tokenizer, data_dir="../data/conll03-de", max_seq_len=128)
     ...
 
     # AdaptiveModel = LanguageModel + PredictionHead(s)
