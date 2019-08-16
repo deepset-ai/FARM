@@ -691,6 +691,8 @@ class SquadProcessor(Processor):
         self.target = "classification"
         self.ph_output_type = "per_token_squad"
 
+        chunksize = 20
+
         # custom processor attributes that are accessed during multiprocessing
         # (everything you want to access in _dict_to_samples and _sample_to_features)
         SquadProcessor.doc_stride = doc_stride
@@ -707,6 +709,7 @@ class SquadProcessor(Processor):
             dev_split=dev_split,
             data_dir=data_dir,
             label_dtype=torch.long,  # TODO check if that is correct and needed
+            multiprocessing_chunk_size=chunksize,
         )
 
     def dataset_from_dicts(self, dicts):
