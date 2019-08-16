@@ -59,7 +59,6 @@ class Inferencer:
         self.batch_size = batch_size
         self.device = device
         self.language = self.model.language_model.language
-        self.scaler = processor.scaler if hasattr(processor, 'scaler') else None
         # TODO adjust for multiple prediction heads
         if len(self.model.prediction_heads) == 1:
             self.prediction_type = self.model.prediction_heads[0].model_type
@@ -125,7 +124,6 @@ class Inferencer:
                 preds = self.model.formatted_preds(
                     logits=logits,
                     label_maps=self.processor.label_maps,
-                    scaler=self.scaler,
                     samples=batch_samples,
                     tokenizer=self.processor.tokenizer,
                     **batch

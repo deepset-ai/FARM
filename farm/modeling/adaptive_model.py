@@ -165,7 +165,7 @@ class AdaptiveModel(nn.Module):
             all_labels.append(labels)
         return all_labels
 
-    def formatted_preds(self, logits, label_maps, scaler, **kwargs):
+    def formatted_preds(self, logits, label_maps, **kwargs):
         """
         Format predictions for inference.
 
@@ -183,7 +183,7 @@ class AdaptiveModel(nn.Module):
             self.prediction_heads, logits, label_maps
         ):
             preds = head.formatted_preds(
-                logits=logits_for_head, label_map=label_map_for_head, scaler=scaler, **kwargs
+                logits=logits_for_head, label_map=label_map_for_head, **kwargs
             )
             all_preds.append(preds)
         return all_preds

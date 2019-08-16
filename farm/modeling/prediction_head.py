@@ -167,7 +167,7 @@ class RegressionHead(PredictionHead):
         # TODO is this still needed?
         self.feed_forward = FeedForwardBlock(self.layer_dims)
 
-        self.num_labels = self.layer_dims[-1]
+        self.num_labels = 2
         self.ph_output_type = "per_sequence_continuous"
         self.model_type = "regression"
         self.loss_fct = MSELoss(reduction="none")
@@ -181,27 +181,27 @@ class RegressionHead(PredictionHead):
         # Squeeze the logits to obtain a coherent output size
         return self.loss_fct(logits.squeeze(), label_ids.float())
 
-    def logits_to_preds(self, logits, **kwargs):
+    def logits_to_preds(self, logits, label_map, **kwargs):
         preds = logits.cpu().numpy()
+        # preds = [x * label_map[1] + label_map[0] for x in preds]
         return preds.squeeze().tolist()
 
     def prepare_labels(self, label_map, label_ids, **kwargs):
         label_ids = label_ids.cpu().numpy()
         return label_ids.squeeze().tolist()
 
-    def formatted_preds(self, logits, scaler, samples, **kwargs):
-        preds = self.logits_to_preds(logits)
+    def formatted_preds(self, logits, label_map, samples, **kwargs):
+        preds = self.logits_to_preds(logits, label_map)
         contexts = [sample.clear_text["text"] for sample in samples]
 
         assert len(preds) == len(contexts)
 
         res = {"task": "regression", "predictions": []}
         for pred, context in zip(preds, contexts):
-            label = scaler.inverse_transform([pred])
             res["predictions"].append(
                 {
                     "context": f"{context}",
-                    "label": f"{label}"
+                    "pred": f"{pred * label_map[1] + label_map[0]}"
                 }
             )
         return res

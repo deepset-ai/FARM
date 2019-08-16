@@ -102,14 +102,12 @@ class Trainer:
         self.device = device
         self.local_rank = local_rank
         self.log_params()
-        self.scaler = self.data_silo.processor.scaler if hasattr(self.data_silo.processor, 'scaler') else None
 
         # evaluator on dev set
         if evaluator_dev is None and self.data_silo.get_data_loader("dev"):
             evaluator_dev = Evaluator(
                 data_loader=self.data_silo.get_data_loader("dev"),
                 label_maps=self.data_silo.processor.label_maps,
-                scaler=self.scaler,
                 device=device,
                 metrics=self.data_silo.processor.metrics,
             )
@@ -120,7 +118,6 @@ class Trainer:
             evaluator_test = Evaluator(
                 data_loader=self.data_silo.get_data_loader("test"),
                 label_maps=self.data_silo.processor.label_maps,
-                scaler=self.scaler,
                 device=device,
                 metrics=self.data_silo.processor.metrics,
             )

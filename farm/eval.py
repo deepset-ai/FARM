@@ -20,7 +20,7 @@ class Evaluator:
     """Handles evaluation of a given model over a specified dataset."""
 
     def __init__(
-        self, data_loader, label_maps, scaler, device, metrics, classification_report=True
+        self, data_loader, label_maps, device, metrics, classification_report=True
     ):
         """
         :param data_loader: The PyTorch DataLoader that will return batches of data from the evaluation dataset
@@ -35,7 +35,6 @@ class Evaluator:
 
         self.data_loader = data_loader
         self.label_maps = label_maps
-        self.scaler = scaler
 
         self.device = device
 
@@ -71,7 +70,7 @@ class Evaluator:
                 # TODO logits_to_loss should be a single, overloaded function
                 losses_per_head = model.logits_to_loss_per_head(logits=logits, **batch)
                 preds = model.logits_to_preds(
-                    logits=logits, label_maps=self.label_maps, scaler=self.scaler, **batch
+                    logits=logits, label_maps=self.label_maps, **batch
                 )
 
                 labels = model.prepare_labels(label_maps=self.label_maps, **batch)

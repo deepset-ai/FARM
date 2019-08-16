@@ -10,7 +10,6 @@ import inspect
 from inspect import signature
 import numpy as np
 from sklearn.preprocessing import StandardScaler
-from sklearn.externals import joblib
 
 from tqdm import tqdm
 import multiprocessing as mp
@@ -787,7 +786,8 @@ class RegressionProcessor(Processor):
         tokenizer,
         max_seq_len,
         data_dir,
-        scaler=StandardScaler(),
+        scaler_mean=None,
+        scaler_scale=None,
         train_filename="train.tsv",
         dev_filename=None,
         test_filename="test.tsv",
@@ -795,7 +795,8 @@ class RegressionProcessor(Processor):
     ):
 
         # General Processor attributes
-        self.label_list = ["unused"]
+        self.label_list = [scaler_mean, scaler_scale]
+        self.label_maps = self.label_list
         self.metrics = "mse"
         self.label_dtype = torch.float
 
@@ -803,7 +804,6 @@ class RegressionProcessor(Processor):
         self.delimiter = "\t"
         self.skiprows = [0]
         self.columns = ["text", "label"]
-        self.scaler = scaler
 
         super(RegressionProcessor, self).__init__(
             tokenizer=tokenizer,
@@ -817,55 +817,6 @@ class RegressionProcessor(Processor):
             data_dir=data_dir,
             label_dtype=self.label_dtype,
         )
-
-    @classmethod
-    def load(cls, processor_name, data_dir, tokenizer, max_seq_len, scaler, dev_split=0):
-        """
-        Loads the class of processor specified by processor name.
-
-        :param processor_name: The class of processor to be loaded.
-        :type processor_name: str
-        :param data_dir: Directory where data files are located.
-        :type data_dir: str
-        :param tokenizer: A tokenizer object
-        :param max_seq_len: Sequences longer than this will be truncated.
-        :type max_seq_len: int
-        :param scaler: A sklearn scaler object
-        :param dev_split: (optional) Split a dev set from the training set using dev_split as proportion
-        :type dev_split: float
-        :return: An instance of the specified processor.
-        """
-        return cls.subclasses[processor_name](
-            data_dir=data_dir,
-            tokenizer=tokenizer,
-            max_seq_len=max_seq_len,
-            scaler=scaler,
-            dev_split=dev_split,
-        )
-
-    @classmethod
-    def load_from_dir(cls, load_dir):
-        """
-         Infers the specific type of Processor from a config file (e.g. GNADProcessor) and loads an instance of it.
-
-        :param load_dir: str, directory that contains a 'processor_config.json' and a 'scaler.pkl'
-        :return: An instance of a Processor Subclass (e.g. GNADProcessor)
-        """
-        # read config
-        processor_config_file = os.path.join(load_dir, "processor_config.json")
-        config = json.load(open(processor_config_file))
-        # init tokenizer
-        tokenizer = TOKENIZER_MAP[config["tokenizer"]].from_pretrained(
-            load_dir,
-            do_lower_case=config["lower_case"],
-            never_split_chars=config.get("never_split_chars"),
-        )
-        # add custom vocab to tokenizer if available
-        if os.path.exists(os.path.join(load_dir, "custom_vocab.txt")):
-            tokenizer.add_custom_vocab(os.path.join(load_dir, "custom_vocab.txt"))
-        processor_type = config["processor"]
-        scaler = joblib.load(load_dir + '/scaler.pkl')
-        return cls.load(processor_type, None, tokenizer, config["max_seq_len"], scaler)
 
     def save(self, save_dir):
         """
@@ -883,10 +834,11 @@ class RegressionProcessor(Processor):
         config["lower_case"] = self.tokenizer.basic_tokenizer.do_lower_case
         config["max_seq_len"] = self.max_seq_len
         config["processor"] = self.__class__.__name__
+        config["scaler_mean"] = self.label_list[0]
+        config["scaler_scale"] = self.label_list[1]
         output_config_file = os.path.join(save_dir, "processor_config.json")
         with open(output_config_file, "w") as file:
             json.dump(config, file)
-        joblib.dump(self.scaler , save_dir + '/scaler.pkl')
 
     def _file_to_dicts(self, file: str) -> dict:
         dicts = read_tsv(
@@ -921,15 +873,16 @@ class RegressionProcessor(Processor):
                 for sample in basket.samples:
                         train_labels.append(sample.clear_text["label"])
 
-            self.scaler.fit(np.reshape(train_labels, (-1, 1)))
+            scaler = StandardScaler()
+            scaler.fit(np.reshape(train_labels, (-1, 1)))
+            self.label_list = [scaler.mean_.item(), scaler.scale_.item()]
+            self.label_maps = [self.label_list]
 
         for basket in tqdm(self.baskets):
             for sample in basket.samples:
                 # Samples don't have labels during Inference mode
                 if "label" in sample.clear_text:
                     label = sample.clear_text["label"]
-                    scaled_label = self.scaler.transform(
-                        np.reshape(label, (-1, 1))
-                    ).item()
+                    scaled_label = (label - self.label_list[0]) / self.label_list[1]
                     sample.clear_text["label"] = scaled_label
                 sample.features = self._sample_to_features(sample=sample)
