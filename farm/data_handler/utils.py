@@ -200,7 +200,7 @@ def expand_labels(labels_word, initial_mask, non_initial_token):
     return labels_token
 
 
-def get_sentence_pair(doc, all_docs, idx):
+def get_sentence_pair(doc, all_baskets, idx):
     """
     Get one sample from corpus consisting of two sentences. With prob. 50% these are two subsequent sentences
     from one doc. With 50% the second sentence will be a random one from another doc.
@@ -213,7 +213,7 @@ def get_sentence_pair(doc, all_docs, idx):
     if random.random() > 0.5:
         label = True
     else:
-        sent_2 = _get_random_sentence(all_docs, forbidden_doc=doc)
+        sent_2 = _get_random_sentence(all_baskets, forbidden_doc=doc)
         label = False
 
     assert len(sent_1) > 0
@@ -221,7 +221,7 @@ def get_sentence_pair(doc, all_docs, idx):
     return sent_1, sent_2, label
 
 
-def _get_random_sentence(docs, forbidden_doc):
+def _get_random_sentence(all_baskets, forbidden_doc):
     """
     Get random line from another document for nextSentence task.
 
@@ -231,10 +231,8 @@ def _get_random_sentence(docs, forbidden_doc):
     # corpora. However, just to be careful, we try to make sure that
     # the random document is not the same as the document we're processing.
     for _ in range(10):
-        rand_doc_idx = random.randrange(len(docs))
-        rand_doc = docs[rand_doc_idx]
-        if len(rand_doc) == 0:
-            print("bla")
+        rand_doc_idx = random.randrange(len(all_baskets))
+        rand_doc = all_baskets[rand_doc_idx]["doc"]
 
         # check if our picked random doc is really different to our initial doc
         if rand_doc != forbidden_doc:
