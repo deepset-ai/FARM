@@ -2,7 +2,7 @@
 import logging
 
 from farm.data_handler.data_silo import DataSilo
-from farm.data_handler.processor import GermEval18CoarseProcessor
+from farm.data_handler.processor import TextClassificationProcessor
 from farm.modeling.optimization import initialize_optimizer
 from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
@@ -36,9 +36,14 @@ tokenizer = BertTokenizer.from_pretrained(
     do_lower_case=False)
 
 # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
-processor = GermEval18CoarseProcessor(tokenizer=tokenizer,
-                          max_seq_len=128,
-                          data_dir="../data/germeval18")
+# Here we load GermEval 2018 Data.
+processor = TextClassificationProcessor(tokenizer=tokenizer,
+                                        max_seq_len=128,
+                                        data_dir="../data/germeval18",
+                                        columns = ["text", "label", "unused"],
+                                        label_list = ["OTHER", "OFFENSE"],
+                                        metrics = ["f1_macro"]
+                                        )
 
 # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
 data_silo = DataSilo(

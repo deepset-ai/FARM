@@ -54,8 +54,7 @@ class Evaluator:
         model.eval()
 
         # init empty lists per prediction head
-        loss_all = [[] for _ in model.prediction_heads]
-        logits_all = [[] for _ in model.prediction_heads]
+        loss_all = [0 for _ in model.prediction_heads]
         preds_all = [[] for _ in model.prediction_heads]
         label_all = [[] for _ in model.prediction_heads]
 
@@ -78,15 +77,14 @@ class Evaluator:
 
             # stack results of all batches per prediction head
             for head_num, head in enumerate(model.prediction_heads):
-                loss_all[head_num] += list(to_numpy(losses_per_head[head_num]))
-                logits_all[head_num] += list(to_numpy(logits[head_num]))
+                loss_all[head_num] += np.sum(to_numpy(losses_per_head[head_num]))
                 preds_all[head_num] += list(to_numpy(preds[head_num]))
                 label_all[head_num] += list(to_numpy(labels[head_num]))
 
         # Evaluate per prediction head
         all_results = []
         for head_num, head in enumerate(model.prediction_heads):
-            result = {"loss": np.mean(loss_all[head_num])}
+            result = {"loss": loss_all[head_num] / len(self.data_loader.dataset)}
             result.update(
                 compute_metrics(
                     self.metrics[head_num], preds_all[head_num], label_all[head_num]
