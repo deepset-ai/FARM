@@ -1,13 +1,17 @@
-import abc
-import json
-import logging
+import torch
 import os
-import random
+import abc
 from abc import ABC
+import random
+import logging
+import json
+import time
+import inspect
 from inspect import signature
 
-import torch
 from tqdm import tqdm
+import multiprocessing as mp
+from functools import partial
 
 from farm.data_handler.dataset import convert_features_to_dataset
 from farm.data_handler.input_features import (
@@ -31,6 +35,9 @@ from farm.data_handler.utils import (
 )
 from farm.modeling.tokenization import BertTokenizer, tokenize_with_metadata
 from farm.utils import MLFlowLogger as MlLogger
+from farm.data_handler.samples import get_sentence_pair
+
+from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +66,9 @@ class Processor(ABC):
         dev_split,
         data_dir,
         label_dtype=torch.long,
+        multiprocessing_chunk_size=1_000,
+        max_processes=128,
+        share_all_baskets_for_multiprocessing=False,
     ):
         """
         Initialize a generic Processor
@@ -83,19 +93,34 @@ class Processor(ABC):
         :param data_dir: The directory in which the train, test and perhaps dev files can be found.
         :type data_dir: str
         :param label_dtype: The torch dtype for the labels.
-
+        :param max_processes: maximum number of processing to use for Multiprocessing.
+        :type max_processes: int
         """
-        self.tokenizer = tokenizer
-        self.max_seq_len = max_seq_len
-        self.label_list = label_list
-        self.metrics = [metrics] if isinstance(metrics, str) else metrics
+
+        # The Multiprocessing functions in the Class are classmethods to avoid passing(and pickling) of class-objects
+        # that are very large in size(eg, self.baskets). Since classmethods have access to only class attributes, all
+        # objects required in Multiprocessing must be set as class attributes.
+        Processor.tokenizer = tokenizer
+        Processor.max_seq_len = max_seq_len
+        Processor.label_list = label_list
+
+        # data sets
         self.train_filename = train_filename
         self.dev_filename = dev_filename
         self.test_filename = test_filename
         self.dev_split = dev_split
         self.data_dir = data_dir
+        # labels
         self.label_dtype = label_dtype
         self.label_maps = []
+        # multiprocessing
+        self.multiprocessing_chunk_size = multiprocessing_chunk_size
+        self.share_all_baskets_for_multiprocessing = (
+            share_all_baskets_for_multiprocessing
+        )
+        self.max_processes = max_processes
+        # others
+        self.metrics = [metrics] if isinstance(metrics, str) else metrics
 
         # create label maps (one per prediction head)
         if any(isinstance(i, list) for i in label_list):
@@ -222,10 +247,11 @@ class Processor(ABC):
 
     def generate_config(self):
         """
-        Generates config file from Class parameters (only for sensible config parameters).
+        Generates config file from Class and instance attributes (only for sensible config parameters).
         """
         config = {}
-        for key, value in self.__dict__.items():
+        # self.__dict__ doesn't give parent class attributes
+        for key, value in inspect.getmembers(self):
             if is_json(value) and key[0] != "_":
                 config[key] = value
         return config
@@ -235,11 +261,11 @@ class Processor(ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def _dict_to_samples(self, dict: dict) -> [Sample]:
+    def _dict_to_samples(cls, dict: dict, all_dicts=None) -> [Sample]:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def _sample_to_features(self, sample: Sample) -> dict:
+    def _sample_to_features(cls, sample: Sample) -> dict:
         raise NotImplementedError()
 
     def _init_baskets_from_file(self, file):
@@ -250,26 +276,77 @@ class Processor(ABC):
         ]
 
     def _init_samples_in_baskets(self):
-        for basket in tqdm(self.baskets):
-            basket.samples = self._dict_to_samples(basket.raw)
-            for num, sample in enumerate(basket.samples):
-                sample.id = f"{basket.id}-{num}"
+        chunks_to_process = int(len(self.baskets) / self.multiprocessing_chunk_size)
+        num_cpus = min(mp.cpu_count(), self.max_processes, chunks_to_process) or 1
+
+        logger.info(
+            f"Got ya {num_cpus} parallel workers to fill the baskets with samples (chunksize = {self.multiprocessing_chunk_size})..."
+        )
+
+        with mp.Pool(processes=num_cpus) as p:
+            with mp.Manager() as manager:
+                if self.share_all_baskets_for_multiprocessing:
+                    all_dicts = manager.list([b.raw for b in self.baskets])
+                else:
+                    all_dicts = None
+
+                with mp.Pool(processes=num_cpus) as p:
+                    samples = p.imap(
+                        partial(self._multiproc_sample, all_dicts=all_dicts),
+                        self.baskets,
+                        chunksize=self.multiprocessing_chunk_size,
+                    )
+
+                    for s, b in tqdm(
+                        zip(samples, self.baskets), total=len(self.baskets)
+                    ):
+                        b.samples = s
+
+    @classmethod
+    def _multiproc_sample(cls, basket, all_dicts=None):
+        samples = cls._dict_to_samples(dict=basket.raw, all_dicts=all_dicts)
+        for num, sample in enumerate(samples):
+            sample.id = f"{basket.id}-{num}"
+        return samples
 
     def _featurize_samples(self):
-        for basket in tqdm(self.baskets):
-            for sample in basket.samples:
-                sample.features = self._sample_to_features(sample=sample)
+        chunks_to_process = int(len(self.baskets) / self.multiprocessing_chunk_size)
+        num_cpus = min(mp.cpu_count(), self.max_processes, chunks_to_process) or 1
+        logger.info(
+            f"Got ya {num_cpus} parallel workers to featurize samples in baskets (chunksize = {self.multiprocessing_chunk_size}) ..."
+        )
+        with mp.Pool(processes=num_cpus) as p:
+            all_features_gen = p.imap(
+                self._multiproc_featurize,
+                self.baskets,
+                chunksize=self.multiprocessing_chunk_size,
+            )
 
-    def _create_dataset(self):
-        baskets = self.baskets
+            for basket_features, basket in tqdm(
+                zip(all_features_gen, self.baskets), total=len(self.baskets)
+            ):
+                for f, s in zip(basket_features, basket.samples):
+                    s.features = f
+
+    @classmethod
+    def _multiproc_featurize(cls, basket):
+        all_features = []
+        for sample in basket.samples:
+            all_features.append(cls._sample_to_features(sample=sample))
+        return all_features
+
+    def _create_dataset(self, keep_baskets=False):
         features_flat = []
-        for basket in baskets:
+        for basket in self.baskets:
             for sample in basket.samples:
                 features_flat.extend(sample.features)
+        if not keep_baskets:
+            # free up some RAM, we don't need baskets from here on
+            self.baskets = None
         dataset, tensor_names = convert_features_to_dataset(features=features_flat)
         return dataset, tensor_names
 
-    def dataset_from_file(self, file):
+    def dataset_from_file(self, file, log_time=True):
         """
         Contains all the functionality to turn a data file into a PyTorch Dataset and a
         list of tensor names. This is used for training and evaluation.
@@ -278,10 +355,23 @@ class Processor(ABC):
         :type file: str
         :return: a Pytorch dataset and a list of tensor names.
         """
-        self._init_baskets_from_file(file)
-        self._init_samples_in_baskets()
-        self._featurize_samples()
-        self._log_samples(3)
+        if log_time:
+            a = time.time()
+            self._init_baskets_from_file(file)
+            b = time.time()
+            MlLogger.log_metrics(metrics={"t_from_file": (b - a) / 60}, step=0)
+            self._init_samples_in_baskets()
+            c = time.time()
+            MlLogger.log_metrics(metrics={"t_init_samples": (c - b) / 60}, step=0)
+            self._featurize_samples()
+            d = time.time()
+            MlLogger.log_metrics(metrics={"t_featurize_samples": (d - c) / 60}, step=0)
+            self._log_samples(3)
+        else:
+            self._init_baskets_from_file(file)
+            self._init_samples_in_baskets()
+            self._featurize_samples()
+            self._log_samples(3)
         dataset, tensor_names = self._create_dataset()
         return dataset, tensor_names
 
@@ -326,7 +416,7 @@ class Processor(ABC):
 
 
 #########################################
-# Processors for simple tabular data ####
+# Processors for text classification ####
 #########################################
 class TextClassificationProcessor(Processor):
     def __init__(
@@ -381,19 +471,19 @@ class TextClassificationProcessor(Processor):
         )
         return dicts
 
-    def _dict_to_samples(self, dict: dict) -> [Sample]:
+    @classmethod
+    def _dict_to_samples(cls, dict: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets
-        tokenized = tokenize_with_metadata(
-            dict["text"], self.tokenizer, self.max_seq_len
-        )
+        tokenized = tokenize_with_metadata(dict["text"], cls.tokenizer, cls.max_seq_len)
         return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
 
-    def _sample_to_features(self, sample) -> dict:
+    @classmethod
+    def _sample_to_features(cls, sample) -> dict:
         features = sample_to_features_text(
             sample=sample,
-            label_list=self.label_list,
-            max_seq_len=self.max_seq_len,
-            tokenizer=self.tokenizer,
+            label_list=cls.label_list,
+            max_seq_len=cls.max_seq_len,
+            tokenizer=cls.tokenizer,
         )
         return features
 
@@ -456,19 +546,19 @@ class NERProcessor(Processor):
         dicts = read_ner_file(filename=file, sep=self.delimiter)
         return dicts
 
-    def _dict_to_samples(self, dict: dict) -> [Sample]:
+    @classmethod
+    def _dict_to_samples(cls, dict: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets, which helps to map our entity tags back to original positions
-        tokenized = tokenize_with_metadata(
-            dict["text"], self.tokenizer, self.max_seq_len
-        )
+        tokenized = tokenize_with_metadata(dict["text"], cls.tokenizer, cls.max_seq_len)
         return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
 
-    def _sample_to_features(self, sample) -> dict:
+    @classmethod
+    def _sample_to_features(cls, sample) -> dict:
         features = samples_to_features_ner(
             sample=sample,
-            label_list=self.label_list,
-            max_seq_len=self.max_seq_len,
-            tokenizer=self.tokenizer,
+            label_list=cls.label_list,
+            max_seq_len=cls.max_seq_len,
+            tokenizer=cls.tokenizer,
         )
         return features
 
@@ -496,6 +586,8 @@ class BertStyleLMProcessor(Processor):
         label_list = [list(tokenizer.vocab), ["True", "False"]]  # labels for both heads
         metrics = ["acc", "acc"]
         label_dtype = torch.long
+        chunksize = 100
+        share_all_baskets_for_multiprocessing = True
 
         # Custom attributes
         self.delimiter = ""
@@ -511,26 +603,41 @@ class BertStyleLMProcessor(Processor):
             dev_split=dev_split,
             data_dir=data_dir,
             label_dtype=label_dtype,
+            multiprocessing_chunk_size=chunksize,
+            share_all_baskets_for_multiprocessing=share_all_baskets_for_multiprocessing,
         )
 
     def _file_to_dicts(self, file: str) -> list:
         dicts = read_docs_from_txt(filename=file, delimiter=self.delimiter)
         return dicts
 
-    def _init_samples_in_baskets(self):
-        """ Overriding the method of the parent class here, because in this case we cannot simply convert one dict to samples.
-        We need to know about the other dicts as well since we want with prob 50% to use sentences of other docs!
-        So we operate directly on the baskets"""
-        self.baskets = create_samples_sentence_pairs(
-            self.baskets, self.tokenizer, self.max_seq_len
-        )
+    @classmethod
+    def _dict_to_samples(cls, dict, all_dicts=None):
+        doc = dict["doc"]
+        samples = []
+        for idx in range(len(doc) - 1):
+            text_a, text_b, is_next_label = get_sentence_pair(doc, all_dicts, idx)
+            sample_in_clear_text = {
+                "text_a": text_a,
+                "text_b": text_b,
+                "is_next_label": is_next_label,
+            }
+            tokenized = {}
+            tokenized["text_a"] = tokenize_with_metadata(
+                text_a, cls.tokenizer, cls.max_seq_len
+            )
+            tokenized["text_b"] = tokenize_with_metadata(
+                text_b, cls.tokenizer, cls.max_seq_len
+            )
+            samples.append(
+                Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized)
+            )
+        return samples
 
-    def _dict_to_samples(self, dict):
-        raise NotImplementedError
-
-    def _sample_to_features(self, sample) -> dict:
+    @classmethod
+    def _sample_to_features(cls, sample) -> dict:
         features = samples_to_features_bert_lm(
-            sample=sample, max_seq_len=self.max_seq_len, tokenizer=self.tokenizer
+            sample=sample, max_seq_len=cls.max_seq_len, tokenizer=cls.tokenizer
         )
         return features
 
@@ -583,8 +690,11 @@ class SquadProcessor(Processor):
 
         self.target = "classification"
         self.ph_output_type = "per_token_squad"
-        self.doc_stride = doc_stride
-        self.max_query_length = max_query_length
+
+        # custom processor attributes that are accessed during multiprocessing
+        # (everything you want to access in _dict_to_samples and _sample_to_features)
+        SquadProcessor.doc_stride = doc_stride
+        SquadProcessor.max_query_length = max_query_length
 
         super(SquadProcessor, self).__init__(
             tokenizer=tokenizer,
@@ -598,9 +708,6 @@ class SquadProcessor(Processor):
             data_dir=data_dir,
             label_dtype=torch.long,  # TODO check if that is correct and needed
         )
-        self.data = {}
-        self.counts = {}
-        self.stage = None
 
     def dataset_from_dicts(self, dicts):
         dicts_converted = [self._convert_inference(x) for x in dicts]
@@ -613,7 +720,8 @@ class SquadProcessor(Processor):
         dataset, tensor_names = self._create_dataset()
         return dataset, tensor_names
 
-    def _convert_inference(self, infer_dict):
+    @classmethod
+    def _convert_inference(cls, infer_dict):
         # convert input coming from inferencer to SQuAD format
         converted = {}
         converted["paragraphs"] = [
@@ -633,28 +741,30 @@ class SquadProcessor(Processor):
         dict = read_squad_file(filename=file)
         return dict
 
-    def _dict_to_samples(self, dict: dict) -> [Sample]:
+    @classmethod
+    def _dict_to_samples(cls, dict: dict, **kwargs) -> [Sample]:
         # TODO split samples that are too long in this function, related to todo in self._sample_to_features
         if "paragraphs" not in dict:  # TODO change this inference mode hack
-            dict = self._convert_inference(infer_dict=dict)
+            dict = cls._convert_inference(infer_dict=dict)
         samples = create_samples_squad(entry=dict)
         for sample in samples:
             tokenized = tokenize_with_metadata(
                 text=" ".join(sample.clear_text["doc_tokens"]),
-                tokenizer=self.tokenizer,
-                max_seq_len=self.max_seq_len,
+                tokenizer=cls.tokenizer,
+                max_seq_len=cls.max_seq_len,
             )
             sample.tokenized = tokenized
 
         return samples
 
-    def _sample_to_features(self, sample) -> dict:
+    @classmethod
+    def _sample_to_features(cls, sample) -> dict:
         # TODO, make this function return one set of features per sample
         features = sample_to_features_squad(
             sample=sample,
-            tokenizer=self.tokenizer,
-            max_seq_len=self.max_seq_len,
-            doc_stride=self.doc_stride,
-            max_query_length=self.max_query_length,
+            tokenizer=cls.tokenizer,
+            max_seq_len=cls.max_seq_len,
+            doc_stride=cls.doc_stride,
+            max_query_length=cls.max_query_length,
         )
         return features
