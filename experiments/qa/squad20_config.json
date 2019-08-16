@@ -17,11 +17,12 @@
   "task": {
     "type":            {"value": null, "default": "token_classification", "desc": "Type."},
     "language":        {"value": null, "default": "de",                   "desc": "Language."},
-    "name":            {"value": null, "default": "SQUAD",                "desc": "Name of task."},
-    "processor_name":  {"value": null, "default": "SquadProcessor",       "desc": "Class name of DataProcessor."},
-    "do_eval":         {"value": null, "default": true, "desc": "Whether to run eval on the dev set."},
-    "do_train":        {"value": null, "default": true, "desc": "Whether to run training. Can be used to only evaluate on an already trained model."},
-    "dev_split":       {"value": null, "default": 0.1,  "desc": "Split a dev set from the training set using dev_split as proportion."}
+    "name":            {"value": null, "default": "SQUAD20",              "desc": "Name of task."},
+
+    "processor_name":  {"value": null, "default": "SquadProcessor", "desc": "Class name of DataProcessor."},
+    "do_eval":         {"value": null, "default": true,             "desc": "Whether to run eval on the dev set."},
+    "do_train":        {"value": null, "default": true,             "desc": "Whether to run training. Can be used to only evaluate on an already trained model."},
+    "dev_split":       {"value": null, "default": 0.1,              "desc": "Split a dev set from the training set using dev_split as proportion."}
   },
 
   "parameter": {
