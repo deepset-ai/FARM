@@ -329,20 +329,16 @@ class Processor(ABC):
 # Processors for simple tabular data ####
 #########################################
 class TextClassificationProcessor(Processor):
-    """
-    Used to handle the text classification datasets that come in tabular format (CSV, TSV, etc.)
-    """
-
     def __init__(
         self,
         tokenizer,
         max_seq_len,
         data_dir,
+        label_list,
         train_filename="train.tsv",
-        dev_filename="dev.tsv",
+        dev_filename=None,
         test_filename="test.tsv",
-        dev_split=None,
-        label_list=[],
+        dev_split=0.1,
         metrics=["acc"],
         label_dtype=torch.long,
         delimiter="\t",
@@ -370,6 +366,10 @@ class TextClassificationProcessor(Processor):
             data_dir=data_dir,
             label_dtype=label_dtype,
         )
+
+    """
+    Used to handle the text classification datasets that come in tabular format (CSV, TSV, etc.)
+    """
 
     def _file_to_dicts(self, file: str) -> [dict]:
         dicts = read_tsv(

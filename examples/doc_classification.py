@@ -40,10 +40,6 @@ tokenizer = BertTokenizer.from_pretrained(
 processor = TextClassificationProcessor(tokenizer=tokenizer,
                                         max_seq_len=128,
                                         data_dir="../data/germeval18",
-                                        train_filename="train.tsv",
-                                        dev_filename=None,
-                                        test_filename="test.tsv",
-                                        dev_split=0.1,
                                         columns = ["text", "label", "unused"],
                                         label_list = ["OTHER", "OFFENSE"],
                                         metrics = ["f1_macro"]
