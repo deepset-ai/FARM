@@ -25,7 +25,7 @@ ml_logger.init_experiment(experiment_name="Public_FARM_Regression", run_name="Ru
 ##########################
 set_all_seeds(seed=42)
 device, n_gpu = initialize_device_settings(use_cuda=True)
-n_epochs = 5
+n_epochs = 1
 batch_size = 32
 evaluate_every = 30
 lang_model = "bert-base-german-cased"
@@ -37,8 +37,12 @@ tokenizer = BertTokenizer.from_pretrained(
 
 # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
 processor = RegressionProcessor(tokenizer=tokenizer,
-                          max_seq_len=128,
-                          data_dir="../data/regression")
+                                max_seq_len=128,
+                                data_dir="../data/regression",
+                                columns = ["text", "label"],
+                                label_list = [],
+                                metrics = ["mse"]
+                                )
 
 # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
 data_silo = DataSilo(
