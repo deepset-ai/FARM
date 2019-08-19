@@ -1,5 +1,5 @@
 
-.. image:: docs/img/farm_logo_text_right.png
+.. image:: docs/img/farm_logo_text_right_wide.png
     :width: 269
     :height: 109
     :align: left
