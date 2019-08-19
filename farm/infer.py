@@ -136,12 +136,13 @@ class Inferencer:
 
         return preds_all
 
-    def extract_vectors(self, dicts, extraction_strategy="pooled"):
+    def extract_vectors(self, dicts, extraction_strategy="cls_token"):
         """
         Converts a text into vector(s) using the language model only (no prediction head involved).
         :param dicts: Samples to run inference on provided as a list of dicts. One dict per sample.
         :type dicts: [dict]
-        :param extraction_strategy: Strategy to extract vectors. Choices: 'pooled' (sentence vector), 'per_token' (individual token vectors)
+        :param extraction_strategy: Strategy to extract vectors. Choices: 'cls_token' (sentence vector),
+        'reduce_mean' (sentence vector), reduce_max (sentence vector), 'per_token' (individual token vectors)
         :type extraction_strategy: str
         :return: dict of predictions
         """
