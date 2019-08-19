@@ -1,5 +1,5 @@
 
-.. image:: docs/img/farm_logo_text_right_wide.png
+.. image:: https://github.com/deepset-ai/FARM/blob/master/docs/img/farm_logo_text_right_wide.png?raw=true
     :width: 269
     :height: 109
     :align: left
