@@ -1,7 +1,7 @@
 
-.. image:: https://github.com/deepset-ai/FARM/blob/master/docs/img/logo_with_name.png?raw=true
-    :width: 383
-    :height: 116
+.. image:: https://github.com/deepset-ai/FARM/blob/master/docs/img/farm_logo_text_right_wide.png?raw=true
+    :width: 269
+    :height: 109
     :align: left
     :alt: FARM LOGO
 
