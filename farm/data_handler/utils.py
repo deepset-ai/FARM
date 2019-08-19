@@ -35,6 +35,7 @@ def read_tsv(filename, quotechar='"', delimiter="\t", skiprows=None, columns=Non
         quotechar=quotechar,
         names=columns,
         skiprows=skiprows,
+        dtype=str, 
     )
     if "unused" in df.columns:
         df.drop(columns=["unused"], inplace=True)
