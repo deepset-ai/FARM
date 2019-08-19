@@ -146,14 +146,8 @@ class Processor(ABC):
     def load(
         cls,
         processor_name,
-        data_dir,
         tokenizer,
         max_seq_len,
-        train_filename,
-        dev_filename,
-        test_filename,
-        dev_split,
-        metrics,
         **kwargs,
     ):
         """
@@ -189,14 +183,8 @@ class Processor(ABC):
             f"Those won't be used!"
         )
         return cls.subclasses[processor_name](
-            data_dir=data_dir,
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
-            train_filename=train_filename,
-            dev_filename=dev_filename,
-            test_filename=test_filename,
-            dev_split=dev_split,
-            metrics=metrics,
             **kwargs,
         )
 
@@ -518,6 +506,33 @@ class InferenceProcessor(Processor):
             dev_split=None,
             data_dir=None,
             label_dtype=None,
+        )
+
+    @classmethod
+    def load_from_dir(cls, load_dir):
+        """
+         Overwriting method from parent class to **always** load the InferenceProcessor instead of the specific class stored in the config.
+         Infers the specific type of Processor from a config file (e.g. GNADProcessor) and loads an instance of it.
+
+        :param load_dir: str, directory that contains a 'processor_config.json'
+        :return: An instance of a Processor Subclass (e.g. GNADProcessor)
+        """
+        # read config
+        processor_config_file = os.path.join(load_dir, "processor_config.json")
+        config = json.load(open(processor_config_file))
+        # init tokenizer
+        tokenizer = TOKENIZER_MAP[config["tokenizer"]].from_pretrained(
+            load_dir,
+            do_lower_case=config["lower_case"],
+            never_split_chars=config.get("never_split_chars", None),
+        )
+        # add custom vocab to tokenizer if available
+        if os.path.exists(os.path.join(load_dir, "custom_vocab.txt")):
+            tokenizer.add_custom_vocab(os.path.join(load_dir, "custom_vocab.txt"))
+        # we have to delete the tokenizer string from config, because we pass it as Object
+        del config["tokenizer"]
+        return cls.load(
+            tokenizer=tokenizer, processor_name="InferenceProcessor", **config
         )
 
     def _file_to_dicts(self, file: str) -> [dict]:

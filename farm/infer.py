@@ -7,7 +7,7 @@ from farm.data_handler.dataloader import NamedDataLoader
 from farm.modeling.adaptive_model import AdaptiveModel
 
 from farm.utils import initialize_device_settings
-from farm.data_handler.processor import Processor
+from farm.data_handler.processor import Processor, InferenceProcessor
 from farm.utils import set_all_seeds
 
 
@@ -24,7 +24,7 @@ class Inferencer:
            {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei"},
            {"text": "Martin Müller spielt Handball in Berlin"},
        ]
-       model = Inferencer(your_model_dir)
+       model = Inferencer.load(your_model_dir)
        model.run_inference(dicts=basic_texts)
        # LM embeddings
        model.extract_vectors(dicts=basic_texts)
@@ -69,7 +69,7 @@ class Inferencer:
         set_all_seeds(42, n_gpu)
 
     @classmethod
-    def load(cls, load_dir, batch_size=4, gpu=False):
+    def load(cls, load_dir, batch_size=4, gpu=False, embedder_only=False):
         """
         Initializes inferencer from directory with saved model.
         :param load_dir: Directory where the saved model is located.
@@ -86,7 +86,11 @@ class Inferencer:
         )
 
         model = AdaptiveModel.load(load_dir, device)
-        processor = Processor.load_from_dir(load_dir)
+        if embedder_only:
+            processor = InferenceProcessor.load_from_dir(load_dir)
+        else:
+            processor = Processor.load_from_dir(load_dir)
+
         name = os.path.basename(load_dir)
         return cls(model, processor, batch_size=batch_size, gpu=gpu, name=name)
 
@@ -141,6 +145,7 @@ class Inferencer:
         :type extraction_strategy: str
         :return: dict of predictions
         """
+
         dataset, tensor_names = self.processor.dataset_from_dicts(dicts)
         samples = []
         for dict in dicts:
@@ -154,7 +159,7 @@ class Inferencer:
         )
 
         preds_all = []
-        for i,batch in enumerate(data_loader):
+        for i, batch in enumerate(data_loader):
             batch = {key: batch[key].to(self.device) for key in batch}
             batch_samples = samples[i*self.batch_size:(i+1)*self.batch_size]
             with torch.no_grad():
