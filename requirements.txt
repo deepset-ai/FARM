@@ -23,3 +23,5 @@ dotmap==1.3.0
 flask
 flask-restplus
 flask-cors
+# for inference with fasttext
+-e git://github.com/facebookresearch/fastText.git@master#egg=fastText

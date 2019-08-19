@@ -1,5 +1,7 @@
 import os
 import torch
+import fasttext
+import numpy as np
 
 from torch.utils.data.sampler import SequentialSampler
 
@@ -103,10 +105,12 @@ class Inferencer:
 
         """
         if self.prediction_type == "embedder":
-            raise TypeError("You have called run_inference for a model without any prediction head! "
-                            "If you want to: "
-                            "a) ... extract vectors from the language model: call `Inferencer.extract_vectors(...)`"
-                            f"b) ... run inference on a downstream task: make sure your model path {self.name} contains a saved prediction head")
+            raise TypeError(
+                "You have called run_inference for a model without any prediction head! "
+                "If you want to: "
+                "a) ... extract vectors from the language model: call `Inferencer.extract_vectors(...)`"
+                f"b) ... run inference on a downstream task: make sure your model path {self.name} contains a saved prediction head"
+            )
         dataset, tensor_names = self.processor.dataset_from_dicts(dicts)
         samples = []
         for dict in dicts:
@@ -120,9 +124,9 @@ class Inferencer:
         )
 
         preds_all = []
-        for i,batch in enumerate(data_loader):
+        for i, batch in enumerate(data_loader):
             batch = {key: batch[key].to(self.device) for key in batch}
-            batch_samples = samples[i*self.batch_size:(i+1)*self.batch_size]
+            batch_samples = samples[i * self.batch_size : (i + 1) * self.batch_size]
             with torch.no_grad():
                 logits = self.model.forward(**batch)
                 preds = self.model.formatted_preds(
@@ -130,7 +134,7 @@ class Inferencer:
                     label_maps=self.processor.label_maps,
                     samples=batch_samples,
                     tokenizer=self.processor.tokenizer,
-                    **batch
+                    **batch,
                 )
                 preds_all += preds
 
@@ -162,14 +166,47 @@ class Inferencer:
         preds_all = []
         for i, batch in enumerate(data_loader):
             batch = {key: batch[key].to(self.device) for key in batch}
-            batch_samples = samples[i*self.batch_size:(i+1)*self.batch_size]
+            batch_samples = samples[i * self.batch_size : (i + 1) * self.batch_size]
             with torch.no_grad():
                 preds = self.model.language_model.formatted_preds(
                     extraction_strategy=extraction_strategy,
                     samples=batch_samples,
                     tokenizer=self.processor.tokenizer,
-                    **batch
+                    **batch,
                 )
                 preds_all += preds
+
+        return preds_all
+
+
+class FasttextInferencer:
+    def __init__(self, model, name=None):
+        self.model = model
+        self.name = name if name != None else f"anonymous-fasttext"
+        self.prediction_type = "embedder"
+
+    @classmethod
+    def load(cls, load_dir, batch_size=4, gpu=False, embedder_only=True):
+        return cls(model=fasttext.load_model(load_dir))
+
+    def extract_vectors(self, dicts, extraction_strategy="reduce_mean"):
+        """
+        Converts a text into vector(s) using the language model only (no prediction head involved).
+        :param dicts: Samples to run inference on provided as a list of dicts. One dict per sample.
+        :type dicts: [dict]
+        :param extraction_strategy: Strategy to extract vectors. Choices: 'reduce_mean' (mean sentence vector), 'reduce_max' (max per embedding dim), 'CLS'
+        :type extraction_strategy: str
+        :return: dict of predictions
+        """
+
+        preds_all = []
+        for d in dicts:
+            pred = {}
+            pred["context"] = d["text"]
+            if extraction_strategy == "reduce_mean":
+                pred["vec"] = self.model.get_sentence_vector(d["text"])
+            else:
+                raise NotImplementedError
+            preds_all.append(pred)
 
         return preds_all
