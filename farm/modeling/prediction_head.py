@@ -183,12 +183,13 @@ class RegressionHead(PredictionHead):
 
     def logits_to_preds(self, logits, label_map, **kwargs):
         preds = logits.cpu().numpy()
-        # preds = [x * label_map[1] + label_map[0] for x in preds]
-        return preds.squeeze().tolist()
+        preds = [x * label_map[1] + label_map[0] for x in preds]
+        return preds
 
     def prepare_labels(self, label_map, label_ids, **kwargs):
         label_ids = label_ids.cpu().numpy()
-        return label_ids.squeeze().tolist()
+        label_ids = [x * label_map[1] + label_map[0] for x in label_ids]
+        return label_ids
 
     def formatted_preds(self, logits, label_map, samples, **kwargs):
         preds = self.logits_to_preds(logits, label_map)
@@ -201,7 +202,7 @@ class RegressionHead(PredictionHead):
             res["predictions"].append(
                 {
                     "context": f"{context}",
-                    "pred": f"{pred * label_map[1] + label_map[0]}"
+                    "pred": f"{pred[0]}"
                 }
             )
         return res

@@ -803,7 +803,6 @@ class RegressionProcessor(Processor):
 
         # Custom processor attributes
         self.label_list = [scaler_mean, scaler_scale]
-        self.label_maps = self.label_list
         self.delimiter = delimiter
         self.quote_char = quote_char
         self.skiprows = skiprows
@@ -876,23 +875,28 @@ class RegressionProcessor(Processor):
         logger.info(
             f"Got ya {num_cpus} parallel workers to featurize samples in baskets (chunksize = {self.multiprocessing_chunk_size}) ..."
         )
+
+        try:
+            if "train" in self.baskets[0].id:
+                train_labels = []
+                for basket in self.baskets:
+                    for sample in basket.samples:
+                        train_labels.append(sample.clear_text["label"])
+                scaler = StandardScaler()
+                scaler.fit(np.reshape(train_labels, (-1, 1)))
+                self.label_list = [scaler.mean_.item(), scaler.scale_.item()]
+                # Create label_maps because featurize is called after Processor instantiation
+                self.label_maps = [{0:scaler.mean_.item(), 1:scaler.scale_.item()}]
+
+        except Exception as e:
+            logger.warning(f"Baskets not found: {e}")
+
         with mp.Pool(processes=num_cpus) as p:
             all_features_gen = p.imap(
                 self._multiproc_featurize,
                 self.baskets,
                 chunksize=self.multiprocessing_chunk_size,
             )
-
-            if len(self.baskets) > 0 and len(self.baskets[0].samples) > 0 and "train" in self.baskets[0].samples[0].id:
-                train_labels = []
-                for basket in self.baskets:
-                    for sample in basket.samples:
-                        train_labels.append(sample.clear_text["label"])
-
-                scaler = StandardScaler()
-                scaler.fit(np.reshape(train_labels, (-1, 1)))
-                self.label_list = [scaler.mean_.item(), scaler.scale_.item()]
-                self.label_maps = [self.label_list]
 
             for basket_features, basket in tqdm(
                 zip(all_features_gen, self.baskets), total=len(self.baskets)

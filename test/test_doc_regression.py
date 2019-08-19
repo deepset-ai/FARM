@@ -26,10 +26,13 @@ def test_doc_regression(caplog):
         do_lower_case=False)
 
     processor = RegressionProcessor(tokenizer=tokenizer,
-                              max_seq_len=64,
-                              data_dir="samples/doc_regr",
-                                          train_filename="train-sample.tsv",
-                                          test_filename=None)
+                            max_seq_len=128,
+                            data_dir="samples/doc_regr",
+                            columns = ["text", "label"],
+                            label_list = [],
+                            metrics = ["mse"],
+                            train_filename="train-sample.tsv",
+                            test_filename=None)
 
     data_silo = DataSilo(
         processor=processor,
@@ -68,11 +71,11 @@ def test_doc_regression(caplog):
 
     basic_texts = [
         {"text": "The dress is just fabulous and it totally fits my size. The fabric is of great quality and the seams are really well hidden. I am super happy with this purchase and I am looking forward to trying some more from the same brand."},
-        {"text": "It looks better on the picture. it is a bit uncomfortable. My waist hurts a lot after wearing the skirt for a day, it is too heavy and the belt is not at a good height, this is just not awesome in any way. I had to send it back."},
+        {"text": "it just did not fit right. The top is very thin showing everything."},
     ]
 
     model = Inferencer.load(save_dir)
     result = model.run_inference(dicts=basic_texts)
     print(result)
-    assert result[0]["predictions"][0]["label"] == "OFFENSE"
-    assert abs(result[0]["predictions"][0]["probability"] - 0.5256448) <= 0.0001
+    assert abs(float(result[0]["predictions"][0]["pred"]) - 4.2121115) <= 0.0001
+    assert abs(float(result[0]["predictions"][1]["pred"]) - 4.1987348) <= 0.0001
