@@ -416,7 +416,7 @@ class Processor(ABC):
 
 
 #########################################
-# Processors for text classification ####
+# Processors for Text Classification ####
 #########################################
 class TextClassificationProcessor(Processor):
     def __init__(
@@ -488,6 +488,56 @@ class TextClassificationProcessor(Processor):
         return features
 
 
+#########################################
+# Processors for Basic Inference ####
+#########################################
+class InferenceProcessor(Processor):
+    """
+    Generic processor used at inference time:
+    - fast
+    - no labels
+    - pure encoding of text into pytorch dataset
+    - Doesn't read from file, but only consumes dictionaries (e.g. coming from API requests)
+    """
+
+    def __init__(
+        self,
+        tokenizer,
+        max_seq_len,
+        **kwargs,
+    ):
+
+        super(InferenceProcessor, self).__init__(
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            label_list=[],
+            metrics=[],
+            train_filename=None,
+            dev_filename=None,
+            test_filename=None,
+            dev_split=None,
+            data_dir=None,
+            label_dtype=None,
+        )
+
+    def _file_to_dicts(self, file: str) -> [dict]:
+      raise NotImplementedError
+
+    @classmethod
+    def _dict_to_samples(cls, dict: dict, **kwargs) -> [Sample]:
+        # this tokenization also stores offsets
+        tokenized = tokenize_with_metadata(dict["text"], cls.tokenizer, cls.max_seq_len)
+        return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
+
+    @classmethod
+    def _sample_to_features(cls, sample) -> dict:
+        features = sample_to_features_text(
+            sample=sample,
+            label_list=cls.label_list,
+            max_seq_len=cls.max_seq_len,
+            tokenizer=cls.tokenizer,
+        )
+        return features
 #########################################
 # Processors for NER data ####
 #########################################
