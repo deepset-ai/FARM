@@ -28,7 +28,7 @@ device, n_gpu = initialize_device_settings(use_cuda=True)
 n_epochs = 1
 batch_size = 32
 evaluate_every = 30
-lang_model = "bert-base-german-cased"
+lang_model = "bert-base-cased"
 
 # 1.Create a tokenizer
 tokenizer = BertTokenizer.from_pretrained(
@@ -36,9 +36,10 @@ tokenizer = BertTokenizer.from_pretrained(
     do_lower_case=False)
 
 # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
+#    We do not have a sample dataset for regression yet, add your own dataset to run the example
 processor = RegressionProcessor(tokenizer=tokenizer,
-                                max_seq_len=128,
-                                data_dir="../data/regression",
+                                max_seq_len=256,
+                                data_dir="",
                                 columns = ["text", "label"],
                                 label_list = [],
                                 metrics = ["mse"]
@@ -89,9 +90,10 @@ model.save(save_dir)
 processor.save(save_dir)
 
 # 9. Load it & harvest your fruits (Inference)
+#    Add your own text adapted to the dataset you provide
 basic_texts = [
-    {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei"},
-    {"text": "Martin Müller spielt Handball in Berlin"},
+    {"text": ""},
+    {"text": ""},
 ]
 model = Inferencer.load(save_dir)
 result = model.run_inference(dicts=basic_texts)
