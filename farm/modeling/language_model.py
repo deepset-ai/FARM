@@ -141,20 +141,30 @@ class LanguageModel(nn.Module):
 
         return language
 
-    def formatted_preds(self, input_ids, samples, extraction_strategy="cls_token", ignore_first_token=True,
+    def formatted_preds(self, input_ids, samples, extraction_strategy="pooled", extraction_layer=-1, ignore_first_token=True,
                         padding_mask=None, **kwargs):
-        # get language model output
-        sequence_output, pooled_output = self.forward(input_ids, padding_mask=padding_mask, **kwargs)
-
+        # get language model output from last layer
+        if extraction_layer == -1:
+            sequence_output, pooled_output = self.forward(input_ids, padding_mask=padding_mask, **kwargs)
+        # or from earlier layer
+        else:
+            self.enable_hidden_states_output()
+            sequence_output, pooled_output, all_hidden_states = self.forward(input_ids, padding_mask=padding_mask, **kwargs)
+            sequence_output = all_hidden_states[extraction_layer]
+            self.disable_hidden_states_output()
         # aggregate vectors
-        if extraction_strategy == "cls_token":
-            vecs = pooled_output.cpu().numpy()
+        if extraction_strategy == "pooled":
+            if extraction_layer != -1:
+                raise ValueError(f"Pooled output only works for the last layer, but got extraction_layer = {extraction_layer}. Please set `extraction_layer=-1`.)")
+                vecs = pooled_output.cpu().numpy()
         elif extraction_strategy == "per_token":
             vecs = sequence_output.cpu().numpy()
         elif extraction_strategy == "reduce_mean":
             vecs = self._pool_tokens(sequence_output, padding_mask, extraction_strategy, ignore_first_token=ignore_first_token)
         elif extraction_strategy == "reduce_max":
             vecs = self._pool_tokens(sequence_output, padding_mask, extraction_strategy, ignore_first_token=ignore_first_token)
+        elif extraction_strategy == "cls_token":
+            vecs = sequence_output[:, 0, :].cpu().numpy()
         else:
             raise NotImplementedError
 
@@ -234,8 +244,18 @@ class Bert(LanguageModel):
             token_type_ids=segment_ids,
             attention_mask=padding_mask,
         )
-        sequence_output, pooled_output = output_tuple[0], output_tuple[1]
-        return sequence_output, pooled_output
+        if self.model.encoder.output_hidden_states == True:
+            sequence_output, pooled_output, all_hidden_states = output_tuple[0], output_tuple[1], output_tuple[2]
+            return sequence_output, pooled_output, all_hidden_states
+        else:
+            sequence_output, pooled_output = output_tuple[0], output_tuple[1]
+            return sequence_output, pooled_output
+
+    def enable_hidden_states_output(self):
+        self.model.encoder.output_hidden_states = True
+
+    def disable_hidden_states_output(self):
+        self.model.encoder.output_hidden_states = False
 
     def save_config(self, save_dir):
         save_filename = os.path.join(save_dir, "language_model_config.json")

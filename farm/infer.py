@@ -140,7 +140,7 @@ class Inferencer:
 
         return preds_all
 
-    def extract_vectors(self, dicts, extraction_strategy="cls_token"):
+    def extract_vectors(self, dicts, extraction_strategy="cls_token", extraction_layer=-1):
         """
         Converts a text into vector(s) using the language model only (no prediction head involved).
         :param dicts: Samples to run inference on provided as a list of dicts. One dict per sample.
@@ -172,6 +172,7 @@ class Inferencer:
                     extraction_strategy=extraction_strategy,
                     samples=batch_samples,
                     tokenizer=self.processor.tokenizer,
+                    extraction_layer=extraction_layer,
                     **batch,
                 )
                 preds_all += preds
