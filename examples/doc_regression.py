@@ -18,14 +18,14 @@ logging.basicConfig(
     level=logging.INFO)
 
 ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
-ml_logger.init_experiment(experiment_name="Public_FARM_Regression", run_name="Run_doc_regression")
+ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_doc_regression")
 
 ##########################
 ########## Settings
 ##########################
 set_all_seeds(seed=42)
 device, n_gpu = initialize_device_settings(use_cuda=True)
-n_epochs = 1
+n_epochs = 5
 batch_size = 32
 evaluate_every = 30
 lang_model = "bert-base-cased"
@@ -38,7 +38,7 @@ tokenizer = BertTokenizer.from_pretrained(
 # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
 #    We do not have a sample dataset for regression yet, add your own dataset to run the example
 processor = RegressionProcessor(tokenizer=tokenizer,
-                                max_seq_len=256,
+                                max_seq_len=128,
                                 data_dir="",
                                 columns = ["text", "label"],
                                 label_list = [],

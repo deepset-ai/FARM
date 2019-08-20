@@ -791,7 +791,7 @@ class RegressionProcessor(Processor):
         test_filename="test.tsv",
         dev_split=0.1,
         metrics=["mse"],
-        label_dtype=torch.long,
+        label_dtype=torch.float,
         delimiter="\t",
         quote_char="'",
         skiprows=[0],
