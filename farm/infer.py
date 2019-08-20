@@ -1,7 +1,7 @@
 import os
 import torch
 import fasttext
-import numpy as np
+import logging
 
 from torch.utils.data.sampler import SequentialSampler
 
@@ -11,6 +11,9 @@ from farm.modeling.adaptive_model import AdaptiveModel
 from farm.utils import initialize_device_settings
 from farm.data_handler.processor import Processor, InferenceProcessor
 from farm.utils import set_all_seeds
+
+
+logger = logging.getLogger(__name__)
 
 
 class Inferencer:
@@ -140,7 +143,9 @@ class Inferencer:
 
         return preds_all
 
-    def extract_vectors(self, dicts, extraction_strategy="cls_token", extraction_layer=-1):
+    def extract_vectors(
+        self, dicts, extraction_strategy="cls_token", extraction_layer=-1
+    ):
         """
         Converts a text into vector(s) using the language model only (no prediction head involved).
         :param dicts: Samples to run inference on provided as a list of dicts. One dict per sample.
@@ -188,7 +193,10 @@ class FasttextInferencer:
 
     @classmethod
     def load(cls, load_dir, batch_size=4, gpu=False, embedder_only=True):
-        return cls(model=fasttext.load_model(load_dir))
+        if os.path.isfile(load_dir):
+            return cls(model=fasttext.load_model(load_dir))
+        else:
+            logger.error(f"Fasttext model file does not exist at: {load_dir}")
 
     def extract_vectors(self, dicts, extraction_strategy="reduce_mean"):
         """
