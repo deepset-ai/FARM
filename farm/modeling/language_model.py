@@ -156,7 +156,7 @@ class LanguageModel(nn.Module):
         if extraction_strategy == "pooled":
             if extraction_layer != -1:
                 raise ValueError(f"Pooled output only works for the last layer, but got extraction_layer = {extraction_layer}. Please set `extraction_layer=-1`.)")
-                vecs = pooled_output.cpu().numpy()
+            vecs = pooled_output.cpu().numpy()
         elif extraction_strategy == "per_token":
             vecs = sequence_output.cpu().numpy()
         elif extraction_strategy == "reduce_mean":
