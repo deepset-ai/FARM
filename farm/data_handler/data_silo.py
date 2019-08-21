@@ -70,7 +70,7 @@ class DataSilo(object):
 
         # derive stats and meta data
         self._calculate_statistics()
-        self._calculate_class_weights(self.data["train"])
+        self.calculate_class_weights()
         self._initialize_data_loaders()
         # fmt: on
 
@@ -175,17 +175,24 @@ class DataSilo(object):
 
     # TODO: maybe this can be inside calculate_statistics
     # TODO: this also computes weights for QA. What is inside x[3].item() o_O ???
-    def _calculate_class_weights(self, dataset):
+    def calculate_class_weights(self, tensor_name="ata_label_ids"):
+
         try:
-            labels = [x[3].item() for x in dataset]
-            self.class_weights = list(
-                compute_class_weight("balanced", np.unique(labels), labels)
-            )
-            logger.info(f"Using class weights: {self.class_weights}")
-        except ValueError:
+            tensor_idx = list(self.tensor_names).index(tensor_name)
+            labels = []
+            for dataset in self.data.values():
+                if dataset is not None:
+                    labels += [x[tensor_idx].item() for x in dataset]
+            #TODO check the behaviour if there are labels (e.g. in label_map) that are not present in the dataset
+            class_weights = list(compute_class_weight("balanced", np.unique(labels), labels))
+            logger.info(f"Using class weights: {class_weights}")
+            return class_weights
+        except ValueError as e:
+            logger.error(e)
             logger.info(
                 "Class weighting is currently only available for sequence classification tasks "
             )
+            return None
 
     def get_data_loader(self, dataset):
         return self.loaders[dataset]

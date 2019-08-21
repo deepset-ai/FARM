@@ -160,6 +160,7 @@ class TextClassificationHead(PredictionHead):
         class_weights=None,
         loss_ignore_index=-100,
         loss_reduction="none",
+        label_tensor_name=None,
         **kwargs,
     ):
         super(TextClassificationHead, self).__init__()
@@ -171,6 +172,7 @@ class TextClassificationHead(PredictionHead):
         self.ph_output_type = "per_sequence"
         self.model_type = "text_classification"
         self.class_weights = class_weights
+        self.label_tensor_name = label_tensor_name
 
         if class_weights:
             self.balanced_weights = nn.Parameter(
@@ -192,6 +194,8 @@ class TextClassificationHead(PredictionHead):
         return logits
 
     def logits_to_loss(self, logits, label_ids, **kwargs):
+        if self.label_tensor_name is not None:
+            label_ids = kwargs.get(self.label_tensor_name).view(-1)
         return self.loss_fct(logits, label_ids.view(-1))
 
     def logits_to_probs(self, logits, **kwargs):
@@ -208,6 +212,8 @@ class TextClassificationHead(PredictionHead):
         return preds
 
     def prepare_labels(self, label_map, label_ids, **kwargs):
+        if self.label_tensor_name is not None:
+            label_ids = kwargs.get(self.label_tensor_name).view(-1)
         label_ids = label_ids.cpu().numpy()
         labels = [label_map[int(x)] for x in label_ids]
         return labels
