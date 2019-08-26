@@ -141,9 +141,19 @@ def read_docs_from_txt(filename, delimiter="", encoding="utf-8"):
             else:
                 doc.append(line)
 
-        # if last row in file is not empty
-        if all_docs[-1] != doc and len(doc) > 0:
-            all_docs.append({"doc": doc})
+        # if last row in file is not empty, we add the last parsed doc manually to all_docs
+        if len(doc) > 0:
+            if len(all_docs) > 0:
+                if all_docs[-1] != doc:
+                    all_docs.append({"doc": doc})
+            else:
+                all_docs.append({"doc": doc})
+
+        if len(all_docs) < 2:
+            raise ValueError(f"Found only {len(all_docs)} docs in {filename}). You need at least 2! \n"
+                           f"Make sure that you comply with the format: \n"
+                           f"-> One sentence per line and exactly *one* empty line between docs. \n"
+                           f"You might have a single block of text without empty lines inbetween.")
     return all_docs
 
 
