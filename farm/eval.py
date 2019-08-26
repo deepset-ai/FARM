@@ -19,7 +19,7 @@ class Evaluator:
     """Handles evaluation of a given model over a specified dataset."""
 
     def __init__(
-        self, data_loader, label_maps, device, metrics, classification_report=True
+        self, data_loader, tasks, device, classification_report=True
     ):
         """
         :param data_loader: The PyTorch DataLoader that will return batches of data from the evaluation dataset
@@ -33,12 +33,12 @@ class Evaluator:
         """
 
         self.data_loader = data_loader
-        self.label_maps = label_maps
-
+        #self.label_maps = label_maps
+        self.tasks = tasks
         self.device = device
 
         # Where should metric be defined? When dataset loaded? In config?
-        self.metrics = metrics
+        #self.metrics = metrics
         self.classification_report = classification_report
 
     def eval(self, model):
@@ -70,10 +70,10 @@ class Evaluator:
                 losses_per_head = model.logits_to_loss_per_head(logits=logits, **batch)
 
                 preds = model.logits_to_preds(
-                    logits=logits, label_maps=self.label_maps, **batch
+                    logits=logits, **batch
                 )
 
-                labels = model.prepare_labels(label_maps=self.label_maps, **batch)
+                labels = model.prepare_labels(**batch)
 
             # stack results of all batches per prediction head
             for head_num, head in enumerate(model.prediction_heads):
@@ -86,8 +86,7 @@ class Evaluator:
         for head_num, head in enumerate(model.prediction_heads):
             result = {"loss": loss_all[head_num] / len(self.data_loader.dataset)}
             result.update(
-                compute_metrics(
-                    self.metrics[head_num], preds_all[head_num], label_all[head_num]
+                compute_metrics(metric=head.metric, preds=preds_all[head_num], labels=label_all[head_num]
                 )
             )
 

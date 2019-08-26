@@ -12,13 +12,13 @@ from farm.train import Trainer
 from farm.utils import set_all_seeds, initialize_device_settings
 
 def test_doc_classification(caplog):
-    caplog.set_level(logging.CRITICAL)
+    #caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=False)
     n_epochs = 1
     batch_size = 8
-    evaluate_every = 30
+    evaluate_every = 5
     lang_model = "bert-base-german-cased"
 
     tokenizer = BertTokenizer.from_pretrained(
@@ -34,7 +34,7 @@ def test_doc_classification(caplog):
                                             dev_split=0.1,
                                             columns=["text", "label", "unused"],
                                             label_list=["OTHER", "OFFENSE"],
-                                            metrics=["f1_macro"]
+                                            metrics="f1_macro"
                                             )
 
     data_silo = DataSilo(
@@ -42,7 +42,7 @@ def test_doc_classification(caplog):
         batch_size=batch_size)
 
     language_model = Bert.load(lang_model)
-    prediction_head = TextClassificationHead(layer_dims=[768, len(processor.label_list)])
+    prediction_head = TextClassificationHead(layer_dims=[768, len(processor.tasks["text_classification"]["label_map"])])
     model = AdaptiveModel(
         language_model=language_model,
         prediction_heads=[prediction_head],
@@ -76,7 +76,9 @@ def test_doc_classification(caplog):
         {"text": "Martin Müller spielt Handball in Berlin."},
         {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei."},
     ]
-    model = Inferencer.load(save_dir)
+    #TODO enable loading here again after we have finished migration towards "processor.tasks"
+    #model = Inferencer.load(save_dir)
+    model = Inferencer(model=model, processor=processor)
     result = model.run_inference(dicts=basic_texts)
     assert result[0]["predictions"][0]["label"] == "OTHER"
     assert abs(result[0]["predictions"][0]["probability"] - 0.7) <= 0.1

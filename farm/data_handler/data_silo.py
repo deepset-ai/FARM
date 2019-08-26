@@ -70,7 +70,7 @@ class DataSilo(object):
 
         # derive stats and meta data
         self._calculate_statistics()
-        self.calculate_class_weights()
+        #self.calculate_class_weights()
         self._initialize_data_loaders()
         # fmt: on
 
@@ -175,9 +175,11 @@ class DataSilo(object):
 
     # TODO: maybe this can be inside calculate_statistics
     # TODO: this also computes weights for QA. What is inside x[3].item() o_O ???
-    def calculate_class_weights(self, tensor_name="ata_label_ids"):
+    def calculate_class_weights(self, task_name):
 
         try:
+            tensor_name = self.tasks[task_name]["tensor_name"]
+            label_map = self.tasks[task_name]["label_map"]
             tensor_idx = list(self.tensor_names).index(tensor_name)
             labels = []
             for dataset in self.data.values():

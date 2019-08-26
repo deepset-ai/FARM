@@ -58,8 +58,7 @@ class Processor(ABC):
         self,
         tokenizer,
         max_seq_len,
-        label_list,
-        metrics,
+        tasks,
         train_filename,
         dev_filename,
         test_filename,
@@ -102,7 +101,7 @@ class Processor(ABC):
         # objects required in Multiprocessing must be set as class attributes.
         Processor.tokenizer = tokenizer
         Processor.max_seq_len = max_seq_len
-        Processor.label_list = label_list
+        Processor.tasks = tasks
 
         # data sets
         self.train_filename = train_filename
@@ -112,24 +111,12 @@ class Processor(ABC):
         self.data_dir = data_dir
         # labels
         self.label_dtype = label_dtype
-        self.label_maps = []
         # multiprocessing
         self.multiprocessing_chunk_size = multiprocessing_chunk_size
         self.share_all_baskets_for_multiprocessing = (
             share_all_baskets_for_multiprocessing
         )
         self.max_processes = max_processes
-        # others
-        self.metrics = [metrics] if isinstance(metrics, str) else metrics
-
-        # create label maps (one per prediction head)
-        if any(isinstance(i, list) for i in label_list):
-            for labels_per_head in label_list:
-                map = {i: label for i, label in enumerate(labels_per_head)}
-                self.label_maps.append(map)
-        else:
-            map = {i: label for i, label in enumerate(label_list)}
-            self.label_maps.append(map)
 
         self.baskets = []
 
@@ -405,7 +392,9 @@ class Processor(ABC):
             "processor": self.__class__.__name__,
             "tokenizer": self.tokenizer.__class__.__name__,
         }
-        names = ["max_seq_len", "metrics", "dev_split"]
+        #TODO only temp. commented out because metrics has moved into processor.tasks
+        #names = ["max_seq_len", "metrics", "dev_split"]
+        names = ["max_seq_len", "dev_split"]
         for name in names:
             value = getattr(self, name)
             params.update({name: str(value)})
@@ -429,7 +418,7 @@ class TextClassificationProcessor(Processor):
         dev_filename=None,
         test_filename="test.tsv",
         dev_split=0.1,
-        metrics=["acc"],
+        metrics="acc", # TODO we should make this just a simple string
         label_dtype=torch.long,
         delimiter="\t",
         quote_char="'",
@@ -437,6 +426,15 @@ class TextClassificationProcessor(Processor):
         columns=["text", "label"],
         **kwargs,
     ):
+        # Task Mapping: Here we only have a single task, so that's easy.
+        # In other processors we sometimes want to produce data for multiple tasks (= multitask learning).
+        tasks = {"text_classification": {
+                                        #"label_list": label_list, #get rid of this one (in favor of label_map) as soon we have refactored all code parts that use it
+                                        "label_map": {i: label for i, label in enumerate(label_list)},
+                                        "metric": metrics,
+                                        "label_tensor_name": "label_ids"
+                                    }
+        }
 
         # Custom processor attributes
         self.delimiter = delimiter
@@ -447,8 +445,7 @@ class TextClassificationProcessor(Processor):
         super(TextClassificationProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
-            label_list=label_list,
-            metrics=metrics,
+            tasks=tasks,
             train_filename=train_filename,
             dev_filename=dev_filename,
             test_filename=test_filename,
@@ -481,7 +478,7 @@ class TextClassificationProcessor(Processor):
     def _sample_to_features(cls, sample) -> dict:
         features = sample_to_features_text(
             sample=sample,
-            label_list=cls.label_list,
+            tasks=cls.tasks,
             max_seq_len=cls.max_seq_len,
             tokenizer=cls.tokenizer,
         )
@@ -582,9 +579,22 @@ class BertStyleLMProcessor(Processor):
         dev_split=0.0,
         **kwargs,
     ):
+        # Task Mapping
+        tasks = {"mlm": {
+                        "label_list": list(tokenizer.vocab),
+                        "metric": "acc",
+                        "tensor_name": "lm_label_ids"
+                        },
+                "next_sentence": {
+                        "label_list": ["True", "False"],
+                        "metric": "acc",
+                        "tensor_name": "label_ids"
+                    }
+        }
+
         # General Processor attributes
-        label_list = [list(tokenizer.vocab), ["True", "False"]]  # labels for both heads
-        metrics = ["acc", "acc"]
+        # label_list = [list(tokenizer.vocab), ["True", "False"]]  # labels for both heads
+        # metrics = ["acc", "acc"]
         label_dtype = torch.long
         chunksize = 100
         share_all_baskets_for_multiprocessing = True
@@ -595,8 +605,7 @@ class BertStyleLMProcessor(Processor):
         super(BertStyleLMProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
-            label_list=label_list,
-            metrics=metrics,
+            tasks=tasks,
             train_filename=train_filename,
             dev_filename=dev_filename,
             test_filename=test_filename,

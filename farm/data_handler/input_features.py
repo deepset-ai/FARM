@@ -20,15 +20,15 @@ logger = logging.getLogger(__name__)
 
 
 def sample_to_features_text(
-    sample, label_list, max_seq_len, tokenizer, target="classification"
+    sample, tasks, max_seq_len, tokenizer, target="classification"
 ):
     """
     Generates a dictionary of features for a given input sample that is to be consumed by a text classification model.
 
     :param sample: Sample object that contains human readable text and label fields from a single text classification data sample
     :type sample: Sample
-    :param label_list: A list of all unique labels
-    :type label_list: list
+    :param tasks: TODO
+    :type tasks: dict
     :param max_seq_len: Sequences are truncated after this many tokens
     :type max_seq_len: int
     :param tokenizer: A tokenizer object that can turn string sentences into a list of tokens
@@ -39,11 +39,7 @@ def sample_to_features_text(
     :rtype: dict
     """
 
-    label_map = {label: i for i, label in enumerate(label_list)}
-
-    # tokens = tokenizer.tokenize(sample.clear_text["text"])
     tokens = sample.tokenized["tokens"]
-    # tokens = sample.tokenized["word_pieces"]
     # Account for [CLS] and [SEP] with "- 2"
     if len(tokens) > max_seq_len - 2:
         tokens = tokens[: (max_seq_len - 2)]
@@ -86,26 +82,34 @@ def sample_to_features_text(
     assert len(padding_mask) == max_seq_len
     assert len(segment_ids) == max_seq_len
 
-    # For inference mode
-    try:
-        if target == "classification":
-            label_ids = label_map[sample.clear_text["label"]]
-        elif target == "regression":
-            label_ids = float(sample.clear_text["label"])
-        else:
-            # TODO Add multilabel here
-            raise KeyError(target)
-    except KeyError:
-        label_ids = None
-
     feat_dict = {
         "input_ids": input_ids,
         "padding_mask": padding_mask,
         "segment_ids": segment_ids,
     }
 
-    if label_ids is not None:
-        feat_dict["label_ids"] = label_ids
+    # Add Labels for different tasks
+    for task_name, task in tasks.items():
+        inverse_label_map = {v: k for k, v in task["label_map"].items()}
+        try:
+            # TODO: make clear_text["label"] dynamic (=task dependent)
+            if target == "classification":
+                label_ids = inverse_label_map[sample.clear_text["label"]]
+            elif target == "regression":
+                label_ids = float(sample.clear_text["label"])
+            else:
+                # TODO Add multilabel classif. here
+                raise KeyError(target)
+        except KeyError:
+            # For inference mode we don't expect labels
+            label_ids = None
+            logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_map!"
+                           "\nIf your are running in *inference* mode: Don't worry!"
+                           "\nIf you are running in *training* mode: Verify you are supplying a proper label list to your processor.")
+
+
+        if label_ids is not None:
+            feat_dict[task["label_tensor_name"]] = label_ids
     return [feat_dict]
 
 

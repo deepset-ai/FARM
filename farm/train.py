@@ -107,9 +107,8 @@ class Trainer:
         if evaluator_dev is None and self.data_silo.get_data_loader("dev"):
             evaluator_dev = Evaluator(
                 data_loader=self.data_silo.get_data_loader("dev"),
-                label_maps=self.data_silo.processor.label_maps,
+                tasks=self.data_silo.processor.tasks,
                 device=device,
-                metrics=self.data_silo.processor.metrics,
             )
         self.evaluator_dev = evaluator_dev
 
@@ -117,14 +116,17 @@ class Trainer:
         if evaluator_test is None and self.data_silo.get_data_loader("test"):
             evaluator_test = Evaluator(
                 data_loader=self.data_silo.get_data_loader("test"),
-                label_maps=self.data_silo.processor.label_maps,
-                device=device,
-                metrics=self.data_silo.processor.metrics,
+                tasks=self.data_silo.processor.tasks,
+                device=device
             )
         self.evaluator_test = evaluator_test
 
     def train(self, model):
         """ Perform the training procedure. """
+
+        # connect the prediction heads with the right output from processor
+        model.connect_heads_with_processor(self.data_silo.processor.tasks)
+
         logger.info(f"\n {GROWING_TREE}")
         model.train()
         # multi GPU + distributed settings

@@ -62,10 +62,14 @@ class Inferencer:
         # TODO adjust for multiple prediction heads
         if len(self.model.prediction_heads) == 1:
             self.prediction_type = self.model.prediction_heads[0].model_type
-            self.label_map = self.processor.label_maps[0]
+            #self.label_map = self.processor.label_maps[0]
         elif len(self.model.prediction_heads) == 0:
             self.prediction_type = "embedder"
+        else:
+            raise NotImplementedError("A model with multiple prediction heads is currently not supported by the Inferencer")
         self.name = name if name != None else f"anonymous-{self.prediction_type}"
+
+        model.connect_heads_with_processor(processor.tasks)
         set_all_seeds(42, n_gpu)
 
     @classmethod
@@ -123,7 +127,6 @@ class Inferencer:
                 logits = self.model.forward(**batch)
                 preds = self.model.formatted_preds(
                     logits=logits,
-                    label_maps=self.processor.label_maps,
                     samples=batch_samples,
                     tokenizer=self.processor.tokenizer,
                     **batch
