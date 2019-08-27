@@ -195,7 +195,7 @@ class TextClassificationHead(PredictionHead):
 
     def logits_to_loss(self, logits, **kwargs):
         #if self.label_tensor_name is not None:
-        label_ids = kwargs.get(self.label_tensor_name).view(-1)
+        label_ids = kwargs.get(self.label_tensor_name)
         return self.loss_fct(logits, label_ids.view(-1))
 
     def logits_to_probs(self, logits, **kwargs):
@@ -213,7 +213,7 @@ class TextClassificationHead(PredictionHead):
 
     def prepare_labels(self, **kwargs):
         #if self.label_tensor_name is not None:
-        label_ids = kwargs.get(self.label_tensor_name).view(-1)
+        label_ids = kwargs.get(self.label_tensor_name)
         label_ids = label_ids.cpu().numpy()
         labels = [self.label_map[int(x)] for x in label_ids]
         return labels
@@ -368,7 +368,7 @@ class TokenClassificationHead(PredictionHead):
 
 
 class BertLMHead(PredictionHead):
-    def __init__(self, hidden_size, vocab_size, hidden_act="gelu", **kwargs):
+    def __init__(self, hidden_size, vocab_size, hidden_act="gelu", task_name="lm", **kwargs):
         super(BertLMHead, self).__init__()
 
         self.hidden_size = hidden_size
@@ -381,6 +381,7 @@ class BertLMHead(PredictionHead):
         self.ph_output_type = "per_token"
 
         self.model_type = "language_modelling"
+        self.task_name = task_name
         self.generate_config()
 
         # NN Layers
@@ -441,7 +442,8 @@ class BertLMHead(PredictionHead):
         lm_logits = self.decoder(hidden_states) + self.bias
         return lm_logits
 
-    def logits_to_loss(self, logits, lm_label_ids, **kwargs):
+    def logits_to_loss(self, logits, **kwargs):
+        lm_label_ids = kwargs.get(self.label_tensor_name)
         batch_size = lm_label_ids.shape[0]
         masked_lm_loss = self.loss_fct(
             logits.view(-1, self.num_labels), lm_label_ids.view(-1)
@@ -449,9 +451,9 @@ class BertLMHead(PredictionHead):
         per_sample_loss = masked_lm_loss.view(-1, batch_size).mean(dim=0)
         return per_sample_loss
 
-    def logits_to_preds(self, logits, label_map, lm_label_ids, **kwargs):
+    def logits_to_preds(self, logits, **kwargs):
         logits = logits.cpu().numpy()
-        lm_label_ids = lm_label_ids.cpu().numpy()
+        lm_label_ids = kwargs.get(self.label_tensor_name).cpu().numpy()
         lm_preds_ids = logits.argmax(2)
         # apply mask to get rid of predictions for non-masked tokens
         assert lm_preds_ids.shape == lm_label_ids.shape
@@ -461,16 +463,17 @@ class BertLMHead(PredictionHead):
         # we have a batch of sequences here. we need to convert for each token in each sequence.
         for pred_ids_for_sequence in lm_preds_ids:
             preds.append(
-                [label_map[int(x)] for x in pred_ids_for_sequence if int(x) != -1]
+                [self.label_map[int(x)] for x in pred_ids_for_sequence if int(x) != -1]
             )
         return preds
 
-    def prepare_labels(self, label_map, lm_label_ids, **kwargs):
-        label_ids = lm_label_ids.cpu().numpy().tolist()
+    def prepare_labels(self, **kwargs):
+        label_ids = kwargs.get(self.label_tensor_name)
+        label_ids = label_ids.cpu().numpy().tolist()
         labels = []
         # we have a batch of sequences here. we need to convert for each token in each sequence.
         for ids_for_sequence in label_ids:
-            labels.append([label_map[int(x)] for x in ids_for_sequence if int(x) != -1])
+            labels.append([self.label_map[int(x)] for x in ids_for_sequence if int(x) != -1])
         return labels
 
 
@@ -487,6 +490,7 @@ class NextSentenceHead(TextClassificationHead):
                 and "prediction_head" in pretrained_model_name_or_path:
             config_file = os.path.exists(pretrained_model_name_or_path)
             # a) FARM style
+            #TODO validate saving/loading after switching to processor.tasks
             model_file = cls._get_model_file(config_file)
             config = json.load(open(config_file))
             prediction_head = cls(**config)
@@ -499,7 +503,7 @@ class NextSentenceHead(TextClassificationHead):
             bert_with_lm = BertForPreTraining.from_pretrained(pretrained_model_name_or_path)
 
             # init empty head
-            head = cls(layer_dims=[bert_with_lm.config.hidden_size, 2], loss_ignore_index=-1)
+            head = cls(layer_dims=[bert_with_lm.config.hidden_size, 2], loss_ignore_index=-1, task_name="nextsentence")
 
             # load weights
             head.feed_forward.feed_forward[0].load_state_dict(bert_with_lm.cls.seq_relationship.state_dict())

@@ -287,7 +287,7 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer):
         "padding_mask": padding_mask,
         "segment_ids": segment_ids,
         "lm_label_ids": lm_label_ids,
-        "label_ids": is_next_label_id,
+        "nextsentence_label_ids": is_next_label_id,
     }
 
     return [feature_dict]

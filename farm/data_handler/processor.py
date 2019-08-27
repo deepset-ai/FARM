@@ -582,22 +582,8 @@ class BertStyleLMProcessor(Processor):
         dev_split=0.0,
         **kwargs,
     ):
-        # Task Mapping
-        tasks = {"mlm": {
-                        "label_list": list(tokenizer.vocab),
-                        "metric": "acc",
-                        "tensor_name": "lm_label_ids"
-                        },
-                "next_sentence": {
-                        "label_list": ["True", "False"],
-                        "metric": "acc",
-                        "tensor_name": "label_ids"
-                    }
-        }
 
         # General Processor attributes
-        # label_list = [list(tokenizer.vocab), ["True", "False"]]  # labels for both heads
-        # metrics = ["acc", "acc"]
         chunksize = 100
         share_all_baskets_for_multiprocessing = True
 
@@ -607,7 +593,6 @@ class BertStyleLMProcessor(Processor):
         super(BertStyleLMProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
-            tasks=tasks,
             train_filename=train_filename,
             dev_filename=dev_filename,
             test_filename=test_filename,
@@ -616,6 +601,10 @@ class BertStyleLMProcessor(Processor):
             multiprocessing_chunk_size=chunksize,
             share_all_baskets_for_multiprocessing=share_all_baskets_for_multiprocessing,
         )
+
+        # Tasks
+        self.add_task(name="lm", labels=list(tokenizer.vocab), metric="acc")
+        self.add_task(name="nextsentence", labels=["True", "False"], metric="acc")
 
     def _file_to_dicts(self, file: str) -> list:
         dicts = read_docs_from_txt(filename=file, delimiter=self.delimiter)

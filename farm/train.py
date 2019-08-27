@@ -44,7 +44,7 @@ try:
 
 
 except ImportError:
-    logger.warn(
+    logger.warning(
         "Apex not installed. If you use distributed training with local rank != -1 apex must be installed."
     )
 
