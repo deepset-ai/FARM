@@ -176,17 +176,17 @@ class DataSilo(object):
     # TODO: maybe this can be inside calculate_statistics
     # TODO: this also computes weights for QA. What is inside x[3].item() o_O ???
     def calculate_class_weights(self, task_name):
-
         try:
-            tensor_name = self.tasks[task_name]["tensor_name"]
-            label_map = self.tasks[task_name]["label_map"]
+            tensor_name = self.processor.tasks[task_name]["label_tensor_name"]
+            label_map = self.processor.tasks[task_name]["label_map"]
             tensor_idx = list(self.tensor_names).index(tensor_name)
-            labels = []
+            # we need at least ONE observation for each label to avoid division by zero in compute_class_weights.
+            labels = list(label_map.keys())
             for dataset in self.data.values():
                 if dataset is not None:
                     labels += [x[tensor_idx].item() for x in dataset]
-            #TODO check the behaviour if there are labels (e.g. in label_map) that are not present in the dataset
-            class_weights = list(compute_class_weight("balanced", np.unique(labels), labels))
+            #TODO scale e.g. via logarithm to avoid crazy spikes for rare classes
+            class_weights = list(compute_class_weight("balanced", np.unique(list(label_map.keys())), labels))
             logger.info(f"Using class weights: {class_weights}")
             return class_weights
         except ValueError as e:
