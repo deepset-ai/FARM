@@ -58,13 +58,11 @@ class Processor(ABC):
         self,
         tokenizer,
         max_seq_len,
-        tasks,
         train_filename,
         dev_filename,
         test_filename,
         dev_split,
         data_dir,
-        label_dtype=torch.long,
         multiprocessing_chunk_size=1_000,
         max_processes=128,
         share_all_baskets_for_multiprocessing=False,
@@ -75,11 +73,6 @@ class Processor(ABC):
         :param tokenizer: Used to split a sentence (str) into tokens.
         :param max_seq_len: Samples are truncated after this many tokens.
         :type max_seq_len: int
-        :param label_list: List of all unique target labels.
-        :type label_list: list
-        :param metrics: The metric used for evaluation, one per prediction head.
-                        Choose from mcc, acc, acc_f1, pear_spear, seq_f1, f1_macro, squad.
-        :type metrics: list or str
         :param train_filename: The name of the file containing training data.
         :type train_filename: str
         :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
@@ -91,7 +84,6 @@ class Processor(ABC):
         :type dev_split: float
         :param data_dir: The directory in which the train, test and perhaps dev files can be found.
         :type data_dir: str
-        :param label_dtype: The torch dtype for the labels.
         :param max_processes: maximum number of processing to use for Multiprocessing.
         :type max_processes: int
         """
@@ -101,7 +93,7 @@ class Processor(ABC):
         # objects required in Multiprocessing must be set as class attributes.
         Processor.tokenizer = tokenizer
         Processor.max_seq_len = max_seq_len
-        Processor.tasks = tasks
+        Processor.tasks = {}
 
         # data sets
         self.train_filename = train_filename
@@ -109,8 +101,6 @@ class Processor(ABC):
         self.test_filename = test_filename
         self.dev_split = dev_split
         self.data_dir = data_dir
-        # labels
-        self.label_dtype = label_dtype
         # multiprocessing
         self.multiprocessing_chunk_size = multiprocessing_chunk_size
         self.share_all_baskets_for_multiprocessing = (
@@ -242,6 +232,21 @@ class Processor(ABC):
             if is_json(value) and key[0] != "_":
                 config[key] = value
         return config
+
+    @classmethod
+    def add_task(cls, name,  metric, labels, label_tensor_name=None):
+        if type(labels) not in (list, dict):
+            raise ValueError(f"Argument `labels` must be of type dict or list. Got: f{type(labels)}")
+        if type(labels) == list:
+            labels = {i: label for i, label in enumerate(labels)}
+
+        if label_tensor_name is None:
+            label_tensor_name = f"{name}_label_ids"
+        cls.tasks[name] = {"label_map": labels,
+                           "metric": metric,
+                           "label_tensor_name": label_tensor_name,
+                           #"label_dtype": label_dtype
+                          }
 
     @abc.abstractmethod
     def _file_to_dicts(self, file: str) -> [dict]:
@@ -419,22 +424,20 @@ class TextClassificationProcessor(Processor):
         test_filename="test.tsv",
         dev_split=0.1,
         metrics="acc", # TODO we should make this just a simple string
-        label_dtype=torch.long,
         delimiter="\t",
         quote_char="'",
         skiprows=[0],
         columns=["text", "label"],
         **kwargs,
     ):
-        # Task Mapping: Here we only have a single task, so that's easy.
-        # In other processors we sometimes want to produce data for multiple tasks (= multitask learning).
-        tasks = {"text_classification": {
-                                        #"label_list": label_list, #get rid of this one (in favor of label_map) as soon we have refactored all code parts that use it
-                                        "label_map": {i: label for i, label in enumerate(label_list)},
-                                        "metric": metrics,
-                                        "label_tensor_name": "label_ids"
-                                    }
-        }
+
+        # tasks = {"text_classification": {
+        #                                 #"label_list": label_list, #get rid of this one (in favor of label_map) as soon we have refactored all code parts that use it
+        #                                 "label_map": {i: label for i, label in enumerate(label_list)},
+        #                                 "metric": metrics,
+        #                                 "label_tensor_name": "label_ids_text"
+        #                             }
+        # }
 
         # Custom processor attributes
         self.delimiter = delimiter
@@ -445,14 +448,16 @@ class TextClassificationProcessor(Processor):
         super(TextClassificationProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
-            tasks=tasks,
             train_filename=train_filename,
             dev_filename=dev_filename,
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
-            label_dtype=label_dtype,
         )
+
+        # Task Mapping: Here we only have a single task, so that's easy.
+        # In other processors we sometimes want to produce data for multiple tasks (= multitask learning).
+        self.add_task(name="text_classification", labels=label_list, metric=metrics)
 
     """
     Used to handle the text classification datasets that come in tabular format (CSV, TSV, etc.)
@@ -518,7 +523,6 @@ class NERProcessor(Processor):
             "I-OTH",
         ],
         metrics=["seq_f1"],
-        label_dtype=torch.long,
         delimiter="\t",
         **kwargs,
     ):
@@ -536,7 +540,6 @@ class NERProcessor(Processor):
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
-            label_dtype=label_dtype,
         )
 
     def _file_to_dicts(self, file: str) -> [dict]:
@@ -595,7 +598,6 @@ class BertStyleLMProcessor(Processor):
         # General Processor attributes
         # label_list = [list(tokenizer.vocab), ["True", "False"]]  # labels for both heads
         # metrics = ["acc", "acc"]
-        label_dtype = torch.long
         chunksize = 100
         share_all_baskets_for_multiprocessing = True
 
@@ -611,7 +613,6 @@ class BertStyleLMProcessor(Processor):
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
-            label_dtype=label_dtype,
             multiprocessing_chunk_size=chunksize,
             share_all_baskets_for_multiprocessing=share_all_baskets_for_multiprocessing,
         )
@@ -717,7 +718,6 @@ class SquadProcessor(Processor):
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
-            label_dtype=torch.long,  # TODO check if that is correct and needed
             multiprocessing_chunk_size=chunksize,
         )
 
