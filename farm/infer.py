@@ -1,6 +1,5 @@
 import os
 import torch
-import fasttext
 import logging
 
 from torch.utils.data.sampler import SequentialSampler
@@ -201,6 +200,7 @@ class FasttextInferencer:
 
     @classmethod
     def load(cls, load_dir, batch_size=4, gpu=False, embedder_only=True):
+        import fasttext
         if os.path.isfile(load_dir):
             return cls(model=fasttext.load_model(load_dir))
         else:
