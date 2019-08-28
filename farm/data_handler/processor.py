@@ -146,11 +146,17 @@ class Processor(ABC):
 
     @classmethod
     def load(
-        cls,
-        processor_name,
-        tokenizer,
-        max_seq_len,
-        **kwargs,
+            cls,
+            processor_name,
+            data_dir,
+            tokenizer,
+            max_seq_len,
+            train_filename,
+            dev_filename,
+            test_filename,
+            dev_split,
+            metrics,
+            **kwargs,
     ):
         """
         Loads the class of processor specified by processor name.
@@ -185,8 +191,14 @@ class Processor(ABC):
             f"Those won't be used!"
         )
         return cls.subclasses[processor_name](
+            data_dir=data_dir,
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
+            train_filename=train_filename,
+            dev_filename=dev_filename,
+            test_filename=test_filename,
+            dev_split=dev_split,
+            metrics=metrics,
             **kwargs,
         )
 
