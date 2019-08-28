@@ -120,7 +120,7 @@ def sample_to_features_text(
 
 def samples_to_features_ner(
     sample,
-    label_list,
+    tasks,
     max_seq_len,
     tokenizer,
     cls_token="[CLS]",
@@ -169,32 +169,40 @@ def samples_to_features_ner(
     # Convert to input and labels to ids, generate masks
     input_ids = tokenizer.convert_tokens_to_ids(tokens)
 
-    if "label" in sample.clear_text:
-        labels_word = sample.clear_text["label"]
-        labels_token = expand_labels(labels_word, initial_mask, non_initial_token)
-        # labels_token = add_cls_sep(labels_token, cls_token, sep_token)
-        label_ids = [label_list.index(lt) for lt in labels_token]
-    # Inference mode
-    else:
-        label_ids = None
-    segment_ids = [0] * max_seq_len
+    for task_name, task in tasks.items():
+        try:
+            label_list = task["label_list"]
+            label_name = task["label_name"]
+            label_tensor_name = task["label_tensor_name"]
+            labels_word = sample.clear_text[label_name]
+            labels_token = expand_labels(labels_word, initial_mask, non_initial_token)
+            # labels_token = add_cls_sep(labels_token, cls_token, sep_token)
+            label_ids = [label_list.index(lt) for lt in labels_token]
+        except KeyError:
+            # For inference mode we don't expect labels
+            label_ids = None
+            logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
+                           "\nIf your are running in *inference* mode: Don't worry!"
+                           "\nIf you are running in *training* mode: Verify you are supplying a proper label list to your processor.")
 
-    # Pad
-    input_ids = pad(input_ids, max_seq_len, 0)
-    if label_ids:
-        label_ids = pad(label_ids, max_seq_len, 0)
-    initial_mask = pad(initial_mask, max_seq_len, 0)
-    padding_mask = pad(padding_mask, max_seq_len, 0)
+        segment_ids = [0] * max_seq_len
 
-    feature_dict = {
-        "input_ids": input_ids,
-        "padding_mask": padding_mask,
-        "segment_ids": segment_ids,
-        "initial_mask": initial_mask,
-    }
+        # Pad
+        input_ids = pad(input_ids, max_seq_len, 0)
+        if label_ids:
+            label_ids = pad(label_ids, max_seq_len, 0)
+        initial_mask = pad(initial_mask, max_seq_len, 0)
+        padding_mask = pad(padding_mask, max_seq_len, 0)
 
-    if label_ids:
-        feature_dict["label_ids"] = label_ids
+        feature_dict = {
+            "input_ids": input_ids,
+            "padding_mask": padding_mask,
+            "segment_ids": segment_ids,
+            "initial_mask": initial_mask,
+        }
+
+        if label_ids:
+            feature_dict[label_tensor_name] = label_ids
 
     return [feature_dict]
 

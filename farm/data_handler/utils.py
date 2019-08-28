@@ -60,7 +60,7 @@ def read_ner_file(filename, sep="\t", **kwargs):
     for line in f:
         if len(line) == 0 or line.startswith("-DOCSTART") or line[0] == "\n":
             if len(sentence) > 0:
-                data.append({"text": " ".join(sentence), "label": label})
+                data.append({"text": " ".join(sentence), "ner_label": label})
                 sentence = []
                 label = []
             continue
@@ -69,7 +69,7 @@ def read_ner_file(filename, sep="\t", **kwargs):
         label.append(splits[-1][:-1])
 
     if len(sentence) > 0:
-        data.append({"text": " ".join(sentence), "label": label})
+        data.append({"text": " ".join(sentence), "ner_label": label})
     return data
 
 

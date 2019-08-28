@@ -260,18 +260,21 @@ class TokenClassificationHead(PredictionHead):
         return logits
 
     def logits_to_loss(
-        self, logits, label_ids, initial_mask, padding_mask=None, **kwargs
+        self, logits, initial_mask, padding_mask=None, **kwargs
     ):
+        label_ids = kwargs.get(self.label_tensor_name)
+
         # Todo: should we be applying initial mask here? Loss is currently calculated even on non initial tokens
         active_loss = padding_mask.view(-1) == 1
         active_logits = logits.view(-1, self.num_labels)[active_loss]
         active_labels = label_ids.view(-1)[active_loss]
+
         loss = self.loss_fct(
             active_logits, active_labels
         )  # loss is a 1 dimemnsional (active) token loss
         return loss
 
-    def logits_to_preds(self, logits, initial_mask, label_map, **kwargs):
+    def logits_to_preds(self, logits, initial_mask, **kwargs):
         preds_word_all = []
         preds_tokens = torch.argmax(logits, dim=2)
         preds_token = preds_tokens.detach().cpu().numpy()
@@ -282,7 +285,7 @@ class TokenClassificationHead(PredictionHead):
             preds_t = preds_token[idx]
             # Get labels and predictions for just the word initial tokens
             preds_word_id = self.initial_token_only(preds_t, initial_mask=im)
-            preds_word = [label_map[pwi] for pwi in preds_word_id]
+            preds_word = [self.label_list[pwi] for pwi in preds_word_id]
             preds_word_all.append(preds_word)
         return preds_word_all
 
@@ -302,7 +305,8 @@ class TokenClassificationHead(PredictionHead):
             all_probs.append(probs_words)
         return all_probs
 
-    def prepare_labels(self, label_map, label_ids, initial_mask, **kwargs):
+    def prepare_labels(self, initial_mask, **kwargs):
+        label_ids = kwargs.get(self.label_tensor_name)
         labels_all = []
         label_ids = label_ids.cpu().numpy()
         for label_ids_one_sample, initial_mask_one_sample in zip(
@@ -311,7 +315,7 @@ class TokenClassificationHead(PredictionHead):
             label_ids = self.initial_token_only(
                 label_ids_one_sample, initial_mask_one_sample
             )
-            labels = [label_map[l] for l in label_ids]
+            labels = [self.label_list[l] for l in label_ids]
             labels_all.append(labels)
         return labels_all
 
@@ -323,8 +327,8 @@ class TokenClassificationHead(PredictionHead):
                 ret.append(s)
         return ret
 
-    def formatted_preds(self, logits, label_map, initial_mask, samples, **kwargs):
-        preds = self.logits_to_preds(logits, initial_mask, label_map)
+    def formatted_preds(self, logits, initial_mask, samples, **kwargs):
+        preds = self.logits_to_preds(logits, initial_mask)
         probs = self.logits_to_probs(logits, initial_mask)
 
         # align back with original input by getting the original word spans

@@ -501,22 +501,6 @@ class NERProcessor(Processor):
         dev_filename="dev.txt",
         test_filename="test.txt",
         dev_split=None,
-        label_list=[
-            "[PAD]",
-            "X",
-            "O",
-            "B-MISC",
-            "I-MISC",
-            "B-PER",
-            "I-PER",
-            "B-ORG",
-            "I-ORG",
-            "B-LOC",
-            "I-LOC",
-            "B-OTH",
-            "I-OTH",
-        ],
-        metrics=["seq_f1"],
         delimiter="\t",
         **kwargs,
     ):
@@ -527,8 +511,6 @@ class NERProcessor(Processor):
         super(NERProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
-            label_list=label_list,
-            metrics=metrics,
             train_filename=train_filename,
             dev_filename=dev_filename,
             test_filename=test_filename,
@@ -550,7 +532,7 @@ class NERProcessor(Processor):
     def _sample_to_features(cls, sample) -> dict:
         features = samples_to_features_ner(
             sample=sample,
-            label_list=cls.label_list,
+            tasks=cls.tasks,
             max_seq_len=cls.max_seq_len,
             tokenizer=cls.tokenizer,
         )
