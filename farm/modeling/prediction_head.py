@@ -152,6 +152,9 @@ class PredictionHead(nn.Module):
             raise ValueError(f"This doesn't seem to be a proper prediction_head config file: '{config_file}'")
         return model_file
 
+    def _set_name(self, name):
+        self.task_name = name
+
 
 class TextClassificationHead(PredictionHead):
     def __init__(
@@ -208,14 +211,14 @@ class TextClassificationHead(PredictionHead):
     def logits_to_preds(self, logits, **kwargs):
         logits = logits.cpu().numpy()
         pred_ids = logits.argmax(1)
-        preds = [self.label_map[x] for x in pred_ids]
+        preds = [self.label_list[int(x)] for x in pred_ids]
         return preds
 
     def prepare_labels(self, **kwargs):
         #if self.label_tensor_name is not None:
         label_ids = kwargs.get(self.label_tensor_name)
         label_ids = label_ids.cpu().numpy()
-        labels = [self.label_map[int(x)] for x in label_ids]
+        labels = [self.label_list[int(x)] for x in label_ids]
         return labels
 
     def formatted_preds(self, logits, samples, **kwargs):
@@ -463,7 +466,7 @@ class BertLMHead(PredictionHead):
         # we have a batch of sequences here. we need to convert for each token in each sequence.
         for pred_ids_for_sequence in lm_preds_ids:
             preds.append(
-                [self.label_map[int(x)] for x in pred_ids_for_sequence if int(x) != -1]
+                [self.label_list[int(x)] for x in pred_ids_for_sequence if int(x) != -1]
             )
         return preds
 
@@ -473,7 +476,7 @@ class BertLMHead(PredictionHead):
         labels = []
         # we have a batch of sequences here. we need to convert for each token in each sequence.
         for ids_for_sequence in label_ids:
-            labels.append([self.label_map[int(x)] for x in ids_for_sequence if int(x) != -1])
+            labels.append([self.label_list[int(x)] for x in ids_for_sequence if int(x) != -1])
         return labels
 
 

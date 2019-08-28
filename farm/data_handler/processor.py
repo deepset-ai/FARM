@@ -234,17 +234,17 @@ class Processor(ABC):
         return config
 
     @classmethod
-    def add_task(cls, name,  metric, labels, label_tensor_name=None):
-        if type(labels) not in (list, dict):
-            raise ValueError(f"Argument `labels` must be of type dict or list. Got: f{type(labels)}")
-        if type(labels) == list:
-            labels = {i: label for i, label in enumerate(labels)}
+    def add_task(cls, name,  metric, labels, label_name=None):
+        if type(labels) is not list:
+            raise ValueError(f"Argument `labels` must be of type list. Got: f{type(labels)}")
 
-        if label_tensor_name is None:
-            label_tensor_name = f"{name}_label_ids"
-        cls.tasks[name] = {"label_map": labels,
+        if label_name is None:
+            label_name = f"{name}_label"
+        label_tensor_name = label_name + "_ids"
+        cls.tasks[name] = {"label_list": labels,
                            "metric": metric,
                            "label_tensor_name": label_tensor_name,
+                           "label_name": label_name
                            #"label_dtype": label_dtype
                           }
 
@@ -418,16 +418,13 @@ class TextClassificationProcessor(Processor):
         tokenizer,
         max_seq_len,
         data_dir,
-        label_list,
         train_filename="train.tsv",
         dev_filename=None,
         test_filename="test.tsv",
         dev_split=0.1,
-        metrics="acc", # TODO we should make this just a simple string
         delimiter="\t",
         quote_char="'",
-        skiprows=[0],
-        columns=["text", "label"],
+        skiprows=None,
         **kwargs,
     ):
 
@@ -443,7 +440,6 @@ class TextClassificationProcessor(Processor):
         self.delimiter = delimiter
         self.quote_char = quote_char
         self.skiprows = skiprows
-        self.columns = columns
 
         super(TextClassificationProcessor, self).__init__(
             tokenizer=tokenizer,
@@ -455,9 +451,6 @@ class TextClassificationProcessor(Processor):
             data_dir=data_dir,
         )
 
-        # Task Mapping: Here we only have a single task, so that's easy.
-        # In other processors we sometimes want to produce data for multiple tasks (= multitask learning).
-        self.add_task(name="text_classification", labels=label_list, metric=metrics)
 
     """
     Used to handle the text classification datasets that come in tabular format (CSV, TSV, etc.)
@@ -468,9 +461,7 @@ class TextClassificationProcessor(Processor):
             filename=file,
             delimiter=self.delimiter,
             skiprows=self.skiprows,
-            quotechar=self.quote_char,
-            columns=self.columns,
-        )
+            quotechar=self.quote_char)
         return dicts
 
     @classmethod

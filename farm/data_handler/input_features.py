@@ -90,20 +90,25 @@ def sample_to_features_text(
 
     # Add Labels for different tasks
     for task_name, task in tasks.items():
-        inverse_label_map = {v: k for k, v in task["label_map"].items()}
         try:
-            # TODO: make clear_text["label"] dynamic (=task dependent)
+
+            label_name = task["label_name"]
+            label_raw = sample.clear_text[label_name]
+            label_list = task["label_list"]
             if target == "classification":
-                label_ids = inverse_label_map[sample.clear_text["label"]]
+                try:
+                    label_ids = [label_list.index(label_raw)]
+                except ValueError as e:
+                    raise ValueError(f'[Task: {task_name}] Observed label {label_raw} not in defined label_list')
             elif target == "regression":
-                label_ids = float(sample.clear_text["label"])
+                label_ids = [float(label_raw)]
             else:
                 # TODO Add multilabel classif. here
                 raise KeyError(target)
         except KeyError:
             # For inference mode we don't expect labels
             label_ids = None
-            logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_map!"
+            logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
                            "\nIf your are running in *inference* mode: Don't worry!"
                            "\nIf you are running in *training* mode: Verify you are supplying a proper label list to your processor.")
 
@@ -194,7 +199,7 @@ def samples_to_features_ner(
     return [feature_dict]
 
 
-def samples_to_features_bert_lm(sample, max_seq_len, tokenizer):
+def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, nsp=False):
     """
     Convert a raw sample (pair of sentences as tokenized strings) into a proper training sample with
     IDs, LM labels, padding_mask, CLS and SEP tokens etc.
@@ -209,19 +214,28 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer):
     tokens_b = sample.tokenized["text_b"]["tokens"]
     # Modifies `tokens_a` and `tokens_b` in place so that the total
     # length is less than the specified length.
-    # Account for [CLS], [SEP], [SEP] with "- 3"
-    truncate_seq_pair(tokens_a, tokens_b, max_seq_len - 3)
+    # Account for [CLS], [SEP], [SEP] or [CLS], [SEP]
+    if not nsp:
+        n_special_tokens = 2
+    else:
+        n_special_tokens = 3
+    truncate_seq_pair(tokens_a, tokens_b, max_seq_len - n_special_tokens)
 
     tokens_a, t1_label = mask_random_words(tokens_a, tokenizer.vocab,
                                            token_groups=sample.tokenized["text_a"]["start_of_word"])
-    tokens_b, t2_label = mask_random_words(tokens_b, tokenizer.vocab,
-                                           token_groups=sample.tokenized["text_b"]["start_of_word"])
     # convert lm labels to ids
     t1_label_ids = [-1 if tok == '' else tokenizer.vocab[tok] for tok in t1_label]
-    t2_label_ids = [-1 if tok == '' else tokenizer.vocab[tok] for tok in t2_label]
 
-    # concatenate lm labels and account for CLS, SEP, SEP
-    lm_label_ids = [-1] + t1_label_ids + [-1] + t2_label_ids + [-1]
+    if nsp:
+        tokens_b, t2_label = mask_random_words(tokens_b, tokenizer.vocab,
+                                               token_groups=sample.tokenized["text_b"]["start_of_word"])
+        t2_label_ids = [-1 if tok == '' else tokenizer.vocab[tok] for tok in t2_label]
+
+        # concatenate lm labels and account for CLS, SEP, SEP
+        lm_label_ids = [-1] + t1_label_ids + [-1] + t2_label_ids + [-1]
+
+    else:
+        lm_label_ids = [-1] + t1_label_ids + [-1]
 
     # The convention in BERT is:
     # (a) For sequence pairs:
@@ -251,12 +265,13 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer):
     tokens.append("[SEP]")
     segment_ids.append(0)
 
-    assert len(tokens_b) > 0
-    for token in tokens_b:
-        tokens.append(token)
+    if nsp:
+        assert len(tokens_b) > 0
+        for token in tokens_b:
+            tokens.append(token)
+            segment_ids.append(1)
+        tokens.append("[SEP]")
         segment_ids.append(1)
-    tokens.append("[SEP]")
-    segment_ids.append(1)
 
     input_ids = tokenizer.convert_tokens_to_ids(tokens)
 
@@ -272,10 +287,11 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer):
         lm_label_ids.append(-1)
 
     # Convert is_next_label: Note that in Bert, is_next_labelid = 0 is used for next_sentence=true!
-    if sample.clear_text["is_next_label"]:
-        is_next_label_id = [0]
-    else:
-        is_next_label_id = [1]
+    if nsp:
+        if sample.clear_text["is_next_label"]:
+            is_next_label_id = [0]
+        else:
+            is_next_label_id = [1]
 
     assert len(input_ids) == max_seq_len
     assert len(padding_mask) == max_seq_len
@@ -287,8 +303,9 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer):
         "padding_mask": padding_mask,
         "segment_ids": segment_ids,
         "lm_label_ids": lm_label_ids,
-        "nextsentence_label_ids": is_next_label_id,
     }
+    if nsp:
+        feature_dict["nextsentence_label_ids"] = is_next_label_id
 
     return [feature_dict]
 

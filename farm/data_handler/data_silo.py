@@ -1,6 +1,7 @@
 import logging
 
 import os
+import copy
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
@@ -178,15 +179,15 @@ class DataSilo(object):
     def calculate_class_weights(self, task_name):
         try:
             tensor_name = self.processor.tasks[task_name]["label_tensor_name"]
-            label_map = self.processor.tasks[task_name]["label_map"]
+            label_list = self.processor.tasks[task_name]["label_list"]
             tensor_idx = list(self.tensor_names).index(tensor_name)
             # we need at least ONE observation for each label to avoid division by zero in compute_class_weights.
-            labels = list(label_map.keys())
+            observed_labels = copy.deepcopy(label_list)
             for dataset in self.data.values():
                 if dataset is not None:
-                    labels += [x[tensor_idx].item() for x in dataset]
+                    observed_labels += [x[tensor_idx].item() for x in dataset]
             #TODO scale e.g. via logarithm to avoid crazy spikes for rare classes
-            class_weights = list(compute_class_weight("balanced", np.unique(list(label_map.keys())), labels))
+            class_weights = list(compute_class_weight("balanced", np.unique(label_list), observed_labels))
             logger.info(f"Using class weights: {class_weights}")
             return class_weights
         except ValueError as e:

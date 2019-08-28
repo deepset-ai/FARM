@@ -31,18 +31,18 @@ def test_doc_classification(caplog):
                                             train_filename="train-sample.tsv",
                                             dev_filename=None,
                                             test_filename=None,
-                                            dev_split=0.1,
-                                            columns=["text", "label", "unused"],
-                                            label_list=["OTHER", "OFFENSE"],
-                                            metrics="f1_macro"
-                                            )
+                                            dev_split=0.1)
+
+    # Task Mapping: Here we only have a single task, so that's easy.
+    # In other processors we sometimes want to produce data for multiple tasks (= multitask learning).
+    processor.add_task(name="text_classification", labels=["OTHER", "OFFENSE"], metric="f1_macro")
 
     data_silo = DataSilo(
         processor=processor,
         batch_size=batch_size)
 
     language_model = Bert.load(lang_model)
-    prediction_head = TextClassificationHead(layer_dims=[768, len(processor.tasks["text_classification"]["label_map"])])
+    prediction_head = TextClassificationHead(layer_dims=[768, len(processor.tasks["text_classification"]["label_list"])])
     model = AdaptiveModel(
         language_model=language_model,
         prediction_heads=[prediction_head],

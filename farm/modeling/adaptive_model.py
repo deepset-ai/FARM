@@ -225,7 +225,7 @@ class AdaptiveModel(nn.Module):
     def connect_heads_with_processor(self, tasks):
         for head in self.prediction_heads:
             head.label_tensor_name = tasks[head.task_name]["label_tensor_name"]
-            head.label_map = tasks[head.task_name]["label_map"]
+            head.label_list = tasks[head.task_name]["label_list"]
             head.metric = tasks[head.task_name]["metric"]
 
     @classmethod
