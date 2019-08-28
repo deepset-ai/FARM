@@ -77,12 +77,16 @@ class Inferencer:
     def load(cls, load_dir, batch_size=4, gpu=False, embedder_only=False):
         """
         Initializes inferencer from directory with saved model.
+
         :param load_dir: Directory where the saved model is located.
         :type load_dir: str
         :param batch_size: Number of samples computed once per batch
         :type batch_size: int
         :param gpu: If GPU shall be used
         :type gpu: bool
+        :param embedder_only: If true, a faster processor (InferenceProcessor) is loaded. This should only be used
+        for extracting embeddings (no downstream predictions).
+        :type embedder_only: bool
         :return: An instance of the Inferencer.
         """
 
@@ -102,6 +106,7 @@ class Inferencer:
     def run_inference(self, dicts):
         """
         Runs down-stream inference using the prediction head.
+
         :param dicts: Samples to run inference on provided as a list of dicts. One dict per sample.
         :type dicst: [dict]
         :return: dict of predictions
@@ -148,11 +153,14 @@ class Inferencer:
     ):
         """
         Converts a text into vector(s) using the language model only (no prediction head involved).
+
         :param dicts: Samples to run inference on provided as a list of dicts. One dict per sample.
         :type dicts: [dict]
         :param extraction_strategy: Strategy to extract vectors. Choices: 'cls_token' (sentence vector),
         'reduce_mean' (sentence vector), reduce_max (sentence vector), 'per_token' (individual token vectors)
         :type extraction_strategy: str
+        :param extraction_layer: number of layer from which the embeddings shall be extracted. Default: -1 (very last layer).
+        :type: int
         :return: dict of predictions
         """
 
@@ -201,6 +209,7 @@ class FasttextInferencer:
     def extract_vectors(self, dicts, extraction_strategy="reduce_mean"):
         """
         Converts a text into vector(s) using the language model only (no prediction head involved).
+
         :param dicts: Samples to run inference on provided as a list of dicts. One dict per sample.
         :type dicts: [dict]
         :param extraction_strategy: Strategy to extract vectors. Choices: 'reduce_mean' (mean sentence vector), 'reduce_max' (max per embedding dim), 'CLS'

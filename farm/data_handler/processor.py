@@ -226,10 +226,13 @@ class Processor(ABC):
         """
         os.makedirs(save_dir, exist_ok=True)
         config = self.generate_config()
+        # save tokenizer incl. attributes
         config["tokenizer"] = self.tokenizer.__class__.__name__
         self.tokenizer.save_vocabulary(save_dir)
         # TODO make this generic to other tokenizers. We will probably want an own abstract Tokenizer
         config["lower_case"] = self.tokenizer.basic_tokenizer.do_lower_case
+        config["never_split_chars"] = self.tokenizer.basic_tokenizer.never_split_chars
+        # save processor
         config["processor"] = self.__class__.__name__
         output_config_file = os.path.join(save_dir, "processor_config.json")
         with open(output_config_file, "w") as file:
@@ -556,6 +559,7 @@ class InferenceProcessor(Processor):
             tokenizer=cls.tokenizer,
         )
         return features
+
 #########################################
 # Processors for NER data ####
 #########################################
