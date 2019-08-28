@@ -66,6 +66,7 @@ class Processor(ABC):
         multiprocessing_chunk_size=1_000,
         max_processes=128,
         share_all_baskets_for_multiprocessing=False,
+        tasks={}
     ):
         """
         Initialize a generic Processor
@@ -93,7 +94,7 @@ class Processor(ABC):
         # objects required in Multiprocessing must be set as class attributes.
         Processor.tokenizer = tokenizer
         Processor.max_seq_len = max_seq_len
-        Processor.tasks = {}
+        Processor.tasks = tasks
 
         # data sets
         self.train_filename = train_filename
@@ -130,7 +131,7 @@ class Processor(ABC):
         dev_filename,
         test_filename,
         dev_split,
-        metrics,
+        # metrics,
         **kwargs,
     ):
         """
@@ -173,7 +174,7 @@ class Processor(ABC):
             dev_filename=dev_filename,
             test_filename=test_filename,
             dev_split=dev_split,
-            metrics=metrics,
+            # metrics=metrics,
             **kwargs,
         )
 
@@ -425,6 +426,7 @@ class TextClassificationProcessor(Processor):
         delimiter="\t",
         quote_char="'",
         skiprows=None,
+        tasks={},
         **kwargs,
     ):
 
@@ -449,6 +451,7 @@ class TextClassificationProcessor(Processor):
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
+            tasks=tasks,
         )
 
 

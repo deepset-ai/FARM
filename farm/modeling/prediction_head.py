@@ -243,7 +243,7 @@ class TextClassificationHead(PredictionHead):
 
 
 class TokenClassificationHead(PredictionHead):
-    def __init__(self, layer_dims, **kwargs):
+    def __init__(self, layer_dims, task_name="token_classification", **kwargs):
         super(TokenClassificationHead, self).__init__()
 
         self.layer_dims = layer_dims
@@ -252,6 +252,7 @@ class TokenClassificationHead(PredictionHead):
         self.loss_fct = CrossEntropyLoss(reduction="none")
         self.ph_output_type = "per_token"
         self.model_type = "token_classification"
+        self.task_name = task_name
         self.generate_config()
 
     def forward(self, X):
