@@ -73,17 +73,13 @@ FARM offers two modes for model training:
 
 **Option 1: Run experiment(s) from config**
 
-.. raw:: html
-
-    <img src="https://raw.githubusercontent.com/deepset-ai/FARM/master/docs/img/code_snippet_experiment.png">
+.. image:: https://raw.githubusercontent.com/deepset-ai/FARM/master/docs/img/code_snippet_experiment.png
 
 *Use cases:* Training your first model, hyperparameter optimization, evaluating a language model on multiple down-stream tasks.
 
 **Option 2: Stick together your own building blocks**
 
-.. raw:: html
-
-    <img src="https://raw.githubusercontent.com/deepset-ai/FARM/master/docs/img/code_snippet_building_blocks.png">
+.. image:: https://raw.githubusercontent.com/deepset-ai/FARM/master/docs/img/code_snippet_building_blocks.png
 
 *Usecases:* Custom datasets, language models, prediction heads ...
 
