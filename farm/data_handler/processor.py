@@ -146,17 +146,17 @@ class Processor(ABC):
 
     @classmethod
     def load(
-        cls,
-        processor_name,
-        data_dir,
-        tokenizer,
-        max_seq_len,
-        train_filename,
-        dev_filename,
-        test_filename,
-        dev_split,
-        metrics,
-        **kwargs,
+            cls,
+            processor_name,
+            data_dir,
+            tokenizer,
+            max_seq_len,
+            train_filename,
+            dev_filename,
+            test_filename,
+            dev_split,
+            metrics,
+            **kwargs,
     ):
         """
         Loads the class of processor specified by processor name.
@@ -238,10 +238,13 @@ class Processor(ABC):
         """
         os.makedirs(save_dir, exist_ok=True)
         config = self.generate_config()
+        # save tokenizer incl. attributes
         config["tokenizer"] = self.tokenizer.__class__.__name__
         self.tokenizer.save_vocabulary(save_dir)
         # TODO make this generic to other tokenizers. We will probably want an own abstract Tokenizer
         config["lower_case"] = self.tokenizer.basic_tokenizer.do_lower_case
+        config["never_split_chars"] = self.tokenizer.basic_tokenizer.never_split_chars
+        # save processor
         config["processor"] = self.__class__.__name__
         output_config_file = os.path.join(save_dir, "processor_config.json")
         with open(output_config_file, "w") as file:
@@ -419,7 +422,7 @@ class Processor(ABC):
 
 
 #########################################
-# Processors for text classification ####
+# Processors for Text Classification ####
 #########################################
 class TextClassificationProcessor(Processor):
     def __init__(
@@ -490,6 +493,84 @@ class TextClassificationProcessor(Processor):
         )
         return features
 
+
+#########################################
+# Processors for Basic Inference ####
+#########################################
+class InferenceProcessor(Processor):
+    """
+    Generic processor used at inference time:
+    - fast
+    - no labels
+    - pure encoding of text into pytorch dataset
+    - Doesn't read from file, but only consumes dictionaries (e.g. coming from API requests)
+    """
+
+    def __init__(
+        self,
+        tokenizer,
+        max_seq_len,
+        **kwargs,
+    ):
+
+        super(InferenceProcessor, self).__init__(
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            label_list=[],
+            metrics=[],
+            train_filename=None,
+            dev_filename=None,
+            test_filename=None,
+            dev_split=None,
+            data_dir=None,
+            label_dtype=None,
+        )
+
+    @classmethod
+    def load_from_dir(cls, load_dir):
+        """
+         Overwriting method from parent class to **always** load the InferenceProcessor instead of the specific class stored in the config.
+         Infers the specific type of Processor from a config file (e.g. GNADProcessor) and loads an instance of it.
+
+        :param load_dir: str, directory that contains a 'processor_config.json'
+        :return: An instance of a Processor Subclass (e.g. GNADProcessor)
+        """
+        # read config
+        processor_config_file = os.path.join(load_dir, "processor_config.json")
+        config = json.load(open(processor_config_file))
+        # init tokenizer
+        tokenizer = TOKENIZER_MAP[config["tokenizer"]].from_pretrained(
+            load_dir,
+            do_lower_case=config["lower_case"],
+            never_split_chars=config.get("never_split_chars", None),
+        )
+        # add custom vocab to tokenizer if available
+        if os.path.exists(os.path.join(load_dir, "custom_vocab.txt")):
+            tokenizer.add_custom_vocab(os.path.join(load_dir, "custom_vocab.txt"))
+        # we have to delete the tokenizer string from config, because we pass it as Object
+        del config["tokenizer"]
+        return cls.load(
+            tokenizer=tokenizer, processor_name="InferenceProcessor", **config
+        )
+
+    def _file_to_dicts(self, file: str) -> [dict]:
+      raise NotImplementedError
+
+    @classmethod
+    def _dict_to_samples(cls, dict: dict, **kwargs) -> [Sample]:
+        # this tokenization also stores offsets
+        tokenized = tokenize_with_metadata(dict["text"], cls.tokenizer, cls.max_seq_len)
+        return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
+
+    @classmethod
+    def _sample_to_features(cls, sample) -> dict:
+        features = sample_to_features_text(
+            sample=sample,
+            label_list=cls.label_list,
+            max_seq_len=cls.max_seq_len,
+            tokenizer=cls.tokenizer,
+        )
+        return features
 
 #########################################
 # Processors for NER data ####

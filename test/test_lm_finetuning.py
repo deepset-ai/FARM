@@ -9,7 +9,7 @@ from farm.modeling.prediction_head import BertLMHead, NextSentenceHead
 from farm.modeling.tokenization import BertTokenizer
 from farm.train import Trainer
 from farm.utils import set_all_seeds, initialize_device_settings
-
+from farm.infer import Inferencer
 
 def test_lm_finetuning(caplog):
     caplog.set_level(logging.CRITICAL)
@@ -21,7 +21,7 @@ def test_lm_finetuning(caplog):
     lang_model = "bert-base-cased"
 
     tokenizer = BertTokenizer.from_pretrained(
-        pretrained_model_name_or_path=lang_model, do_lower_case=False
+        pretrained_model_name_or_path=lang_model, do_lower_case=False, never_split_chars=["-", "_"]
     )
 
     processor = BertStyleLMProcessor(
@@ -70,13 +70,12 @@ def test_lm_finetuning(caplog):
     model.save(save_dir)
     processor.save(save_dir)
 
-    # TODO: inferencer needs to get a new minimalist processor for vector extraction.
-    # The stored BertStyleLM is not what we need here.
-
-    # basic_texts = [
-    #     {"text": "Farmer's life is great."}
-    #     {"text": "It's nothing for big city kids though."},
-    # ]
-    # model = Inferencer.load(save_dir)
-    # result = model.extract_vectors(dicts=basic_texts)
-    # print(result)
+    basic_texts = [
+        {"text": "Farmer's life is great."},
+        {"text": "It's nothing for big city kids though."},
+    ]
+    model = Inferencer.load(save_dir, embedder_only=True)
+    result = model.extract_vectors(dicts=basic_texts)
+    assert result[0]["context"] == ['Farmer', "'", 's', 'life', 'is', 'great', '.']
+    assert result[0]["vec"].shape == (768,)
+    assert (result[0]["vec"][0] - 0.3826) < 0.01
