@@ -938,6 +938,9 @@ class RegressionProcessor(Processor):
     def _dict_to_samples(cls, dict: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets
         tokenized = tokenize_with_metadata(dict["text"], cls.tokenizer, cls.max_seq_len)
+        # Samples don't have labels during Inference mode
+        if "label" in dict:
+            dict["label"] = float(dict["label"])
         return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
 
     @classmethod
