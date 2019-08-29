@@ -24,4 +24,4 @@ flask
 flask-restplus
 flask-cors
 # optional: for inference with fasttext
-git+git://github.com/facebookresearch/fastText.git@master#egg=fastText
+fasttext==0.9.1
