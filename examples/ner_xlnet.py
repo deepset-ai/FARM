@@ -1,16 +1,15 @@
+# fmt: off
 import logging
 
-import torch
-
 from farm.data_handler.data_silo import DataSilo
-from farm.data_handler.processor import BertStyleLMProcessor
+from farm.data_handler.processor import CONLLProcessor
+from farm.experiment import initialize_optimizer
+from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
-from farm.modeling.prediction_head import BertLMHead, NextSentenceHead
-from farm.modeling.tokenization import BertTokenizer
+from farm.modeling.prediction_head import TokenClassificationHead
+from farm.modeling.tokenization import BertTokenizer, XLNetTokenizer
 from farm.train import Trainer
-from farm.modeling.optimization import initialize_optimizer
-
 from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
 
 logging.basicConfig(
@@ -19,28 +18,27 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-set_all_seeds(seed=42)
 ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
-ml_logger.init_experiment(
-    experiment_name="Public_FARM", run_name="Run_minimal_example_lm"
-)
+ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_minimal_example_ner")
+
 ##########################
 ########## Settings
 ##########################
+set_all_seeds(seed=42)
 device, n_gpu = initialize_device_settings(use_cuda=True)
-n_epochs = 1
+n_epochs = 4
 batch_size = 32
-evaluate_every = 1000
-lang_model = "bert-base-cased"
+evaluate_every = 50
+lang_model = "xlnet-base-cased"
 
 # 1.Create a tokenizer
-tokenizer = BertTokenizer.from_pretrained(
-    pretrained_model_name_or_path=lang_model, do_lower_case=False
-)
+tokenizer = XLNetTokenizer.from_pretrained(
+    pretrained_model_name_or_path=lang_model,
+    do_lower_case=False)
 
 # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
-processor = BertStyleLMProcessor(
-    data_dir="../data/lm_finetune_nips", tokenizer=tokenizer, max_seq_len=128, dev_filename="dev_small.txt", train_filename="train_small.txt", test_filename="test_small.txt"
+processor = CONLLProcessor(
+    tokenizer=tokenizer, max_seq_len=128, data_dir="../data/conll03-de"
 )
 
 # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
@@ -49,15 +47,14 @@ data_silo = DataSilo(processor=processor, batch_size=batch_size)
 # 4. Create an AdaptiveModel
 # a) which consists of a pretrained language model as a basis
 language_model = Bert.load(lang_model)
-# b) and *two* prediction heads on top that are suited for our task => Language Model finetuning
-lm_prediction_head = BertLMHead.load(lang_model)
-next_sentence_head = NextSentenceHead.load(lang_model)
+# b) and a prediction head on top that is suited for our task => NER
+prediction_head = TokenClassificationHead(layer_dims=[768, len(processor.label_list)])
 
 model = AdaptiveModel(
     language_model=language_model,
-    prediction_heads=[lm_prediction_head, next_sentence_head],
+    prediction_heads=[prediction_head],
     embeds_dropout_prob=0.1,
-    lm_output_types=["per_token", "per_sequence"],
+    lm_output_types=["per_token"],
     device=device,
 )
 
@@ -66,7 +63,8 @@ optimizer, warmup_linear = initialize_optimizer(
     model=model,
     learning_rate=2e-5,
     warmup_proportion=0.1,
-    n_batches=len(data_silo.loaders["train"]),
+    n_examples=data_silo.n_samples("train"),
+    batch_size=batch_size,
     n_epochs=n_epochs,
 )
 
@@ -81,10 +79,19 @@ trainer = Trainer(
     device=device,
 )
 
-# 7. Let it grow! Watch the tracked metrics live on the public mlflow server: https://public-mlflow.deepset.ai
+# 7. Let it grow
 model = trainer.train(model)
 
 # 8. Hooray! You have a model. Store it:
-save_dir = "saved_models/bert-english-lm-tutorial"
-model.save(save_dir)
-processor.save(save_dir)
+model.save("saved_models/bert-german-ner-tutorial")
+processor.save("saved_models/bert-german-ner-tutorial")
+
+
+# 9. Load it & harvest your fruits (Inference)
+basic_texts = [
+    {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei"},
+    {"text": "Martin Müller spielt Handball in Berlin"},
+]
+model = Inferencer("save/bert-german-ner-tutorial")
+result = model.run_inference(dicts=basic_texts)
+print(result)

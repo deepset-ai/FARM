@@ -39,14 +39,19 @@ tokenizer = BertTokenizer.from_pretrained(
     pretrained_model_name_or_path=base_LM_model, do_lower_case=False
 )
 # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
+label_list = ["start_token", "end_token"]
+metric = "squad"
 processor = SquadProcessor(
     tokenizer=tokenizer,
     max_seq_len=256,
+    labels=label_list,
+    metric=metric,
     train_filename=train_filename,
     dev_filename=dev_filename,
     test_filename=None,
     data_dir="../data/squad20",
 )
+
 
 # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
 data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=False)
@@ -55,7 +60,7 @@ data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=Fal
 # a) which consists of a pretrained language model as a basis
 language_model = Bert.load(base_LM_model)
 # b) and a prediction head on top that is suited for our task => Question Answering
-prediction_head = QuestionAnsweringHead(layer_dims=[768, len(processor.label_list)])
+prediction_head = QuestionAnsweringHead(layer_dims=[768, len(label_list)])
 
 model = AdaptiveModel(
     language_model=language_model,

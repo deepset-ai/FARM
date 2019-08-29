@@ -207,7 +207,7 @@ def samples_to_features_ner(
     return [feature_dict]
 
 
-def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, nsp=True):
+def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=True):
     """
     Convert a raw sample (pair of sentences as tokenized strings) into a proper training sample with
     IDs, LM labels, padding_mask, CLS and SEP tokens etc.
@@ -223,7 +223,7 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, nsp=True):
     # Modifies `tokens_a` and `tokens_b` in place so that the total
     # length is less than the specified length.
     # Account for [CLS], [SEP], [SEP] or [CLS], [SEP]
-    if not nsp:
+    if not next_sent_pred:
         n_special_tokens = 2
     else:
         n_special_tokens = 3
@@ -234,7 +234,7 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, nsp=True):
     # convert lm labels to ids
     t1_label_ids = [-1 if tok == '' else tokenizer.vocab[tok] for tok in t1_label]
 
-    if nsp:
+    if next_sent_pred:
         tokens_b, t2_label = mask_random_words(tokens_b, tokenizer.vocab,
                                                token_groups=sample.tokenized["text_b"]["start_of_word"])
         t2_label_ids = [-1 if tok == '' else tokenizer.vocab[tok] for tok in t2_label]
@@ -273,7 +273,7 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, nsp=True):
     tokens.append("[SEP]")
     segment_ids.append(0)
 
-    if nsp:
+    if next_sent_pred:
         assert len(tokens_b) > 0
         for token in tokens_b:
             tokens.append(token)
@@ -295,7 +295,7 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, nsp=True):
         lm_label_ids.append(-1)
 
     # Convert is_next_label: Note that in Bert, is_next_labelid = 0 is used for next_sentence=true!
-    if nsp:
+    if next_sent_pred:
         if sample.clear_text["is_next_label"]:
             is_next_label_id = [0]
         else:
@@ -312,14 +312,14 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, nsp=True):
         "segment_ids": segment_ids,
         "lm_label_ids": lm_label_ids,
     }
-    if nsp:
+    if next_sent_pred:
         feature_dict["nextsentence_label_ids"] = is_next_label_id
 
     return [feature_dict]
 
 
 def sample_to_features_squad(
-    sample, tokenizer, max_seq_len, doc_stride, max_query_length
+    sample, tokenizer, max_seq_len, doc_stride, max_query_length, tasks,
 ):
     sample.clear_text = DotMap(sample.clear_text, _dynamic=False)
     is_training = sample.clear_text.is_training

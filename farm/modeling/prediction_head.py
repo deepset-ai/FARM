@@ -549,7 +549,7 @@ class QuestionAnsweringHead(PredictionHead):
     A question answering head predicts the start and end of the answer on token level.
     """
 
-    def __init__(self, layer_dims, **kwargs):
+    def __init__(self, layer_dims, task_name="question_answering", **kwargs):
         """
         :param layer_dims: dimensions of Feed Forward block, e.g. [768,2], for adjusting to BERT embedding. Output should be always 2
         :type layer_dims: List[Int]
@@ -564,6 +564,7 @@ class QuestionAnsweringHead(PredictionHead):
         self.model_type = (
             "span_classification"
         )  # predicts start and end token of answer
+        self.task_name = task_name
         self.generate_config()
 
     def forward(self, X):

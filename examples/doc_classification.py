@@ -27,7 +27,7 @@ set_all_seeds(seed=42)
 device, n_gpu = initialize_device_settings(use_cuda=True)
 n_epochs = 1
 batch_size = 32
-evaluate_every = 30
+evaluate_every = 100
 lang_model = "bert-base-german-cased"
 
 # 1.Create a tokenizer
@@ -37,12 +37,15 @@ tokenizer = BertTokenizer.from_pretrained(
 
 # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
 # Here we load GermEval 2018 Data.
+
+label_list = ["OTHER", "OFFENSE"]
+metric = "f1_macro"
+
 processor = TextClassificationProcessor(tokenizer=tokenizer,
                                         max_seq_len=128,
                                         data_dir="../data/germeval18",
-                                        columns = ["text", "label", "unused"],
-                                        label_list = ["OTHER", "OFFENSE"],
-                                        metrics = "f1_macro"
+                                        labels=label_list,
+                                        metric=metric,
                                         )
 
 # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
@@ -54,7 +57,7 @@ data_silo = DataSilo(
 # a) which consists of a pretrained language model as a basis
 language_model = Bert.load(lang_model)
 # b) and a prediction head on top that is suited for our task => Text classification
-prediction_head = TextClassificationHead(layer_dims=[768, len(processor.tasks["text_classification"]["label_map"])])
+prediction_head = TextClassificationHead(layer_dims=[768, len(processor.tasks["text_classification"]["label_list"])])
 
 model = AdaptiveModel(
     language_model=language_model,

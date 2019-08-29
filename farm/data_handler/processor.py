@@ -166,7 +166,7 @@ class Processor(ABC):
             f"Got more parameters than needed for loading {processor_name}: {unused_args}. "
             f"Those won't be used!"
         )
-        return cls.subclasses[processor_name](
+        processor = cls.subclasses[processor_name](
             data_dir=data_dir,
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
@@ -177,6 +177,8 @@ class Processor(ABC):
             # metrics=metrics,
             **kwargs,
         )
+
+        return processor
 
     @classmethod
     def load_from_dir(cls, load_dir):
@@ -200,9 +202,16 @@ class Processor(ABC):
             tokenizer.add_custom_vocab(os.path.join(load_dir, "custom_vocab.txt"))
         # we have to delete the tokenizer string from config, because we pass it as Object
         del config["tokenizer"]
-        return cls.load(
-            tokenizer=tokenizer, processor_name=config["processor"], **config
-        )
+
+        processor = cls.load(tokenizer=tokenizer, processor_name=config["processor"], **config)
+
+        for task_name, task in config["tasks"].items():
+            processor.add_task(name=task_name, metric=task["metric"], label_list=task["label_list"])
+
+        if processor is None:
+            raise Exception
+
+        return processor
 
     def save(self, save_dir):
         """
@@ -235,18 +244,17 @@ class Processor(ABC):
         return config
 
     @classmethod
-    def add_task(cls, name,  metric, labels, label_name=None):
-        if type(labels) is not list:
-            raise ValueError(f"Argument `labels` must be of type list. Got: f{type(labels)}")
+    def add_task(cls, name,  metric, label_list, label_name=None):
+        if type(label_list) is not list:
+            raise ValueError(f"Argument `label_list` must be of type list. Got: f{type(label_list)}")
 
         if label_name is None:
             label_name = f"{name}_label"
         label_tensor_name = label_name + "_ids"
-        cls.tasks[name] = {"label_list": labels,
+        cls.tasks[name] = {"label_list": label_list,
                            "metric": metric,
                            "label_tensor_name": label_tensor_name,
                            "label_name": label_name
-                           #"label_dtype": label_dtype
                           }
 
     @abc.abstractmethod
@@ -414,11 +422,16 @@ class Processor(ABC):
 # Processors for text classification ####
 #########################################
 class TextClassificationProcessor(Processor):
+    """
+    Used to handle the text classification datasets that come in tabular format (CSV, TSV, etc.)
+    """
     def __init__(
         self,
         tokenizer,
         max_seq_len,
         data_dir,
+        labels=None,
+        metric=None,
         train_filename="train.tsv",
         dev_filename=None,
         test_filename="test.tsv",
@@ -426,17 +439,8 @@ class TextClassificationProcessor(Processor):
         delimiter="\t",
         quote_char="'",
         skiprows=None,
-        tasks={},
         **kwargs,
     ):
-
-        # tasks = {"text_classification": {
-        #                                 #"label_list": label_list, #get rid of this one (in favor of label_map) as soon we have refactored all code parts that use it
-        #                                 "label_map": {i: label for i, label in enumerate(label_list)},
-        #                                 "metric": metrics,
-        #                                 "label_tensor_name": "label_ids_text"
-        #                             }
-        # }
 
         # Custom processor attributes
         self.delimiter = delimiter
@@ -451,13 +455,11 @@ class TextClassificationProcessor(Processor):
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
-            tasks=tasks,
+            tasks={},
         )
 
-
-    """
-    Used to handle the text classification datasets that come in tabular format (CSV, TSV, etc.)
-    """
+        if metric and labels:
+            self.add_task("text_classification", metric, labels)
 
     def _file_to_dicts(self, file: str) -> [dict]:
         dicts = read_tsv(
@@ -497,6 +499,8 @@ class NERProcessor(Processor):
         tokenizer,
         max_seq_len,
         data_dir,
+        labels=None,
+        metric=None,
         train_filename="train.txt",
         dev_filename="dev.txt",
         test_filename="test.txt",
@@ -504,6 +508,8 @@ class NERProcessor(Processor):
         delimiter="\t",
         **kwargs,
     ):
+
+        tasks = {}
 
         # Custom processor attributes
         self.delimiter = delimiter
@@ -516,7 +522,11 @@ class NERProcessor(Processor):
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
+            tasks=tasks
         )
+
+        if metric and labels:
+            self.add_task("ner", metric, labels)
 
     def _file_to_dicts(self, file: str) -> [dict]:
         dicts = read_ner_file(filename=file, sep=self.delimiter)
@@ -556,7 +566,7 @@ class BertStyleLMProcessor(Processor):
         dev_filename="dev.txt",
         test_filename="test.txt",
         dev_split=0.0,
-        tasks={},
+        next_sent_pred=True,
         **kwargs,
     ):
 
@@ -577,8 +587,15 @@ class BertStyleLMProcessor(Processor):
             data_dir=data_dir,
             multiprocessing_chunk_size=chunksize,
             share_all_baskets_for_multiprocessing=share_all_baskets_for_multiprocessing,
-            tasks=tasks
+            tasks={}
         )
+
+        BertStyleLMProcessor.next_sent_pred = next_sent_pred
+
+        self.add_task("lm", "acc", list(self.tokenizer.vocab))
+        if self.next_sent_pred:
+            self.add_task("nextsentence", "acc", [False, True])
+
 
     def _file_to_dicts(self, file: str) -> list:
         dicts = read_docs_from_txt(filename=file, delimiter=self.delimiter)
@@ -610,7 +627,8 @@ class BertStyleLMProcessor(Processor):
     @classmethod
     def _sample_to_features(cls, sample) -> dict:
         features = samples_to_features_bert_lm(
-            sample=sample, max_seq_len=cls.max_seq_len, tokenizer=cls.tokenizer, nsp=True
+            sample=sample, max_seq_len=cls.max_seq_len, tokenizer=cls.tokenizer,
+            next_sent_pred=cls.next_sent_pred
         )
         return features
 
@@ -626,12 +644,12 @@ class SquadProcessor(Processor):
         tokenizer,
         max_seq_len,
         data_dir,
+        labels=None,
+        metric=None,
         train_filename="train-v2.0.json",
         dev_filename="dev-v2.0.json",
         test_filename=None,
         dev_split=0,
-        label_list=["start_token", "end_token"],
-        metrics=["squad"],
         doc_stride=128,
         max_query_length=64,
         **kwargs,
@@ -674,15 +692,17 @@ class SquadProcessor(Processor):
         super(SquadProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
-            label_list=label_list,
-            metrics=metrics,
             train_filename=train_filename,
             dev_filename=dev_filename,
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
             multiprocessing_chunk_size=chunksize,
+            tasks={},
         )
+
+        if metric and labels:
+            self.add_task("question_answering", metric, labels)
 
     def dataset_from_dicts(self, dicts):
         dicts_converted = [self._convert_inference(x) for x in dicts]
@@ -741,5 +761,6 @@ class SquadProcessor(Processor):
             max_seq_len=cls.max_seq_len,
             doc_stride=cls.doc_stride,
             max_query_length=cls.max_query_length,
+            tasks=cls.tasks
         )
         return features
