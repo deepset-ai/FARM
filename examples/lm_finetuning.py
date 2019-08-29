@@ -30,7 +30,7 @@ ml_logger.init_experiment(
 device, n_gpu = initialize_device_settings(use_cuda=True)
 n_epochs = 1
 batch_size = 32
-evaluate_every = 30
+evaluate_every = 1000
 lang_model = "bert-base-cased"
 
 # 1.Create a tokenizer
@@ -40,8 +40,13 @@ tokenizer = BertTokenizer.from_pretrained(
 
 # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
 processor = BertStyleLMProcessor(
-    data_dir="../data/lm_finetune_nips", tokenizer=tokenizer, max_seq_len=128
+    data_dir="../data/lm_finetune_nips", tokenizer=tokenizer, max_seq_len=128, dev_filename="dev_small.txt", train_filename="train_small.txt", test_filename="test_small.txt"
 )
+processor.add_task(name="lm", labels=list(tokenizer.vocab), metric="acc")
+processor.add_task(name="nextsentence", labels=["True", "False"], metric="acc")
+
+
+
 # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
 data_silo = DataSilo(processor=processor, batch_size=batch_size)
 

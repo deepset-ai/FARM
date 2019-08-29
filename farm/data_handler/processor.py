@@ -556,6 +556,7 @@ class BertStyleLMProcessor(Processor):
         dev_filename="dev.txt",
         test_filename="test.txt",
         dev_split=0.0,
+        tasks={},
         **kwargs,
     ):
 
@@ -576,11 +577,8 @@ class BertStyleLMProcessor(Processor):
             data_dir=data_dir,
             multiprocessing_chunk_size=chunksize,
             share_all_baskets_for_multiprocessing=share_all_baskets_for_multiprocessing,
+            tasks=tasks
         )
-
-        # Tasks
-        self.add_task(name="lm", labels=list(tokenizer.vocab), metric="acc")
-        self.add_task(name="nextsentence", labels=["True", "False"], metric="acc")
 
     def _file_to_dicts(self, file: str) -> list:
         dicts = read_docs_from_txt(filename=file, delimiter=self.delimiter)
@@ -612,7 +610,7 @@ class BertStyleLMProcessor(Processor):
     @classmethod
     def _sample_to_features(cls, sample) -> dict:
         features = samples_to_features_bert_lm(
-            sample=sample, max_seq_len=cls.max_seq_len, tokenizer=cls.tokenizer
+            sample=sample, max_seq_len=cls.max_seq_len, tokenizer=cls.tokenizer, nsp=True
         )
         return features
 

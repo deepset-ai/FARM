@@ -207,7 +207,7 @@ def samples_to_features_ner(
     return [feature_dict]
 
 
-def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, nsp=False):
+def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, nsp=True):
     """
     Convert a raw sample (pair of sentences as tokenized strings) into a proper training sample with
     IDs, LM labels, padding_mask, CLS and SEP tokens etc.
