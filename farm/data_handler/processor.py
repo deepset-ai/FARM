@@ -583,6 +583,7 @@ class BertStyleLMProcessor(Processor):
         dev_filename="dev.txt",
         test_filename="test.txt",
         dev_split=0.0,
+        max_docs=None,
         **kwargs,
     ):
         # General Processor attributes
@@ -594,6 +595,7 @@ class BertStyleLMProcessor(Processor):
 
         # Custom attributes
         self.delimiter = ""
+        self.max_docs = max_docs
 
         super(BertStyleLMProcessor, self).__init__(
             tokenizer=tokenizer,
@@ -611,7 +613,7 @@ class BertStyleLMProcessor(Processor):
         )
 
     def _file_to_dicts(self, file: str) -> list:
-        dicts = read_docs_from_txt(filename=file, delimiter=self.delimiter)
+        dicts = read_docs_from_txt(filename=file, delimiter=self.delimiter, max_docs=self.max_docs)
         return dicts
 
     @classmethod

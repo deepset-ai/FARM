@@ -119,7 +119,7 @@ def _conll03get(dataset, directory):
         file.write(response.content)
 
 
-def read_docs_from_txt(filename, delimiter="", encoding="utf-8"):
+def read_docs_from_txt(filename, delimiter="", encoding="utf-8", max_docs=None):
     """Reads a text file with one sentence per line and a delimiter between docs (default: empty lines) ."""
     if not (os.path.exists(filename)):
         _download_extract_downstream_data(filename)
@@ -133,6 +133,10 @@ def read_docs_from_txt(filename, delimiter="", encoding="utf-8"):
                 if len(doc) > 0:
                     all_docs.append({"doc": doc})
                     doc = []
+                    if max_docs:
+                        if len(all_docs) >= max_docs:
+                            logger.info(f"Reached number of max_docs ({max_docs}). Skipping rest of file ...")
+                            break
                 else:
                     logger.warning(f"Found empty document in file (line {line_num}). "
                                    f"Make sure that you comply with the format: "

@@ -40,7 +40,7 @@ tokenizer = BertTokenizer.from_pretrained(
 
 # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
 processor = BertStyleLMProcessor(
-    data_dir="../data/lm_finetune_nips", tokenizer=tokenizer, max_seq_len=128
+    data_dir="../data/lm_finetune_nips", tokenizer=tokenizer, max_seq_len=128, max_docs=30
 )
 # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
 data_silo = DataSilo(processor=processor, batch_size=batch_size)
