@@ -296,7 +296,7 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
 
     # Convert is_next_label: Note that in Bert, is_next_labelid = 0 is used for next_sentence=true!
     if next_sent_pred:
-        if sample.clear_text["is_next_label"]:
+        if sample.clear_text["nextsentence_label"]:
             is_next_label_id = [0]
         else:
             is_next_label_id = [1]
