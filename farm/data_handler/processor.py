@@ -10,6 +10,7 @@ import inspect
 from inspect import signature
 import numpy as np
 from sklearn.preprocessing import StandardScaler
+from contextlib import ExitStack
 
 from tqdm import tqdm
 import multiprocessing as mp
@@ -39,8 +40,6 @@ from farm.modeling.tokenization import BertTokenizer, tokenize_with_metadata
 from farm.utils import MLFlowLogger as MlLogger
 from farm.data_handler.samples import get_sentence_pair
 
-from tqdm import tqdm
-
 logger = logging.getLogger(__name__)
 
 TOKENIZER_MAP = {"BertTokenizer": BertTokenizer}
@@ -68,7 +67,8 @@ class Processor(ABC):
         multiprocessing_chunk_size=1_000,
         max_processes=128,
         share_all_baskets_for_multiprocessing=False,
-        tasks={}
+        tasks={},
+        use_multiprocessing=True
     ):
         """
         Initialize a generic Processor
@@ -109,6 +109,10 @@ class Processor(ABC):
         self.dev_split = dev_split
         self.data_dir = data_dir
         # multiprocessing
+        if os.name == "nt":
+            self.use_multiprocessing = False  # the mp code here isn't compatible with Windows
+        else:
+            self.use_multiprocessing = use_multiprocessing
         self.multiprocessing_chunk_size = multiprocessing_chunk_size
         self.share_all_baskets_for_multiprocessing = (
             share_all_baskets_for_multiprocessing
@@ -283,31 +287,38 @@ class Processor(ABC):
         ]
 
     def _init_samples_in_baskets(self):
-        chunks_to_process = int(len(self.baskets) / self.multiprocessing_chunk_size)
-        num_cpus = min(mp.cpu_count(), self.max_processes, chunks_to_process) or 1
+        with ExitStack() as stack:
+            if self.use_multiprocessing:
+                chunks_to_process = int(len(self.baskets) / self.multiprocessing_chunk_size)
+                num_cpus = min(mp.cpu_count(), self.max_processes, chunks_to_process) or 1
 
-        logger.info(
-            f"Got ya {num_cpus} parallel workers to fill the baskets with samples (chunksize = {self.multiprocessing_chunk_size})..."
-        )
+                logger.info(
+                    f"Got ya {num_cpus} parallel workers to fill the baskets with samples (chunksize = {self.multiprocessing_chunk_size})..."
+                )
+                p = stack.enter_context(mp.Pool(processes=num_cpus))
+                manager = stack.enter_context(mp.Manager())
 
-        with mp.Pool(processes=num_cpus) as p:
-            with mp.Manager() as manager:
                 if self.share_all_baskets_for_multiprocessing:
                     all_dicts = manager.list([b.raw for b in self.baskets])
                 else:
                     all_dicts = None
 
-                with mp.Pool(processes=num_cpus) as p:
-                    samples = p.imap(
-                        partial(self._multiproc_sample, all_dicts=all_dicts),
-                        self.baskets,
-                        chunksize=self.multiprocessing_chunk_size,
-                    )
+                samples = p.imap(
+                    partial(self._multiproc_sample, all_dicts=all_dicts),
+                    self.baskets,
+                    chunksize=self.multiprocessing_chunk_size,
+                )
+            else:
+                all_dicts = [b.raw for b in self.baskets]
+                samples = map(
+                    partial(self._multiproc_sample, all_dicts=all_dicts),
+                    self.baskets
+                )
 
-                    for s, b in tqdm(
-                        zip(samples, self.baskets), total=len(self.baskets)
-                    ):
-                        b.samples = s
+            for s, b in tqdm(
+                    zip(samples, self.baskets), total=len(self.baskets)
+            ):
+                b.samples = s
 
     @classmethod
     def _multiproc_sample(cls, basket, all_dicts=None):
@@ -317,17 +328,31 @@ class Processor(ABC):
         return samples
 
     def _featurize_samples(self):
-        chunks_to_process = int(len(self.baskets) / self.multiprocessing_chunk_size)
-        num_cpus = min(mp.cpu_count(), self.max_processes, chunks_to_process) or 1
-        logger.info(
-            f"Got ya {num_cpus} parallel workers to featurize samples in baskets (chunksize = {self.multiprocessing_chunk_size}) ..."
-        )
-        with mp.Pool(processes=num_cpus) as p:
-            all_features_gen = p.imap(
-                self._multiproc_featurize,
-                self.baskets,
-                chunksize=self.multiprocessing_chunk_size,
-            )
+        with ExitStack() as stack:
+            if self.use_multiprocessing:
+                chunks_to_process = int(len(self.baskets) / self.multiprocessing_chunk_size)
+                num_cpus = min(mp.cpu_count(), self.max_processes, chunks_to_process) or 1
+                logger.info(
+                    f"Got ya {num_cpus} parallel workers to featurize samples in baskets (chunksize = {self.multiprocessing_chunk_size}) ..."
+                )
+
+                p = stack.enter_context(mp.Pool(processes=num_cpus))
+                all_features_gen = p.imap(
+                    self._multiproc_featurize,
+                    self.baskets,
+                    chunksize=self.multiprocessing_chunk_size,
+                )
+
+                for basket_features, basket in tqdm(
+                        zip(all_features_gen, self.baskets), total=len(self.baskets)
+                ):
+                    for f, s in zip(basket_features, basket.samples):
+                        s.features = f
+            else:
+                all_features_gen = map(
+                    self._multiproc_featurize,
+                    self.baskets
+                )
 
             for basket_features, basket in tqdm(
                 zip(all_features_gen, self.baskets), total=len(self.baskets)
@@ -978,12 +1003,24 @@ class RegressionProcessor(Processor):
         except Exception as e:
             logger.warning(f"Baskets not found: {e}")
 
-        with mp.Pool(processes=num_cpus) as p:
-            all_features_gen = p.imap(
-                self._multiproc_featurize,
-                self.baskets,
-                chunksize=self.multiprocessing_chunk_size,
-            )
+        with ExitStack() as stack:
+            if self.use_multiprocessing:
+                chunks_to_process = int(len(self.baskets) / self.multiprocessing_chunk_size)
+                num_cpus = min(mp.cpu_count(), self.max_processes, chunks_to_process) or 1
+                logger.info(
+                    f"Got ya {num_cpus} parallel workers to featurize samples in baskets (chunksize = {self.multiprocessing_chunk_size}) ..."
+                )
+                p = stack.enter_context(mp.Pool(processes=num_cpus))
+                all_features_gen = p.imap(
+                    self._multiproc_featurize,
+                    self.baskets,
+                    chunksize=self.multiprocessing_chunk_size,
+                )
+            else:
+                all_features_gen = map(
+                    self._multiproc_featurize,
+                    self.baskets
+                )
 
             for basket_features, basket in tqdm(
                 zip(all_features_gen, self.baskets), total=len(self.baskets)
