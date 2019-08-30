@@ -859,17 +859,13 @@ class RegressionProcessor(Processor):
         tokenizer,
         max_seq_len,
         data_dir,
-        label_list,
         train_filename="train.tsv",
         dev_filename=None,
         test_filename="test.tsv",
         dev_split=0.1,
-        metrics=["mse"],
-        label_dtype=torch.float,
         delimiter="\t",
         quote_char="'",
-        skiprows=[0],
-        columns=["text", "label"],
+        skiprows=None,
         scaler_mean=None,
         scaler_scale=None,
         **kwargs,
@@ -880,20 +876,19 @@ class RegressionProcessor(Processor):
         self.delimiter = delimiter
         self.quote_char = quote_char
         self.skiprows = skiprows
-        self.columns = columns
 
         super(RegressionProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
-            label_list=label_list,
-            metrics=metrics,
             train_filename=train_filename,
             dev_filename=dev_filename,
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
-            label_dtype=label_dtype,
         )
+        # TODO: check name of columns in data file
+
+        self.add_task("regression", "mse", [scaler_mean, scaler_scale])
 
     def save(self, save_dir):
         """
@@ -923,7 +918,6 @@ class RegressionProcessor(Processor):
             delimiter=self.delimiter,
             skiprows=self.skiprows,
             quotechar=self.quote_char,
-            columns=self.columns,
         )
         return dicts
 
@@ -940,9 +934,10 @@ class RegressionProcessor(Processor):
     def _sample_to_features(cls, sample) -> dict:
         features = sample_to_features_text(
             sample=sample,
-            label_list=cls.label_list,
+            tasks=cls.tasks,
             max_seq_len=cls.max_seq_len,
             tokenizer=cls.tokenizer,
+            target="regression"
         )
         return features
 
@@ -953,17 +948,22 @@ class RegressionProcessor(Processor):
             f"Got ya {num_cpus} parallel workers to featurize samples in baskets (chunksize = {self.multiprocessing_chunk_size}) ..."
         )
 
+        # TODO the task style is not fully implemented here yet
+        regression_task = self.tasks["regression"]
+        label_name = regression_task["label_name"]
+        # label_list = regression_task["label_list"]
+        label_tensor_name = regression_task["label_tensor_name"]
+
         try:
             if "train" in self.baskets[0].id:
                 train_labels = []
                 for basket in self.baskets:
                     for sample in basket.samples:
-                        train_labels.append(sample.clear_text["label"])
+                        train_labels.append(sample.clear_text[label_name])
                 scaler = StandardScaler()
                 scaler.fit(np.reshape(train_labels, (-1, 1)))
-                self.label_list = [scaler.mean_.item(), scaler.scale_.item()]
+                regression_task["label_list"] = [scaler.mean_.item(), scaler.scale_.item()]
                 # Create label_maps because featurize is called after Processor instantiation
-                self.label_maps = [{0:scaler.mean_.item(), 1:scaler.scale_.item()}]
 
         except Exception as e:
             logger.warning(f"Baskets not found: {e}")
@@ -980,8 +980,8 @@ class RegressionProcessor(Processor):
             ):
                 for f, s in zip(basket_features, basket.samples):
                     # Samples don't have labels during Inference mode
-                    if "label" in s.clear_text:
-                        label = s.clear_text["label"]
-                        scaled_label = (label - self.label_list[0]) / self.label_list[1]
-                        f[0]["label_ids"] = scaled_label
+                    if label_name in s.clear_text:
+                        label = s.clear_text[label_name]
+                        scaled_label = (float(label) - regression_task["label_list"][0]) / regression_task["label_list"][1]
+                        f[0][label_tensor_name] = scaled_label
                     s.features = f
