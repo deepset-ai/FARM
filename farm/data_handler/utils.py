@@ -23,20 +23,26 @@ DOWNSTREAM_TASK_MAP = {
 }
 
 
-def read_tsv(filename, quotechar='"', delimiter="\t", skiprows=None, columns=None):
+def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=None, header=0):
     """Reads a tab separated value file. Tries to download the data if filename is not found"""
     if not (os.path.exists(filename)):
         logger.info(f" Couldn't find {filename} locally. Trying to download ...")
         _download_extract_downstream_data(filename)
+
+    columns = ["text"] + list(rename_columns.keys())
     df = pd.read_csv(
         filename,
         sep=delimiter,
         encoding="utf-8",
         quotechar=quotechar,
-        names=columns,
+        dtype=str,
         skiprows=skiprows,
-        dtype=str, 
+        header=header
     )
+    df = df[columns]
+    for source_column, label_name in rename_columns.items():
+        df[label_name] = df[source_column]
+        df.drop(columns=[source_column], inplace=True)
     if "unused" in df.columns:
         df.drop(columns=["unused"], inplace=True)
     raw_dict = df.to_dict(orient="records")

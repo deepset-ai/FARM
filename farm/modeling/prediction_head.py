@@ -303,7 +303,7 @@ class TextClassificationHead(PredictionHead):
 
 
 class TokenClassificationHead(PredictionHead):
-    def __init__(self, layer_dims, task_name="token_classification", **kwargs):
+    def __init__(self, layer_dims, task_name="ner", **kwargs):
         super(TokenClassificationHead, self).__init__()
 
         self.layer_dims = layer_dims

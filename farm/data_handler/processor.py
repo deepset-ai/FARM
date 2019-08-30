@@ -249,7 +249,7 @@ class Processor(ABC):
         return config
 
     @classmethod
-    def add_task(cls, name,  metric, label_list, label_name=None):
+    def add_task(cls, name,  metric, label_list, source_field=None, label_name=None):
         if type(label_list) is not list:
             raise ValueError(f"Argument `label_list` must be of type list. Got: f{type(label_list)}")
 
@@ -259,7 +259,8 @@ class Processor(ABC):
         cls.tasks[name] = {"label_list": label_list,
                            "metric": metric,
                            "label_tensor_name": label_tensor_name,
-                           "label_name": label_name
+                           "label_name": label_name,
+                           "source_field": source_field
                           }
 
     @abc.abstractmethod
@@ -442,6 +443,8 @@ class TextClassificationProcessor(Processor):
         delimiter="\t",
         quote_char="'",
         skiprows=None,
+        source_field="label",
+        header=0,
         **kwargs,
     ):
 
@@ -449,6 +452,7 @@ class TextClassificationProcessor(Processor):
         self.delimiter = delimiter
         self.quote_char = quote_char
         self.skiprows = skiprows
+        self.header = header
 
         super(TextClassificationProcessor, self).__init__(
             tokenizer=tokenizer,
@@ -462,14 +466,19 @@ class TextClassificationProcessor(Processor):
         )
 
         if metric and labels:
-            self.add_task("text_classification", metric, labels)
+            self.add_task("text_classification", metric, labels, source_field=source_field)
 
     def _file_to_dicts(self, file: str) -> [dict]:
+        column_mapping = {task["source_field"]: task["label_name"] for task in self.tasks.values()}
         dicts = read_tsv(
             filename=file,
             delimiter=self.delimiter,
             skiprows=self.skiprows,
-            quotechar=self.quote_char)
+            quotechar=self.quote_char,
+            rename_columns=column_mapping,
+            header=self.header
+            )
+
         return dicts
 
     @classmethod

@@ -99,7 +99,6 @@ def sample_to_features_text(
     # Add Labels for different tasks
     for task_name, task in tasks.items():
         try:
-
             label_name = task["label_name"]
             label_raw = sample.clear_text[label_name]
             label_list = task["label_list"]
