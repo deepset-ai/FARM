@@ -30,13 +30,12 @@ def test_doc_classification(caplog):
                                             max_seq_len=128,
                                             data_dir="samples/doc_class",
                                             train_filename="train-sample.tsv",
+                                            labels=["OTHER", "OFFENSE"],
+                                            metric="f1_macro",
                                             dev_filename=None,
                                             test_filename=None,
-                                            dev_split=0.1)
-
-    # Task Mapping: Here we only have a single task, so that's easy.
-    # In other processors we sometimes want to produce data for multiple tasks (= multitask learning).
-    processor.add_task(name="text_classification", labels=["OTHER", "OFFENSE"], metric="f1_macro")
+                                            dev_split=0.1,
+                                            source_field="coarse_label")
 
     data_silo = DataSilo(
         processor=processor,

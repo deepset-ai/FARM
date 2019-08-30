@@ -703,7 +703,7 @@ class BertStyleLMProcessor(Processor):
             sample_in_clear_text = {
                 "text_a": text_a,
                 "text_b": text_b,
-                "is_next_label": is_next_label,
+                "nextsentence_label": is_next_label,
             }
             tokenized = {}
             tokenized["text_a"] = tokenize_with_metadata(

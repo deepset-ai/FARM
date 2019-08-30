@@ -28,9 +28,6 @@ def test_doc_regression(caplog):
     processor = RegressionProcessor(tokenizer=tokenizer,
                             max_seq_len=128,
                             data_dir="samples/doc_regr",
-                            columns = ["text", "label"],
-                            label_list = [],
-                            metrics = ["mse"],
                             train_filename="train-sample.tsv",
                             test_filename=None)
 

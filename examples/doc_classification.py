@@ -46,6 +46,7 @@ processor = TextClassificationProcessor(tokenizer=tokenizer,
                                         data_dir="../data/germeval18",
                                         labels=label_list,
                                         metric=metric,
+                                        source_field="coarse_label"
                                         )
 
 # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
@@ -83,8 +84,6 @@ trainer = Trainer(
     warmup_linear=warmup_linear,
     evaluate_every=evaluate_every,
     device=device)
-
-
 
 # 7. Let it grow
 model = trainer.train(model)

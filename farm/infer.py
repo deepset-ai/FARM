@@ -69,8 +69,8 @@ class Inferencer:
             #self.label_map = self.processor.label_maps[0]
         elif len(self.model.prediction_heads) == 0:
             self.prediction_type = "embedder"
-        else:
-            raise NotImplementedError("A model with multiple prediction heads is currently not supported by the Inferencer")
+        # else:
+        #     raise NotImplementedError("A model with multiple prediction heads is currently not supported by the Inferencer")
         self.name = name if name != None else f"anonymous-{self.prediction_type}"
 
         model.connect_heads_with_processor(processor.tasks)
@@ -99,6 +99,7 @@ class Inferencer:
 
         model = AdaptiveModel.load(load_dir, device)
         if embedder_only:
+            # model.prediction_heads = []
             processor = InferenceProcessor.load_from_dir(load_dir)
         else:
             processor = Processor.load_from_dir(load_dir)
