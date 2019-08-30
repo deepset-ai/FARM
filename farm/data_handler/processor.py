@@ -71,7 +71,7 @@ class Processor(ABC):
         multiprocessing_chunk_size=1_000,
         max_processes=128,
         share_all_baskets_for_multiprocessing=False,
-        use_mutliprocessing=True
+        use_multiprocessing=True
     ):
         """
         Initialize a generic Processor
@@ -120,7 +120,7 @@ class Processor(ABC):
         if os.name == "nt":
             self.use_multiprocessing = False  # the mp code here isn't compatible with Windows
         else:
-            self.use_multiprocessing = use_mutliprocessing
+            self.use_multiprocessing = use_multiprocessing
         self.multiprocessing_chunk_size = multiprocessing_chunk_size
         self.share_all_baskets_for_multiprocessing = (
             share_all_baskets_for_multiprocessing
