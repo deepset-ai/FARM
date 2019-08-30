@@ -206,7 +206,7 @@ class AdaptiveModel(nn.Module):
             # Choose relevant vectors from LM as output and perform dropout
             if lm_out == "per_token":
                 output = self.dropout(sequence_output)
-            elif lm_out == "per_sequence":
+            elif lm_out == "per_sequence" or lm_out == "per_sequence_continuous":
                 output = self.dropout(pooled_output)
             elif (
                 lm_out == "per_token_squad"

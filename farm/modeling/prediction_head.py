@@ -7,7 +7,7 @@ import torch
 from pytorch_transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN
 
 from torch import nn
-from torch.nn import CrossEntropyLoss
+from torch.nn import CrossEntropyLoss, MSELoss
 
 from farm.data_handler.utils import is_json
 from farm.utils import convert_iob_to_simple_tags
@@ -154,6 +154,61 @@ class PredictionHead(nn.Module):
 
     def _set_name(self, name):
         self.task_name = name
+
+
+class RegressionHead(PredictionHead):
+    def __init__(
+        self,
+        layer_dims,
+        loss_ignore_index=-100,
+        loss_reduction="none",
+        **kwargs,
+    ):
+        super(RegressionHead, self).__init__()
+        # num_labels could in most cases also be automatically retrieved from the data processor
+        self.layer_dims = layer_dims
+        # TODO is this still needed?
+        self.feed_forward = FeedForwardBlock(self.layer_dims)
+
+        self.num_labels = 2
+        self.ph_output_type = "per_sequence_continuous"
+        self.model_type = "regression"
+        self.loss_fct = MSELoss(reduction="none")
+        self.generate_config()
+
+    def forward(self, x):
+        logits = self.feed_forward(x)
+        return logits
+
+    def logits_to_loss(self, logits, label_ids, **kwargs):
+        # Squeeze the logits to obtain a coherent output size
+        return self.loss_fct(logits.squeeze(), label_ids.float())
+
+    def logits_to_preds(self, logits, label_map, **kwargs):
+        preds = logits.cpu().numpy()
+        preds = [x * label_map[1] + label_map[0] for x in preds]
+        return preds
+
+    def prepare_labels(self, label_map, label_ids, **kwargs):
+        label_ids = label_ids.cpu().numpy()
+        label_ids = [x * label_map[1] + label_map[0] for x in label_ids]
+        return label_ids
+
+    def formatted_preds(self, logits, label_map, samples, **kwargs):
+        preds = self.logits_to_preds(logits, label_map)
+        contexts = [sample.clear_text["text"] for sample in samples]
+
+        assert len(preds) == len(contexts)
+
+        res = {"task": "regression", "predictions": []}
+        for pred, context in zip(preds, contexts):
+            res["predictions"].append(
+                {
+                    "context": f"{context}",
+                    "pred": f"{pred[0]}"
+                }
+            )
+        return res
 
 
 class TextClassificationHead(PredictionHead):

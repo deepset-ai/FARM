@@ -64,7 +64,15 @@ def sample_to_features_text(
     # the entire model is fine-tuned.
     tokens = ["[CLS]"] + tokens + ["[SEP]"]
 
-    segment_ids = [0] * len(tokens)
+    # Quickfix to allow multiple text segments (e.g. at inference time)
+    n_segments = tokens.count("[SEP]")
+    if n_segments == 1:
+        segment_ids = [0] * len(tokens)
+    elif n_segments == 2:
+        first_sep_idx = tokens.index("[SEP]") + 1
+        segment_ids = [0] * first_sep_idx + [1] * (len(tokens)-first_sep_idx)
+    else:
+        raise ValueError(f"Expected 1 or 2 text segments. Got {n_segments}!")
 
     input_ids = tokenizer.convert_tokens_to_ids(tokens)
 

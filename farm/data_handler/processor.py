@@ -8,6 +8,8 @@ import json
 import time
 import inspect
 from inspect import signature
+import numpy as np
+from sklearn.preprocessing import StandardScaler
 
 from tqdm import tqdm
 import multiprocessing as mp
@@ -87,6 +89,10 @@ class Processor(ABC):
         :type data_dir: str
         :param max_processes: maximum number of processing to use for Multiprocessing.
         :type max_processes: int
+        :param share_all_baskets_for_multiprocessing: TODO
+        :type share_all_baskets_for_multiprocessing: bool
+        :param tasks: TODO
+        :type tasks: dict
         """
 
         # The Multiprocessing functions in the Class are classmethods to avoid passing(and pickling) of class-objects
@@ -131,7 +137,6 @@ class Processor(ABC):
         dev_filename,
         test_filename,
         dev_split,
-        # metrics,
         **kwargs,
     ):
         """
@@ -155,8 +160,6 @@ class Processor(ABC):
         :type dev_split: float
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
-        :param metrics: metrics used for each prediction head output
-        :type metrics: list
         :return: An instance of the specified processor.
         """
 
@@ -174,7 +177,6 @@ class Processor(ABC):
             dev_filename=dev_filename,
             test_filename=test_filename,
             dev_split=dev_split,
-            # metrics=metrics,
             **kwargs,
         )
 
@@ -223,10 +225,13 @@ class Processor(ABC):
         """
         os.makedirs(save_dir, exist_ok=True)
         config = self.generate_config()
+        # save tokenizer incl. attributes
         config["tokenizer"] = self.tokenizer.__class__.__name__
         self.tokenizer.save_vocabulary(save_dir)
         # TODO make this generic to other tokenizers. We will probably want an own abstract Tokenizer
         config["lower_case"] = self.tokenizer.basic_tokenizer.do_lower_case
+        config["never_split_chars"] = self.tokenizer.basic_tokenizer.never_split_chars
+        # save processor
         config["processor"] = self.__class__.__name__
         output_config_file = os.path.join(save_dir, "processor_config.json")
         with open(output_config_file, "w") as file:
@@ -406,8 +411,6 @@ class Processor(ABC):
             "processor": self.__class__.__name__,
             "tokenizer": self.tokenizer.__class__.__name__,
         }
-        #TODO only temp. commented out because metrics has moved into processor.tasks
-        #names = ["max_seq_len", "metrics", "dev_split"]
         names = ["max_seq_len", "dev_split"]
         for name in names:
             value = getattr(self, name)
@@ -419,7 +422,7 @@ class Processor(ABC):
 
 
 #########################################
-# Processors for text classification ####
+# Processors for Text Classification ####
 #########################################
 class TextClassificationProcessor(Processor):
     """
@@ -487,6 +490,88 @@ class TextClassificationProcessor(Processor):
 
 
 #########################################
+# Processors for Basic Inference ####
+#########################################
+class InferenceProcessor(Processor):
+    """
+    Generic processor used at inference time:
+    - fast
+    - no labels
+    - pure encoding of text into pytorch dataset
+    - Doesn't read from file, but only consumes dictionaries (e.g. coming from API requests)
+    """
+
+    def __init__(
+        self,
+        tokenizer,
+        max_seq_len,
+        **kwargs,
+    ):
+
+        super(InferenceProcessor, self).__init__(
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            train_filename=None,
+            dev_filename=None,
+            test_filename=None,
+            dev_split=None,
+            data_dir=None,
+            tasks={}
+        )
+
+    @classmethod
+    def load_from_dir(cls, load_dir):
+        """
+         Overwriting method from parent class to **always** load the InferenceProcessor instead of the specific class stored in the config.
+
+        :param load_dir: str, directory that contains a 'processor_config.json'
+        :return: An instance of an InferenceProcessor
+        """
+        # read config
+        processor_config_file = os.path.join(load_dir, "processor_config.json")
+        config = json.load(open(processor_config_file))
+        # init tokenizer
+        tokenizer = TOKENIZER_MAP[config["tokenizer"]].from_pretrained(
+            load_dir,
+            do_lower_case=config["lower_case"],
+            never_split_chars=config.get("never_split_chars", None),
+        )
+        # add custom vocab to tokenizer if available
+        if os.path.exists(os.path.join(load_dir, "custom_vocab.txt")):
+            tokenizer.add_custom_vocab(os.path.join(load_dir, "custom_vocab.txt"))
+        # we have to delete the tokenizer string from config, because we pass it as Object
+        del config["tokenizer"]
+
+        processor = cls.load(tokenizer=tokenizer, processor_name="InferenceProcessor", **config)
+        for task_name, task in config["tasks"].items():
+            processor.add_task(name=task_name, metric=task["metric"], label_list=task["label_list"])
+
+        if processor is None:
+            raise Exception
+
+        return processor
+
+
+    def _file_to_dicts(self, file: str) -> [dict]:
+      raise NotImplementedError
+
+    @classmethod
+    def _dict_to_samples(cls, dict: dict, **kwargs) -> [Sample]:
+        # this tokenization also stores offsets
+        tokenized = tokenize_with_metadata(dict["text"], cls.tokenizer, cls.max_seq_len)
+        return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
+
+    @classmethod
+    def _sample_to_features(cls, sample) -> dict:
+        features = sample_to_features_text(
+            sample=sample,
+            tasks=cls.tasks,
+            max_seq_len=cls.max_seq_len,
+            tokenizer=cls.tokenizer,
+        )
+        return features
+
+#########################################
 # Processors for NER data ####
 #########################################
 class NERProcessor(Processor):
@@ -509,8 +594,6 @@ class NERProcessor(Processor):
         **kwargs,
     ):
 
-        tasks = {}
-
         # Custom processor attributes
         self.delimiter = delimiter
 
@@ -522,7 +605,7 @@ class NERProcessor(Processor):
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
-            tasks=tasks
+            tasks={}
         )
 
         if metric and labels:
@@ -567,15 +650,16 @@ class BertStyleLMProcessor(Processor):
         test_filename="test.txt",
         dev_split=0.0,
         next_sent_pred=True,
+        max_docs=None,
         **kwargs,
     ):
-
         # General Processor attributes
         chunksize = 100
         share_all_baskets_for_multiprocessing = True
 
         # Custom attributes
         self.delimiter = ""
+        self.max_docs = max_docs
 
         super(BertStyleLMProcessor, self).__init__(
             tokenizer=tokenizer,
@@ -598,7 +682,7 @@ class BertStyleLMProcessor(Processor):
 
 
     def _file_to_dicts(self, file: str) -> list:
-        dicts = read_docs_from_txt(filename=file, delimiter=self.delimiter)
+        dicts = read_docs_from_txt(filename=file, delimiter=self.delimiter, max_docs=self.max_docs)
         return dicts
 
     @classmethod
@@ -764,3 +848,140 @@ class SquadProcessor(Processor):
             tasks=cls.tasks
         )
         return features
+
+
+class RegressionProcessor(Processor):
+    """
+    Used to handle a regression dataset in tab separated text + label
+    """
+    def __init__(
+        self,
+        tokenizer,
+        max_seq_len,
+        data_dir,
+        label_list,
+        train_filename="train.tsv",
+        dev_filename=None,
+        test_filename="test.tsv",
+        dev_split=0.1,
+        metrics=["mse"],
+        label_dtype=torch.float,
+        delimiter="\t",
+        quote_char="'",
+        skiprows=[0],
+        columns=["text", "label"],
+        scaler_mean=None,
+        scaler_scale=None,
+        **kwargs,
+    ):
+
+        # Custom processor attributes
+        self.label_list = [scaler_mean, scaler_scale]
+        self.delimiter = delimiter
+        self.quote_char = quote_char
+        self.skiprows = skiprows
+        self.columns = columns
+
+        super(RegressionProcessor, self).__init__(
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            label_list=label_list,
+            metrics=metrics,
+            train_filename=train_filename,
+            dev_filename=dev_filename,
+            test_filename=test_filename,
+            dev_split=dev_split,
+            data_dir=data_dir,
+            label_dtype=label_dtype,
+        )
+
+    def save(self, save_dir):
+        """
+        Saves the vocabulary to file and also creates a pkl file for the scaler and
+        a json file containing all the information needed to load the same processor.
+
+        :param save_dir: Directory where the files are to be saved
+        :type save_dir: str
+        """
+        os.makedirs(save_dir, exist_ok=True)
+        config = self.generate_config()
+        config["tokenizer"] = self.tokenizer.__class__.__name__
+        self.tokenizer.save_vocabulary(save_dir)
+        # TODO make this generic to other tokenizers. We will probably want an own abstract Tokenizer
+        config["lower_case"] = self.tokenizer.basic_tokenizer.do_lower_case
+        config["max_seq_len"] = self.max_seq_len
+        config["processor"] = self.__class__.__name__
+        config["scaler_mean"] = self.label_list[0]
+        config["scaler_scale"] = self.label_list[1]
+        output_config_file = os.path.join(save_dir, "processor_config.json")
+        with open(output_config_file, "w") as file:
+            json.dump(config, file)
+
+    def _file_to_dicts(self, file: str) -> [dict]:
+        dicts = read_tsv(
+            filename=file,
+            delimiter=self.delimiter,
+            skiprows=self.skiprows,
+            quotechar=self.quote_char,
+            columns=self.columns,
+        )
+        return dicts
+
+    @classmethod
+    def _dict_to_samples(cls, dict: dict, **kwargs) -> [Sample]:
+        # this tokenization also stores offsets
+        tokenized = tokenize_with_metadata(dict["text"], cls.tokenizer, cls.max_seq_len)
+        # Samples don't have labels during Inference mode
+        if "label" in dict:
+            dict["label"] = float(dict["label"])
+        return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
+
+    @classmethod
+    def _sample_to_features(cls, sample) -> dict:
+        features = sample_to_features_text(
+            sample=sample,
+            label_list=cls.label_list,
+            max_seq_len=cls.max_seq_len,
+            tokenizer=cls.tokenizer,
+        )
+        return features
+
+    def _featurize_samples(self):
+        chunks_to_process = int(len(self.baskets) / self.multiprocessing_chunk_size)
+        num_cpus = min(mp.cpu_count(), self.max_processes, chunks_to_process) or 1
+        logger.info(
+            f"Got ya {num_cpus} parallel workers to featurize samples in baskets (chunksize = {self.multiprocessing_chunk_size}) ..."
+        )
+
+        try:
+            if "train" in self.baskets[0].id:
+                train_labels = []
+                for basket in self.baskets:
+                    for sample in basket.samples:
+                        train_labels.append(sample.clear_text["label"])
+                scaler = StandardScaler()
+                scaler.fit(np.reshape(train_labels, (-1, 1)))
+                self.label_list = [scaler.mean_.item(), scaler.scale_.item()]
+                # Create label_maps because featurize is called after Processor instantiation
+                self.label_maps = [{0:scaler.mean_.item(), 1:scaler.scale_.item()}]
+
+        except Exception as e:
+            logger.warning(f"Baskets not found: {e}")
+
+        with mp.Pool(processes=num_cpus) as p:
+            all_features_gen = p.imap(
+                self._multiproc_featurize,
+                self.baskets,
+                chunksize=self.multiprocessing_chunk_size,
+            )
+
+            for basket_features, basket in tqdm(
+                zip(all_features_gen, self.baskets), total=len(self.baskets)
+            ):
+                for f, s in zip(basket_features, basket.samples):
+                    # Samples don't have labels during Inference mode
+                    if "label" in s.clear_text:
+                        label = s.clear_text["label"]
+                        scaled_label = (label - self.label_list[0]) / self.label_list[1]
+                        f[0]["label_ids"] = scaled_label
+                    s.features = f
