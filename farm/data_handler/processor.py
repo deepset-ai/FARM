@@ -447,6 +447,7 @@ class TextClassificationProcessor(Processor):
         header=0,
         **kwargs,
     ):
+        #TODO If an arg is misspelt, e.g. metrics, it will be swallowed silently by kwargs
 
         # Custom processor attributes
         self.delimiter = delimiter
