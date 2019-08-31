@@ -25,6 +25,7 @@ def test_qa(caplog):
     tokenizer = BertTokenizer.from_pretrained(
         pretrained_model_name_or_path=base_LM_model, do_lower_case=False
     )
+    label_list = ["start_token", "end_token"]
     processor = SquadProcessor(
         tokenizer=tokenizer,
         max_seq_len=64,
@@ -32,11 +33,13 @@ def test_qa(caplog):
         dev_filename="dev-sample.json",
         test_filename=None,
         data_dir="samples/qa",
+        labels=label_list,
+        metric="squad"
     )
 
     data_silo = DataSilo(processor=processor, batch_size=batch_size)
     language_model = Bert.load(base_LM_model)
-    prediction_head = QuestionAnsweringHead(layer_dims=[768, len(processor.label_list)])
+    prediction_head = QuestionAnsweringHead(layer_dims=[768, len(label_list)])
     model = AdaptiveModel(
         language_model=language_model,
         prediction_heads=[prediction_head],
@@ -77,6 +80,3 @@ def test_qa(caplog):
     result = model.run_inference(dicts=QA_input)
     assert result[0]["predictions"][0]["end"] == 65
 
-
-# if(__name__=="__main__"):
-#     test_qa()

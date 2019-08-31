@@ -27,9 +27,10 @@
     "dev_filename":     {"value": null, "default": null,                         "desc": "Filename for development. Missing in case of GermEval2018."},
     "test_filename":    {"value": null, "default": "test.csv",                   "desc": "Filename for testing. It is the submission file from competition."},
     "delimiter":        {"value": null, "default": ";",                          "desc": "Filename for testing. It is the submission file from competition."},
-    "columns":          {"value": null, "default": ["label", "text"],            "desc": "Columns specifying position of text and labels in data files."},
-    "label_list":       {"value": null, "default": ["Web","Sport","International","Panorama","Wissenschaft","Wirtschaft","Kultur","Etat","Inland"],        "desc": "List of possible labels."},
-    "metrics":          {"value": null, "default": ["acc"],                      "desc": "Metric used. Multiclass accuracy - metric used in fast.ai forum results for this dataset."}
+    "labels":           {"value": null, "default": ["Web","Sport","International","Panorama","Wissenschaft","Wirtschaft","Kultur","Etat","Inland"],        "desc": "List of possible labels."},
+    "metric":           {"value": null, "default": "acc",                        "desc": "Metric used. Multiclass accuracy - metric used in fast.ai forum results for this dataset."},
+    "source_field":     {"value": null, "default": "label",                      "desc": "Name of field that the label comes from in datasource"},
+    "skiprows":         {"value": null, "default": null,                         "desc": ""}
   },
 
   "parameter": {
@@ -51,10 +52,9 @@
   },
 
   "logging": {
-    "eval_every":     {"value": null,                                "default": 30,   "desc": "Steps per training loop (batches) required for evaluation on dev set. Set to 0 when you do not want to do evaluation on dev set during training."},
+    "eval_every":     {"value": null,                                "default": 300,   "desc": "Steps per training loop (batches) required for evaluation on dev set. Set to 0 when you do not want to do evaluation on dev set during training."},
     "mlflow_url":     {"value": "https://public-mlflow.deepset.ai/", "default": null, "desc": "Mlflow server for tracking experiments (e.g. http://80.123.45.167:5000/)"},
     "mlflow_nested":  {"value": null,                                "default": true, "desc": "Nesting mlflow experiments. For doing multiple runs across a set of hyperparameters."},
-
     "mlflow_experiment": {"value": "Public_FARM",    "default": null, "desc": "Experiment name used for mlflow"},
     "mlflow_run_name":   {"value": "gnad by config", "default": null, "desc": "Name of the particular run for mlflow"}
   }
