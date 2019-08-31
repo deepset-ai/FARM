@@ -130,7 +130,7 @@ class AdaptiveModel(nn.Module):
         loss = sum(all_losses)
         return loss
 
-    def logits_to_preds(self, logits, label_maps, **kwargs):
+    def logits_to_preds(self, logits, **kwargs):
         """
         Get predictions from all prediction heads.
 
@@ -142,16 +142,12 @@ class AdaptiveModel(nn.Module):
         """
         all_preds = []
         # collect preds from all heads
-        for head, logits_for_head, label_map_for_head in zip(
-            self.prediction_heads, logits, label_maps
-        ):
-            preds = head.logits_to_preds(
-                logits=logits_for_head, label_map=label_map_for_head, **kwargs
-            )
+        for head, logits_for_head in zip(self.prediction_heads, logits):
+            preds = head.logits_to_preds(logits=logits_for_head, **kwargs)
             all_preds.append(preds)
         return all_preds
 
-    def prepare_labels(self, label_maps, **kwargs):
+    def prepare_labels(self, **kwargs):
         """
         Label conversion to original label space, per prediction head.
 
@@ -160,12 +156,15 @@ class AdaptiveModel(nn.Module):
         :return: labels in the right format
         """
         all_labels = []
-        for head, label_map_one_head in zip(self.prediction_heads, label_maps):
-            labels = head.prepare_labels(label_map=label_map_one_head, **kwargs)
+        # for head, label_map_one_head in zip(self.prediction_heads):
+        #     labels = head.prepare_labels(label_map=label_map_one_head, **kwargs)
+        #     all_labels.append(labels)
+        for head in self.prediction_heads:
+            labels = head.prepare_labels(**kwargs)
             all_labels.append(labels)
         return all_labels
 
-    def formatted_preds(self, logits, label_maps, **kwargs):
+    def formatted_preds(self, logits, **kwargs):
         """
         Format predictions for inference.
 
@@ -179,11 +178,11 @@ class AdaptiveModel(nn.Module):
         """
         all_preds = []
         # collect preds from all heads
-        for head, logits_for_head, label_map_for_head in zip(
-            self.prediction_heads, logits, label_maps
+        for head, logits_for_head in zip(
+            self.prediction_heads, logits
         ):
             preds = head.formatted_preds(
-                logits=logits_for_head, label_map=label_map_for_head, **kwargs
+                logits=logits_for_head, **kwargs
             )
             all_preds.append(preds)
         return all_preds
@@ -222,6 +221,12 @@ class AdaptiveModel(nn.Module):
             all_logits.append(head(output))
 
         return all_logits
+
+    def connect_heads_with_processor(self, tasks):
+        for head in self.prediction_heads:
+            head.label_tensor_name = tasks[head.task_name]["label_tensor_name"]
+            head.label_list = tasks[head.task_name]["label_list"]
+            head.metric = tasks[head.task_name]["metric"]
 
     @classmethod
     def _get_prediction_head_files(cls, load_dir):

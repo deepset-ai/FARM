@@ -27,14 +27,17 @@ def test_ner(caplog):
         pretrained_model_name_or_path=lang_model, do_lower_case=False
     )
 
+    ner_labels = ["[PAD]", "X", "O", "B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-OTH",
+                  "I-OTH"]
+
     processor = NERProcessor(
         tokenizer=tokenizer, max_seq_len=128, data_dir="samples/ner",train_filename="train-sample.txt",
-        dev_filename="dev-sample.txt",test_filename=None, delimiter=" "
+        dev_filename="dev-sample.txt",test_filename=None, delimiter=" ", labels=ner_labels, metric="seq_f1"
     )
 
     data_silo = DataSilo(processor=processor, batch_size=batch_size)
     language_model = Bert.load(lang_model)
-    prediction_head = TokenClassificationHead(layer_dims=[768, len(processor.label_list)])
+    prediction_head = TokenClassificationHead(layer_dims=[768, len(ner_labels)])
 
     model = AdaptiveModel(
         language_model=language_model,

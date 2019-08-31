@@ -26,22 +26,20 @@
     "dev_split":        {"value": null, "default": 0.1,              "desc": "Split a dev set from the training set using dev_split as proportion."},
     "train_filename":   {"value": null, "default": "train.txt",      "desc": "Filename for training."},
     "dev_filename":     {"value": null, "default": "dev.txt",        "desc": "Filename for development."},
-    "test_filename":    {"value": null, "default": "test.txt",       "desc": "Filename for testing."},
-    "metrics":          {"value": null, "default": ["acc","acc"],       "desc": "Metric used. We need two for both prediction heads."}
+    "test_filename":    {"value": null, "default": "test.txt",       "desc": "Filename for testing."}
   },
 
   "parameter": {
     "model":           {"value": "bert-base-cased", "default": null,  "desc": "Bert pre-trained model selected in the list: bert-base-uncased,  bert-large-uncased,  bert-base-cased,  bert-large-cased,  bert-base-multilingual-uncased,  bert-base-multilingual-cased,  bert-base-chinese."},
     "lower_case":      {"value": null,              "default": false, "desc": "Set to true if you are using an uncased model."},
-    "max_seq_length":  {"value": null,              "default": 128,   "desc": "The maximum total input sequence length after WordPiece tokenization. 128 was too short for some texts"},
+    "max_seq_len":  {"value": null,              "default": 128,   "desc": "The maximum total input sequence length after WordPiece tokenization. 128 was too short for some texts"},
     "balance_classes": {"value": null,              "default": true,  "desc": "Balance classes using weighted CrossEntropyLoss. Original train set from GermEval18 is skewed and the final evaluation is macro averaged,  so we need to balance for optimal performance.."},
 
     "learning_rate":      {"value": null, "default": 2e-5, "desc": "The initial learning rate for Adam."},
     "warmup_proportion":  {"value": null, "default": 0.1,  "desc": "Proportion of training to perform linear learning rate warmup for. E.g.,  0.1 = 10%% of training."},
 
     "num_train_epochs":             {"value": null, "default": 1.0, "desc": "Total number of training epochs to perform."},
-    "train_batch_size":             {"value": null, "default": 64,  "desc": "Total batch size for training. If using multiGPU,  the total number will be spread evenly across all GPUs"},
-    "eval_batch_size":              {"value": null, "default": 64,  "desc": "Total batch size for eval."},
+    "batch_size":                   {"value": null, "default": 64,  "desc": ""},
     "gradient_accumulation_steps":  {"value": null, "default": 1,   "desc": "Number of updates steps (batches) to accumulate before performing a backward/update pass."}
   },
 

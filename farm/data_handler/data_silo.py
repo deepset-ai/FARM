@@ -1,6 +1,7 @@
 import logging
 
 import os
+import copy
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
@@ -70,7 +71,7 @@ class DataSilo(object):
 
         # derive stats and meta data
         self._calculate_statistics()
-        self._calculate_class_weights(self.data["train"])
+        #self.calculate_class_weights()
         self._initialize_data_loaders()
         # fmt: on
 
@@ -175,17 +176,26 @@ class DataSilo(object):
 
     # TODO: maybe this can be inside calculate_statistics
     # TODO: this also computes weights for QA. What is inside x[3].item() o_O ???
-    def _calculate_class_weights(self, dataset):
+    def calculate_class_weights(self, task_name):
         try:
-            labels = [x[3].item() for x in dataset]
-            self.class_weights = list(
-                compute_class_weight("balanced", np.unique(labels), labels)
-            )
-            logger.info(f"Using class weights: {self.class_weights}")
-        except ValueError:
+            tensor_name = self.processor.tasks[task_name]["label_tensor_name"]
+            label_list = self.processor.tasks[task_name]["label_list"]
+            tensor_idx = list(self.tensor_names).index(tensor_name)
+            # we need at least ONE observation for each label to avoid division by zero in compute_class_weights.
+            observed_labels = copy.deepcopy(label_list)
+            for dataset in self.data.values():
+                if dataset is not None:
+                    observed_labels += [x[tensor_idx].item() for x in dataset]
+            #TODO scale e.g. via logarithm to avoid crazy spikes for rare classes
+            class_weights = list(compute_class_weight("balanced", np.unique(label_list), observed_labels))
+            logger.info(f"Using class weights: {class_weights}")
+            return class_weights
+        except ValueError as e:
+            logger.error(e)
             logger.info(
                 "Class weighting is currently only available for sequence classification tasks "
             )
+            return None
 
     def get_data_loader(self, dataset):
         return self.loaders[dataset]
