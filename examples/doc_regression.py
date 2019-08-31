@@ -39,7 +39,7 @@ tokenizer = BertTokenizer.from_pretrained(
 #    We do not have a sample dataset for regression yet, add your own dataset to run the example
 processor = RegressionProcessor(tokenizer=tokenizer,
                                 max_seq_len=128,
-                                data_dir="../data/ecommerce",
+                                data_dir="../data/<YOUR-DATASET>",
                                 )
 
 # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
