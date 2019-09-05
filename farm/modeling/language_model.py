@@ -76,6 +76,9 @@ class LanguageModel(nn.Module):
         else:
             # it's a model name which we try to resolve from s3. for now only works for bert models
             language_model = cls.subclasses["Bert"].load(pretrained_model_name_or_path)
+
+        assert language_model is not None
+
         return language_model
 
     def freeze(self, layers):
