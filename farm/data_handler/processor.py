@@ -37,7 +37,7 @@ from farm.data_handler.utils import (
     is_json,
 )
 from farm.modeling.tokenization import BertTokenizer, tokenize_with_metadata
-from farm.utils import MLFlowLogger as MlLogger
+from farm.utils import MLFlowLogger as MlLogger, log_ascii_workers
 from farm.data_handler.samples import get_sentence_pair
 
 logger = logging.getLogger(__name__)
@@ -295,6 +295,7 @@ class Processor(ABC):
                 logger.info(
                     f"Got ya {num_cpus} parallel workers to fill the baskets with samples (chunksize = {self.multiprocessing_chunk_size})..."
                 )
+                log_ascii_workers(num_cpus, logger)
                 p = stack.enter_context(mp.Pool(processes=num_cpus))
                 manager = stack.enter_context(mp.Manager())
 

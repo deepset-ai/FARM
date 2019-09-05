@@ -5,9 +5,10 @@ import torch
 from tqdm import tqdm
 
 from farm.utils import MLFlowLogger as MlLogger
+from farm.utils import format_log
 from farm.eval import Evaluator
 from farm.data_handler.data_silo import DataSilo
-from farm.visual.ascii.images import GROWING_TREE
+from farm.visual.ascii.images import GROWING_TREE, BUSH_SEP
 
 logger = logging.getLogger(__name__)
 
@@ -156,8 +157,10 @@ class Trainer:
                     if self.global_step != 0 and (
                         self.global_step % self.evaluate_every == 0
                     ):
+                        format_log(BUSH_SEP, logger)
                         result = self.evaluator_dev.eval(model)
                         self.evaluator_dev.log_results(result, "Val", self.global_step)
+                        format_log(BUSH_SEP, logger)
 
                 self.global_step += 1
 

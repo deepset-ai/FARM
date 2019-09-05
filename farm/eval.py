@@ -84,7 +84,8 @@ class Evaluator:
         # Evaluate per prediction head
         all_results = []
         for head_num, head in enumerate(model.prediction_heads):
-            result = {"loss": loss_all[head_num] / len(self.data_loader.dataset)}
+            result = {"loss": loss_all[head_num] / len(self.data_loader.dataset),
+                      "task_name": head.task_name}
             result.update(
                 compute_metrics(metric=head.metric, preds=preds_all[head_num], labels=label_all[head_num]
                 )
@@ -125,14 +126,14 @@ class Evaluator:
             )
         )
         for head_num, head in enumerate(results):
-            logger.info("\n _________ Prediction Head {} _________".format(head_num))
+            logger.info("\n _________ {} _________".format(head['task_name']))
             for metric_name, metric_val in head.items():
                 # log with ML framework (e.g. Mlflow)
                 if logging:
                     if isinstance(metric_val, numbers.Number):
                         MlLogger.log_metrics(
                             metrics={
-                                f"{dataset_name}_{metric_name}_head{head_num}": metric_val
+                                f"{dataset_name}_{metric_name}_{head['task_name']}": metric_val
                             },
                             step=steps,
                         )

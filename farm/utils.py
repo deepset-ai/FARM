@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import mlflow
 from copy import deepcopy
-from farm.visual.ascii.images import WELCOME_BARN
+from farm.visual.ascii.images import WELCOME_BARN, WORKER
 
 logger = logging.getLogger(__name__)
 
@@ -183,3 +183,16 @@ def flatten_list(nested_list):
             nested_list = sublist + nested_list
         else:
             yield sublist
+
+def log_ascii_workers(n, logger):
+    worker_lines = WORKER.split("\n")
+    all_worker_lines = [worker_lines] * n
+    zipped = zip(*all_worker_lines)
+    for z in zipped:
+        logger.info("  ".join(z))
+
+def format_log(ascii, logger):
+    ascii_lines = ascii.split("\n")
+    for l in ascii_lines:
+        logger.info(l)
+
