@@ -27,7 +27,7 @@ def sample_to_features_text(
 
     :param sample: Sample object that contains human readable text and label fields from a single text classification data sample
     :type sample: Sample
-    :param tasks: TODO
+    :param tasks: A dictionary where the keys are the names of the tasks and the values are the details of the task (e.g. label_list, metric, tensor name)
     :type tasks: dict
     :param max_seq_len: Sequences are truncated after this many tokens
     :type max_seq_len: int
@@ -131,7 +131,6 @@ def samples_to_features_ner(
     max_seq_len,
     tokenizer,
     cls_token="[CLS]",
-    pad_token="[PAD]",
     sep_token="[SEP]",
     non_initial_token="X",
     **kwargs
@@ -141,15 +140,13 @@ def samples_to_features_ner(
 
     :param sample: Sample object that contains human readable text and label fields from a single NER data sample
     :type sample: Sample
-    :param label_list: A list of all unique labels
-    :type label_list: list
+    :param tasks: A dictionary where the keys are the names of the tasks and the values are the details of the task (e.g. label_list, metric, tensor name)
+    :type tasks: dict
     :param max_seq_len: Sequences are truncated after this many tokens
     :type max_seq_len: int
     :param tokenizer: A tokenizer object that can turn string sentences into a list of tokens
     :param cls_token: Token used to represent the beginning of the sequence
     :type cls_token: str
-    :param pad_token: Token used to represent sequence padding
-    :type pad_token: str
     :param sep_token: Token used to represent the border between two sequences
     :type sep_token: str
     :param non_initial_token: Token that is inserted into the label sequence in positions where there is a
@@ -220,7 +217,9 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
     IDs, LM labels, padding_mask, CLS and SEP tokens etc.
 
     :param sample: Sample, containing sentence input as strings and is_next label
-    :param max_seq_len: int, maximum length of sequence.
+    :type sample: Sample
+    :param max_seq_len: Maximum length of sequence.
+    :type max_seq_len: int
     :param tokenizer: Tokenizer
     :return: InputFeatures, containing all inputs and labels of one sample as IDs (as used for model training)
     """
