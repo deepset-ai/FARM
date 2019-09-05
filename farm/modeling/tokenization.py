@@ -111,6 +111,8 @@ class BertTokenizer(BertTokenizer):
                                                   never_split_chars=never_split_chars,
                                                   tokenize_chinese_chars=tokenize_chinese_chars)
         self.wordpiece_tokenizer = WordpieceTokenizer(vocab=self.vocab, unk_token=self.unk_token)
+        assert len(self.vocab) > 0
+        assert self.wordpiece_tokenizer is not None
 
 
     def add_custom_vocab(self, custom_vocab_file):
