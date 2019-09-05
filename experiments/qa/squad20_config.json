@@ -23,8 +23,8 @@
 
     "processor_name":  {"value": null, "default": "SquadProcessor", "desc": "Class name of DataProcessor."},
     "dev_split":        {"value": null, "default": 0.0,              "desc": "Split a dev set from the training set using dev_split as proportion."},
-    "train_filename":   {"value": null, "default": "train_small-v2.0.json",      "desc": "Filename for training."},
-    "dev_filename":     {"value": null, "default": "dev_small-v2.0.json",        "desc": "Filename for development. Contains multiple possible answers."},
+    "train_filename":   {"value": null, "default": "train-v2.0.json",      "desc": "Filename for training."},
+    "dev_filename":     {"value": null, "default": "dev-v2.0.json",        "desc": "Filename for development. Contains multiple possible answers."},
     "test_filename":    {"value": null, "default": null,       "desc": "Filename for testing. It is the submission file from competition."},
     "labels":           {"value": null, "default": ["start_token", "end_token"], "desc": ""},
     "metric":          {"value": null, "default": "squad",       "desc": "Metric used. A f1 scored tailored to sequences of labels."}
