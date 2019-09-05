@@ -157,10 +157,8 @@ class Trainer:
                     if self.global_step != 0 and (
                         self.global_step % self.evaluate_every == 0
                     ):
-                        format_log(BUSH_SEP, logger)
                         result = self.evaluator_dev.eval(model)
-                        self.evaluator_dev.log_results(result, "Val", self.global_step)
-                        format_log(BUSH_SEP, logger)
+                        self.evaluator_dev.log_results(result, "Dev", self.global_step)
 
                 self.global_step += 1
 

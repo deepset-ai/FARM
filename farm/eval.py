@@ -9,9 +9,10 @@ from sklearn.metrics import r2_score
 from torch.utils.data import DataLoader
 
 from farm.metrics import compute_metrics
-from farm.utils import to_numpy
+from farm.utils import to_numpy, format_log
 from farm.utils import MLFlowLogger as MlLogger
 from farm.modeling.adaptive_model import AdaptiveModel
+from farm.visual.ascii.images import BUSH_SEP
 
 logger = logging.getLogger(__name__)
 
@@ -120,11 +121,15 @@ class Evaluator:
 
     @staticmethod
     def log_results(results, dataset_name, steps, logging=True, print=True):
-        logger.info(
-            "\n***** Evaluation Results on {} data after {} steps *****".format(
-                dataset_name, steps
-            )
-        )
+        # Print a header
+        header = "\n\n"
+        header += BUSH_SEP + "\n"
+        header += "***************************************************\n"
+        header += f"***** EVALUATION | {dataset_name.upper()} SET | AFTER {steps} BATCHES *****\n"
+        header += "***************************************************\n"
+        header += BUSH_SEP + "\n"
+        logger.info(header)
+
         for head_num, head in enumerate(results):
             logger.info("\n _________ {} _________".format(head['task_name']))
             for metric_name, metric_val in head.items():
