@@ -238,6 +238,7 @@ class TextClassificationHead(PredictionHead):
         self.class_weights = class_weights
 
         if class_weights:
+            logger.info(f"Using class weights for task '{self.task_name}': {self.class_weights}")
             self.balanced_weights = nn.Parameter(
                 torch.tensor(class_weights), requires_grad=False
             )

@@ -185,7 +185,6 @@ class DataSilo(object):
                 observed_labels += [label_list[x[tensor_idx].item()] for x in dataset]
         #TODO scale e.g. via logarithm to avoid crazy spikes for rare classes
         class_weights = list(compute_class_weight("balanced", np.asarray(label_list), observed_labels))
-        logger.info(f"Using class weights: {class_weights}")
         return class_weights
 
 

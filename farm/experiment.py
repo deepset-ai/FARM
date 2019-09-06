@@ -89,7 +89,10 @@ def run_experiment(args):
 
     class_weights = None
     if args.parameter.balance_classes:
-        class_weights = data_silo.class_weights
+        task_names = list(processor.tasks.keys())
+        if len(task_names) > 1:
+            raise NotImplementedError(f"Balancing classes is currently not supported for multitask experiments. Got tasks:  {task_names} ")
+        class_weights = data_silo.calculate_class_weights(task_name=task_names[0])
 
     model = get_adaptive_model(
         lm_output_type=args.parameter.lm_output_type,
@@ -160,7 +163,6 @@ def get_adaptive_model(
 
     language_model = LanguageModel.load(model)
 
-    # TODO where are balance class weights?
     model = AdaptiveModel(
         language_model=language_model,
         prediction_heads=initialized_heads,
