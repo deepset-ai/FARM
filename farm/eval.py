@@ -9,9 +9,10 @@ from sklearn.metrics import r2_score
 from torch.utils.data import DataLoader
 
 from farm.metrics import compute_metrics
-from farm.utils import to_numpy
+from farm.utils import to_numpy, format_log
 from farm.utils import MLFlowLogger as MlLogger
 from farm.modeling.adaptive_model import AdaptiveModel
+from farm.visual.ascii.images import BUSH_SEP
 
 logger = logging.getLogger(__name__)
 
@@ -84,7 +85,8 @@ class Evaluator:
         # Evaluate per prediction head
         all_results = []
         for head_num, head in enumerate(model.prediction_heads):
-            result = {"loss": loss_all[head_num] / len(self.data_loader.dataset)}
+            result = {"loss": loss_all[head_num] / len(self.data_loader.dataset),
+                      "task_name": head.task_name}
             result.update(
                 compute_metrics(metric=head.metric, preds=preds_all[head_num], labels=label_all[head_num]
                 )
@@ -119,20 +121,24 @@ class Evaluator:
 
     @staticmethod
     def log_results(results, dataset_name, steps, logging=True, print=True):
-        logger.info(
-            "\n***** Evaluation Results on {} data after {} steps *****".format(
-                dataset_name, steps
-            )
-        )
+        # Print a header
+        header = "\n\n"
+        header += BUSH_SEP + "\n"
+        header += "***************************************************\n"
+        header += f"***** EVALUATION | {dataset_name.upper()} SET | AFTER {steps} BATCHES *****\n"
+        header += "***************************************************\n"
+        header += BUSH_SEP + "\n"
+        logger.info(header)
+
         for head_num, head in enumerate(results):
-            logger.info("\n _________ Prediction Head {} _________".format(head_num))
+            logger.info("\n _________ {} _________".format(head['task_name']))
             for metric_name, metric_val in head.items():
                 # log with ML framework (e.g. Mlflow)
                 if logging:
                     if isinstance(metric_val, numbers.Number):
                         MlLogger.log_metrics(
                             metrics={
-                                f"{dataset_name}_{metric_name}_head{head_num}": metric_val
+                                f"{dataset_name}_{metric_name}_{head['task_name']}": metric_val
                             },
                             step=steps,
                         )
