@@ -25,7 +25,7 @@ for model_dir in MODELS_DIRS:
 
 INFERENCERS = {}
 for idx, model_dir in enumerate(model_paths):
-    INFERENCERS[idx + 1] = Inferencer(str(model_dir))
+    INFERENCERS[idx + 1] = (Inferencer.load(str(model_dir)), model_dir)
 
 app = Flask(__name__)
 CORS(app)
@@ -39,7 +39,7 @@ class ModelListEndpoint(Resource):
     def get(self):
         resp = []
 
-        for idx, model in INFERENCERS.items():
+        for idx, (model, _) in INFERENCERS.items():
             _res = {
                 "id": idx,
                 "name": model.name,
@@ -69,10 +69,18 @@ def resp_json(data, code, headers=None):
 
 @api.route("/models/<int:model_id>/inference")
 class InferenceEndpoint(Resource):
+    active_inferencer = -1
+
     def post(self, model_id):
-        model = INFERENCERS.get(model_id, None)
+        model, model_path = INFERENCERS.get(model_id, (None, None))
+
         if not model:
             return "Model not found", 404
+
+        if model_id != InferenceEndpoint.active_inferencer:
+            model = Inferencer.load(model_path)
+
+        InferenceEndpoint.active_inferencer = model_id
 
         dicts = request.get_json().get("input", None)
         if not dicts:
