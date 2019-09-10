@@ -27,9 +27,10 @@
 What is it?
 ############
 FARM makes cutting edge **Transfer Learning** for NLP simple.
-It is a home for all species of pretrained language models (e.g. BERT) that can be adapted to **different down-stream tasks**.
-The aim is to make it simple to perform document classification, NER and question answering, for example, using the one language model.
-The **standardized interfaces** for language models and prediction heads allow flexible extension by researchers and easy adaptation for practitioners.
+It is a home for all species of pretrained language models (e.g. BERT) that can be adapted to different
+**domain languages** or **down-stream tasks**.
+With FARM you can easily create SOTA NLP models for tasks like document classification, NER or question answering.
+The **standardized interfaces** for language models and prediction heads allow flexible extension by researchers and easy application for practitioners.
 Additional experiment tracking and visualizations support you along the way to adapt a SOTA model to your own NLP problem and have a **very fast proof-of-concept**.
 
 Core features
@@ -104,3 +105,9 @@ Upcoming features
 - SOTA adaptation strategies (Adapter Modules, Discriminative Fine-tuning ...)
 - Enabling large scale deployment for production
 - Additional Visualizations and statistics to explore and debug your model
+
+Citation
+****************************
+As of now there is no published paper on FARM. If you want to use or cite our framework, please include
+the link to this repository. If you are working with the German Bert model, you can link our
+`blog post <https://deepset.ai/german-bert>`_ describing its training details and performance.
