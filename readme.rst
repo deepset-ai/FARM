@@ -98,6 +98,25 @@ Metrics and parameters of your model training get automatically logged via MLflo
 One docker container exposes a REST API (localhost:5000) and another one runs a simple demo UI (localhost:3000).
 You can use both of them individually and mount your own models. Check out the docs for details.
 
+Core concepts
+#########################
+Model
+************
+AdaptiveModel = Language Model + Prediction Head(s)
+With this modular approach you can easily add prediction heads (multitask learning) and re-use them for different types of language model.
+`(Learn more) <https://farm.deepset.ai/modeling.html>`_
+
+
+.. image:: https://raw.githubusercontent.com/deepset-ai/FARM/master/docs/img/adaptive_model_no_bg_small.jpg
+
+
+Data Processing
+********************
+Custom Datasets can be loaded by customizing the Processor. It converts "raw data" into PyTorch Datasets.
+Much of the heavy lifting is then handled behind the scenes to make it fast & simple to debug.
+`(Learn more) <https://farm.deepset.ai/data_handling.html>`_
+
+.. image:: https://raw.githubusercontent.com/deepset-ai/FARM/master/docs/img/data_silo_no_bg_small.jpg
 
 Upcoming features
 ###################
@@ -106,8 +125,9 @@ Upcoming features
 - Enabling large scale deployment for production
 - Additional Visualizations and statistics to explore and debug your model
 
+
 Citation
-****************************
+###################
 As of now there is no published paper on FARM. If you want to use or cite our framework, please include
 the link to this repository. If you are working with the German Bert model, you can link our
 `blog post <https://deepset.ai/german-bert>`_ describing its training details and performance.
