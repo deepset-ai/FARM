@@ -125,6 +125,7 @@ class BertTokenizer(BertTokenizer):
         custom_vocab = {}
         unique_custom_tokens = set()
         idx = 0
+        num_dropped = 0
         with open(custom_vocab_file, "r", encoding="utf-8") as reader:
             while True:
                 token = reader.readline().strip()
@@ -138,6 +139,7 @@ class BertTokenizer(BertTokenizer):
                         idx += 1
                         unique_custom_tokens.add(token)
                     else:
+                        num_dropped += 1
                         logger.info("Dropped custom token (already in original vocab): {}".format(token))
                 else:
                     logger.info("Dropped custom token (duplicate): {}".format(token))
@@ -156,6 +158,9 @@ class BertTokenizer(BertTokenizer):
             logger.warning("Updated vocabulary only with {} out of {} tokens from supplied custom vocabulary. The original vocab might not have enough unused tokens.".format(update_count, len(custom_vocab)))
         else:
             logger.info("Updated vocabulary with {} out of {} tokens from custom vocabulary.".format(update_count, len(custom_vocab)))
+        if(num_dropped > 0):
+            logger.info(f"Dropped {num_dropped} items from custom vocab, because they were already contained in original vocab.")
+
         return self.vocab
 
 
