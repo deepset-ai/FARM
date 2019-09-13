@@ -1,12 +1,15 @@
+import json
 import logging
 import os
-import json
-from requests import get
+import random
 import tarfile
 import tempfile
-from tqdm import tqdm
-import random
+from itertools import islice
+
 import pandas as pd
+from requests import get
+from tqdm import tqdm
+
 from farm.file_utils import http_get
 
 logger = logging.getLogger(__name__)
@@ -349,3 +352,11 @@ def is_json(x):
         return True
     except:
         return False
+
+def grouper(iterable, n):
+    """
+    >>> list(grouper('ABCDEFG'), 3)
+    [['A', 'B', 'C'], ['D', 'E', 'F'], ['G']]
+    """
+    iterable = iter(iterable)
+    return iter(lambda: list(islice(iterable, n)), [])

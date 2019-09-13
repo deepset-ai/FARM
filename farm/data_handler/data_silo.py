@@ -1,28 +1,35 @@
-import logging
-
-import os
 import copy
+import logging
+import multiprocessing as mp
+import os
+from contextlib import ExitStack
+from functools import partial
+
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
-from torch.utils.data import DataLoader
-from torch.utils.data import random_split
+from torch.utils.data import ConcatDataset, DataLoader, random_split
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
+from tqdm import tqdm
+
 from farm.data_handler.dataloader import NamedDataLoader
-from farm.utils import MLFlowLogger as MlLogger
 from farm.data_handler.processor import Processor
+from farm.data_handler.utils import grouper
+from farm.utils import MLFlowLogger as MlLogger
+from farm.utils import log_ascii_workers
 from farm.visual.ascii.images import TRACTOR_SMALL
+
 logger = logging.getLogger(__name__)
 
 
-class DataSilo(object):
+class DataSilo:
     """ Generates and stores PyTorch DataLoader objects for the train, dev and test datasets.
     Relies upon functionality in the processor to do the conversion of the data. Will also
     calculate and display some statistics.
      """
 
-    def __init__(self, processor, batch_size, distributed=False):
+    def __init__(self, processor, batch_size, distributed=False, multiprocessing_chunk_size=100):
         """
         :param processor: A dataset specific Processor object which will turn input (file or dict) into a Pytorch Dataset.
         :type processor: Processor
@@ -37,7 +44,41 @@ class DataSilo(object):
         self.data = {}
         self.batch_size = batch_size
         self.class_weights = None
+        self.multiprocessing_chunk_size = multiprocessing_chunk_size
+        self.max_processes = 128
         self._load_data()
+
+    @classmethod
+    def _multiproc(cls, chunk, processor):
+        dataset = processor.dataset_from_dicts(chunk)
+        return dataset
+
+    def _get_dataset(self, filename):
+        dicts = self.processor._file_to_dicts(filename)
+
+        dict_batches_to_process = int(len(dicts) / self.multiprocessing_chunk_size)
+        num_cpus = min(mp.cpu_count(), self.max_processes,  dict_batches_to_process) or 1
+
+        with ExitStack() as stack:
+            p = stack.enter_context(mp.Pool(processes=8))
+
+            logger.info(
+                f"Got ya {num_cpus} parallel workers to convert dict chunks to datasets (chunksize = {self.multiprocessing_chunk_size})..."
+            )
+            log_ascii_workers(num_cpus, logger)
+
+            results = p.imap(
+                partial(self._multiproc, processor=self.processor),
+                grouper(dicts, self.multiprocessing_chunk_size),
+                chunksize=1,
+            )
+
+            datasets = []
+            for dataset, tensor_names in tqdm(results, total=len(dicts)/self.multiprocessing_chunk_size):
+                datasets.append(dataset)
+            
+            concat_datasets = ConcatDataset(datasets)
+            return concat_datasets, tensor_names
 
     def _load_data(self):
         logger.info("\nLoading data into the data silo ..."
@@ -45,7 +86,7 @@ class DataSilo(object):
         # train data
         train_file = os.path.join(self.processor.data_dir, self.processor.train_filename)
         logger.info("Loading train set from: {} ".format(train_file))
-        self.data["train"], self.tensor_names = self.processor.dataset_from_file(train_file)
+        self.data["train"], self.tensor_names = self._get_dataset(train_file)
 
         # dev data
         if not self.processor.dev_filename:
@@ -58,22 +99,21 @@ class DataSilo(object):
         else:
             dev_file = os.path.join(self.processor.data_dir, self.processor.dev_filename)
             logger.info("Loading dev set from: {}".format(dev_file))
-            self.data["dev"], _ = self.processor.dataset_from_file(dev_file)
+            self.data["dev"], _ = self._get_dataset(dev_file)
 
         # test data
         if self.processor.test_filename:
             test_file = os.path.join(self.processor.data_dir, self.processor.test_filename)
             logger.info("Loading test set from: {}".format(test_file))
-            self.data["test"], _ = self.processor.dataset_from_file(test_file)
+            self.data["test"], _ = self._get_dataset(test_file)
         else:
             logger.info("No test set is being loaded")
             self.data["test"] = None
 
         # derive stats and meta data
-        self._calculate_statistics()
+        # self._calculate_statistics()
         #self.calculate_class_weights()
         self._initialize_data_loaders()
-        # fmt: on
 
     def _initialize_data_loaders(self):
         if self.distributed:
