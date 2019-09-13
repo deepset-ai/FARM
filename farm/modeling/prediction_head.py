@@ -7,7 +7,7 @@ import torch
 from pytorch_transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN
 
 from torch import nn
-from torch.nn import CrossEntropyLoss, MSELoss
+from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
 
 from farm.data_handler.utils import is_json
 from farm.utils import convert_iob_to_simple_tags
@@ -224,33 +224,41 @@ class TextClassificationHead(PredictionHead):
         loss_ignore_index=-100,
         loss_reduction="none",
         task_name="text_classification",
+        multilabel=False,
         **kwargs,
     ):
         super(TextClassificationHead, self).__init__()
         # num_labels could in most cases also be automatically retrieved from the data processor
-        self.layer_dims = layer_dims
-        # TODO is this still needed?
+        self.layer_dims = layer_dims # TODO is this still needed?
         self.feed_forward = FeedForwardBlock(self.layer_dims)
         self.num_labels = self.layer_dims[-1]
         self.ph_output_type = "per_sequence"
         self.model_type = "text_classification"
         self.task_name = task_name #used for connecting with the right output of the processor
         self.class_weights = class_weights
+        self.multilabel = multilabel
 
         if class_weights:
             logger.info(f"Using class weights for task '{self.task_name}': {self.class_weights}")
+            #TODO must balanced weight really be a instance attribute?
             self.balanced_weights = nn.Parameter(
                 torch.tensor(class_weights), requires_grad=False
             )
+        else:
+            self.balanced_weights = None
+
+        if self.multilabel:
+            if loss_ignore_index != -100:
+                raise NotImplementedError("`loss_ignore_index` is not available yet for multilabel classification")
+            self.loss_fct = BCEWithLogitsLoss(pos_weight=self.balanced_weights,
+                                              reduction=loss_reduction)
+        else:
             self.loss_fct = CrossEntropyLoss(
                 weight=self.balanced_weights,
                 reduction=loss_reduction,
                 ignore_index=loss_ignore_index,
             )
-        else:
-            self.loss_fct = CrossEntropyLoss(
-                reduction=loss_reduction, ignore_index=loss_ignore_index
-            )
+
         self.generate_config()
 
     def forward(self, X):
@@ -258,7 +266,6 @@ class TextClassificationHead(PredictionHead):
         return logits
 
     def logits_to_loss(self, logits, **kwargs):
-        #if self.label_tensor_name is not None:
         label_ids = kwargs.get(self.label_tensor_name)
         return self.loss_fct(logits, label_ids.view(-1))
 
@@ -276,7 +283,6 @@ class TextClassificationHead(PredictionHead):
         return preds
 
     def prepare_labels(self, **kwargs):
-        #if self.label_tensor_name is not None:
         label_ids = kwargs.get(self.label_tensor_name)
         label_ids = label_ids.cpu().numpy()
         labels = [self.label_list[int(x)] for x in label_ids]
@@ -302,6 +308,92 @@ class TextClassificationHead(PredictionHead):
             )
         return res
 
+
+class MultiLabelTextClassificationHead(PredictionHead):
+    def __init__(
+        self,
+        layer_dims,
+        class_weights=None,
+        loss_reduction="none",
+        task_name="text_classification",
+        **kwargs,
+    ):
+        super(MultiLabelTextClassificationHead, self).__init__()
+        # num_labels could in most cases also be automatically retrieved from the data processor
+        self.layer_dims = layer_dims # TODO is this still needed?
+        self.feed_forward = FeedForwardBlock(self.layer_dims)
+        self.num_labels = self.layer_dims[-1]
+        self.ph_output_type = "per_sequence"
+        self.model_type = "multilabel_text_classification"
+        self.task_name = task_name #used for connecting with the right output of the processor
+        self.class_weights = class_weights
+
+        if class_weights:
+            logger.info(f"Using class weights for task '{self.task_name}': {self.class_weights}")
+            #TODO must balanced weight really be a instance attribute?
+            self.balanced_weights = nn.Parameter(
+                torch.tensor(class_weights), requires_grad=False
+            )
+        else:
+            self.balanced_weights = None
+
+        self.loss_fct = BCEWithLogitsLoss(pos_weight=self.balanced_weights,
+                                          reduction=loss_reduction)
+
+        self.generate_config()
+
+    def forward(self, X):
+        logits = self.feed_forward(X)
+        return logits
+
+    def logits_to_loss(self, logits, **kwargs):
+        label_ids = kwargs.get(self.label_tensor_name)
+        return self.loss_fct(logits, label_ids.to(dtype=torch.float))
+
+    def logits_to_probs(self, logits, **kwargs):
+        sigmoid = torch.nn.Sigmoid()
+        probs = sigmoid(logits)
+        #probs = torch.max(probs, dim=1)[0]
+        probs = probs.cpu().numpy()
+        return probs
+
+    def logits_to_preds(self, logits, **kwargs):
+        probs = self.logits_to_probs(logits)
+        #TODO we could potentially move this to GPU to speed it up
+        pred_ids = [np.where(row > 0.5)[0] for row in probs]
+        preds = []
+        for row in pred_ids:
+            preds.append([self.label_list[int(x)] for x in row])
+        return preds
+
+    def prepare_labels(self, **kwargs):
+        label_ids = kwargs.get(self.label_tensor_name)
+        label_ids = label_ids.cpu().numpy()
+        label_ids = [np.where(row == 1)[0] for row in label_ids]
+        labels = []
+        for row in label_ids:
+            labels.append([self.label_list[int(x)] for x in row])
+        return labels
+
+    def formatted_preds(self, logits, samples, **kwargs):
+        preds = self.logits_to_preds(logits)
+        probs = self.logits_to_probs(logits)
+        contexts = [sample.clear_text["text"] for sample in samples]
+
+        assert len(preds) == len(probs) == len(contexts)
+
+        res = {"task": "text_classification", "predictions": []}
+        for pred, prob, context in zip(preds, probs, contexts):
+            res["predictions"].append(
+                {
+                    "start": None,
+                    "end": None,
+                    "context": f"{context}",
+                    "label": f"{pred}",
+                    "probability": prob,
+                }
+            )
+        return res
 
 class TokenClassificationHead(PredictionHead):
     def __init__(self, layer_dims, task_name="ner", **kwargs):

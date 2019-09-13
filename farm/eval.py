@@ -85,6 +85,11 @@ class Evaluator:
         # Evaluate per prediction head
         all_results = []
         for head_num, head in enumerate(model.prediction_heads):
+            if head.model_type == "multilabel_text_classification":
+                from sklearn.preprocessing import MultiLabelBinarizer
+                mlb = MultiLabelBinarizer(classes=head.label_list)
+                preds_all[head_num] = mlb.fit_transform(preds_all[head_num])
+                label_all[head_num] = mlb.transform(label_all[head_num])
             result = {"loss": loss_all[head_num] / len(self.data_loader.dataset),
                       "task_name": head.task_name}
             result.update(
@@ -112,8 +117,7 @@ class Evaluator:
                     )
                 else:
                     result["report"] = report_fn(
-                        label_all[head_num], preds_all[head_num], digits=4
-                    )
+                        label_all[head_num], preds_all[head_num], digits=4, target_names=head.label_list)
 
             all_results.append(result)
 
