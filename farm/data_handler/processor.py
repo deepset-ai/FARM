@@ -931,7 +931,7 @@ class RegressionProcessor(Processor):
         )
         # TODO: check name of columns in data file
 
-        self.add_task("regression", "mse", [scaler_mean, scaler_scale])
+        self.add_task(name="regression", metric="mse",label_list= [scaler_mean, scaler_scale], task_type="regression")
 
     def save(self, save_dir):
         """
