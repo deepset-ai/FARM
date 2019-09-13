@@ -347,8 +347,10 @@ class MultiLabelTextClassificationHead(PredictionHead):
         return logits
 
     def logits_to_loss(self, logits, **kwargs):
-        label_ids = kwargs.get(self.label_tensor_name)
-        return self.loss_fct(logits, label_ids.to(dtype=torch.float))
+        label_ids = kwargs.get(self.label_tensor_name).to(dtype=torch.float)
+        loss = self.loss_fct(logits.view(-1, self.num_labels), label_ids.view(-1, self.num_labels))
+        per_sample_loss = loss.mean(1)
+        return per_sample_loss
 
     def logits_to_probs(self, logits, **kwargs):
         sigmoid = torch.nn.Sigmoid()
