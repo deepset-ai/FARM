@@ -24,11 +24,11 @@ ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_doc_class
 ########## Settings
 ##########################
 set_all_seeds(seed=42)
-device, n_gpu = initialize_device_settings(use_cuda=False)
+device, n_gpu = initialize_device_settings(use_cuda=True)
 n_epochs = 1
-batch_size = 2 #32
+batch_size = 32
 
-evaluate_every = 1 #500
+evaluate_every = 500
 lang_model = "bert-base-uncased"
 
 # 1.Create a tokenizer
@@ -100,8 +100,8 @@ processor.save(save_dir)
 
 # 9. Load it & harvest your fruits (Inference)
 basic_texts = [
-    {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei"},
-    {"text": "Martin Müller spielt Handball in Berlin"},
+    {"text": "You fucking bastards"},
+    {"text": "What a lovely world"},
 ]
 model = Inferencer.load(save_dir)
 result = model.run_inference(dicts=basic_texts)

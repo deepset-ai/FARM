@@ -224,40 +224,32 @@ class TextClassificationHead(PredictionHead):
         loss_ignore_index=-100,
         loss_reduction="none",
         task_name="text_classification",
-        multilabel=False,
         **kwargs,
     ):
         super(TextClassificationHead, self).__init__()
         # num_labels could in most cases also be automatically retrieved from the data processor
-        self.layer_dims = layer_dims # TODO is this still needed?
+        self.layer_dims = layer_dims
         self.feed_forward = FeedForwardBlock(self.layer_dims)
         self.num_labels = self.layer_dims[-1]
         self.ph_output_type = "per_sequence"
         self.model_type = "text_classification"
         self.task_name = task_name #used for connecting with the right output of the processor
         self.class_weights = class_weights
-        self.multilabel = multilabel
 
         if class_weights:
             logger.info(f"Using class weights for task '{self.task_name}': {self.class_weights}")
-            #TODO must balanced weight really be a instance attribute?
+            #TODO must balanced weight really be an instance attribute?
             self.balanced_weights = nn.Parameter(
                 torch.tensor(class_weights), requires_grad=False
             )
         else:
             self.balanced_weights = None
 
-        if self.multilabel:
-            if loss_ignore_index != -100:
-                raise NotImplementedError("`loss_ignore_index` is not available yet for multilabel classification")
-            self.loss_fct = BCEWithLogitsLoss(pos_weight=self.balanced_weights,
-                                              reduction=loss_reduction)
-        else:
-            self.loss_fct = CrossEntropyLoss(
-                weight=self.balanced_weights,
-                reduction=loss_reduction,
-                ignore_index=loss_ignore_index,
-            )
+        self.loss_fct = CrossEntropyLoss(
+            weight=self.balanced_weights,
+            reduction=loss_reduction,
+            ignore_index=loss_ignore_index,
+        )
 
         self.generate_config()
 
@@ -316,17 +308,19 @@ class MultiLabelTextClassificationHead(PredictionHead):
         class_weights=None,
         loss_reduction="none",
         task_name="text_classification",
+        pred_threshold=0.5,
         **kwargs,
     ):
         super(MultiLabelTextClassificationHead, self).__init__()
         # num_labels could in most cases also be automatically retrieved from the data processor
-        self.layer_dims = layer_dims # TODO is this still needed?
+        self.layer_dims = layer_dims
         self.feed_forward = FeedForwardBlock(self.layer_dims)
         self.num_labels = self.layer_dims[-1]
         self.ph_output_type = "per_sequence"
         self.model_type = "multilabel_text_classification"
         self.task_name = task_name #used for connecting with the right output of the processor
         self.class_weights = class_weights
+        self.pred_threshold = pred_threshold
 
         if class_weights:
             logger.info(f"Using class weights for task '{self.task_name}': {self.class_weights}")
@@ -355,15 +349,13 @@ class MultiLabelTextClassificationHead(PredictionHead):
     def logits_to_probs(self, logits, **kwargs):
         sigmoid = torch.nn.Sigmoid()
         probs = sigmoid(logits)
-        #probs = torch.max(probs, dim=1)[0]
         probs = probs.cpu().numpy()
         return probs
 
     def logits_to_preds(self, logits, **kwargs):
         probs = self.logits_to_probs(logits)
         #TODO we could potentially move this to GPU to speed it up
-        #TODO Treshold for predictions should be configurable
-        pred_ids = [np.where(row > 0.5)[0] for row in probs]
+        pred_ids = [np.where(row > self.pred_threshold)[0] for row in probs]
         preds = []
         for row in pred_ids:
             preds.append([self.label_list[int(x)] for x in row])
@@ -397,6 +389,7 @@ class MultiLabelTextClassificationHead(PredictionHead):
                 }
             )
         return res
+
 
 class TokenClassificationHead(PredictionHead):
     def __init__(self, layer_dims, task_name="ner", **kwargs):

@@ -20,6 +20,7 @@ DOWNSTREAM_TASK_MAP = {
     "conll03dedev": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/training_data_for_Stanford_NER/NER-de-dev-conll-formated.txt",
     "conll03detest": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/training_data_for_Stanford_NER/NER-de-test-conll-formated.txt",
     "lm_finetune_nips": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/lm_finetune_nips.tar.gz",
+    "toxic-comments": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/toxic-comments.tar.gz",
 }
 
 
@@ -38,8 +39,6 @@ def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=N
         skiprows=skiprows,
         header=header
     )
-    #TODO only for debugging
-    df = df.head(100)
 
     columns = ["text"] + list(rename_columns.keys())
     df = df[columns]
