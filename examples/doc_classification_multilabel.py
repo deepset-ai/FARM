@@ -24,11 +24,11 @@ ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_doc_class
 ########## Settings
 ##########################
 set_all_seeds(seed=42)
-device, n_gpu = initialize_device_settings(use_cuda=True)
+device, n_gpu = initialize_device_settings(use_cuda=False)
 n_epochs = 1
-batch_size = 32
+batch_size = 2 #32
 
-evaluate_every = 500
+evaluate_every = 1 #500
 lang_model = "bert-base-uncased"
 
 # 1.Create a tokenizer
@@ -40,7 +40,7 @@ tokenizer = BertTokenizer.from_pretrained(
 # Here we load GermEval 2018 Data.
 
 label_list = ["toxic","severe_toxic","obscene","threat","insult","identity_hate"]
-metric = "f1_macro"
+metric = "acc"
 
 processor = TextClassificationProcessor(tokenizer=tokenizer,
                                         max_seq_len=128,

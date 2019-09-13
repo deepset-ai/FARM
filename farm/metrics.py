@@ -6,15 +6,14 @@ from sklearn.metrics import matthews_corrcoef, f1_score, mean_squared_error, r2_
 from farm.utils import flatten_list
 
 def simple_accuracy(preds, labels):
-    try:
-        # works also with nested lists of different lengths (needed for masked LM task)
-        flat_preds = np.array(list(flatten_list(preds)))
-        flat_labels = np.array(list(flatten_list(labels)))
-        correct = flat_preds == flat_labels
-        return {"acc": correct.mean()}
-    except TypeError:
-        # TODO: THIS HACKY TRY CATCH IS FOR GNAD
-        return {"acc": (preds == labels.numpy()).mean()}
+    # works also with nested lists of different lengths (needed for masked LM task)
+    if type(preds) == type(labels) == list:
+        preds = np.array(list(flatten_list(preds)))
+        labels = np.array(list(flatten_list(labels)))
+    assert type(preds) == type(labels) == np.ndarray
+    correct = preds == labels
+    return {"acc": correct.mean()}
+
 
 
 def acc_and_f1(preds, labels):

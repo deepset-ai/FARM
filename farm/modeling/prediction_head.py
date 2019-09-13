@@ -362,6 +362,7 @@ class MultiLabelTextClassificationHead(PredictionHead):
     def logits_to_preds(self, logits, **kwargs):
         probs = self.logits_to_probs(logits)
         #TODO we could potentially move this to GPU to speed it up
+        #TODO Treshold for predictions should be configurable
         pred_ids = [np.where(row > 0.5)[0] for row in probs]
         preds = []
         for row in pred_ids:
