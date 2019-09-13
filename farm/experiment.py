@@ -11,7 +11,7 @@ from farm.modeling.tokenization import BertTokenizer
 from farm.data_handler.processor import Processor
 from farm.train import Trainer
 from farm.train import WrappedDataParallel
-from farm.utils import set_all_seeds, initialize_device_settings, MLFlowLogger
+from farm.utils import set_all_seeds, initialize_device_settings
 from farm.utils import MLFlowLogger as MlLogger
 from farm.file_utils import read_config, unnestConfig
 
@@ -42,14 +42,14 @@ def run_experiment(args):
 
     logger.info(
         "\n***********************************************"
-        f"\n************* Experiment: {args.name} ************"
+        f"\n************* Experiment: {args.task.name} ************"
         "\n************************************************"
     )
-    ml_logger = MLFlowLogger(tracking_uri=args.mlflow_url)
+    ml_logger = MlLogger(tracking_uri=args.logging.mlflow_url)
     ml_logger.init_experiment(
-        experiment_name=args.mlflow_experiment,
-        run_name=args.mlflow_run_name,
-        nested=args.mlflow_nested
+        experiment_name=args.logging.mlflow_experiment,
+        run_name=args.logging.mlflow_run_name,
+        nested=args.logging.mlflow_nested,
     )
 
     validate_args(args)
