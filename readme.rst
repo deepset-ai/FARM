@@ -31,7 +31,7 @@ It is a home for all species of pretrained language models (e.g. BERT) that can 
 **domain languages** or **down-stream tasks**.
 With FARM you can easily create SOTA NLP models for tasks like document classification, NER or question answering.
 The **standardized interfaces** for language models and prediction heads allow flexible extension by researchers and easy application for practitioners.
-Additional experiment tracking and visualizations support you along the way to adapt a SOTA model to your own NLP problem and have a **very fast proof-of-concept**.
+Additional experiment tracking and visualizations support you along the way to adapt a SOTA model to your own NLP problem and have a **fast proof-of-concept**.
 
 Core features
 ##############
@@ -47,8 +47,9 @@ Resources
 ##############
 - `Full Documentation <https://farm.deepset.ai>`_
 - `Intro to Transfer Learning (Blog) <https://medium.com/voice-tech-podcast/https-medium-com-deepset-ai-transfer-learning-entering-a-new-era-in-nlp-db523d9e667b>`_
-- `Tutorial (Jupyter notebook) <https://github.com/deepset-ai/FARM/blob/master/tutorials/1_farm_building_blocks.ipynb>`_
-- `Tutorial (Colab notebook) <https://colab.research.google.com/drive/130_7dgVC3VdLBPhiEkGULHmqSlflhmVM>`_
+- Tutorial 1 (Overview of building blocks): `Jupyter notebook <https://github.com/deepset-ai/FARM/blob/master/tutorials/1_farm_building_blocks.ipynb>`_  or `Colab <https://colab.research.google.com/drive/130_7dgVC3VdLBPhiEkGULHmqSlflhmVM>`_
+- Tutorial 2 (How to use custom datasets): `Colab notebook <https://colab.research.google.com/drive/1Ce_wWu-fsy_g16jaGioe8M5mAFdLN1Yx>`_
+
 
 Installation
 #############
@@ -120,11 +121,16 @@ Much of the heavy lifting is then handled behind the scenes to make it fast & si
 
 Upcoming features
 ###################
-- More pretrained models XLNet, XLM ...
+- More pretrained models roBERTa, XLNet  ...
+- Improved functionality for Question Answering Task
+- Additional visualizations and statistics to explore and debug your model
 - SOTA adaptation strategies (Adapter Modules, Discriminative Fine-tuning ...)
 - Enabling large scale deployment for production
-- Additional Visualizations and statistics to explore and debug your model
 
+Acknowledgements
+###################
+- FARM is built upon parts of the great `pytorch-transformers <https://github.com/huggingface/pytorch-transformers>`_  repository from Huggingface. It utilizes their implementations of the BERT model and Tokenizer.
+- The original BERT model and `paper <https://arxiv.org/abs/1810.04805>`_  was published by Jacob Devlin, Ming-Wei Chang, Kenton Lee and Kristina Toutanova.
 
 Citation
 ###################
