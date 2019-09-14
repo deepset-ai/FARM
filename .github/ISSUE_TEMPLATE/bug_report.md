@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Create a report to help us improve
+about: We love animals, but bugs need to be reported.
 title: ''
 labels: bug
 assignees: ''
