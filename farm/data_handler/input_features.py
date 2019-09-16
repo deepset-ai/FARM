@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 
 def sample_to_features_text(
-    sample, tasks, max_seq_len, tokenizer, target="classification"
+    sample, tasks, max_seq_len, tokenizer
 ):
     """
     Generates a dictionary of features for a given input sample that is to be consumed by a text classification model.
@@ -32,8 +32,6 @@ def sample_to_features_text(
     :param max_seq_len: Sequences are truncated after this many tokens
     :type max_seq_len: int
     :param tokenizer: A tokenizer object that can turn string sentences into a list of tokens
-    :param target: Choose from "classification" and "regression"
-    :type target: str
     :return: A dictionary containing the keys "input_ids", "padding_mask" and "segment_ids" (also "label_ids" if not
              in inference mode). The values are lists containing those features.
     :rtype: dict
@@ -102,16 +100,22 @@ def sample_to_features_text(
             label_name = task["label_name"]
             label_raw = sample.clear_text[label_name]
             label_list = task["label_list"]
-            if target == "classification":
+            if task["task_type"] == "classification":
+                # id of label
                 try:
                     label_ids = [label_list.index(label_raw)]
                 except ValueError as e:
                     raise ValueError(f'[Task: {task_name}] Observed label {label_raw} not in defined label_list')
-            elif target == "regression":
+            elif task["task_type"] == "multilabel_classification":
+                # multi-hot-format
+                label_ids = [0] * len(label_list)
+                for l in label_raw.split(","):
+                    if l != "":
+                        label_ids[label_list.index(l)] = 1
+            elif task["task_type"] == "regression":
                 label_ids = [float(label_raw)]
             else:
-                # TODO Add multilabel classif. here
-                raise KeyError(target)
+                raise ValueError(task["task_type"])
         except KeyError:
             # For inference mode we don't expect labels
             label_ids = None
