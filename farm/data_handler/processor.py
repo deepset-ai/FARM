@@ -254,7 +254,7 @@ class Processor(ABC):
         return config
 
     @classmethod
-    def add_task(cls, name,  metric, label_list, source_field=None, label_name=None):
+    def add_task(cls, name,  metric, label_list, source_field=None, label_name=None, task_type=None):
         if type(label_list) is not list:
             raise ValueError(f"Argument `label_list` must be of type list. Got: f{type(label_list)}")
 
@@ -265,7 +265,8 @@ class Processor(ABC):
                            "metric": metric,
                            "label_tensor_name": label_tensor_name,
                            "label_name": label_name,
-                           "source_field": source_field
+                           "source_field": source_field,
+                           "task_type": task_type
                           }
 
     @abc.abstractmethod
@@ -471,6 +472,7 @@ class TextClassificationProcessor(Processor):
         quote_char="'",
         skiprows=None,
         source_field="label",
+        multilabel=False,
         header=0,
         **kwargs,
     ):
@@ -492,9 +494,13 @@ class TextClassificationProcessor(Processor):
             data_dir=data_dir,
             tasks={},
         )
-
+        #TODO raise info when no task is added due to missing "metric" or "labels" arg
         if metric and labels:
-            self.add_task("text_classification", metric, labels, source_field=source_field)
+            if multilabel:
+                task_type = "multilabel_classification"
+            else:
+                task_type = "classification"
+            self.add_task("text_classification", metric, labels, source_field=source_field, task_type=task_type)
 
     def _file_to_dicts(self, file: str) -> [dict]:
         column_mapping = {task["source_field"]: task["label_name"] for task in self.tasks.values()}
@@ -521,7 +527,7 @@ class TextClassificationProcessor(Processor):
             sample=sample,
             tasks=cls.tasks,
             max_seq_len=cls.max_seq_len,
-            tokenizer=cls.tokenizer,
+            tokenizer=cls.tokenizer
         )
         return features
 
@@ -925,7 +931,7 @@ class RegressionProcessor(Processor):
         )
         # TODO: check name of columns in data file
 
-        self.add_task("regression", "mse", [scaler_mean, scaler_scale])
+        self.add_task(name="regression", metric="mse",label_list= [scaler_mean, scaler_scale], task_type="regression")
 
     def save(self, save_dir):
         """

@@ -20,6 +20,7 @@ DOWNSTREAM_TASK_MAP = {
     "conll03dedev": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/training_data_for_Stanford_NER/NER-de-dev-conll-formated.txt",
     "conll03detest": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/training_data_for_Stanford_NER/NER-de-test-conll-formated.txt",
     "lm_finetune_nips": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/lm_finetune_nips.tar.gz",
+    "toxic-comments": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/toxic-comments.tar.gz",
 }
 
 
@@ -29,7 +30,6 @@ def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=N
         logger.info(f" Couldn't find {filename} locally. Trying to download ...")
         _download_extract_downstream_data(filename)
 
-    columns = ["text"] + list(rename_columns.keys())
     df = pd.read_csv(
         filename,
         sep=delimiter,
@@ -39,12 +39,13 @@ def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=N
         skiprows=skiprows,
         header=header
     )
+
+    columns = ["text"] + list(rename_columns.keys())
     df = df[columns]
     for source_column, label_name in rename_columns.items():
-        df[label_name] = df[source_column]
+        df[label_name] = df[source_column].fillna("")
         df.drop(columns=[source_column], inplace=True)
-    if "unused" in df.columns:
-        df.drop(columns=["unused"], inplace=True)
+    # convert df to one dict per row
     raw_dict = df.to_dict(orient="records")
     return raw_dict
 
