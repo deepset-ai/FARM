@@ -42,6 +42,19 @@ def load_experiments(file):
 
 
 def run_experiment(args):
+
+    logger.info(
+        "\n***********************************************"
+        f"\n************* Experiment: {args.task.name} ************"
+        "\n************************************************"
+    )
+    ml_logger = MlLogger(tracking_uri=args.logging.mlflow_url)
+    ml_logger.init_experiment(
+        experiment_name=args.logging.mlflow_experiment,
+        run_name=args.logging.mlflow_run_name,
+        nested=args.logging.mlflow_nested,
+    )
+
     validate_args(args)
     distributed = bool(args.general.local_rank != -1)
 
