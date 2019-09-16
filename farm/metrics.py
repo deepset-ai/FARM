@@ -2,18 +2,18 @@ import torch
 import numpy as np
 from scipy.stats import pearsonr, spearmanr
 from seqeval.metrics import f1_score as seq_f1_score
-from sklearn.metrics import matthews_corrcoef, f1_score
-
+from sklearn.metrics import matthews_corrcoef, f1_score, mean_squared_error, r2_score
+from farm.utils import flatten_list
 
 def simple_accuracy(preds, labels):
-    # TODO: THIS HACKY TRY CATCH IS FOR GNAD
-    try:
-        preds = np.array(preds)
-        labels = np.array(labels)
-        correct = preds == labels
-        return {"acc": correct.mean()}
-    except TypeError:
-        return {"acc": (preds == labels.numpy()).mean()}
+    # works also with nested lists of different lengths (needed for masked LM task)
+    if type(preds) == type(labels) == list:
+        preds = np.array(list(flatten_list(preds)))
+        labels = np.array(list(flatten_list(labels)))
+    assert type(preds) == type(labels) == np.ndarray
+    correct = preds == labels
+    return {"acc": correct.mean()}
+
 
 
 def acc_and_f1(preds, labels):
@@ -31,10 +31,9 @@ def pearson_and_spearman(preds, labels):
     spearman_corr = spearmanr(preds, labels)[0]
     return {
         "pearson": pearson_corr,
-        "spearmanr": spearman_corr,
+        "spearman": spearman_corr,
         "corr": (pearson_corr + spearman_corr) / 2,
     }
-
 
 def compute_metrics(metric, preds, labels):
     assert len(preds) == len(labels)
@@ -53,6 +52,10 @@ def compute_metrics(metric, preds, labels):
         return f1_macro(preds, labels)
     elif metric == "squad":
         return squad(preds, labels)
+    elif metric == "mse":
+        return {"mse": mean_squared_error(preds, labels)}
+    elif metric == "r2":
+        return {"r2": r2_score(preds, labels)}
     # elif metric == "masked_accuracy":
     #     return simple_accuracy(preds, labels, ignore=-1)
     else:

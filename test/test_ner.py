@@ -1,7 +1,7 @@
 import pytest
 from farm.data_handler.data_silo import DataSilo
-from farm.data_handler.processor import GermEval14Processor
-from farm.experiment import initialize_optimizer
+from farm.data_handler.processor import NERProcessor
+from farm.modeling.optimization import initialize_optimizer
 from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
@@ -27,14 +27,17 @@ def test_ner(caplog):
         pretrained_model_name_or_path=lang_model, do_lower_case=False
     )
 
-    processor = GermEval14Processor(
-        tokenizer=tokenizer, max_seq_len=64, data_dir="samples/ner",train_file="train-sample.txt",
-        dev_file="dev-sample.txt",test_file=None
+    ner_labels = ["[PAD]", "X", "O", "B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-OTH",
+                  "I-OTH"]
+
+    processor = NERProcessor(
+        tokenizer=tokenizer, max_seq_len=128, data_dir="samples/ner",train_filename="train-sample.txt",
+        dev_filename="dev-sample.txt",test_filename=None, delimiter=" ", labels=ner_labels, metric="seq_f1"
     )
 
     data_silo = DataSilo(processor=processor, batch_size=batch_size)
     language_model = Bert.load(lang_model)
-    prediction_head = TokenClassificationHead(layer_dims=[768, len(processor.label_list)])
+    prediction_head = TokenClassificationHead(layer_dims=[768, len(ner_labels)])
 
     model = AdaptiveModel(
         language_model=language_model,
@@ -48,8 +51,7 @@ def test_ner(caplog):
         model=model,
         learning_rate=2e-5,
         warmup_proportion=0.1,
-        n_examples=data_silo.n_samples("train"),
-        batch_size=batch_size,
+        n_batches=len(data_silo.loaders["train"]),
         n_epochs=n_epochs,
     )
 
@@ -73,5 +75,5 @@ def test_ner(caplog):
     ]
     model = Inferencer.load(save_dir)
     result = model.run_inference(dicts=basic_texts)
-    assert result[0]["predictions"][0]["context"] == "Tagesspiegel,"
+    assert result[0]["predictions"][0]["context"] == "sagte"
     assert abs(result[0]["predictions"][0]["probability"] - 0.213869) <= 0.0001

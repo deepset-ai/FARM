@@ -7,7 +7,7 @@ import torch
 from pytorch_transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN
 
 from torch import nn
-from torch.nn import CrossEntropyLoss
+from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
 
 from farm.data_handler.utils import is_json
 from farm.utils import convert_iob_to_simple_tags
@@ -152,6 +152,69 @@ class PredictionHead(nn.Module):
             raise ValueError(f"This doesn't seem to be a proper prediction_head config file: '{config_file}'")
         return model_file
 
+    def _set_name(self, name):
+        self.task_name = name
+
+
+class RegressionHead(PredictionHead):
+    def __init__(
+        self,
+        layer_dims,
+        loss_ignore_index=-100,
+        loss_reduction="none",
+        task_name="regression",
+        **kwargs,
+    ):
+        super(RegressionHead, self).__init__()
+        # num_labels could in most cases also be automatically retrieved from the data processor
+        self.layer_dims = layer_dims
+        # TODO is this still needed?
+        self.feed_forward = FeedForwardBlock(self.layer_dims)
+
+        self.num_labels = 2
+        self.ph_output_type = "per_sequence_continuous"
+        self.model_type = "regression"
+        self.loss_fct = MSELoss(reduction="none")
+        self.task_name = task_name
+        self.generate_config()
+
+    def forward(self, x):
+        logits = self.feed_forward(x)
+        return logits
+
+    def logits_to_loss(self, logits, **kwargs):
+        # Squeeze the logits to obtain a coherent output size
+        label_ids = kwargs.get(self.label_tensor_name)
+        return self.loss_fct(logits.squeeze(), label_ids.float())
+
+    def logits_to_preds(self, logits, **kwargs):
+        preds = logits.cpu().numpy()
+        preds = [x * self.label_list[1] + self.label_list[0] for x in preds]
+        print(self.label_list[1])
+        return preds
+
+    def prepare_labels(self, **kwargs):
+        label_ids = kwargs.get(self.label_tensor_name)
+        label_ids = label_ids.cpu().numpy()
+        label_ids = [x * self.label_list[1] + self.label_list[0] for x in label_ids]
+        return label_ids
+
+    def formatted_preds(self, logits, samples, **kwargs):
+        preds = self.logits_to_preds(logits)
+        contexts = [sample.clear_text["text"] for sample in samples]
+
+        assert len(preds) == len(contexts)
+
+        res = {"task": "regression", "predictions": []}
+        for pred, context in zip(preds, contexts):
+            res["predictions"].append(
+                {
+                    "context": f"{context}",
+                    "pred": f"{pred[0]}"
+                }
+            )
+        return res
+
 
 class TextClassificationHead(PredictionHead):
     def __init__(
@@ -160,38 +223,42 @@ class TextClassificationHead(PredictionHead):
         class_weights=None,
         loss_ignore_index=-100,
         loss_reduction="none",
+        task_name="text_classification",
         **kwargs,
     ):
         super(TextClassificationHead, self).__init__()
         # num_labels could in most cases also be automatically retrieved from the data processor
         self.layer_dims = layer_dims
-        # TODO is this still needed?
         self.feed_forward = FeedForwardBlock(self.layer_dims)
         self.num_labels = self.layer_dims[-1]
         self.ph_output_type = "per_sequence"
         self.model_type = "text_classification"
+        self.task_name = task_name #used for connecting with the right output of the processor
         self.class_weights = class_weights
 
         if class_weights:
+            logger.info(f"Using class weights for task '{self.task_name}': {self.class_weights}")
+            #TODO must balanced weight really be an instance attribute?
             self.balanced_weights = nn.Parameter(
                 torch.tensor(class_weights), requires_grad=False
             )
-            self.loss_fct = CrossEntropyLoss(
-                weight=self.balanced_weights,
-                reduction=loss_reduction,
-                ignore_index=loss_ignore_index,
-            )
         else:
-            self.loss_fct = CrossEntropyLoss(
-                reduction=loss_reduction, ignore_index=loss_ignore_index
-            )
+            self.balanced_weights = None
+
+        self.loss_fct = CrossEntropyLoss(
+            weight=self.balanced_weights,
+            reduction=loss_reduction,
+            ignore_index=loss_ignore_index,
+        )
+
         self.generate_config()
 
     def forward(self, X):
         logits = self.feed_forward(X)
         return logits
 
-    def logits_to_loss(self, logits, label_ids, **kwargs):
+    def logits_to_loss(self, logits, **kwargs):
+        label_ids = kwargs.get(self.label_tensor_name)
         return self.loss_fct(logits, label_ids.view(-1))
 
     def logits_to_probs(self, logits, **kwargs):
@@ -201,19 +268,110 @@ class TextClassificationHead(PredictionHead):
         probs = probs.cpu().numpy()
         return probs
 
-    def logits_to_preds(self, logits, label_map, **kwargs):
+    def logits_to_preds(self, logits, **kwargs):
         logits = logits.cpu().numpy()
         pred_ids = logits.argmax(1)
-        preds = [label_map[x] for x in pred_ids]
+        preds = [self.label_list[int(x)] for x in pred_ids]
         return preds
 
-    def prepare_labels(self, label_map, label_ids, **kwargs):
+    def prepare_labels(self, **kwargs):
+        label_ids = kwargs.get(self.label_tensor_name)
         label_ids = label_ids.cpu().numpy()
-        labels = [label_map[int(x)] for x in label_ids]
+        labels = [self.label_list[int(x)] for x in label_ids]
         return labels
 
-    def formatted_preds(self, logits, label_map, samples, **kwargs):
-        preds = self.logits_to_preds(logits, label_map)
+    def formatted_preds(self, logits, samples, **kwargs):
+        preds = self.logits_to_preds(logits)
+        probs = self.logits_to_probs(logits)
+        contexts = [sample.clear_text["text"] for sample in samples]
+
+        assert len(preds) == len(probs) == len(contexts)
+
+        res = {"task": "text_classification", "predictions": []}
+        for pred, prob, context in zip(preds, probs, contexts):
+            res["predictions"].append(
+                {
+                    "start": None,
+                    "end": None,
+                    "context": f"{context}",
+                    "label": f"{pred}",
+                    "probability": prob,
+                }
+            )
+        return res
+
+
+class MultiLabelTextClassificationHead(PredictionHead):
+    def __init__(
+        self,
+        layer_dims,
+        class_weights=None,
+        loss_reduction="none",
+        task_name="text_classification",
+        pred_threshold=0.5,
+        **kwargs,
+    ):
+        super(MultiLabelTextClassificationHead, self).__init__()
+        # num_labels could in most cases also be automatically retrieved from the data processor
+        self.layer_dims = layer_dims
+        self.feed_forward = FeedForwardBlock(self.layer_dims)
+        self.num_labels = self.layer_dims[-1]
+        self.ph_output_type = "per_sequence"
+        self.model_type = "multilabel_text_classification"
+        self.task_name = task_name #used for connecting with the right output of the processor
+        self.class_weights = class_weights
+        self.pred_threshold = pred_threshold
+
+        if class_weights:
+            logger.info(f"Using class weights for task '{self.task_name}': {self.class_weights}")
+            #TODO must balanced weight really be a instance attribute?
+            self.balanced_weights = nn.Parameter(
+                torch.tensor(class_weights), requires_grad=False
+            )
+        else:
+            self.balanced_weights = None
+
+        self.loss_fct = BCEWithLogitsLoss(pos_weight=self.balanced_weights,
+                                          reduction=loss_reduction)
+
+        self.generate_config()
+
+    def forward(self, X):
+        logits = self.feed_forward(X)
+        return logits
+
+    def logits_to_loss(self, logits, **kwargs):
+        label_ids = kwargs.get(self.label_tensor_name).to(dtype=torch.float)
+        loss = self.loss_fct(logits.view(-1, self.num_labels), label_ids.view(-1, self.num_labels))
+        per_sample_loss = loss.mean(1)
+        return per_sample_loss
+
+    def logits_to_probs(self, logits, **kwargs):
+        sigmoid = torch.nn.Sigmoid()
+        probs = sigmoid(logits)
+        probs = probs.cpu().numpy()
+        return probs
+
+    def logits_to_preds(self, logits, **kwargs):
+        probs = self.logits_to_probs(logits)
+        #TODO we could potentially move this to GPU to speed it up
+        pred_ids = [np.where(row > self.pred_threshold)[0] for row in probs]
+        preds = []
+        for row in pred_ids:
+            preds.append([self.label_list[int(x)] for x in row])
+        return preds
+
+    def prepare_labels(self, **kwargs):
+        label_ids = kwargs.get(self.label_tensor_name)
+        label_ids = label_ids.cpu().numpy()
+        label_ids = [np.where(row == 1)[0] for row in label_ids]
+        labels = []
+        for row in label_ids:
+            labels.append([self.label_list[int(x)] for x in row])
+        return labels
+
+    def formatted_preds(self, logits, samples, **kwargs):
+        preds = self.logits_to_preds(logits)
         probs = self.logits_to_probs(logits)
         contexts = [sample.clear_text["text"] for sample in samples]
 
@@ -234,7 +392,7 @@ class TextClassificationHead(PredictionHead):
 
 
 class TokenClassificationHead(PredictionHead):
-    def __init__(self, layer_dims, **kwargs):
+    def __init__(self, layer_dims, task_name="ner", **kwargs):
         super(TokenClassificationHead, self).__init__()
 
         self.layer_dims = layer_dims
@@ -243,6 +401,7 @@ class TokenClassificationHead(PredictionHead):
         self.loss_fct = CrossEntropyLoss(reduction="none")
         self.ph_output_type = "per_token"
         self.model_type = "token_classification"
+        self.task_name = task_name
         self.generate_config()
 
     def forward(self, X):
@@ -250,18 +409,21 @@ class TokenClassificationHead(PredictionHead):
         return logits
 
     def logits_to_loss(
-        self, logits, label_ids, initial_mask, padding_mask=None, **kwargs
+        self, logits, initial_mask, padding_mask=None, **kwargs
     ):
+        label_ids = kwargs.get(self.label_tensor_name)
+
         # Todo: should we be applying initial mask here? Loss is currently calculated even on non initial tokens
         active_loss = padding_mask.view(-1) == 1
         active_logits = logits.view(-1, self.num_labels)[active_loss]
         active_labels = label_ids.view(-1)[active_loss]
+
         loss = self.loss_fct(
             active_logits, active_labels
         )  # loss is a 1 dimemnsional (active) token loss
         return loss
 
-    def logits_to_preds(self, logits, initial_mask, label_map, **kwargs):
+    def logits_to_preds(self, logits, initial_mask, **kwargs):
         preds_word_all = []
         preds_tokens = torch.argmax(logits, dim=2)
         preds_token = preds_tokens.detach().cpu().numpy()
@@ -272,7 +434,7 @@ class TokenClassificationHead(PredictionHead):
             preds_t = preds_token[idx]
             # Get labels and predictions for just the word initial tokens
             preds_word_id = self.initial_token_only(preds_t, initial_mask=im)
-            preds_word = [label_map[pwi] for pwi in preds_word_id]
+            preds_word = [self.label_list[pwi] for pwi in preds_word_id]
             preds_word_all.append(preds_word)
         return preds_word_all
 
@@ -292,7 +454,8 @@ class TokenClassificationHead(PredictionHead):
             all_probs.append(probs_words)
         return all_probs
 
-    def prepare_labels(self, label_map, label_ids, initial_mask, **kwargs):
+    def prepare_labels(self, initial_mask, **kwargs):
+        label_ids = kwargs.get(self.label_tensor_name)
         labels_all = []
         label_ids = label_ids.cpu().numpy()
         for label_ids_one_sample, initial_mask_one_sample in zip(
@@ -301,7 +464,7 @@ class TokenClassificationHead(PredictionHead):
             label_ids = self.initial_token_only(
                 label_ids_one_sample, initial_mask_one_sample
             )
-            labels = [label_map[l] for l in label_ids]
+            labels = [self.label_list[l] for l in label_ids]
             labels_all.append(labels)
         return labels_all
 
@@ -313,8 +476,8 @@ class TokenClassificationHead(PredictionHead):
                 ret.append(s)
         return ret
 
-    def formatted_preds(self, logits, label_map, initial_mask, samples, **kwargs):
-        preds = self.logits_to_preds(logits, initial_mask, label_map)
+    def formatted_preds(self, logits, initial_mask, samples, **kwargs):
+        preds = self.logits_to_preds(logits, initial_mask)
         probs = self.logits_to_probs(logits, initial_mask)
 
         # align back with original input by getting the original word spans
@@ -362,7 +525,7 @@ class TokenClassificationHead(PredictionHead):
 
 
 class BertLMHead(PredictionHead):
-    def __init__(self, hidden_size, vocab_size, hidden_act="gelu", **kwargs):
+    def __init__(self, hidden_size, vocab_size, hidden_act="gelu", task_name="lm", **kwargs):
         super(BertLMHead, self).__init__()
 
         self.hidden_size = hidden_size
@@ -375,6 +538,7 @@ class BertLMHead(PredictionHead):
         self.ph_output_type = "per_token"
 
         self.model_type = "language_modelling"
+        self.task_name = task_name
         self.generate_config()
 
         # NN Layers
@@ -435,7 +599,8 @@ class BertLMHead(PredictionHead):
         lm_logits = self.decoder(hidden_states) + self.bias
         return lm_logits
 
-    def logits_to_loss(self, logits, lm_label_ids, **kwargs):
+    def logits_to_loss(self, logits, **kwargs):
+        lm_label_ids = kwargs.get(self.label_tensor_name)
         batch_size = lm_label_ids.shape[0]
         masked_lm_loss = self.loss_fct(
             logits.view(-1, self.num_labels), lm_label_ids.view(-1)
@@ -443,9 +608,9 @@ class BertLMHead(PredictionHead):
         per_sample_loss = masked_lm_loss.view(-1, batch_size).mean(dim=0)
         return per_sample_loss
 
-    def logits_to_preds(self, logits, label_map, lm_label_ids, **kwargs):
+    def logits_to_preds(self, logits, **kwargs):
         logits = logits.cpu().numpy()
-        lm_label_ids = lm_label_ids.cpu().numpy()
+        lm_label_ids = kwargs.get(self.label_tensor_name).cpu().numpy()
         lm_preds_ids = logits.argmax(2)
         # apply mask to get rid of predictions for non-masked tokens
         assert lm_preds_ids.shape == lm_label_ids.shape
@@ -455,16 +620,17 @@ class BertLMHead(PredictionHead):
         # we have a batch of sequences here. we need to convert for each token in each sequence.
         for pred_ids_for_sequence in lm_preds_ids:
             preds.append(
-                [label_map[int(x)] for x in pred_ids_for_sequence if int(x) != -1]
+                [self.label_list[int(x)] for x in pred_ids_for_sequence if int(x) != -1]
             )
         return preds
 
-    def prepare_labels(self, label_map, lm_label_ids, **kwargs):
-        label_ids = lm_label_ids.cpu().numpy().tolist()
+    def prepare_labels(self, **kwargs):
+        label_ids = kwargs.get(self.label_tensor_name)
+        label_ids = label_ids.cpu().numpy().tolist()
         labels = []
         # we have a batch of sequences here. we need to convert for each token in each sequence.
         for ids_for_sequence in label_ids:
-            labels.append([label_map[int(x)] for x in ids_for_sequence if int(x) != -1])
+            labels.append([self.label_list[int(x)] for x in ids_for_sequence if int(x) != -1])
         return labels
 
 
@@ -481,6 +647,7 @@ class NextSentenceHead(TextClassificationHead):
                 and "prediction_head" in pretrained_model_name_or_path:
             config_file = os.path.exists(pretrained_model_name_or_path)
             # a) FARM style
+            #TODO validate saving/loading after switching to processor.tasks
             model_file = cls._get_model_file(config_file)
             config = json.load(open(config_file))
             prediction_head = cls(**config)
@@ -493,7 +660,7 @@ class NextSentenceHead(TextClassificationHead):
             bert_with_lm = BertForPreTraining.from_pretrained(pretrained_model_name_or_path)
 
             # init empty head
-            head = cls(layer_dims=[bert_with_lm.config.hidden_size, 2], loss_ignore_index=-1)
+            head = cls(layer_dims=[bert_with_lm.config.hidden_size, 2], loss_ignore_index=-1, task_name="nextsentence")
 
             # load weights
             head.feed_forward.feed_forward[0].load_state_dict(bert_with_lm.cls.seq_relationship.state_dict())
@@ -531,7 +698,7 @@ class QuestionAnsweringHead(PredictionHead):
     A question answering head predicts the start and end of the answer on token level.
     """
 
-    def __init__(self, layer_dims, **kwargs):
+    def __init__(self, layer_dims, task_name="question_answering", **kwargs):
         """
         :param layer_dims: dimensions of Feed Forward block, e.g. [768,2], for adjusting to BERT embedding. Output should be always 2
         :type layer_dims: List[Int]
@@ -546,6 +713,7 @@ class QuestionAnsweringHead(PredictionHead):
         self.model_type = (
             "span_classification"
         )  # predicts start and end token of answer
+        self.task_name = task_name
         self.generate_config()
 
     def forward(self, X):

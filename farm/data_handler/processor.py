@@ -5,33 +5,40 @@ from abc import ABC
 import random
 import logging
 import json
+import time
+import inspect
+from inspect import signature
+import numpy as np
+from sklearn.preprocessing import StandardScaler
+from contextlib import ExitStack
 
-from farm.modeling.tokenization import BertTokenizer
+from tqdm import tqdm
+import multiprocessing as mp
+from functools import partial
 
-from farm.modeling.tokenization import tokenize_with_metadata
-
-from farm.data_handler.utils import (
-    read_tsv,
-    read_docs_from_txt,
-    read_ner_file,
-    read_squad_file,
-)
-from farm.file_utils import create_folder
-from farm.data_handler.samples import (
-    Sample,
-    SampleBasket,
-    create_samples_sentence_pairs,
-    create_samples_squad,
-)
+from farm.data_handler.dataset import convert_features_to_dataset
 from farm.data_handler.input_features import (
     samples_to_features_ner,
     samples_to_features_bert_lm,
     sample_to_features_text,
     sample_to_features_squad,
 )
-from farm.data_handler.dataset import convert_features_to_dataset
-from farm.utils import MLFlowLogger as MlLogger
-
+from farm.data_handler.samples import (
+    Sample,
+    SampleBasket,
+    create_samples_sentence_pairs,
+    create_samples_squad,
+)
+from farm.data_handler.utils import (
+    read_tsv,
+    read_docs_from_txt,
+    read_ner_file,
+    read_squad_file,
+    is_json,
+)
+from farm.modeling.tokenization import BertTokenizer, tokenize_with_metadata
+from farm.utils import MLFlowLogger as MlLogger, log_ascii_workers
+from farm.data_handler.samples import get_sentence_pair
 
 logger = logging.getLogger(__name__)
 
@@ -52,26 +59,21 @@ class Processor(ABC):
         self,
         tokenizer,
         max_seq_len,
-        label_list,
-        metrics,
         train_filename,
         dev_filename,
         test_filename,
         dev_split,
         data_dir,
-        label_dtype=torch.long,
+        multiprocessing_chunk_size=1_000,
+        max_processes=128,
+        share_all_baskets_for_multiprocessing=False,
+        tasks={},
+        use_multiprocessing=True
     ):
         """
-        Initialize a generic Processor
-
         :param tokenizer: Used to split a sentence (str) into tokens.
         :param max_seq_len: Samples are truncated after this many tokens.
         :type max_seq_len: int
-        :param label_list: List of all unique target labels.
-        :type label_list: list
-        :param metrics: The metric used for evaluation, one per prediction head.
-                        Choose from mcc, acc, acc_f1, pear_spear, seq_f1, f1_macro, squad.
-        :type metrics: list or str
         :param train_filename: The name of the file containing training data.
         :type train_filename: str
         :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
@@ -83,29 +85,40 @@ class Processor(ABC):
         :type dev_split: float
         :param data_dir: The directory in which the train, test and perhaps dev files can be found.
         :type data_dir: str
-        :param label_dtype: The torch dtype for the labels.
-
+        :param multiprocessing_chunk_size: TODO
+        :param max_processes: maximum number of processing to use for Multiprocessing.
+        :type max_processes: int
+        :param share_all_baskets_for_multiprocessing: TODO
+        :type share_all_baskets_for_multiprocessing: bool
+        :param tasks: A dictionary where the keys are the names of the tasks and the values are the details of the task (e.g. label_list, metric, tensor name)
+        :type tasks: dict
+        :param use_multiprocessing: Whether to use multiprocessing or not
+        :type use_multiprocessing: bool
         """
-        self.tokenizer = tokenizer
-        self.max_seq_len = max_seq_len
-        self.label_list = label_list
-        self.metrics = [metrics] if isinstance(metrics, str) else metrics
+
+        # The Multiprocessing functions in the Class are classmethods to avoid passing(and pickling) of class-objects
+        # that are very large in size(eg, self.baskets). Since classmethods have access to only class attributes, all
+        # objects required in Multiprocessing must be set as class attributes.
+        Processor.tokenizer = tokenizer
+        Processor.max_seq_len = max_seq_len
+        Processor.tasks = tasks
+
+        # data sets
         self.train_filename = train_filename
         self.dev_filename = dev_filename
         self.test_filename = test_filename
         self.dev_split = dev_split
         self.data_dir = data_dir
-        self.label_dtype = label_dtype
-        self.label_maps = []
-
-        # create label maps (one per prediction head)
-        if any(isinstance(i, list) for i in label_list):
-            for labels_per_head in label_list:
-                map = {i: label for i, label in enumerate(labels_per_head)}
-                self.label_maps.append(map)
+        # multiprocessing
+        if os.name == "nt":
+            self.use_multiprocessing = False  # the mp code here isn't compatible with Windows
         else:
-            map = {i: label for i, label in enumerate(label_list)}
-            self.label_maps.append(map)
+            self.use_multiprocessing = use_multiprocessing
+        self.multiprocessing_chunk_size = multiprocessing_chunk_size
+        self.share_all_baskets_for_multiprocessing = (
+            share_all_baskets_for_multiprocessing
+        )
+        self.max_processes = max_processes
 
         self.baskets = []
 
@@ -119,7 +132,18 @@ class Processor(ABC):
         cls.subclasses[cls.__name__] = cls
 
     @classmethod
-    def load(cls, processor_name, data_dir, tokenizer, max_seq_len):
+    def load(
+        cls,
+        processor_name,
+        data_dir,
+        tokenizer,
+        max_seq_len,
+        train_filename,
+        dev_filename,
+        test_filename,
+        dev_split,
+        **kwargs,
+    ):
         """
         Loads the class of processor specified by processor name.
 
@@ -130,11 +154,38 @@ class Processor(ABC):
         :param tokenizer: A tokenizer object
         :param max_seq_len: Sequences longer than this will be truncated.
         :type max_seq_len: int
+        :param train_filename: The name of the file containing training data.
+        :type train_filename: str
+        :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
+                             will be a slice of the train set.
+        :type dev_filename: str or None
+        :param test_filename: The name of the file containing test data.
+        :type test_filename: str
+        :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
+        :type dev_split: float
+        :param kwargs: placeholder for passing generic parameters
+        :type kwargs: object
         :return: An instance of the specified processor.
         """
-        return cls.subclasses[processor_name](
-            data_dir=data_dir, tokenizer=tokenizer, max_seq_len=max_seq_len
+
+        sig = signature(cls.subclasses[processor_name])
+        unused_args = {k: v for k, v in kwargs.items() if k not in sig.parameters}
+        logger.debug(
+            f"Got more parameters than needed for loading {processor_name}: {unused_args}. "
+            f"Those won't be used!"
         )
+        processor = cls.subclasses[processor_name](
+            data_dir=data_dir,
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            train_filename=train_filename,
+            dev_filename=dev_filename,
+            test_filename=test_filename,
+            dev_split=dev_split,
+            **kwargs,
+        )
+
+        return processor
 
     @classmethod
     def load_from_dir(cls, load_dir):
@@ -149,13 +200,25 @@ class Processor(ABC):
         config = json.load(open(processor_config_file))
         # init tokenizer
         tokenizer = TOKENIZER_MAP[config["tokenizer"]].from_pretrained(
-            load_dir, do_lower_case=config["lower_case"], never_split_chars=config.get("never_split_chars")
+            load_dir,
+            do_lower_case=config["lower_case"],
+            never_split_chars=config.get("never_split_chars", None),
         )
         # add custom vocab to tokenizer if available
         if os.path.exists(os.path.join(load_dir, "custom_vocab.txt")):
             tokenizer.add_custom_vocab(os.path.join(load_dir, "custom_vocab.txt"))
-        processor_type = config["processor"]
-        return cls.load(processor_type, None, tokenizer, config["max_seq_len"])
+        # we have to delete the tokenizer string from config, because we pass it as Object
+        del config["tokenizer"]
+
+        processor = cls.load(tokenizer=tokenizer, processor_name=config["processor"], **config)
+
+        for task_name, task in config["tasks"].items():
+            processor.add_task(name=task_name, metric=task["metric"], label_list=task["label_list"])
+
+        if processor is None:
+            raise Exception
+
+        return processor
 
     def save(self, save_dir):
         """
@@ -165,28 +228,57 @@ class Processor(ABC):
         :param save_dir: Directory where the files are to be saved
         :type save_dir: str
         """
-        create_folder(save_dir)
-        config = {}
+        os.makedirs(save_dir, exist_ok=True)
+        config = self.generate_config()
+        # save tokenizer incl. attributes
         config["tokenizer"] = self.tokenizer.__class__.__name__
         self.tokenizer.save_vocabulary(save_dir)
         # TODO make this generic to other tokenizers. We will probably want an own abstract Tokenizer
         config["lower_case"] = self.tokenizer.basic_tokenizer.do_lower_case
-        config["max_seq_len"] = self.max_seq_len
+        config["never_split_chars"] = self.tokenizer.basic_tokenizer.never_split_chars
+        # save processor
         config["processor"] = self.__class__.__name__
         output_config_file = os.path.join(save_dir, "processor_config.json")
         with open(output_config_file, "w") as file:
             json.dump(config, file)
+
+    def generate_config(self):
+        """
+        Generates config file from Class and instance attributes (only for sensible config parameters).
+        """
+        config = {}
+        # self.__dict__ doesn't give parent class attributes
+        for key, value in inspect.getmembers(self):
+            if is_json(value) and key[0] != "_":
+                config[key] = value
+        return config
+
+    @classmethod
+    def add_task(cls, name,  metric, label_list, source_field=None, label_name=None, task_type=None):
+        if type(label_list) is not list:
+            raise ValueError(f"Argument `label_list` must be of type list. Got: f{type(label_list)}")
+
+        if label_name is None:
+            label_name = f"{name}_label"
+        label_tensor_name = label_name + "_ids"
+        cls.tasks[name] = {"label_list": label_list,
+                           "metric": metric,
+                           "label_tensor_name": label_tensor_name,
+                           "label_name": label_name,
+                           "source_field": source_field,
+                           "task_type": task_type
+                          }
 
     @abc.abstractmethod
     def _file_to_dicts(self, file: str) -> [dict]:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def _dict_to_samples(self, dict: dict) -> [Sample]:
+    def _dict_to_samples(cls, dict: dict, all_dicts=None) -> [Sample]:
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def _sample_to_features(self, sample: Sample) -> dict:
+    def _sample_to_features(cls, sample: Sample) -> dict:
         raise NotImplementedError()
 
     def _init_baskets_from_file(self, file):
@@ -197,26 +289,99 @@ class Processor(ABC):
         ]
 
     def _init_samples_in_baskets(self):
-        for basket in self.baskets:
-            basket.samples = self._dict_to_samples(basket.raw)
-            for num, sample in enumerate(basket.samples):
-                sample.id = f"{basket.id}-{num}"
+        with ExitStack() as stack:
+            if self.use_multiprocessing:
+                chunks_to_process = int(len(self.baskets) / self.multiprocessing_chunk_size)
+                num_cpus = min(mp.cpu_count(), self.max_processes, chunks_to_process) or 1
+
+                logger.info(
+                    f"Got ya {num_cpus} parallel workers to fill the baskets with samples (chunksize = {self.multiprocessing_chunk_size})..."
+                )
+                log_ascii_workers(num_cpus, logger)
+                p = stack.enter_context(mp.Pool(processes=num_cpus))
+                manager = stack.enter_context(mp.Manager())
+
+                if self.share_all_baskets_for_multiprocessing:
+                    all_dicts = manager.list([b.raw for b in self.baskets])
+                else:
+                    all_dicts = None
+
+                samples = p.imap(
+                    partial(self._multiproc_sample, all_dicts=all_dicts),
+                    self.baskets,
+                    chunksize=self.multiprocessing_chunk_size,
+                )
+            else:
+                all_dicts = [b.raw for b in self.baskets]
+                samples = map(
+                    partial(self._multiproc_sample, all_dicts=all_dicts),
+                    self.baskets
+                )
+
+            for s, b in tqdm(
+                    zip(samples, self.baskets), total=len(self.baskets)
+            ):
+                b.samples = s
+
+    @classmethod
+    def _multiproc_sample(cls, basket, all_dicts=None):
+        samples = cls._dict_to_samples(dict=basket.raw, all_dicts=all_dicts)
+        for num, sample in enumerate(samples):
+            sample.id = f"{basket.id}-{num}"
+        return samples
 
     def _featurize_samples(self):
+        with ExitStack() as stack:
+            if self.use_multiprocessing:
+                chunks_to_process = int(len(self.baskets) / self.multiprocessing_chunk_size)
+                num_cpus = min(mp.cpu_count(), self.max_processes, chunks_to_process) or 1
+                logger.info(
+                    f"Got ya {num_cpus} parallel workers to featurize samples in baskets (chunksize = {self.multiprocessing_chunk_size}) ..."
+                )
+
+                p = stack.enter_context(mp.Pool(processes=num_cpus))
+                all_features_gen = p.imap(
+                    self._multiproc_featurize,
+                    self.baskets,
+                    chunksize=self.multiprocessing_chunk_size,
+                )
+
+                for basket_features, basket in tqdm(
+                        zip(all_features_gen, self.baskets), total=len(self.baskets)
+                ):
+                    for f, s in zip(basket_features, basket.samples):
+                        s.features = f
+            else:
+                all_features_gen = map(
+                    self._multiproc_featurize,
+                    self.baskets
+                )
+
+            for basket_features, basket in tqdm(
+                zip(all_features_gen, self.baskets), total=len(self.baskets)
+            ):
+                for f, s in zip(basket_features, basket.samples):
+                    s.features = f
+
+    @classmethod
+    def _multiproc_featurize(cls, basket):
+        all_features = []
+        for sample in basket.samples:
+            all_features.append(cls._sample_to_features(sample=sample))
+        return all_features
+
+    def _create_dataset(self, keep_baskets=False):
+        features_flat = []
         for basket in self.baskets:
             for sample in basket.samples:
-                sample.features = self._sample_to_features(sample=sample)
-
-    def _create_dataset(self):
-        baskets = self.baskets
-        features_flat = []
-        for basket in baskets:
-            for sample in basket.samples:
                 features_flat.extend(sample.features)
+        if not keep_baskets:
+            # free up some RAM, we don't need baskets from here on
+            self.baskets = None
         dataset, tensor_names = convert_features_to_dataset(features=features_flat)
         return dataset, tensor_names
 
-    def dataset_from_file(self, file):
+    def dataset_from_file(self, file, log_time=True):
         """
         Contains all the functionality to turn a data file into a PyTorch Dataset and a
         list of tensor names. This is used for training and evaluation.
@@ -225,10 +390,23 @@ class Processor(ABC):
         :type file: str
         :return: a Pytorch dataset and a list of tensor names.
         """
-        self._init_baskets_from_file(file)
-        self._init_samples_in_baskets()
-        self._featurize_samples()
-        self._log_samples(3)
+        if log_time:
+            a = time.time()
+            self._init_baskets_from_file(file)
+            b = time.time()
+            MlLogger.log_metrics(metrics={"t_from_file": (b - a) / 60}, step=0)
+            self._init_samples_in_baskets()
+            c = time.time()
+            MlLogger.log_metrics(metrics={"t_init_samples": (c - b) / 60}, step=0)
+            self._featurize_samples()
+            d = time.time()
+            MlLogger.log_metrics(metrics={"t_featurize_samples": (d - c) / 60}, step=0)
+            self._log_samples(3)
+        else:
+            self._init_baskets_from_file(file)
+            self._init_samples_in_baskets()
+            self._featurize_samples()
+            self._log_samples(3)
         dataset, tensor_names = self._create_dataset()
         return dataset, tensor_names
 
@@ -262,7 +440,7 @@ class Processor(ABC):
             "processor": self.__class__.__name__,
             "tokenizer": self.tokenizer.__class__.__name__,
         }
-        names = ["max_seq_len", "metrics", "dev_split"]
+        names = ["max_seq_len", "dev_split"]
         for name in names:
             value = getattr(self, name)
             params.update({name: str(value)})
@@ -273,289 +451,175 @@ class Processor(ABC):
 
 
 #########################################
-# Sequence Classification Processors ####
+# Processors for Text Classification ####
 #########################################
-class GNADProcessor(Processor):
+class TextClassificationProcessor(Processor):
     """
-    Used to handle the GNAD dataset
+    Used to handle the text classification datasets that come in tabular format (CSV, TSV, etc.)
     """
     def __init__(
         self,
         tokenizer,
         max_seq_len,
         data_dir,
-        train_filename="train.csv",
+        labels=None,
+        metric=None,
+        train_filename="train.tsv",
         dev_filename=None,
-        test_filename="test.csv",
+        test_filename="test.tsv",
         dev_split=0.1,
+        delimiter="\t",
+        quote_char="'",
+        skiprows=None,
+        source_field="label",
+        multilabel=False,
+        header=0,
+        **kwargs,
     ):
-
-        # General Processor attributes
-        label_list = [
-            "Web",
-            "Sport",
-            "International",
-            "Panorama",
-            "Wissenschaft",
-            "Wirtschaft",
-            "Kultur",
-            "Etat",
-            "Inland",
-        ]
-        metric = "acc"
-        label_dtype = torch.long
+        #TODO If an arg is misspelt, e.g. metrics, it will be swallowed silently by kwargs
 
         # Custom processor attributes
-        self.delimiter = ";"
-        self.quote_char = "'"
-        self.skiprows = [0]
-        self.columns = ["label", "text"]
+        self.delimiter = delimiter
+        self.quote_char = quote_char
+        self.skiprows = skiprows
+        self.header = header
 
-        super(GNADProcessor, self).__init__(
+        super(TextClassificationProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
-            label_list=label_list,
-            metrics=metric,
             train_filename=train_filename,
             dev_filename=dev_filename,
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
-            label_dtype=label_dtype,
+            tasks={},
         )
+        #TODO raise info when no task is added due to missing "metric" or "labels" arg
+        if metric and labels:
+            if multilabel:
+                task_type = "multilabel_classification"
+            else:
+                task_type = "classification"
+            self.add_task("text_classification", metric, labels, source_field=source_field, task_type=task_type)
 
     def _file_to_dicts(self, file: str) -> [dict]:
+        column_mapping = {task["source_field"]: task["label_name"] for task in self.tasks.values()}
         dicts = read_tsv(
             filename=file,
             delimiter=self.delimiter,
             skiprows=self.skiprows,
             quotechar=self.quote_char,
-            columns=self.columns,
-        )
+            rename_columns=column_mapping,
+            header=self.header
+            )
+
         return dicts
 
-    def _dict_to_samples(self, dict: dict) -> [Sample]:
+    @classmethod
+    def _dict_to_samples(cls, dict: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets
-        tokenized = tokenize_with_metadata(
-            dict["text"], self.tokenizer, self.max_seq_len
-        )
+        tokenized = tokenize_with_metadata(dict["text"], cls.tokenizer, cls.max_seq_len)
         return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
 
-    def _sample_to_features(self, sample) -> dict:
+    @classmethod
+    def _sample_to_features(cls, sample) -> dict:
         features = sample_to_features_text(
             sample=sample,
-            label_list=self.label_list,
-            max_seq_len=self.max_seq_len,
-            tokenizer=self.tokenizer,
+            tasks=cls.tasks,
+            max_seq_len=cls.max_seq_len,
+            tokenizer=cls.tokenizer
         )
         return features
 
 
-class GermEval18CoarseProcessor(Processor):
+#########################################
+# Processors for Basic Inference ####
+#########################################
+class InferenceProcessor(Processor):
     """
-    Used to handle the GermEval18 dataset that uses the coase labels
+    Generic processor used at inference time:
+    - fast
+    - no labels
+    - pure encoding of text into pytorch dataset
+    - Doesn't read from file, but only consumes dictionaries (e.g. coming from API requests)
     """
 
     def __init__(
         self,
         tokenizer,
         max_seq_len,
-        data_dir,
-        train_filename="train.tsv",
-        dev_filename=None,
-        test_filename="test.tsv",
-        dev_split=0.1,
+        **kwargs,
     ):
 
-        # General Processor attributes
-        self.label_list = ["OTHER", "OFFENSE"]
-        self.metrics = "f1_macro"
-        self.label_dtype = torch.long
-
-        # Custom Processor attributes
-        self.delimiter = "\t"
-        self.skiprows = [0]
-        self.columns = ["text", "label", "unused"]
-
-        super(GermEval18CoarseProcessor, self).__init__(
+        super(InferenceProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
-            label_list=self.label_list,
-            metrics=self.metrics,
-            train_filename=train_filename,
-            dev_filename=dev_filename,
-            test_filename=test_filename,
-            dev_split=dev_split,
-            data_dir=data_dir,
-            label_dtype=self.label_dtype,
+            train_filename=None,
+            dev_filename=None,
+            test_filename=None,
+            dev_split=None,
+            data_dir=None,
+            tasks={}
         )
 
-    def _file_to_dicts(self, file: str) -> dict:
-        dicts = read_tsv(
-            filename=file,
-            delimiter=self.delimiter,
-            skiprows=self.skiprows,
-            columns=self.columns,
+    @classmethod
+    def load_from_dir(cls, load_dir):
+        """
+         Overwriting method from parent class to **always** load the InferenceProcessor instead of the specific class stored in the config.
+
+        :param load_dir: str, directory that contains a 'processor_config.json'
+        :return: An instance of an InferenceProcessor
+        """
+        # read config
+        processor_config_file = os.path.join(load_dir, "processor_config.json")
+        config = json.load(open(processor_config_file))
+        # init tokenizer
+        tokenizer = TOKENIZER_MAP[config["tokenizer"]].from_pretrained(
+            load_dir,
+            do_lower_case=config["lower_case"],
+            never_split_chars=config.get("never_split_chars", None),
         )
-        return dicts
+        # add custom vocab to tokenizer if available
+        if os.path.exists(os.path.join(load_dir, "custom_vocab.txt")):
+            tokenizer.add_custom_vocab(os.path.join(load_dir, "custom_vocab.txt"))
+        # we have to delete the tokenizer string from config, because we pass it as Object
+        del config["tokenizer"]
 
-    def _dict_to_samples(self, dict: dict) -> [Sample]:
-        # this tokenization also stores offsets
-        tokenized = tokenize_with_metadata(
-            dict["text"], self.tokenizer, self.max_seq_len
-        )
-        return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
+        processor = cls.load(tokenizer=tokenizer, processor_name="InferenceProcessor", **config)
+        for task_name, task in config["tasks"].items():
+            processor.add_task(name=task_name, metric=task["metric"], label_list=task["label_list"])
 
-    def _sample_to_features(self, sample) -> dict:
-        features = sample_to_features_text(
-            sample=sample,
-            label_list=self.label_list,
-            max_seq_len=self.max_seq_len,
-            tokenizer=self.tokenizer,
-        )
-        return features
+        if processor is None:
+            raise Exception
 
+        return processor
 
-class GermEval18FineProcessor(Processor):
-    """
-    Used to handle the GermEval18 dataset that uses the fine labels
-    """
-    def __init__(
-        self,
-        tokenizer,
-        max_seq_len,
-        data_dir,
-        train_filename="train.tsv",
-        dev_filename=None,
-        test_filename="test.tsv",
-        dev_split=0.1,
-    ):
-
-        # General Processor attributes
-        label_list = ["OTHER", "INSULT", "ABUSE", "PROFANITY"]
-        metric = "f1_macro"
-        label_dtype = torch.long
-
-        # Custom Processor attributes
-        self.delimiter = "\t"
-        self.skiprows = [0]
-        # self.text_index = 0
-        # self.label_index = 2
-        self.columns = ["text", "unused", "label"]
-
-        super(GermEval18FineProcessor, self).__init__(
-            tokenizer=tokenizer,
-            max_seq_len=max_seq_len,
-            label_list=label_list,
-            metrics=metric,
-            train_filename=train_filename,
-            dev_filename=dev_filename,
-            test_filename=test_filename,
-            dev_split=dev_split,
-            data_dir=data_dir,
-            label_dtype=label_dtype,
-        )
-
-    def _file_to_dicts(self, file: str) -> dict:
-        dicts = read_tsv(
-            filename=file,
-            delimiter=self.delimiter,
-            skiprows=self.skiprows,
-            columns=self.columns,
-        )
-        return dicts
-
-    def _dict_to_samples(self, dict: dict) -> [Sample]:
-        # this tokenization also stores offsets
-        tokenized = tokenize_with_metadata(
-            dict["text"], self.tokenizer, self.max_seq_len
-        )
-        return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
-
-    def _sample_to_features(self, sample) -> dict:
-        features = sample_to_features_text(
-            sample=sample,
-            label_list=self.label_list,
-            max_seq_len=self.max_seq_len,
-            tokenizer=self.tokenizer,
-        )
-        return features
-
-
-#####################
-# NER Processors ####
-#####################
-class CONLLProcessor(Processor):
-    """
-    Used to handle the CoNLL 2003 dataset (https://www.clips.uantwerpen.be/conll2003/ner/)
-    """
-
-    def __init__(
-        self,
-        tokenizer,
-        max_seq_len,
-        data_dir,
-        train_file="train.txt",
-        dev_file="dev.txt",
-        test_file="test.txt",
-        dev_split=0.0,
-    ):
-        # General Processor attributes
-        label_list = [
-            "[PAD]",
-            "O",
-            "B-MISC",
-            "I-MISC",
-            "B-PER",
-            "I-PER",
-            "B-ORG",
-            "I-ORG",
-            "B-LOC",
-            "I-LOC",
-            "X",
-            "B-OTH",
-            "I-OTH",
-        ]
-        label_dtype = torch.long
-        metric = "seq_f1"
-
-        super(CONLLProcessor, self).__init__(
-            tokenizer=tokenizer,
-            max_seq_len=max_seq_len,
-            label_list=label_list,
-            metrics=metric,
-            train_filename=train_file,
-            dev_filename=dev_file,
-            test_filename=test_file,
-            dev_split=dev_split,
-            data_dir=data_dir,
-            label_dtype=label_dtype,
-        )
 
     def _file_to_dicts(self, file: str) -> [dict]:
-        dicts = read_ner_file(filename=file)
-        return dicts
+      raise NotImplementedError
 
-    def _dict_to_samples(self, dict: dict) -> [Sample]:
-        # this tokenization also stores offsets, which helps to map our entity tags back to original positions
-        tokenized = tokenize_with_metadata(
-            dict["text"], self.tokenizer, self.max_seq_len
-        )
+    @classmethod
+    def _dict_to_samples(cls, dict: dict, **kwargs) -> [Sample]:
+        # this tokenization also stores offsets
+        tokenized = tokenize_with_metadata(dict["text"], cls.tokenizer, cls.max_seq_len)
         return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
 
-    def _sample_to_features(self, sample) -> dict:
-        features = samples_to_features_ner(
+    @classmethod
+    def _sample_to_features(cls, sample) -> dict:
+        features = sample_to_features_text(
             sample=sample,
-            label_list=self.label_list,
-            max_seq_len=self.max_seq_len,
-            tokenizer=self.tokenizer,
+            tasks=cls.tasks,
+            max_seq_len=cls.max_seq_len,
+            tokenizer=cls.tokenizer,
         )
         return features
 
-
-class GermEval14Processor(Processor):
+#########################################
+# Processors for NER data ####
+#########################################
+class NERProcessor(Processor):
     """
-    Used to handle the GermEval14 dataset (https://www.clips.uantwerpen.be/conll2003/ner/)
+    Used to handle most NER datasets, like CoNLL or GermEval 2014
     """
 
     def __init__(
@@ -563,61 +627,50 @@ class GermEval14Processor(Processor):
         tokenizer,
         max_seq_len,
         data_dir,
-        train_file="train.txt",
-        dev_file="dev.txt",
-        test_file="test.txt",
-        dev_split=0.0,
+        labels=None,
+        metric=None,
+        train_filename="train.txt",
+        dev_filename="dev.txt",
+        test_filename="test.txt",
+        dev_split=None,
+        delimiter="\t",
+        **kwargs,
     ):
-        # General Processor attributes
-        label_list = [
-            "[PAD]",
-            "O",
-            "B-MISC",
-            "I-MISC",
-            "B-PER",
-            "I-PER",
-            "B-ORG",
-            "I-ORG",
-            "B-LOC",
-            "I-LOC",
-            "X",
-            "B-OTH",
-            "I-OTH",
-        ]
-        label_dtype = torch.long
-        metric = "seq_f1"
-        self.delimiter = " "
 
-        super(GermEval14Processor, self).__init__(
+        # Custom processor attributes
+        self.delimiter = delimiter
+
+        super(NERProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
-            label_list=label_list,
-            metrics=metric,
-            train_filename=train_file,
-            dev_filename=dev_file,
-            test_filename=test_file,
+            train_filename=train_filename,
+            dev_filename=dev_filename,
+            test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
-            label_dtype=label_dtype,
+            tasks={}
         )
+
+        if metric and labels:
+            self.add_task("ner", metric, labels)
 
     def _file_to_dicts(self, file: str) -> [dict]:
         dicts = read_ner_file(filename=file, sep=self.delimiter)
         return dicts
 
-    def _dict_to_samples(self, dict: dict) -> [Sample]:
+    @classmethod
+    def _dict_to_samples(cls, dict: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets, which helps to map our entity tags back to original positions
-        tokenized = tokenize_with_metadata(
-            dict["text"], self.tokenizer, self.max_seq_len
-        )
+        tokenized = tokenize_with_metadata(dict["text"], cls.tokenizer, cls.max_seq_len)
         return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
 
-    def _sample_to_features(self, sample) -> dict:
+    @classmethod
+    def _sample_to_features(cls, sample) -> dict:
         features = samples_to_features_ner(
             sample=sample,
-            label_list=self.label_list,
-            max_seq_len=self.max_seq_len,
-            tokenizer=self.tokenizer,
+            tasks=cls.tasks,
+            max_seq_len=cls.max_seq_len,
+            tokenizer=cls.tokenizer,
         )
         return features
 
@@ -639,44 +692,70 @@ class BertStyleLMProcessor(Processor):
         dev_filename="dev.txt",
         test_filename="test.txt",
         dev_split=0.0,
+        next_sent_pred=True,
+        max_docs=None,
+        **kwargs,
     ):
         # General Processor attributes
-        label_list = [list(tokenizer.vocab), ["True", "False"]]  # labels for both heads
-        metrics = ["acc", "acc"]
-        label_dtype = torch.long
+        chunksize = 100
+        share_all_baskets_for_multiprocessing = True
 
         # Custom attributes
         self.delimiter = ""
+        self.max_docs = max_docs
 
         super(BertStyleLMProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
-            label_list=label_list,
-            metrics=metrics,
             train_filename=train_filename,
             dev_filename=dev_filename,
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
-            label_dtype=label_dtype,
+            multiprocessing_chunk_size=chunksize,
+            share_all_baskets_for_multiprocessing=share_all_baskets_for_multiprocessing,
+            tasks={}
         )
 
+        BertStyleLMProcessor.next_sent_pred = next_sent_pred
+
+        self.add_task("lm", "acc", list(self.tokenizer.vocab))
+        if self.next_sent_pred:
+            self.add_task("nextsentence", "acc", [False, True])
+
+
     def _file_to_dicts(self, file: str) -> list:
-        dicts = read_docs_from_txt(filename=file, delimiter=self.delimiter)
+        dicts = read_docs_from_txt(filename=file, delimiter=self.delimiter, max_docs=self.max_docs)
         return dicts
 
-    def _init_samples_in_baskets(self):
-        """ Overriding the method of the parent class here, because in this case we cannot simply convert one dict to samples.
-        We need to know about the other dicts as well since we want with prob 50% to use sentences of other docs!
-        So we operate directly on the baskets"""
-        self.baskets = create_samples_sentence_pairs(self.baskets)
+    @classmethod
+    def _dict_to_samples(cls, dict, all_dicts=None):
+        doc = dict["doc"]
+        samples = []
+        for idx in range(len(doc) - 1):
+            text_a, text_b, is_next_label = get_sentence_pair(doc, all_dicts, idx)
+            sample_in_clear_text = {
+                "text_a": text_a,
+                "text_b": text_b,
+                "nextsentence_label": is_next_label,
+            }
+            tokenized = {}
+            tokenized["text_a"] = tokenize_with_metadata(
+                text_a, cls.tokenizer, cls.max_seq_len
+            )
+            tokenized["text_b"] = tokenize_with_metadata(
+                text_b, cls.tokenizer, cls.max_seq_len
+            )
+            samples.append(
+                Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized)
+            )
+        return samples
 
-    def _dict_to_samples(self, dict):
-        raise NotImplementedError
-
-    def _sample_to_features(self, sample) -> dict:
+    @classmethod
+    def _sample_to_features(cls, sample) -> dict:
         features = samples_to_features_bert_lm(
-            sample=sample, max_seq_len=self.max_seq_len, tokenizer=self.tokenizer
+            sample=sample, max_seq_len=cls.max_seq_len, tokenizer=cls.tokenizer,
+            next_sent_pred=cls.next_sent_pred
         )
         return features
 
@@ -684,21 +763,23 @@ class BertStyleLMProcessor(Processor):
 #########################################
 # SQUAD 2.0 Processor ####
 #########################################
-
-
 class SquadProcessor(Processor):
     """ Used to handle the SQuAD dataset"""
+
     def __init__(
         self,
         tokenizer,
         max_seq_len,
         data_dir,
+        labels=None,
+        metric=None,
         train_filename="train-v2.0.json",
         dev_filename="dev-v2.0.json",
         test_filename=None,
         dev_split=0,
         doc_stride=128,
         max_query_length=64,
+        **kwargs,
     ):
         """
         :param tokenizer: Used to split a sentence (str) into tokens.
@@ -721,36 +802,34 @@ class SquadProcessor(Processor):
         :type doc_stride: int
         :param max_query_length: Maximum length of the question (in number of subword tokens)
         :type max_query_length: int
+        :param kwargs: placeholder for passing generic parameters
+        :type kwargs: object
         """
-        label_list = ["start_token", "end_token"]
 
-        metrics = ["squad"]
-        self.train_filename = train_filename
-        self.dev_filename = dev_filename
-        self.test_filename = test_filename
-        self.dev_split = dev_split
-        label_dtype = torch.long  # TODO check if that is correct and needed
         self.target = "classification"
         self.ph_output_type = "per_token_squad"
-        self.max_seq_len = max_seq_len
-        self.doc_stride = doc_stride
-        self.max_query_length = max_query_length
+
+        chunksize = 20
+
+        # custom processor attributes that are accessed during multiprocessing
+        # (everything you want to access in _dict_to_samples and _sample_to_features)
+        SquadProcessor.doc_stride = doc_stride
+        SquadProcessor.max_query_length = max_query_length
 
         super(SquadProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
-            label_list=label_list,
-            metrics=metrics,
             train_filename=train_filename,
             dev_filename=dev_filename,
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
-            label_dtype=label_dtype,
+            multiprocessing_chunk_size=chunksize,
+            tasks={},
         )
-        self.data = {}
-        self.counts = {}
-        self.stage = None
+
+        if metric and labels:
+            self.add_task("question_answering", metric, labels)
 
     def dataset_from_dicts(self, dicts):
         dicts_converted = [self._convert_inference(x) for x in dicts]
@@ -763,7 +842,8 @@ class SquadProcessor(Processor):
         dataset, tensor_names = self._create_dataset()
         return dataset, tensor_names
 
-    def _convert_inference(self, infer_dict):
+    @classmethod
+    def _convert_inference(cls, infer_dict):
         # convert input coming from inferencer to SQuAD format
         converted = {}
         converted["paragraphs"] = [
@@ -783,28 +863,180 @@ class SquadProcessor(Processor):
         dict = read_squad_file(filename=file)
         return dict
 
-    def _dict_to_samples(self, dict: dict) -> [Sample]:
+    @classmethod
+    def _dict_to_samples(cls, dict: dict, **kwargs) -> [Sample]:
         # TODO split samples that are too long in this function, related to todo in self._sample_to_features
         if "paragraphs" not in dict:  # TODO change this inference mode hack
-            dict = self._convert_inference(infer_dict=dict)
+            dict = cls._convert_inference(infer_dict=dict)
         samples = create_samples_squad(entry=dict)
         for sample in samples:
             tokenized = tokenize_with_metadata(
                 text=" ".join(sample.clear_text["doc_tokens"]),
-                tokenizer=self.tokenizer,
-                max_seq_len=self.max_seq_len,
+                tokenizer=cls.tokenizer,
+                max_seq_len=cls.max_seq_len,
             )
             sample.tokenized = tokenized
 
         return samples
 
-    def _sample_to_features(self, sample) -> dict:
+    @classmethod
+    def _sample_to_features(cls, sample) -> dict:
         # TODO, make this function return one set of features per sample
         features = sample_to_features_squad(
             sample=sample,
-            tokenizer=self.tokenizer,
-            max_seq_len=self.max_seq_len,
-            doc_stride=self.doc_stride,
-            max_query_length=self.max_query_length,
+            tokenizer=cls.tokenizer,
+            max_seq_len=cls.max_seq_len,
+            doc_stride=cls.doc_stride,
+            max_query_length=cls.max_query_length,
+            tasks=cls.tasks
         )
         return features
+
+
+class RegressionProcessor(Processor):
+    """
+    Used to handle a regression dataset in tab separated text + label
+    """
+    def __init__(
+        self,
+        tokenizer,
+        max_seq_len,
+        data_dir,
+        train_filename="train.tsv",
+        dev_filename=None,
+        test_filename="test.tsv",
+        dev_split=0.1,
+        delimiter="\t",
+        quote_char="'",
+        skiprows=None,
+        scaler_mean=None,
+        scaler_scale=None,
+        **kwargs,
+    ):
+
+        # Custom processor attributes
+        self.label_list = [scaler_mean, scaler_scale]
+        self.delimiter = delimiter
+        self.quote_char = quote_char
+        self.skiprows = skiprows
+
+        super(RegressionProcessor, self).__init__(
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            train_filename=train_filename,
+            dev_filename=dev_filename,
+            test_filename=test_filename,
+            dev_split=dev_split,
+            data_dir=data_dir,
+        )
+        # TODO: check name of columns in data file
+
+        self.add_task(name="regression", metric="mse",label_list= [scaler_mean, scaler_scale], task_type="regression")
+
+    def save(self, save_dir):
+        """
+        Saves the vocabulary to file and also creates a pkl file for the scaler and
+        a json file containing all the information needed to load the same processor.
+
+        :param save_dir: Directory where the files are to be saved
+        :type save_dir: str
+        """
+        os.makedirs(save_dir, exist_ok=True)
+        config = self.generate_config()
+        config["tokenizer"] = self.tokenizer.__class__.__name__
+        self.tokenizer.save_vocabulary(save_dir)
+        # TODO make this generic to other tokenizers. We will probably want an own abstract Tokenizer
+        config["lower_case"] = self.tokenizer.basic_tokenizer.do_lower_case
+        config["max_seq_len"] = self.max_seq_len
+        config["processor"] = self.__class__.__name__
+        config["scaler_mean"] = self.label_list[0]
+        config["scaler_scale"] = self.label_list[1]
+        output_config_file = os.path.join(save_dir, "processor_config.json")
+        with open(output_config_file, "w") as file:
+            json.dump(config, file)
+
+    def _file_to_dicts(self, file: str) -> [dict]:
+        dicts = read_tsv(
+            filename=file,
+            delimiter=self.delimiter,
+            skiprows=self.skiprows,
+            quotechar=self.quote_char,
+        )
+        return dicts
+
+    @classmethod
+    def _dict_to_samples(cls, dict: dict, **kwargs) -> [Sample]:
+        # this tokenization also stores offsets
+        tokenized = tokenize_with_metadata(dict["text"], cls.tokenizer, cls.max_seq_len)
+        # Samples don't have labels during Inference mode
+        if "label" in dict:
+            dict["label"] = float(dict["label"])
+        return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
+
+    @classmethod
+    def _sample_to_features(cls, sample) -> dict:
+        features = sample_to_features_text(
+            sample=sample,
+            tasks=cls.tasks,
+            max_seq_len=cls.max_seq_len,
+            tokenizer=cls.tokenizer,
+            target="regression"
+        )
+        return features
+
+    def _featurize_samples(self):
+        chunks_to_process = int(len(self.baskets) / self.multiprocessing_chunk_size)
+        num_cpus = min(mp.cpu_count(), self.max_processes, chunks_to_process) or 1
+        logger.info(
+            f"Got ya {num_cpus} parallel workers to featurize samples in baskets (chunksize = {self.multiprocessing_chunk_size}) ..."
+        )
+
+        # TODO the task style is not fully implemented here yet
+        regression_task = self.tasks["regression"]
+        label_name = regression_task["label_name"]
+        # label_list = regression_task["label_list"]
+        label_tensor_name = regression_task["label_tensor_name"]
+
+        try:
+            if "train" in self.baskets[0].id:
+                train_labels = []
+                for basket in self.baskets:
+                    for sample in basket.samples:
+                        train_labels.append(sample.clear_text[label_name])
+                scaler = StandardScaler()
+                scaler.fit(np.reshape(train_labels, (-1, 1)))
+                regression_task["label_list"] = [scaler.mean_.item(), scaler.scale_.item()]
+                # Create label_maps because featurize is called after Processor instantiation
+
+        except Exception as e:
+            logger.warning(f"Baskets not found: {e}")
+
+        with ExitStack() as stack:
+            if self.use_multiprocessing:
+                chunks_to_process = int(len(self.baskets) / self.multiprocessing_chunk_size)
+                num_cpus = min(mp.cpu_count(), self.max_processes, chunks_to_process) or 1
+                logger.info(
+                    f"Got ya {num_cpus} parallel workers to featurize samples in baskets (chunksize = {self.multiprocessing_chunk_size}) ..."
+                )
+                p = stack.enter_context(mp.Pool(processes=num_cpus))
+                all_features_gen = p.imap(
+                    self._multiproc_featurize,
+                    self.baskets,
+                    chunksize=self.multiprocessing_chunk_size,
+                )
+            else:
+                all_features_gen = map(
+                    self._multiproc_featurize,
+                    self.baskets
+                )
+
+            for basket_features, basket in tqdm(
+                zip(all_features_gen, self.baskets), total=len(self.baskets)
+            ):
+                for f, s in zip(basket_features, basket.samples):
+                    # Samples don't have labels during Inference mode
+                    if label_name in s.clear_text:
+                        label = s.clear_text[label_name]
+                        scaled_label = (float(label) - regression_task["label_list"][0]) / regression_task["label_list"][1]
+                        f[0][label_tensor_name] = scaled_label
+                    s.features = f

@@ -3,7 +3,6 @@ import os
 
 from torch import nn
 
-from farm.file_utils import create_folder
 from farm.modeling.language_model import LanguageModel
 from farm.modeling.prediction_head import PredictionHead, BertLMHead
 from farm.utils import MLFlowLogger as MlLogger
@@ -62,7 +61,7 @@ class AdaptiveModel(nn.Module):
         :param save_dir: path to save to
         :type save_dir: str
         """
-        create_folder(save_dir)
+        os.makedirs(save_dir, exist_ok=True)
         self.language_model.save(save_dir)
         for i, ph in enumerate(self.prediction_heads):
             ph.save(save_dir, i)
@@ -95,9 +94,9 @@ class AdaptiveModel(nn.Module):
         ph_output_type = []
         for config_file in ph_config_files:
             head = PredictionHead.load(config_file)
-            # set shared weights between LM and PH
-            if type(head) == BertLMHead:
-                head.set_shared_weights(language_model)
+            # # set shared weights between LM and PH
+            # if type(head) == BertLMHead:
+            #     head.set_shared_weights(language_model)
             prediction_heads.append(head)
             ph_output_type.append(head.ph_output_type)
 
@@ -131,7 +130,7 @@ class AdaptiveModel(nn.Module):
         loss = sum(all_losses)
         return loss
 
-    def logits_to_preds(self, logits, label_maps, **kwargs):
+    def logits_to_preds(self, logits, **kwargs):
         """
         Get predictions from all prediction heads.
 
@@ -143,16 +142,12 @@ class AdaptiveModel(nn.Module):
         """
         all_preds = []
         # collect preds from all heads
-        for head, logits_for_head, label_map_for_head in zip(
-            self.prediction_heads, logits, label_maps
-        ):
-            preds = head.logits_to_preds(
-                logits=logits_for_head, label_map=label_map_for_head, **kwargs
-            )
+        for head, logits_for_head in zip(self.prediction_heads, logits):
+            preds = head.logits_to_preds(logits=logits_for_head, **kwargs)
             all_preds.append(preds)
         return all_preds
 
-    def prepare_labels(self, label_maps, **kwargs):
+    def prepare_labels(self, **kwargs):
         """
         Label conversion to original label space, per prediction head.
 
@@ -161,12 +156,15 @@ class AdaptiveModel(nn.Module):
         :return: labels in the right format
         """
         all_labels = []
-        for head, label_map_one_head in zip(self.prediction_heads, label_maps):
-            labels = head.prepare_labels(label_map=label_map_one_head, **kwargs)
+        # for head, label_map_one_head in zip(self.prediction_heads):
+        #     labels = head.prepare_labels(label_map=label_map_one_head, **kwargs)
+        #     all_labels.append(labels)
+        for head in self.prediction_heads:
+            labels = head.prepare_labels(**kwargs)
             all_labels.append(labels)
         return all_labels
 
-    def formatted_preds(self, logits, label_maps, **kwargs):
+    def formatted_preds(self, logits, **kwargs):
         """
         Format predictions for inference.
 
@@ -180,11 +178,11 @@ class AdaptiveModel(nn.Module):
         """
         all_preds = []
         # collect preds from all heads
-        for head, logits_for_head, label_map_for_head in zip(
-            self.prediction_heads, logits, label_maps
+        for head, logits_for_head in zip(
+            self.prediction_heads, logits
         ):
             preds = head.formatted_preds(
-                logits=logits_for_head, label_map=label_map_for_head, **kwargs
+                logits=logits_for_head, **kwargs
             )
             all_preds.append(preds)
         return all_preds
@@ -208,7 +206,7 @@ class AdaptiveModel(nn.Module):
             # Choose relevant vectors from LM as output and perform dropout
             if lm_out == "per_token":
                 output = self.dropout(sequence_output)
-            elif lm_out == "per_sequence":
+            elif lm_out == "per_sequence" or lm_out == "per_sequence_continuous":
                 output = self.dropout(pooled_output)
             elif (
                 lm_out == "per_token_squad"
@@ -223,6 +221,18 @@ class AdaptiveModel(nn.Module):
             all_logits.append(head(output))
 
         return all_logits
+
+    def connect_heads_with_processor(self, tasks):
+        """
+        Populates prediction head with information coming from tasks.
+
+        :param tasks: A dictionary where the keys are the names of the tasks and the values are the details of the task (e.g. label_list, metric, tensor name)
+        :return:
+        """
+        for head in self.prediction_heads:
+            head.label_tensor_name = tasks[head.task_name]["label_tensor_name"]
+            head.label_list = tasks[head.task_name]["label_list"]
+            head.metric = tasks[head.task_name]["metric"]
 
     @classmethod
     def _get_prediction_head_files(cls, load_dir):
@@ -256,7 +266,8 @@ class AdaptiveModel(nn.Module):
         Logs paramteres to generic logger MlLogger
         """
         params = {
-            "lm": self.language_model.__class__.__name__,
+            "lm_type": self.language_model.__class__.__name__,
+            "lm_name": self.language_model.name,
             "prediction_heads": ",".join(
                 [head.__class__.__name__ for head in self.prediction_heads]
             ),

@@ -5,12 +5,14 @@ import logging
 import numpy as np
 from seqeval.metrics import classification_report as token_classification_report
 from sklearn.metrics import classification_report
+from sklearn.metrics import r2_score
 from torch.utils.data import DataLoader
 
 from farm.metrics import compute_metrics
-from farm.utils import to_numpy
+from farm.utils import to_numpy, format_log
 from farm.utils import MLFlowLogger as MlLogger
 from farm.modeling.adaptive_model import AdaptiveModel
+from farm.visual.ascii.images import BUSH_SEP
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +21,7 @@ class Evaluator:
     """Handles evaluation of a given model over a specified dataset."""
 
     def __init__(
-        self, data_loader, label_maps, device, metrics, classification_report=True
+        self, data_loader, tasks, device, classification_report=True
     ):
         """
         :param data_loader: The PyTorch DataLoader that will return batches of data from the evaluation dataset
@@ -33,12 +35,12 @@ class Evaluator:
         """
 
         self.data_loader = data_loader
-        self.label_maps = label_maps
-
+        #self.label_maps = label_maps
+        self.tasks = tasks
         self.device = device
 
         # Where should metric be defined? When dataset loaded? In config?
-        self.metrics = metrics
+        #self.metrics = metrics
         self.classification_report = classification_report
 
     def eval(self, model):
@@ -54,8 +56,7 @@ class Evaluator:
         model.eval()
 
         # init empty lists per prediction head
-        loss_all = [[] for _ in model.prediction_heads]
-        logits_all = [[] for _ in model.prediction_heads]
+        loss_all = [0 for _ in model.prediction_heads]
         preds_all = [[] for _ in model.prediction_heads]
         label_all = [[] for _ in model.prediction_heads]
 
@@ -69,27 +70,33 @@ class Evaluator:
                 logits = model.forward(**batch)
                 # TODO logits_to_loss should be a single, overloaded function
                 losses_per_head = model.logits_to_loss_per_head(logits=logits, **batch)
-
                 preds = model.logits_to_preds(
-                    logits=logits, label_maps=self.label_maps, **batch
+                    logits=logits, **batch
                 )
 
-                labels = model.prepare_labels(label_maps=self.label_maps, **batch)
+                labels = model.prepare_labels(**batch)
 
             # stack results of all batches per prediction head
             for head_num, head in enumerate(model.prediction_heads):
-                loss_all[head_num] += list(to_numpy(losses_per_head[head_num]))
-                logits_all[head_num] += list(to_numpy(logits[head_num]))
+                loss_all[head_num] += np.sum(to_numpy(losses_per_head[head_num]))
                 preds_all[head_num] += list(to_numpy(preds[head_num]))
                 label_all[head_num] += list(to_numpy(labels[head_num]))
+
 
         # Evaluate per prediction head
         all_results = []
         for head_num, head in enumerate(model.prediction_heads):
-            result = {"loss": np.mean(loss_all[head_num])}
+            if head.model_type == "multilabel_text_classification":
+                # converting from string preds back to multi-hot encoding
+                from sklearn.preprocessing import MultiLabelBinarizer
+                mlb = MultiLabelBinarizer(classes=head.label_list)
+                preds_all[head_num] = mlb.fit_transform(preds_all[head_num])
+                label_all[head_num] = mlb.transform(label_all[head_num])
+
+            result = {"loss": loss_all[head_num] / len(self.data_loader.dataset),
+                      "task_name": head.task_name}
             result.update(
-                compute_metrics(
-                    self.metrics[head_num], preds_all[head_num], label_all[head_num]
+                compute_metrics(metric=head.metric, preds=preds_all[head_num], labels=label_all[head_num]
                 )
             )
 
@@ -101,38 +108,51 @@ class Evaluator:
                     report_fn = classification_report
                 elif head.ph_output_type == "per_token_squad":
                     report_fn = lambda *args, **kwargs: "not Implemented"
+                elif head.ph_output_type == "per_sequence_continuous":
+                    report_fn = r2_score
                 else:
                     raise NotImplementedError
-                result["report"] = report_fn(
-                    label_all[head_num], preds_all[head_num], digits=4
-                )
+
+                # CHANGE PARAMETERS, not all report_fn accept digits
+                if head.ph_output_type == "per_sequence_continuous":
+                    result["report"] = report_fn(
+                        label_all[head_num], preds_all[head_num]
+                    )
+                else:
+                    result["report"] = report_fn(
+                        label_all[head_num], preds_all[head_num], digits=4, target_names=head.label_list)
+
             all_results.append(result)
 
         return all_results
 
     @staticmethod
     def log_results(results, dataset_name, steps, logging=True, print=True):
-        logger.info(
-            "\n***** Evaluation Results on {} data after {} steps *****".format(
-                dataset_name, steps
-            )
-        )
+        # Print a header
+        header = "\n\n"
+        header += BUSH_SEP + "\n"
+        header += "***************************************************\n"
+        header += f"***** EVALUATION | {dataset_name.upper()} SET | AFTER {steps} BATCHES *****\n"
+        header += "***************************************************\n"
+        header += BUSH_SEP + "\n"
+        logger.info(header)
+
         for head_num, head in enumerate(results):
-            logger.info("\n _________ Prediction Head {} _________".format(head_num))
+            logger.info("\n _________ {} _________".format(head['task_name']))
             for metric_name, metric_val in head.items():
                 # log with ML framework (e.g. Mlflow)
                 if logging:
                     if isinstance(metric_val, numbers.Number):
                         MlLogger.log_metrics(
                             metrics={
-                                f"{dataset_name}_{metric_name}_head{head_num}": metric_val
+                                f"{dataset_name}_{metric_name}_{head['task_name']}": metric_val
                             },
                             step=steps,
                         )
                 # print via standard python logger
                 if print:
                     if metric_name == "report":
-                        if len(metric_val) > 8000:
+                        if isinstance(metric_val, str) and len(metric_val) > 8000:
                             metric_val = metric_val[:7500] + "\n ............................. \n" + metric_val[-500:]
                         logger.info("{}: \n {}".format(metric_name, metric_val))
                     else:

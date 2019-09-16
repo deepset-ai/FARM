@@ -1,6 +1,7 @@
 import logging
 
 import os
+import copy
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
@@ -11,7 +12,7 @@ from torch.utils.data.sampler import RandomSampler, SequentialSampler
 from farm.data_handler.dataloader import NamedDataLoader
 from farm.utils import MLFlowLogger as MlLogger
 from farm.data_handler.processor import Processor
-
+from farm.visual.ascii.images import TRACTOR_SMALL
 logger = logging.getLogger(__name__)
 
 
@@ -39,11 +40,12 @@ class DataSilo(object):
         self._load_data()
 
     def _load_data(self):
+        logger.info("\nLoading data into the data silo ..."
+                    "{}".format(TRACTOR_SMALL))
         # train data
         train_file = os.path.join(self.processor.data_dir, self.processor.train_filename)
-        logger.info("Loading train set from: {}".format(train_file))
+        logger.info("Loading train set from: {} ".format(train_file))
         self.data["train"], self.tensor_names = self.processor.dataset_from_file(train_file)
-
 
         # dev data
         if not self.processor.dev_filename:
@@ -69,7 +71,7 @@ class DataSilo(object):
 
         # derive stats and meta data
         self._calculate_statistics()
-        self._calculate_class_weights(self.data["train"])
+        #self.calculate_class_weights()
         self._initialize_data_loaders()
         # fmt: on
 
@@ -166,24 +168,25 @@ class DataSilo(object):
                 "n_samples_train": self.counts["train"],
                 "n_samples_dev": self.counts["dev"],
                 "n_samples_test": self.counts["test"],
+                "batch_size": self.batch_size,
                 "ave_seq_len": self.ave_len,
                 "clipped": self.clipped
             }
         )
 
-    # TODO: maybe this can be inside calculate_statistics
-    # TODO: this also computes weights for QA. What is inside x[3].item() o_O ???
-    def _calculate_class_weights(self, dataset):
-        try:
-            labels = [x[3].item() for x in dataset]
-            self.class_weights = list(
-                compute_class_weight("balanced", np.unique(labels), labels)
-            )
-            logger.info(f"Using class weights: {self.class_weights}")
-        except ValueError:
-            logger.info(
-                "Class weighting is currently only available for sequence classification tasks "
-            )
+    def calculate_class_weights(self, task_name):
+        tensor_name = self.processor.tasks[task_name]["label_tensor_name"]
+        label_list = self.processor.tasks[task_name]["label_list"]
+        tensor_idx = list(self.tensor_names).index(tensor_name)
+        # we need at least ONE observation for each label to avoid division by zero in compute_class_weights.
+        observed_labels = copy.deepcopy(label_list)
+        for dataset in self.data.values():
+            if dataset is not None:
+                observed_labels += [label_list[x[tensor_idx].item()] for x in dataset]
+        #TODO scale e.g. via logarithm to avoid crazy spikes for rare classes
+        class_weights = list(compute_class_weight("balanced", np.asarray(label_list), observed_labels))
+        return class_weights
+
 
     def get_data_loader(self, dataset):
         return self.loaders[dataset]

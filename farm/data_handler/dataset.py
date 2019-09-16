@@ -14,9 +14,16 @@ def convert_features_to_dataset(features):
     tensor_names = features[0].keys()
     all_tensors = []
     for t_name in tensor_names:
-        cur_tensor = torch.tensor(
-            [sample[t_name] for sample in features], dtype=torch.long
-        )
+        try:
+            cur_tensor = torch.tensor(
+                [sample[t_name] for sample in features], dtype=torch.long
+            )
+        except ValueError:
+            cur_tensor = torch.tensor(
+                [sample[t_name] for sample in features], dtype=torch.float32
+            )
+
+
         all_tensors.append(cur_tensor)
 
     dataset = TensorDataset(*all_tensors)

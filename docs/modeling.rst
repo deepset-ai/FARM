@@ -14,7 +14,8 @@ This allows you a fast and easy comparison between different language models and
 Building Blocks
 #################
 
-**Language Model + Prediction Head(s) = AdaptiveModel**
+.. image:: img/adaptive_model_no_bg.jpg
+    :alt: FARM Adaptive Model
 
 1. Language Model
 ********************

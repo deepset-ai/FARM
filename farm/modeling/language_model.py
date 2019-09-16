@@ -21,7 +21,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import logging
 import os
 import json
-
+import numpy as np
 import torch
 from torch import nn
 
@@ -76,6 +76,9 @@ class LanguageModel(nn.Module):
         else:
             # it's a model name which we try to resolve from s3. for now only works for bert models
             language_model = cls.subclasses["Bert"].load(pretrained_model_name_or_path)
+
+        assert language_model is not None
+
         return language_model
 
     def freeze(self, layers):
@@ -141,13 +144,30 @@ class LanguageModel(nn.Module):
 
         return language
 
-    def formatted_preds(self, input_ids, samples, extraction_strategy="pooled", **kwargs):
-        sequence_output, pooled_output = self.forward(input_ids, **kwargs)
-
+    def formatted_preds(self, input_ids, samples, extraction_strategy="pooled", extraction_layer=-1, ignore_first_token=True,
+                        padding_mask=None, **kwargs):
+        # get language model output from last layer
+        if extraction_layer == -1:
+            sequence_output, pooled_output = self.forward(input_ids, padding_mask=padding_mask, **kwargs)
+        # or from earlier layer
+        else:
+            self.enable_hidden_states_output()
+            sequence_output, pooled_output, all_hidden_states = self.forward(input_ids, padding_mask=padding_mask, **kwargs)
+            sequence_output = all_hidden_states[extraction_layer]
+            self.disable_hidden_states_output()
+        # aggregate vectors
         if extraction_strategy == "pooled":
+            if extraction_layer != -1:
+                raise ValueError(f"Pooled output only works for the last layer, but got extraction_layer = {extraction_layer}. Please set `extraction_layer=-1`.)")
             vecs = pooled_output.cpu().numpy()
         elif extraction_strategy == "per_token":
             vecs = sequence_output.cpu().numpy()
+        elif extraction_strategy == "reduce_mean":
+            vecs = self._pool_tokens(sequence_output, padding_mask, extraction_strategy, ignore_first_token=ignore_first_token)
+        elif extraction_strategy == "reduce_max":
+            vecs = self._pool_tokens(sequence_output, padding_mask, extraction_strategy, ignore_first_token=ignore_first_token)
+        elif extraction_strategy == "cls_token":
+            vecs = sequence_output[:, 0, :].cpu().numpy()
         else:
             raise NotImplementedError
 
@@ -157,9 +177,23 @@ class LanguageModel(nn.Module):
             pred["context"] = sample.tokenized["tokens"]
             pred["vec"] = vec
             preds.append(pred)
-
         return preds
 
+    def _pool_tokens(self, sequence_output, padding_mask, strategy, ignore_first_token):
+        token_vecs = sequence_output.cpu().numpy()
+        # we only take the aggregated value of non-padding tokens
+        padding_mask = padding_mask.cpu().numpy()
+        ignore_mask_2d = padding_mask == 0
+        # sometimes we want to exclude the CLS token as well from our aggregation operation
+        if ignore_first_token:
+            ignore_mask_2d[:, 0] = True
+        ignore_mask_3d = np.zeros(token_vecs.shape, dtype=bool)
+        ignore_mask_3d[:, :, :] = ignore_mask_2d[:, :, np.newaxis]
+        if strategy == "reduce_max":
+            pooled_vecs = np.ma.array(data=token_vecs, mask=ignore_mask_3d).max(axis=1).data
+        if strategy == "reduce_mean":
+            pooled_vecs = np.ma.array(data=token_vecs, mask=ignore_mask_3d).mean(axis=1).data
+        return pooled_vecs
 
 class Bert(LanguageModel):
     """ A BERT model (https://arxiv.org/abs/1810.04805) that wraps the HuggingFace's implementation
@@ -173,13 +207,14 @@ class Bert(LanguageModel):
     @classmethod
     def load(cls, pretrained_model_name_or_path, language=None):
         bert = cls()
+        bert.name = pretrained_model_name_or_path
         # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
         farm_lm_config = os.path.join(pretrained_model_name_or_path, "language_model_config.json")
         if os.path.exists(farm_lm_config):
             # FARM style
             bert_config = BertConfig.from_pretrained(farm_lm_config)
             farm_lm_model = os.path.join(pretrained_model_name_or_path, "language_model.bin")
-            bert.model = BertModel.from_pretrained(farm_lm_model, config = bert_config)
+            bert.model = BertModel.from_pretrained(farm_lm_model, config=bert_config)
             bert.language = bert.model.config.language
         else:
             # Pytorch-transformer Style
@@ -212,8 +247,18 @@ class Bert(LanguageModel):
             token_type_ids=segment_ids,
             attention_mask=padding_mask,
         )
-        sequence_output, pooled_output = output_tuple[0], output_tuple[1]
-        return sequence_output, pooled_output
+        if self.model.encoder.output_hidden_states == True:
+            sequence_output, pooled_output, all_hidden_states = output_tuple[0], output_tuple[1], output_tuple[2]
+            return sequence_output, pooled_output, all_hidden_states
+        else:
+            sequence_output, pooled_output = output_tuple[0], output_tuple[1]
+            return sequence_output, pooled_output
+
+    def enable_hidden_states_output(self):
+        self.model.encoder.output_hidden_states = True
+
+    def disable_hidden_states_output(self):
+        self.model.encoder.output_hidden_states = False
 
     def save_config(self, save_dir):
         save_filename = os.path.join(save_dir, "language_model_config.json")

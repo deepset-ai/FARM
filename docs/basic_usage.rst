@@ -17,7 +17,7 @@ FARM offers two modes for model training:
 
     # Basic building blocks for data handling
     tokenizer = BertTokenizer.from_pretrained(pretrained_model_name_or_path=lang_model)
-    processor = CONLLProcessor(tokenizer=tokenizer, data_dir="../data/conll03-de", max_seq_len=128)
+    processor = NERProcessor(tokenizer=tokenizer, data_dir="../data/conll03-de", max_seq_len=128)
     ...
 
     # AdaptiveModel = LanguageModel + PredictionHead(s)
@@ -49,7 +49,7 @@ See this `tutorial <https://github.com/deepset-ai/FARM/blob/master/tutorials/1_f
 * Run :code:`docker-compose up`
 * Open http://localhost:3000 in your browser
 
-.. image:: inference-api-screen.png
+.. image:: img/inference-api-screen.png
     :alt: FARM Inferennce UI
 
 One docker container exposes a REST API (localhost:5000) and another one runs a simple demo UI (localhost:3000).

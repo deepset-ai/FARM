@@ -4,6 +4,8 @@ import random
 import numpy as np
 import torch
 import mlflow
+from copy import deepcopy
+from farm.visual.ascii.images import WELCOME_BARN, WORKER
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +56,7 @@ class BaseMLLogger:
 
     def __init__(self, tracking_uri, **kwargs):
         self.tracking_uri = tracking_uri
+        print(WELCOME_BARN)
 
     def init_experiment(self, tracking_uri):
         raise NotImplementedError()
@@ -161,3 +164,35 @@ def convert_iob_to_simple_tags(preds, spans):
         simple_tags.append(cur_tag)
         open_tag = False
     return simple_tags, merged_spans
+
+
+def flatten_list(nested_list):
+    """Flatten an arbitrarily nested list, without recursion (to avoid
+    stack overflows). Returns a new list, the original list is unchanged.
+    >> list(flatten_list([1, 2, 3, [4], [], [[[[[[[[[5]]]]]]]]]]))
+    [1, 2, 3, 4, 5]
+    >> list(flatten_list([[1, 2], 3]))
+    [1, 2, 3]
+    """
+    nested_list = deepcopy(nested_list)
+
+    while nested_list:
+        sublist = nested_list.pop(0)
+
+        if isinstance(sublist, list):
+            nested_list = sublist + nested_list
+        else:
+            yield sublist
+
+def log_ascii_workers(n, logger):
+    worker_lines = WORKER.split("\n")
+    all_worker_lines = [worker_lines] * n
+    zipped = zip(*all_worker_lines)
+    for z in zipped:
+        logger.info("  ".join(z))
+
+def format_log(ascii, logger):
+    ascii_lines = ascii.split("\n")
+    for l in ascii_lines:
+        logger.info(l)
+

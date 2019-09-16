@@ -284,13 +284,6 @@ def get_file_extension(path, dot=True, lower=True):
     return ext.lower() if lower else ext
 
 
-# TODO: still needed?
-# Allow retrieval of config args with dot notation
-class Struct:
-    def __init__(self, **entries):
-        self.__dict__.update(entries)
-
-
 def read_config(path, flattend=False):
     if path:
         with open(path) as json_data_file:
@@ -313,13 +306,13 @@ def read_config(path, flattend=False):
             conf_args[gk][k] = getArgValue(v)
 
     # DotMap for making nested dictionary accessible through dot notation
+    flat_args = dict(
+        conf_args["general"],
+        **conf_args["task"],
+        **conf_args["parameter"],
+        **conf_args["logging"],
+    )
     if flattend:
-        flat_args = dict(
-            conf_args["general"],
-            **conf_args["task"],
-            **conf_args["parameter"],
-            **conf_args["logging"],
-        )
         args = DotMap(flat_args, _dynamic=False)
     else:
         args = DotMap(conf_args, _dynamic=False)
@@ -345,16 +338,17 @@ def unnestConfig(config, flattened=False):
                     nestedVals.append(v)
     else:
         for gk, gv in config.items():
-            for k, v in gv.items():
-                if isinstance(v, list):
+            if(gk != "task"):
+                for k, v in gv.items():
                     if isinstance(v, list):
-                        if (
-                            k != "layer_dims"
-                        ):  # exclude layer dims, since it is already a list
-                            nestedKeys.append([gk, k])
-                            nestedVals.append(v)
-                    elif isinstance(v, dict):
-                        logger.error("Config too deep!")
+                        if isinstance(v, list):
+                            if (
+                                k != "layer_dims"
+                            ):  # exclude layer dims, since it is already a list
+                                nestedKeys.append([gk, k])
+                                nestedVals.append(v)
+                        elif isinstance(v, dict):
+                            logger.error("Config too deep!")
 
     if len(nestedKeys) == 0:
         unnestedConfig = [config]
@@ -388,10 +382,3 @@ def unnestConfig(config, flattened=False):
             unnestedConfig.append(tempconfig)
 
     return unnestedConfig
-
-
-def create_folder(dir):
-    if os.path.exists(dir):
-        logger.warning(f"Path {dir} already exists. You might be overwriting files.")
-    else:
-        os.makedirs(dir)

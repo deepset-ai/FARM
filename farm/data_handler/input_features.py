@@ -20,30 +20,24 @@ logger = logging.getLogger(__name__)
 
 
 def sample_to_features_text(
-    sample, label_list, max_seq_len, tokenizer, target="classification"
+    sample, tasks, max_seq_len, tokenizer
 ):
     """
     Generates a dictionary of features for a given input sample that is to be consumed by a text classification model.
 
     :param sample: Sample object that contains human readable text and label fields from a single text classification data sample
     :type sample: Sample
-    :param label_list: A list of all unique labels
-    :type label_list: list
+    :param tasks: A dictionary where the keys are the names of the tasks and the values are the details of the task (e.g. label_list, metric, tensor name)
+    :type tasks: dict
     :param max_seq_len: Sequences are truncated after this many tokens
     :type max_seq_len: int
     :param tokenizer: A tokenizer object that can turn string sentences into a list of tokens
-    :param target: Choose from "classification" and "regression"
-    :type target: str
     :return: A dictionary containing the keys "input_ids", "padding_mask" and "segment_ids" (also "label_ids" if not
              in inference mode). The values are lists containing those features.
     :rtype: dict
     """
 
-    label_map = {label: i for i, label in enumerate(label_list)}
-
-    # tokens = tokenizer.tokenize(sample.clear_text["text"])
     tokens = sample.tokenized["tokens"]
-    # tokens = sample.tokenized["word_pieces"]
     # Account for [CLS] and [SEP] with "- 2"
     if len(tokens) > max_seq_len - 2:
         tokens = tokens[: (max_seq_len - 2)]
@@ -68,7 +62,15 @@ def sample_to_features_text(
     # the entire model is fine-tuned.
     tokens = ["[CLS]"] + tokens + ["[SEP]"]
 
-    segment_ids = [0] * len(tokens)
+    # Quickfix to allow multiple text segments (e.g. at inference time)
+    n_segments = tokens.count("[SEP]")
+    if n_segments == 1:
+        segment_ids = [0] * len(tokens)
+    elif n_segments == 2:
+        first_sep_idx = tokens.index("[SEP]") + 1
+        segment_ids = [0] * first_sep_idx + [1] * (len(tokens)-first_sep_idx)
+    else:
+        raise ValueError(f"Expected 1 or 2 text segments. Got {n_segments}!")
 
     input_ids = tokenizer.convert_tokens_to_ids(tokens)
 
@@ -86,36 +88,53 @@ def sample_to_features_text(
     assert len(padding_mask) == max_seq_len
     assert len(segment_ids) == max_seq_len
 
-    # For inference mode
-    try:
-        if target == "classification":
-            label_ids = label_map[sample.clear_text["label"]]
-        elif target == "regression":
-            label_ids = float(sample.clear_text["label"])
-        else:
-            # TODO Add multilabel here
-            raise KeyError(target)
-    except KeyError:
-        label_ids = None
-
     feat_dict = {
         "input_ids": input_ids,
         "padding_mask": padding_mask,
         "segment_ids": segment_ids,
     }
 
-    if label_ids is not None:
-        feat_dict["label_ids"] = label_ids
+    # Add Labels for different tasks
+    for task_name, task in tasks.items():
+        try:
+            label_name = task["label_name"]
+            label_raw = sample.clear_text[label_name]
+            label_list = task["label_list"]
+            if task["task_type"] == "classification":
+                # id of label
+                try:
+                    label_ids = [label_list.index(label_raw)]
+                except ValueError as e:
+                    raise ValueError(f'[Task: {task_name}] Observed label {label_raw} not in defined label_list')
+            elif task["task_type"] == "multilabel_classification":
+                # multi-hot-format
+                label_ids = [0] * len(label_list)
+                for l in label_raw.split(","):
+                    if l != "":
+                        label_ids[label_list.index(l)] = 1
+            elif task["task_type"] == "regression":
+                label_ids = [float(label_raw)]
+            else:
+                raise ValueError(task["task_type"])
+        except KeyError:
+            # For inference mode we don't expect labels
+            label_ids = None
+            logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
+                           "\nIf your are running in *inference* mode: Don't worry!"
+                           "\nIf you are running in *training* mode: Verify you are supplying a proper label list to your processor.")
+
+
+        if label_ids is not None:
+            feat_dict[task["label_tensor_name"]] = label_ids
     return [feat_dict]
 
 
 def samples_to_features_ner(
     sample,
-    label_list,
+    tasks,
     max_seq_len,
     tokenizer,
     cls_token="[CLS]",
-    pad_token="[PAD]",
     sep_token="[SEP]",
     non_initial_token="X",
     **kwargs
@@ -125,15 +144,13 @@ def samples_to_features_ner(
 
     :param sample: Sample object that contains human readable text and label fields from a single NER data sample
     :type sample: Sample
-    :param label_list: A list of all unique labels
-    :type label_list: list
+    :param tasks: A dictionary where the keys are the names of the tasks and the values are the details of the task (e.g. label_list, metric, tensor name)
+    :type tasks: dict
     :param max_seq_len: Sequences are truncated after this many tokens
     :type max_seq_len: int
     :param tokenizer: A tokenizer object that can turn string sentences into a list of tokens
     :param cls_token: Token used to represent the beginning of the sequence
     :type cls_token: str
-    :param pad_token: Token used to represent sequence padding
-    :type pad_token: str
     :param sep_token: Token used to represent the border between two sequences
     :type sep_token: str
     :param non_initial_token: Token that is inserted into the label sequence in positions where there is a
@@ -160,58 +177,83 @@ def samples_to_features_ner(
     # Convert to input and labels to ids, generate masks
     input_ids = tokenizer.convert_tokens_to_ids(tokens)
 
-    if "label" in sample.clear_text:
-        labels_word = sample.clear_text["label"]
-        labels_token = expand_labels(labels_word, initial_mask, non_initial_token)
-        # labels_token = add_cls_sep(labels_token, cls_token, sep_token)
-        label_ids = [label_list.index(lt) for lt in labels_token]
-    # Inference mode
-    else:
-        label_ids = None
-    segment_ids = [0] * max_seq_len
+    for task_name, task in tasks.items():
+        try:
+            label_list = task["label_list"]
+            label_name = task["label_name"]
+            label_tensor_name = task["label_tensor_name"]
+            labels_word = sample.clear_text[label_name]
+            labels_token = expand_labels(labels_word, initial_mask, non_initial_token)
+            # labels_token = add_cls_sep(labels_token, cls_token, sep_token)
+            label_ids = [label_list.index(lt) for lt in labels_token]
+        except KeyError:
+            # For inference mode we don't expect labels
+            label_ids = None
+            logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
+                           "\nIf your are running in *inference* mode: Don't worry!"
+                           "\nIf you are running in *training* mode: Verify you are supplying a proper label list to your processor.")
 
-    # Pad
-    input_ids = pad(input_ids, max_seq_len, 0)
-    if label_ids:
-        label_ids = pad(label_ids, max_seq_len, 0)
-    initial_mask = pad(initial_mask, max_seq_len, 0)
-    padding_mask = pad(padding_mask, max_seq_len, 0)
+        segment_ids = [0] * max_seq_len
 
-    feature_dict = {
-        "input_ids": input_ids,
-        "padding_mask": padding_mask,
-        "segment_ids": segment_ids,
-        "initial_mask": initial_mask,
-    }
+        # Pad
+        input_ids = pad(input_ids, max_seq_len, 0)
+        if label_ids:
+            label_ids = pad(label_ids, max_seq_len, 0)
+        initial_mask = pad(initial_mask, max_seq_len, 0)
+        padding_mask = pad(padding_mask, max_seq_len, 0)
 
-    if label_ids:
-        feature_dict["label_ids"] = label_ids
+        feature_dict = {
+            "input_ids": input_ids,
+            "padding_mask": padding_mask,
+            "segment_ids": segment_ids,
+            "initial_mask": initial_mask,
+        }
+
+        if label_ids:
+            feature_dict[label_tensor_name] = label_ids
 
     return [feature_dict]
 
 
-def samples_to_features_bert_lm(sample, max_seq_len, tokenizer):
+def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=True):
     """
     Convert a raw sample (pair of sentences as tokenized strings) into a proper training sample with
     IDs, LM labels, padding_mask, CLS and SEP tokens etc.
 
     :param sample: Sample, containing sentence input as strings and is_next label
-    :param max_seq_len: int, maximum length of sequence.
+    :type sample: Sample
+    :param max_seq_len: Maximum length of sequence.
+    :type max_seq_len: int
     :param tokenizer: Tokenizer
     :return: InputFeatures, containing all inputs and labels of one sample as IDs (as used for model training)
     """
 
-    tokens_a = tokenizer.tokenize(sample.clear_text["text_a"])
-    tokens_b = tokenizer.tokenize(sample.clear_text["text_b"])
+    tokens_a = sample.tokenized["text_a"]["tokens"]
+    tokens_b = sample.tokenized["text_b"]["tokens"]
     # Modifies `tokens_a` and `tokens_b` in place so that the total
     # length is less than the specified length.
-    # Account for [CLS], [SEP], [SEP] with "- 3"
-    truncate_seq_pair(tokens_a, tokens_b, max_seq_len - 3)
+    # Account for [CLS], [SEP], [SEP] or [CLS], [SEP]
+    if not next_sent_pred:
+        n_special_tokens = 2
+    else:
+        n_special_tokens = 3
+    truncate_seq_pair(tokens_a, tokens_b, max_seq_len - n_special_tokens)
 
-    tokens_a, t1_label = mask_random_words(tokens_a, tokenizer)
-    tokens_b, t2_label = mask_random_words(tokens_b, tokenizer)
-    # concatenate lm labels and account for CLS, SEP, SEP
-    lm_label_ids = [-1] + t1_label + [-1] + t2_label + [-1]
+    tokens_a, t1_label = mask_random_words(tokens_a, tokenizer.vocab,
+                                           token_groups=sample.tokenized["text_a"]["start_of_word"])
+    # convert lm labels to ids
+    t1_label_ids = [-1 if tok == '' else tokenizer.vocab[tok] for tok in t1_label]
+
+    if next_sent_pred:
+        tokens_b, t2_label = mask_random_words(tokens_b, tokenizer.vocab,
+                                               token_groups=sample.tokenized["text_b"]["start_of_word"])
+        t2_label_ids = [-1 if tok == '' else tokenizer.vocab[tok] for tok in t2_label]
+
+        # concatenate lm labels and account for CLS, SEP, SEP
+        lm_label_ids = [-1] + t1_label_ids + [-1] + t2_label_ids + [-1]
+
+    else:
+        lm_label_ids = [-1] + t1_label_ids + [-1]
 
     # The convention in BERT is:
     # (a) For sequence pairs:
@@ -241,12 +283,13 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer):
     tokens.append("[SEP]")
     segment_ids.append(0)
 
-    assert len(tokens_b) > 0
-    for token in tokens_b:
-        tokens.append(token)
+    if next_sent_pred:
+        assert len(tokens_b) > 0
+        for token in tokens_b:
+            tokens.append(token)
+            segment_ids.append(1)
+        tokens.append("[SEP]")
         segment_ids.append(1)
-    tokens.append("[SEP]")
-    segment_ids.append(1)
 
     input_ids = tokenizer.convert_tokens_to_ids(tokens)
 
@@ -262,10 +305,11 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer):
         lm_label_ids.append(-1)
 
     # Convert is_next_label: Note that in Bert, is_next_labelid = 0 is used for next_sentence=true!
-    if sample.clear_text["is_next_label"]:
-        is_next_label_id = [0]
-    else:
-        is_next_label_id = [1]
+    if next_sent_pred:
+        if sample.clear_text["nextsentence_label"]:
+            is_next_label_id = [0]
+        else:
+            is_next_label_id = [1]
 
     assert len(input_ids) == max_seq_len
     assert len(padding_mask) == max_seq_len
@@ -277,14 +321,15 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer):
         "padding_mask": padding_mask,
         "segment_ids": segment_ids,
         "lm_label_ids": lm_label_ids,
-        "label_ids": is_next_label_id,
     }
+    if next_sent_pred:
+        feature_dict["nextsentence_label_ids"] = is_next_label_id
 
     return [feature_dict]
 
 
 def sample_to_features_squad(
-    sample, tokenizer, max_seq_len, doc_stride, max_query_length
+    sample, tokenizer, max_seq_len, doc_stride, max_query_length, tasks,
 ):
     sample.clear_text = DotMap(sample.clear_text, _dynamic=False)
     is_training = sample.clear_text.is_training

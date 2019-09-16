@@ -1,13 +1,11 @@
-# fmt: off
 import logging
-import pprint
 
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import SquadProcessor
-from farm.experiment import initialize_optimizer
 from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
+from farm.modeling.optimization import initialize_optimizer
 from farm.modeling.prediction_head import QuestionAnsweringHead
 from farm.modeling.tokenization import BertTokenizer
 from farm.train import Trainer
@@ -19,14 +17,15 @@ def test_qa(caplog):
 
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=False)
-    batch_size = 6
-    n_epochs = 2
+    batch_size = 32
+    n_epochs = 1
     evaluate_every = 100
     base_LM_model = "bert-base-cased"
 
     tokenizer = BertTokenizer.from_pretrained(
         pretrained_model_name_or_path=base_LM_model, do_lower_case=False
     )
+    label_list = ["start_token", "end_token"]
     processor = SquadProcessor(
         tokenizer=tokenizer,
         max_seq_len=64,
@@ -34,11 +33,13 @@ def test_qa(caplog):
         dev_filename="dev-sample.json",
         test_filename=None,
         data_dir="samples/qa",
+        labels=label_list,
+        metric="squad"
     )
 
-    data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=False)
+    data_silo = DataSilo(processor=processor, batch_size=batch_size)
     language_model = Bert.load(base_LM_model)
-    prediction_head = QuestionAnsweringHead(layer_dims=[768, len(processor.label_list)])
+    prediction_head = QuestionAnsweringHead(layer_dims=[768, len(label_list)])
     model = AdaptiveModel(
         language_model=language_model,
         prediction_heads=[prediction_head],
@@ -51,8 +52,7 @@ def test_qa(caplog):
         model=model,
         learning_rate=1e-5,
         warmup_proportion=0.2,
-        n_examples=data_silo.n_samples("train"),
-        batch_size=batch_size,
+        n_batches=len(data_silo.loaders["train"]),
         n_epochs=n_epochs,
     )
     trainer = Trainer(
@@ -70,11 +70,13 @@ def test_qa(caplog):
     processor.save(save_dir)
 
     QA_input = [
-            {
-                "questions": ["In what country is Normandy located?"],
-                "text":  "The Normans (Norman: Nourmands; French: Normands; Latin: Normanni) were the people who in the 10th and 11th centuries gave their name to Normandy, a region in France. They were descended from Norse (\"Norman\" comes from \"Norseman\") raiders and pirates from Denmark, Iceland and Norway who, under their leader Rollo, agreed to swear fealty to King Charles III of West Francia. Through generations of assimilation and mixing with the native Frankish and Roman-Gaulish populations, their descendants would gradually merge with the Carolingian-based cultures of West Francia. The distinct cultural and ethnic identity of the Normans emerged initially in the first half of the 10th century, and it continued to evolve over the succeeding centuries."
-            }]
+        {
+            "questions": ["In what country is Normandy located?"],
+            "text": 'The Normans (Norman: Nourmands; French: Normands; Latin: Normanni) were the people who in the 10th and 11th centuries gave their name to Normandy, a region in France. They were descended from Norse ("Norman" comes from "Norseman") raiders and pirates from Denmark, Iceland and Norway who, under their leader Rollo, agreed to swear fealty to King Charles III of West Francia. Through generations of assimilation and mixing with the native Frankish and Roman-Gaulish populations, their descendants would gradually merge with the Carolingian-based cultures of West Francia. The distinct cultural and ethnic identity of the Normans emerged initially in the first half of the 10th century, and it continued to evolve over the succeeding centuries.',
+        }
+    ]
 
     model = Inferencer.load(save_dir)
     result = model.run_inference(dicts=QA_input)
-    assert result[0]["predictions"][0]["label"] == 'The'
+    assert result[0]["predictions"][0]["end"] == 65
+

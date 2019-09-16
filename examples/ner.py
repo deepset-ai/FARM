@@ -2,8 +2,8 @@
 import logging
 
 from farm.data_handler.data_silo import DataSilo
-from farm.data_handler.processor import CONLLProcessor
-from farm.experiment import initialize_optimizer
+from farm.data_handler.processor import NERProcessor
+from farm.modeling.optimization import initialize_optimizer
 from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
@@ -18,17 +18,17 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
-ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_minimal_example_ner")
+# ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
+# ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_minimal_example_ner")
 
 ##########################
 ########## Settings
 ##########################
 set_all_seeds(seed=42)
 device, n_gpu = initialize_device_settings(use_cuda=True)
-n_epochs = 4
+n_epochs = 1
 batch_size = 32
-evaluate_every = 50
+evaluate_every = 100
 lang_model = "bert-base-german-cased"
 
 # 1.Create a tokenizer
@@ -37,9 +37,11 @@ tokenizer = BertTokenizer.from_pretrained(
 )
 
 # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
-processor = CONLLProcessor(
+processor = NERProcessor(
     tokenizer=tokenizer, max_seq_len=128, data_dir="../data/conll03-de"
 )
+ner_labels = ["[PAD]", "X", "O", "B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-OTH", "I-OTH"]
+processor.add_task("ner", "seq_f1", ner_labels)
 
 # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
 data_silo = DataSilo(processor=processor, batch_size=batch_size)
@@ -48,7 +50,8 @@ data_silo = DataSilo(processor=processor, batch_size=batch_size)
 # a) which consists of a pretrained language model as a basis
 language_model = Bert.load(lang_model)
 # b) and a prediction head on top that is suited for our task => NER
-prediction_head = TokenClassificationHead(layer_dims=[768, len(processor.label_list)])
+prediction_head = TokenClassificationHead(task_name="ner",
+                                          layer_dims=[768, len(processor.tasks["ner"]["label_list"])])
 
 model = AdaptiveModel(
     language_model=language_model,
@@ -63,8 +66,7 @@ optimizer, warmup_linear = initialize_optimizer(
     model=model,
     learning_rate=2e-5,
     warmup_proportion=0.1,
-    n_examples=data_silo.n_samples("train"),
-    batch_size=batch_size,
+    n_batches=len(data_silo.loaders["train"]),
     n_epochs=n_epochs,
 )
 

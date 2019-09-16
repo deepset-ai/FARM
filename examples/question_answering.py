@@ -4,7 +4,7 @@ import pprint
 
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import SquadProcessor
-from farm.experiment import initialize_optimizer
+from farm.modeling.optimization import initialize_optimizer
 from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
@@ -39,14 +39,19 @@ tokenizer = BertTokenizer.from_pretrained(
     pretrained_model_name_or_path=base_LM_model, do_lower_case=False
 )
 # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
+label_list = ["start_token", "end_token"]
+metric = "squad"
 processor = SquadProcessor(
     tokenizer=tokenizer,
     max_seq_len=256,
+    labels=label_list,
+    metric=metric,
     train_filename=train_filename,
     dev_filename=dev_filename,
     test_filename=None,
     data_dir="../data/squad20",
 )
+
 
 # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
 data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=False)
@@ -55,7 +60,7 @@ data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=Fal
 # a) which consists of a pretrained language model as a basis
 language_model = Bert.load(base_LM_model)
 # b) and a prediction head on top that is suited for our task => Question Answering
-prediction_head = QuestionAnsweringHead(layer_dims=[768, len(processor.label_list)])
+prediction_head = QuestionAnsweringHead(layer_dims=[768, len(label_list)])
 
 model = AdaptiveModel(
     language_model=language_model,
@@ -70,8 +75,7 @@ optimizer, warmup_linear = initialize_optimizer(
     model=model,
     learning_rate=1e-5,
     warmup_proportion=0.2,
-    n_examples=data_silo.n_samples("train"),
-    batch_size=batch_size,
+    n_batches=len(data_silo.loaders["train"]),
     n_epochs=n_epochs,
 )
 # 6. Feed everything to the Trainer, which keeps care of growing our model and evaluates it from time to time
@@ -84,7 +88,7 @@ trainer = Trainer(
     evaluate_every=evaluate_every,
     device=device,
 )
-# 7. Let it grow! Watch the tracked metrics live on the public mlflow server: http://80.158.39.167:5000/
+# 7. Let it grow! Watch the tracked metrics live on the public mlflow server: https://public-mlflow.deepset.ai
 model = trainer.train(model)
 
 # 8. Hooray! You have a model. Store it:

@@ -23,14 +23,13 @@ def main():
         "experiments/text_classification/germEval18Fine_config.json",
         "experiments/text_classification/germEval18Coarse_config.json",
         "experiments/text_classification/gnad_config.json",
-        "experiments/qa/squad20_config.json"
+        "experiments/qa/squad20_config.json",
     ]
 
     for conf_file in config_files:
         experiments = load_experiments(conf_file)
         for experiment in experiments:
             run_experiment(experiment)
-
 
 if __name__ == "__main__":
     main()
