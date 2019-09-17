@@ -260,7 +260,7 @@ class Processor(ABC):
     def _init_samples_in_baskets(self):
         for basket in self.baskets:	
             all_dicts = [b.raw for b in self.baskets]
-            basket.samples = self._dict_to_samples(basket.raw, all_dicts)  
+            basket.samples = self._dict_to_samples(dict=basket.raw, all_dicts=all_dicts)
             for num, sample in enumerate(basket.samples):
                  sample.id = f"{basket.id}-{num}"
 
@@ -694,8 +694,6 @@ class SquadProcessor(Processor):
         self.target = "classification"
         self.ph_output_type = "per_token_squad"
 
-        chunksize = 20
-
         # custom processor attributes that are accessed during multiprocessing
         # (everything you want to access in _dict_to_samples and _sample_to_features)
         SquadProcessor.doc_stride = doc_stride
@@ -709,7 +707,6 @@ class SquadProcessor(Processor):
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
-            multiprocessing_chunk_size=chunksize,
             tasks={},
         )
 
@@ -838,7 +835,9 @@ class RegressionProcessor(Processor):
             json.dump(config, file)
 
     def _file_to_dicts(self, file: str) -> [dict]:
+        column_mapping = {task["source_field"]: task["label_name"] for task in self.tasks.values()}
         dicts = read_tsv(
+            rename_columns=column_mapping,
             filename=file,
             delimiter=self.delimiter,
             skiprows=self.skiprows,
