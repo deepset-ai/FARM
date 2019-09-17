@@ -32,7 +32,7 @@ def test_ner(caplog):
 
     processor = NERProcessor(
         tokenizer=tokenizer, max_seq_len=128, data_dir="samples/ner",train_filename="train-sample.txt",
-        dev_filename="dev-sample.txt",test_filename=None, delimiter=" ", labels=ner_labels, metric="seq_f1"
+        dev_filename="dev-sample.txt",test_filename=None, delimiter=" ", label_list=ner_labels, metric="seq_f1"
     )
 
     data_silo = DataSilo(processor=processor, batch_size=batch_size)

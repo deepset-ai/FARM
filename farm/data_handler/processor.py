@@ -42,9 +42,9 @@ TOKENIZER_MAP = {"BertTokenizer": BertTokenizer}
 class Processor(ABC):
     """
     Is used to generate PyTorch Datasets from input data. An implementation of this abstract class should be created
-    for each new data source. Must have dataset_from_file(), dataset_from_dicts(), load(),
-    load_from_file() and save() implemented in order to be compatible with the rest of the framework. The other
-    functions implement our suggested pipeline structure.
+    for each new data source.
+    Implement the abstract methods: _file_to_dicts(), _dict_to_samples(), _sample_to_features()
+    to be compatible with your data format
     """
 
     subclasses = {}
@@ -280,37 +280,37 @@ class Processor(ABC):
         dataset, tensor_names = convert_features_to_dataset(features=features_flat)
         return dataset, tensor_names
 
-    def dataset_from_file(self, file, log_time=True):
-        """
-        Contains all the functionality to turn a data file into a PyTorch Dataset and a
-        list of tensor names. This is used for training and evaluation.
-
-        :param file: Name of the file containing the data.
-        :type file: str
-        :return: a Pytorch dataset and a list of tensor names.
-        """
-        if log_time:
-            a = time.time()
-            self._init_baskets_from_file(file)
-            b = time.time()
-            MlLogger.log_metrics(metrics={"t_from_file": (b - a) / 60}, step=0)
-            self._init_samples_in_baskets()
-            c = time.time()
-            MlLogger.log_metrics(metrics={"t_init_samples": (c - b) / 60}, step=0)
-            self._featurize_samples()
-            d = time.time()
-            MlLogger.log_metrics(metrics={"t_featurize_samples": (d - c) / 60}, step=0)
-            self._log_samples(3)
-        else:
-            self._init_baskets_from_file(file)
-            self._init_samples_in_baskets()
-            self._featurize_samples()
-            self._log_samples(3)
-        dataset, tensor_names = self._create_dataset()
-        return dataset, tensor_names
+    # def dataset_from_file(self, file, log_time=True):
+    #     """
+    #     Contains all the functionality to turn a data file into a PyTorch Dataset and a
+    #     list of tensor names. This is used for training and evaluation.
+    #
+    #     :param file: Name of the file containing the data.
+    #     :type file: str
+    #     :return: a Pytorch dataset and a list of tensor names.
+    #     """
+    #     if log_time:
+    #         a = time.time()
+    #         self._init_baskets_from_file(file)
+    #         b = time.time()
+    #         MlLogger.log_metrics(metrics={"t_from_file": (b - a) / 60}, step=0)
+    #         self._init_samples_in_baskets()
+    #         c = time.time()
+    #         MlLogger.log_metrics(metrics={"t_init_samples": (c - b) / 60}, step=0)
+    #         self._featurize_samples()
+    #         d = time.time()
+    #         MlLogger.log_metrics(metrics={"t_featurize_samples": (d - c) / 60}, step=0)
+    #         self._log_samples(3)
+    #     else:
+    #         self._init_baskets_from_file(file)
+    #         self._init_samples_in_baskets()
+    #         self._featurize_samples()
+    #         self._log_samples(3)
+    #     dataset, tensor_names = self._create_dataset()
+    #     return dataset, tensor_names
 
     #TODO remove useless from_inference flag after refactoring squad processing
-    def dataset_from_dicts(self, dicts, from_inference=False):
+    def dataset_from_dicts(self, dicts, index=None, from_inference=False):
         """
         Contains all the functionality to turn a list of dict objects into a PyTorch Dataset and a
         list of tensor names. This can be used for inference mode.
@@ -325,6 +325,8 @@ class Processor(ABC):
         ]
         self._init_samples_in_baskets()
         self._featurize_samples()
+        if index == 0:
+            self._log_samples(3)
         dataset, tensor_names = self._create_dataset()
         return dataset, list(tensor_names)
 
@@ -527,7 +529,7 @@ class NERProcessor(Processor):
         tokenizer,
         max_seq_len,
         data_dir,
-        labels=None,
+        label_list=None,
         metric=None,
         train_filename="train.txt",
         dev_filename="dev.txt",
@@ -551,8 +553,8 @@ class NERProcessor(Processor):
             tasks={}
         )
 
-        if metric and labels:
-            self.add_task("ner", metric, labels)
+        if metric and label_list:
+            self.add_task("ner", metric, label_list)
 
     def _file_to_dicts(self, file: str) -> [dict]:
         dicts = read_ner_file(filename=file, sep=self.delimiter)
@@ -718,7 +720,7 @@ class SquadProcessor(Processor):
         if metric and labels:
             self.add_task("question_answering", metric, labels)
 
-    def dataset_from_dicts(self, dicts, from_inference=False):
+    def dataset_from_dicts(self, dicts, index=None, from_inference=False):
         if(from_inference):
             dicts = [self._convert_inference(x) for x in dicts]
         self.baskets = [
@@ -727,6 +729,8 @@ class SquadProcessor(Processor):
         ]
         self._init_samples_in_baskets()
         self._featurize_samples()
+        if index == 0:
+            self._log_samples(3)
         dataset, tensor_names = self._create_dataset()
         return dataset, tensor_names
 

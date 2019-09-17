@@ -358,5 +358,5 @@ def grouper(iterable, n):
     >>> list(grouper('ABCDEFG'), 3)
     [['A', 'B', 'C'], ['D', 'E', 'F'], ['G']]
     """
-    iterable = iter(iterable)
+    iterable = iter(enumerate(iterable))
     return iter(lambda: list(islice(iterable, n)), [])

@@ -50,7 +50,9 @@ class DataSilo:
 
     @classmethod
     def _multiproc(cls, chunk, processor):
-        dataset = processor.dataset_from_dicts(chunk)
+        dicts = [d[1] for d in chunk]
+        index = chunk[0][0]
+        dataset = processor.dataset_from_dicts(dicts=dicts,index=index)
         return dataset
 
     def _get_dataset(self, filename):
@@ -60,7 +62,7 @@ class DataSilo:
         num_cpus = min(mp.cpu_count(), self.max_processes,  dict_batches_to_process) or 1
 
         with ExitStack() as stack:
-            p = stack.enter_context(mp.Pool(processes=8))
+            p = stack.enter_context(mp.Pool(processes=num_cpus))
 
             logger.info(
                 f"Got ya {num_cpus} parallel workers to convert dict chunks to datasets (chunksize = {self.multiprocessing_chunk_size})..."
