@@ -309,10 +309,10 @@ class Processor(ABC):
         dataset, tensor_names = self._create_dataset()
         return dataset, tensor_names
 
-    def dataset_from_dicts(self, dicts):
+    def dataset_from_dicts(self, dicts, from_inference=False):
         """
         Contains all the functionality to turn a list of dict objects into a PyTorch Dataset and a
-        list of tensor names. This is used for inference mode.
+        list of tensor names. This can be used for inference mode.
 
         :param dicts: List of dictionaries where each contains the data of one input sample.
         :type dicts: list of dicts
@@ -716,11 +716,12 @@ class SquadProcessor(Processor):
         if metric and labels:
             self.add_task("question_answering", metric, labels)
 
-    def dataset_from_dicts(self, dicts):
-        dicts_converted = [self._convert_inference(x) for x in dicts]
+    def dataset_from_dicts(self, dicts, from_inference=False):
+        if(from_inference):
+            dicts = [self._convert_inference(x) for x in dicts]
         self.baskets = [
             SampleBasket(raw=tr, id="infer - {}".format(i))
-            for i, tr in enumerate(dicts_converted)
+            for i, tr in enumerate(dicts)
         ]
         self._init_samples_in_baskets()
         self._featurize_samples()
