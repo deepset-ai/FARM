@@ -30,12 +30,12 @@ def test_doc_classification(caplog):
                                             max_seq_len=128,
                                             data_dir="samples/doc_class",
                                             train_filename="train-sample.tsv",
-                                            labels=["OTHER", "OFFENSE"],
+                                            label_list=["OTHER", "OFFENSE"],
                                             metric="f1_macro",
                                             dev_filename=None,
                                             test_filename=None,
                                             dev_split=0.1,
-                                            source_field="coarse_label")
+                                            label_column_name="coarse_label")
 
     data_silo = DataSilo(
         processor=processor,

@@ -29,7 +29,8 @@ def test_doc_regression(caplog):
                             max_seq_len=128,
                             data_dir="samples/doc_regr",
                             train_filename="train-sample.tsv",
-                            test_filename=None)
+                            test_filename=None,
+                            label_column_name="label")
 
     data_silo = DataSilo(
         processor=processor,
@@ -74,5 +75,5 @@ def test_doc_regression(caplog):
     model = Inferencer.load(save_dir)
     result = model.run_inference(dicts=basic_texts)
     print(result)
-    assert abs(float(result[0]["predictions"][0]["pred"]) - 4.2121115) <= 0.0001
-    assert abs(float(result[0]["predictions"][1]["pred"]) - 4.1987348) <= 0.0001
+    assert abs(float(result[0]["predictions"][0]["pred"]) - 6.6958) <= 0.001
+    assert abs(float(result[0]["predictions"][1]["pred"]) - 6.4885) <= 0.001

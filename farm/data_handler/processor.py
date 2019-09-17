@@ -221,7 +221,7 @@ class Processor(ABC):
                 config[key] = value
         return config
 
-    def add_task(self, name,  metric, label_list, source_field=None, label_name=None, task_type=None):
+    def add_task(self, name,  metric, label_list, label_column_name=None, label_name=None, task_type=None):
         if type(label_list) is not list:
             raise ValueError(f"Argument `label_list` must be of type list. Got: f{type(label_list)}")
 
@@ -233,7 +233,7 @@ class Processor(ABC):
             "metric": metric,
             "label_tensor_name": label_tensor_name,
             "label_name": label_name,
-            "source_field": source_field,
+            "label_column_name": label_column_name,
             "task_type": task_type
         }
 
@@ -309,6 +309,7 @@ class Processor(ABC):
         dataset, tensor_names = self._create_dataset()
         return dataset, tensor_names
 
+    #TODO remove useless from_inference flag after refactoring squad processing
     def dataset_from_dicts(self, dicts, from_inference=False):
         """
         Contains all the functionality to turn a list of dict objects into a PyTorch Dataset and a
@@ -361,7 +362,7 @@ class TextClassificationProcessor(Processor):
         tokenizer,
         max_seq_len,
         data_dir,
-        labels=None,
+        label_list=None,
         metric=None,
         train_filename="train.tsv",
         dev_filename=None,
@@ -370,7 +371,7 @@ class TextClassificationProcessor(Processor):
         delimiter="\t",
         quote_char="'",
         skiprows=None,
-        source_field="label",
+        label_column_name="label",
         multilabel=False,
         header=0,
         **kwargs,
@@ -394,15 +395,19 @@ class TextClassificationProcessor(Processor):
             tasks={},
         )
         #TODO raise info when no task is added due to missing "metric" or "labels" arg
-        if metric and labels:
+        if metric and label_list:
             if multilabel:
                 task_type = "multilabel_classification"
             else:
                 task_type = "classification"
-            self.add_task("text_classification", metric, labels, source_field=source_field, task_type=task_type)
+            self.add_task(name="text_classification",
+                          metric=metric,
+                          label_list=label_list,
+                          label_column_name=label_column_name,
+                          task_type=task_type)
 
     def _file_to_dicts(self, file: str) -> [dict]:
-        column_mapping = {task["source_field"]: task["label_name"] for task in self.tasks.values()}
+        column_mapping = {task["label_column_name"]: task["label_name"] for task in self.tasks.values()}
         dicts = read_tsv(
             filename=file,
             delimiter=self.delimiter,
@@ -789,13 +794,14 @@ class RegressionProcessor(Processor):
         delimiter="\t",
         quote_char="'",
         skiprows=None,
+        label_column_name="label",
+        label_name="regression_label",
         scaler_mean=None,
         scaler_scale=None,
         **kwargs,
     ):
 
         # Custom processor attributes
-        self.label_list = [scaler_mean, scaler_scale]
         self.delimiter = delimiter
         self.quote_char = quote_char
         self.skiprows = skiprows
@@ -809,34 +815,12 @@ class RegressionProcessor(Processor):
             dev_split=dev_split,
             data_dir=data_dir,
         )
-        # TODO: check name of columns in data file
 
-        self.add_task(name="regression", metric="mse",label_list= [scaler_mean, scaler_scale], task_type="regression")
+        self.add_task(name="regression", metric="mse", label_list= [scaler_mean, scaler_scale], label_column_name=label_column_name, task_type="regression", label_name=label_name)
 
-    def save(self, save_dir):
-        """
-        Saves the vocabulary to file and also creates a pkl file for the scaler and
-        a json file containing all the information needed to load the same processor.
-
-        :param save_dir: Directory where the files are to be saved
-        :type save_dir: str
-        """
-        os.makedirs(save_dir, exist_ok=True)
-        config = self.generate_config()
-        config["tokenizer"] = self.tokenizer.__class__.__name__
-        self.tokenizer.save_vocabulary(save_dir)
-        # TODO make this generic to other tokenizers. We will probably want an own abstract Tokenizer
-        config["lower_case"] = self.tokenizer.basic_tokenizer.do_lower_case
-        config["max_seq_len"] = self.max_seq_len
-        config["processor"] = self.__class__.__name__
-        config["scaler_mean"] = self.label_list[0]
-        config["scaler_scale"] = self.label_list[1]
-        output_config_file = os.path.join(save_dir, "processor_config.json")
-        with open(output_config_file, "w") as file:
-            json.dump(config, file)
 
     def _file_to_dicts(self, file: str) -> [dict]:
-        column_mapping = {task["source_field"]: task["label_name"] for task in self.tasks.values()}
+        column_mapping = {task["label_column_name"]: task["label_name"] for task in self.tasks.values()}
         dicts = read_tsv(
             rename_columns=column_mapping,
             filename=file,
@@ -844,6 +828,16 @@ class RegressionProcessor(Processor):
             skiprows=self.skiprows,
             quotechar=self.quote_char,
         )
+
+        # collect all labels and compute scaling stats
+        train_labels = []
+        for d in dicts:
+            train_labels.append(float(d[self.tasks["regression"]["label_name"]]))
+        scaler = StandardScaler()
+        scaler.fit(np.reshape(train_labels, (-1, 1)))
+        # add to label list in regression task
+        self.tasks["regression"]["label_list"] = [scaler.mean_.item(), scaler.scale_.item()]
+
         return dicts
 
     def _dict_to_samples(self, dict: dict, **kwargs) -> [Sample]:
@@ -851,7 +845,9 @@ class RegressionProcessor(Processor):
         tokenized = tokenize_with_metadata(dict["text"], self.tokenizer, self.max_seq_len)
         # Samples don't have labels during Inference mode
         if "label" in dict:
-            dict["label"] = float(dict["label"])
+            label = float(dict["label"])
+            scaled_label = (label - self.tasks["regression"]["label_list"][0]) / self.tasks["regression"]["label_list"][1]
+            dict["label"] = scaled_label
         return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
 
     def _sample_to_features(self, sample) -> dict:
@@ -859,64 +855,6 @@ class RegressionProcessor(Processor):
             sample=sample,
             tasks=self.tasks,
             max_seq_len=self.max_seq_len,
-            tokenizer=self.tokenizer,
-            target="regression"
+            tokenizer=self.tokenizer
         )
         return features
-
-    def _featurize_samples(self):
-        chunks_to_process = int(len(self.baskets) / self.multiprocessing_chunk_size)
-        num_cpus = min(mp.cpu_count(), self.max_processes, chunks_to_process) or 1
-        logger.info(
-            f"Got ya {num_cpus} parallel workers to featurize samples in baskets (chunksize = {self.multiprocessing_chunk_size}) ..."
-        )
-
-        # TODO the task style is not fully implemented here yet
-        regression_task = self.tasks["regression"]
-        label_name = regression_task["label_name"]
-        # label_list = regression_task["label_list"]
-        label_tensor_name = regression_task["label_tensor_name"]
-
-        try:
-            if "train" in self.baskets[0].id:
-                train_labels = []
-                for basket in self.baskets:
-                    for sample in basket.samples:
-                        train_labels.append(sample.clear_text[label_name])
-                scaler = StandardScaler()
-                scaler.fit(np.reshape(train_labels, (-1, 1)))
-                regression_task["label_list"] = [scaler.mean_.item(), scaler.scale_.item()]
-                # Create label_maps because featurize is called after Processor instantiation
-
-        except Exception as e:
-            logger.warning(f"Baskets not found: {e}")
-
-        with ExitStack() as stack:
-            if self.use_multiprocessing:
-                chunks_to_process = int(len(self.baskets) / self.multiprocessing_chunk_size)
-                num_cpus = min(mp.cpu_count(), self.max_processes, chunks_to_process) or 1
-                logger.info(
-                    f"Got ya {num_cpus} parallel workers to featurize samples in baskets (chunksize = {self.multiprocessing_chunk_size}) ..."
-                )
-                p = stack.enter_context(mp.Pool(processes=num_cpus))
-                all_features_gen = p.imap(
-                    self._multiproc_featurize,
-                    self.baskets,
-                    chunksize=self.multiprocessing_chunk_size,
-                )
-            else:
-                all_features_gen = map(
-                    self._multiproc_featurize,
-                    self.baskets
-                )
-
-            for basket_features, basket in tqdm(
-                zip(all_features_gen, self.baskets), total=len(self.baskets)
-            ):
-                for f, s in zip(basket_features, basket.samples):
-                    # Samples don't have labels during Inference mode
-                    if label_name in s.clear_text:
-                        label = s.clear_text[label_name]
-                        scaled_label = (float(label) - regression_task["label_list"][0]) / regression_task["label_list"][1]
-                        f[0][label_tensor_name] = scaled_label
-                    s.features = f

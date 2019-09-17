@@ -44,9 +44,9 @@ metric = "f1_macro"
 processor = TextClassificationProcessor(tokenizer=tokenizer,
                                         max_seq_len=128,
                                         data_dir="../data/germeval18",
-                                        labels=label_list,
+                                        label_list=label_list,
                                         metric=metric,
-                                        source_field="coarse_label"
+                                        label_column_name="coarse_label"
                                         )
 
 # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
