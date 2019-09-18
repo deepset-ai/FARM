@@ -4,12 +4,10 @@ from abc import ABC
 import random
 import logging
 import json
-import time
 import inspect
 from inspect import signature
 import numpy as np
 from sklearn.preprocessing import StandardScaler
-from contextlib import ExitStack
 
 from farm.data_handler.dataset import convert_features_to_dataset
 from farm.data_handler.input_features import (
@@ -258,7 +256,7 @@ class Processor(ABC):
         return baskets
 
     def _init_samples_in_baskets(self):
-        for basket in self.baskets:	
+        for basket in self.baskets:
             all_dicts = [b.raw for b in self.baskets]
             basket.samples = self._dict_to_samples(dict=basket.raw, all_dicts=all_dicts)
             for num, sample in enumerate(basket.samples):
@@ -328,7 +326,7 @@ class Processor(ABC):
         if index == 0:
             self._log_samples(3)
         dataset, tensor_names = self._create_dataset()
-        return dataset, list(tensor_names)
+        return dataset, tensor_names
 
     def _log_samples(self, n_samples):
         logger.info("*** Show {} random examples ***".format(n_samples))
@@ -701,10 +699,8 @@ class SquadProcessor(Processor):
         self.target = "classification"
         self.ph_output_type = "per_token_squad"
 
-        # custom processor attributes that are accessed during multiprocessing
-        # (everything you want to access in _dict_to_samples and _sample_to_features)
-        SquadProcessor.doc_stride = doc_stride
-        SquadProcessor.max_query_length = max_query_length
+        self.doc_stride = doc_stride
+        self.max_query_length = max_query_length
 
         super(SquadProcessor, self).__init__(
             tokenizer=tokenizer,
