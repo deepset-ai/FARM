@@ -186,7 +186,7 @@ class DataSilo:
             self.counts["test"] = 0
 
         seq_lens = []
-        for dataset in self.data["train"].dataset.datasets:
+        for dataset in self.data["train"].datasets:
             train_input_numpy = dataset[:][0].numpy()
             seq_lens.extend(np.sum(train_input_numpy != 0, axis=1))
         max_seq_len = dataset[:][0].shape[1]
