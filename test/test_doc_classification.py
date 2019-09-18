@@ -32,9 +32,9 @@ def test_doc_classification(caplog):
                                             train_filename="train-sample.tsv",
                                             label_list=["OTHER", "OFFENSE"],
                                             metric="f1_macro",
-                                            dev_filename=None,
+                                            dev_filename="test-sample.tsv",
                                             test_filename=None,
-                                            dev_split=0.1,
+                                            dev_split=0.0,
                                             label_column_name="coarse_label")
 
     data_silo = DataSilo(

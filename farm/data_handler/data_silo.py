@@ -4,11 +4,12 @@ import multiprocessing as mp
 import os
 from contextlib import ExitStack
 from functools import partial
+import random
 
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
-from torch.utils.data import ConcatDataset, DataLoader, random_split
+from torch.utils.data import ConcatDataset, DataLoader, random_split, Subset, Dataset
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
 from tqdm import tqdm
@@ -57,6 +58,11 @@ class DataSilo:
 
     def _get_dataset(self, filename):
         dicts = self.processor._file_to_dicts(filename)
+        #shuffle list of dicts here if we later want to have a random dev set splitted from train set
+        if filename == self.processor.train_filename:
+            if not self.processor.dev_filename:
+                if self.processor.dev_split > 0.0:
+                    dicts = random.shuffle(dicts)
 
         dict_batches_to_process = int(len(dicts) / self.multiprocessing_chunk_size)
         num_cpus = min(mp.cpu_count(), self.max_processes,  dict_batches_to_process) or 1
@@ -162,13 +168,37 @@ class DataSilo:
         n_train = len(self.data["train"]) - n_dev
 
         # Todo: Seed
-        train_dataset, dev_dataset = random_split(self.data["train"], [n_train, n_dev])
+        # if(isinstance(self.data["train"], Dataset)):
+        #     train_dataset, dev_dataset = random_split(self.data["train"], [n_train, n_dev])
+        # else:
+        train_dataset, dev_dataset = self.random_split_ConcatDataset(self.data["train"], lengths=[n_train, n_dev])
         self.data["train"] = train_dataset
-        self.data["dev"] = dev_dataset
+        if(len(dev_dataset) > 0):
+            self.data["dev"] = dev_dataset
+        else:
+            logger.warning("No dev set created. Maybe adjust the dev_split parameter or the multiprocessing chunk size")
 
         logger.info(
-            f"Took {n_dev} samples out of train set to create dev set (dev split = {self.processor.dev_split})"
+            f"Took {len(dev_dataset)} samples out of train set to create dev set (dev split is roughly {self.processor.dev_split})"
         )
+
+    def random_split_ConcatDataset(self, ds, lengths):
+        """
+        Roughly split a Concatdataset into non-overlapping new datasets of given lengths.
+        Samples inside Concatdataset should already be shuffled
+
+        Arguments:
+            ds (Dataset): Dataset to be split
+            lengths (sequence): lengths of splits to be produced
+        """
+        if sum(lengths) != len(ds):
+            raise ValueError("Sum of input lengths does not equal the length of the input dataset!")
+
+        idx_dataset = np.where(np.array(ds.cumulative_sizes) > lengths[0])[0][0]
+
+        train = ConcatDataset(ds.datasets[:idx_dataset])
+        test = ConcatDataset(ds.datasets[idx_dataset:])
+        return train, test
 
     def _calculate_statistics(self,):
         self.counts = {
