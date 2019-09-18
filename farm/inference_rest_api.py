@@ -1,10 +1,12 @@
+import json
 import logging
 from pathlib import Path
-import json
+
 import numpy as np
 from flask import Flask, request, make_response
-from flask_restplus import Api, Resource
 from flask_cors import CORS
+from flask_restplus import Api, Resource
+
 from farm.infer import Inferencer
 
 logger = logging.getLogger(__name__)
@@ -25,7 +27,7 @@ for model_dir in MODELS_DIRS:
 
 INFERENCERS = {}
 for idx, model_dir in enumerate(model_paths):
-    INFERENCERS[idx + 1] = Inferencer(str(model_dir))
+    INFERENCERS[idx + 1] = Inferencer.load(str(model_dir))
 
 app = Flask(__name__)
 CORS(app)
