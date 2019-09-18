@@ -13,6 +13,7 @@ from farm.infer import Inferencer
 
 def test_lm_finetuning(caplog):
     caplog.set_level(logging.CRITICAL)
+
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)
     n_epochs = 1
@@ -78,4 +79,8 @@ def test_lm_finetuning(caplog):
     result = model.extract_vectors(dicts=basic_texts)
     assert result[0]["context"] == ['Farmer', "'", 's', 'life', 'is', 'great', '.']
     assert result[0]["vec"].shape == (768,)
-    assert (result[0]["vec"][0] - 0.3826) < 0.01
+    assert (result[0]["vec"][0] - 0.36556) < 0.01
+
+
+# if(__name__=="__main__"):
+#     test_lm_finetuning()

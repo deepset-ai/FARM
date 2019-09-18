@@ -615,7 +615,7 @@ class BertStyleLMProcessor(Processor):
 
         self.add_task("lm", "acc", list(self.tokenizer.vocab))
         if self.next_sent_pred:
-            self.add_task("nextsentence", "acc", [False, True])
+            self.add_task("nextsentence", "acc", ["False", "True"])
 
 
     def _file_to_dicts(self, file: str) -> list:

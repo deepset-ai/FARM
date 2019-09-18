@@ -13,7 +13,7 @@ from farm.train import Trainer
 from farm.utils import set_all_seeds, initialize_device_settings
 
 def test_doc_classification(caplog):
-    #caplog.set_level(logging.CRITICAL)
+    caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=False)
@@ -85,7 +85,7 @@ def test_doc_classification(caplog):
         {"text": "18 Menschen verschleppt. Kabul – Nach einem Hubschrauber-Absturz im Norden Afghanistans haben Sicherheitskräfte am Mittwoch versucht"}
     ]
     #TODO enable loading here again after we have finished migration towards "processor.tasks"
-    #model = Inferencer.load(save_dir)
+    #inf = Inferencer.load(save_dir)
     inf = Inferencer(model=model, processor=processor)
     result = inf.run_inference(dicts=basic_texts)
     assert result[0]["predictions"][0]["label"] == "OTHER"
@@ -97,3 +97,6 @@ def test_doc_classification(caplog):
     pprint(list(zip(result, result_2)))
     for r1, r2 in list(zip(result, result_2)):
         assert r1 == r2
+
+# if(__name__=="__main__"):
+#     test_doc_classification()

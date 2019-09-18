@@ -19,8 +19,8 @@ def test_ner(caplog):
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=False)
     n_epochs = 1
-    batch_size = 8
-    evaluate_every = 50
+    batch_size = 4
+    evaluate_every = 1
     lang_model = "bert-base-german-cased"
 
     tokenizer = BertTokenizer.from_pretrained(
@@ -76,4 +76,7 @@ def test_ner(caplog):
     model = Inferencer.load(save_dir)
     result = model.run_inference(dicts=basic_texts)
     assert result[0]["predictions"][0]["context"] == "sagte"
-    assert abs(result[0]["predictions"][0]["probability"] - 0.213869) <= 0.0001
+    assert abs(result[0]["predictions"][0]["probability"] - 0.20208) <= 0.001
+
+# if(__name__=="__main__"):
+#     test_ner()

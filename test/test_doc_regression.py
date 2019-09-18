@@ -18,7 +18,7 @@ def test_doc_regression(caplog):
     device, n_gpu = initialize_device_settings(use_cuda=False)
     n_epochs = 1
     batch_size = 8
-    evaluate_every = 30
+    evaluate_every = 5
     lang_model = "bert-base-cased"
 
     tokenizer = BertTokenizer.from_pretrained(

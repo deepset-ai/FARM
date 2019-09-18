@@ -118,6 +118,10 @@ class Evaluator:
                     result["report"] = report_fn(
                         label_all[head_num], preds_all[head_num]
                     )
+                elif head.ph_output_type == "per_token":
+                    result["report"] = report_fn(
+                        label_all[head_num], preds_all[head_num]
+                    )
                 else:
                     result["report"] = report_fn(
                         label_all[head_num], preds_all[head_num], digits=4, target_names=head.label_list)
