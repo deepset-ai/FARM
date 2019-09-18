@@ -113,7 +113,7 @@ class DataSilo:
             self.data["test"] = None
 
         # derive stats and meta data
-        # self._calculate_statistics()
+        self._calculate_statistics()
         #self.calculate_class_weights()
         self._initialize_data_loaders()
 
@@ -185,12 +185,14 @@ class DataSilo:
         else:
             self.counts["test"] = 0
 
-        train_input_numpy = self.data["train"][:][0].numpy()
-        seq_lens = np.sum(train_input_numpy != 0, axis=1)
-        self.ave_len = np.mean(seq_lens)
-        max_seq_len = self.data["train"][:][0].shape[1]
-        self.clipped = np.mean(seq_lens == max_seq_len)
+        seq_lens = []
+        for dataset in self.data["train"].dataset.datasets:
+            train_input_numpy = dataset[:][0].numpy()
+            seq_lens.extend(np.sum(train_input_numpy != 0, axis=1))
+        max_seq_len = dataset[:][0].shape[1]
 
+        self.clipped = np.mean(np.array(seq_lens) == max_seq_len)
+        self.ave_len = np.mean(seq_lens)
 
         logger.info("Examples in train: {}".format(self.counts["train"]))
         logger.info("Examples in dev  : {}".format(self.counts["dev"]))
