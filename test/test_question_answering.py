@@ -19,7 +19,7 @@ def test_qa(caplog):
     device, n_gpu = initialize_device_settings(use_cuda=False)
     batch_size = 32
     n_epochs = 1
-    evaluate_every = 100
+    evaluate_every = 2
     base_LM_model = "bert-base-cased"
 
     tokenizer = BertTokenizer.from_pretrained(
@@ -80,3 +80,5 @@ def test_qa(caplog):
     result = model.run_inference(dicts=QA_input)
     assert result[0]["predictions"][0]["end"] == 65
 
+# if(__name__=="__main__"):
+#     test_qa()

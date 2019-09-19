@@ -11,7 +11,7 @@ def convert_features_to_dataset(features):
                      names of the type of feature and the keys are the features themselves.
     :Return: a Pytorch dataset and a list of tensor names.
     """
-    tensor_names = features[0].keys()
+    tensor_names = list(features[0].keys())
     all_tensors = []
     for t_name in tensor_names:
         try:

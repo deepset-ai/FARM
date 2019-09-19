@@ -28,9 +28,9 @@
     "test_filename":    {"value": null, "default": "test.tsv",                  "desc": "Filename for testing. It is the submission file from competition."},
     "delimiter":        {"value": null, "default": "\t",                        "desc": "Filename for testing. It is the submission file from competition."},
     "columns":          {"value": null, "default": ["text", "label", "unused"], "desc": "Columns specifying position of text and labels in data files."},
-    "labels":           {"value": null, "default": ["OTHER", "OFFENSE"],        "desc": "List of possible labels."},
+    "label_list":           {"value": null, "default": ["OTHER", "OFFENSE"],        "desc": "List of possible labels."},
     "metric":           {"value": null, "default": "f1_macro",                 "desc": "Metric used. The competition uses macro averaged f1 score."},
-    "source_field":     {"value": null, "default": "coarse_label", "desc":"Name of field that the label comes from in datasource"},
+    "label_column_name":     {"value": null, "default": "coarse_label", "desc":"Name of field that the label comes from in datasource"},
     "skiprows":         {"value": null, "default": null,          "desc":""}
   },
   "parameter": {

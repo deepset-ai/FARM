@@ -189,8 +189,8 @@ class RegressionHead(PredictionHead):
 
     def logits_to_preds(self, logits, **kwargs):
         preds = logits.cpu().numpy()
+        #rescale predictions to actual label distribution
         preds = [x * self.label_list[1] + self.label_list[0] for x in preds]
-        print(self.label_list[1])
         return preds
 
     def prepare_labels(self, **kwargs):

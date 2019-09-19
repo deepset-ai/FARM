@@ -45,10 +45,12 @@ metric = "acc"
 processor = TextClassificationProcessor(tokenizer=tokenizer,
                                         max_seq_len=128,
                                         data_dir="../data/toxic-comments",
-                                        labels=label_list,
+                                        label_list=label_list,
+                                        label_column_name="label",
                                         metric=metric,
                                         quote_char='"',
                                         multilabel=True,
+                                        train_filename="train.tsv",
                                         dev_filename="val.tsv",
                                         test_filename=None,
                                         dev_split=0
