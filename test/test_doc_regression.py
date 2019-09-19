@@ -18,7 +18,7 @@ def test_doc_regression(caplog):
     device, n_gpu = initialize_device_settings(use_cuda=False)
     n_epochs = 1
     batch_size = 8
-    evaluate_every = 30
+    evaluate_every = 5
     lang_model = "bert-base-cased"
 
     tokenizer = BertTokenizer.from_pretrained(
@@ -29,7 +29,9 @@ def test_doc_regression(caplog):
                             max_seq_len=128,
                             data_dir="samples/doc_regr",
                             train_filename="train-sample.tsv",
-                            test_filename=None)
+                            dev_filename="test-sample.tsv",
+                            test_filename=None,
+                            label_column_name="label")
 
     data_silo = DataSilo(
         processor=processor,
@@ -74,5 +76,5 @@ def test_doc_regression(caplog):
     model = Inferencer.load(save_dir)
     result = model.run_inference(dicts=basic_texts)
     print(result)
-    assert abs(float(result[0]["predictions"][0]["pred"]) - 4.2121115) <= 0.0001
-    assert abs(float(result[0]["predictions"][1]["pred"]) - 4.1987348) <= 0.0001
+    assert abs(float(result[0]["predictions"][0]["pred"]) - 6.6958) <= 1
+    assert abs(float(result[0]["predictions"][1]["pred"]) - 6.4885) <= 1

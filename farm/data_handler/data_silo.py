@@ -1,28 +1,36 @@
-import logging
-
-import os
 import copy
+import logging
+import multiprocessing as mp
+import os
+from contextlib import ExitStack
+from functools import partial
+import random
+
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.utils.class_weight import compute_class_weight
-from torch.utils.data import DataLoader
-from torch.utils.data import random_split
+from torch.utils.data import ConcatDataset, DataLoader, random_split, Subset, Dataset
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
+from tqdm import tqdm
+
 from farm.data_handler.dataloader import NamedDataLoader
-from farm.utils import MLFlowLogger as MlLogger
 from farm.data_handler.processor import Processor
+from farm.data_handler.utils import grouper
+from farm.utils import MLFlowLogger as MlLogger
+from farm.utils import log_ascii_workers
 from farm.visual.ascii.images import TRACTOR_SMALL
+
 logger = logging.getLogger(__name__)
 
 
-class DataSilo(object):
+class DataSilo:
     """ Generates and stores PyTorch DataLoader objects for the train, dev and test datasets.
     Relies upon functionality in the processor to do the conversion of the data. Will also
     calculate and display some statistics.
      """
 
-    def __init__(self, processor, batch_size, distributed=False):
+    def __init__(self, processor, batch_size, distributed=False, multiprocessing_chunk_size=100):
         """
         :param processor: A dataset specific Processor object which will turn input (file or dict) into a Pytorch Dataset.
         :type processor: Processor
@@ -37,7 +45,48 @@ class DataSilo(object):
         self.data = {}
         self.batch_size = batch_size
         self.class_weights = None
+        self.multiprocessing_chunk_size = multiprocessing_chunk_size
+        self.max_processes = 128
         self._load_data()
+
+    @classmethod
+    def _multiproc(cls, chunk, processor):
+        dicts = [d[1] for d in chunk]
+        index = chunk[0][0]
+        dataset = processor.dataset_from_dicts(dicts=dicts,index=index)
+        return dataset
+
+    def _get_dataset(self, filename):
+        dicts = self.processor._file_to_dicts(filename)
+        #shuffle list of dicts here if we later want to have a random dev set splitted from train set
+        if filename == self.processor.train_filename:
+            if not self.processor.dev_filename:
+                if self.processor.dev_split > 0.0:
+                    dicts = random.shuffle(dicts)
+
+        dict_batches_to_process = int(len(dicts) / self.multiprocessing_chunk_size)
+        num_cpus = min(mp.cpu_count(), self.max_processes,  dict_batches_to_process) or 1
+
+        with ExitStack() as stack:
+            p = stack.enter_context(mp.Pool(processes=num_cpus))
+
+            logger.info(
+                f"Got ya {num_cpus} parallel workers to convert dict chunks to datasets (chunksize = {self.multiprocessing_chunk_size})..."
+            )
+            log_ascii_workers(num_cpus, logger)
+
+            results = p.imap(
+                partial(self._multiproc, processor=self.processor),
+                grouper(dicts, self.multiprocessing_chunk_size),
+                chunksize=1,
+            )
+
+            datasets = []
+            for dataset, tensor_names in tqdm(results, total=len(dicts)/self.multiprocessing_chunk_size):
+                datasets.append(dataset)
+            
+            concat_datasets = ConcatDataset(datasets)
+            return concat_datasets, tensor_names
 
     def _load_data(self):
         logger.info("\nLoading data into the data silo ..."
@@ -45,7 +94,7 @@ class DataSilo(object):
         # train data
         train_file = os.path.join(self.processor.data_dir, self.processor.train_filename)
         logger.info("Loading train set from: {} ".format(train_file))
-        self.data["train"], self.tensor_names = self.processor.dataset_from_file(train_file)
+        self.data["train"], self.tensor_names = self._get_dataset(train_file)
 
         # dev data
         if not self.processor.dev_filename:
@@ -58,13 +107,13 @@ class DataSilo(object):
         else:
             dev_file = os.path.join(self.processor.data_dir, self.processor.dev_filename)
             logger.info("Loading dev set from: {}".format(dev_file))
-            self.data["dev"], _ = self.processor.dataset_from_file(dev_file)
+            self.data["dev"], _ = self._get_dataset(dev_file)
 
         # test data
         if self.processor.test_filename:
             test_file = os.path.join(self.processor.data_dir, self.processor.test_filename)
             logger.info("Loading test set from: {}".format(test_file))
-            self.data["test"], _ = self.processor.dataset_from_file(test_file)
+            self.data["test"], _ = self._get_dataset(test_file)
         else:
             logger.info("No test set is being loaded")
             self.data["test"] = None
@@ -73,7 +122,6 @@ class DataSilo(object):
         self._calculate_statistics()
         #self.calculate_class_weights()
         self._initialize_data_loaders()
-        # fmt: on
 
     def _initialize_data_loaders(self):
         if self.distributed:
@@ -120,13 +168,37 @@ class DataSilo(object):
         n_train = len(self.data["train"]) - n_dev
 
         # Todo: Seed
-        train_dataset, dev_dataset = random_split(self.data["train"], [n_train, n_dev])
+        # if(isinstance(self.data["train"], Dataset)):
+        #     train_dataset, dev_dataset = random_split(self.data["train"], [n_train, n_dev])
+        # else:
+        train_dataset, dev_dataset = self.random_split_ConcatDataset(self.data["train"], lengths=[n_train, n_dev])
         self.data["train"] = train_dataset
-        self.data["dev"] = dev_dataset
+        if(len(dev_dataset) > 0):
+            self.data["dev"] = dev_dataset
+        else:
+            logger.warning("No dev set created. Maybe adjust the dev_split parameter or the multiprocessing chunk size")
 
         logger.info(
-            f"Took {n_dev} samples out of train set to create dev set (dev split = {self.processor.dev_split})"
+            f"Took {len(dev_dataset)} samples out of train set to create dev set (dev split is roughly {self.processor.dev_split})"
         )
+
+    def random_split_ConcatDataset(self, ds, lengths):
+        """
+        Roughly split a Concatdataset into non-overlapping new datasets of given lengths.
+        Samples inside Concatdataset should already be shuffled
+
+        Arguments:
+            ds (Dataset): Dataset to be split
+            lengths (sequence): lengths of splits to be produced
+        """
+        if sum(lengths) != len(ds):
+            raise ValueError("Sum of input lengths does not equal the length of the input dataset!")
+
+        idx_dataset = np.where(np.array(ds.cumulative_sizes) > lengths[0])[0][0]
+
+        train = ConcatDataset(ds.datasets[:idx_dataset])
+        test = ConcatDataset(ds.datasets[idx_dataset:])
+        return train, test
 
     def _calculate_statistics(self,):
         self.counts = {
@@ -143,12 +215,14 @@ class DataSilo(object):
         else:
             self.counts["test"] = 0
 
-        train_input_numpy = self.data["train"][:][0].numpy()
-        seq_lens = np.sum(train_input_numpy != 0, axis=1)
-        self.ave_len = np.mean(seq_lens)
-        max_seq_len = self.data["train"][:][0].shape[1]
-        self.clipped = np.mean(seq_lens == max_seq_len)
+        seq_lens = []
+        for dataset in self.data["train"].datasets:
+            train_input_numpy = dataset[:][0].numpy()
+            seq_lens.extend(np.sum(train_input_numpy != 0, axis=1))
+        max_seq_len = dataset[:][0].shape[1]
 
+        self.clipped = np.mean(np.array(seq_lens) == max_seq_len)
+        self.ave_len = np.mean(seq_lens)
 
         logger.info("Examples in train: {}".format(self.counts["train"]))
         logger.info("Examples in dev  : {}".format(self.counts["dev"]))

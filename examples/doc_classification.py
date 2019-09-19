@@ -44,9 +44,9 @@ metric = "f1_macro"
 processor = TextClassificationProcessor(tokenizer=tokenizer,
                                         max_seq_len=128,
                                         data_dir="../data/germeval18",
-                                        labels=label_list,
+                                        label_list=label_list,
                                         metric=metric,
-                                        source_field="coarse_label"
+                                        label_column_name="coarse_label"
                                         )
 
 # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
@@ -58,7 +58,10 @@ data_silo = DataSilo(
 # a) which consists of a pretrained language model as a basis
 language_model = Bert.load(lang_model)
 # b) and a prediction head on top that is suited for our task => Text classification
-prediction_head = TextClassificationHead(layer_dims=[768, len(processor.tasks["text_classification"]["label_list"])])
+prediction_head = TextClassificationHead(layer_dims=[768, len(processor.tasks["text_classification"]["label_list"])],
+                                         class_weights=data_silo.calculate_class_weights(task_name="text_classification"))
+
+
 
 model = AdaptiveModel(
     language_model=language_model,

@@ -37,11 +37,11 @@ tokenizer = BertTokenizer.from_pretrained(
 )
 
 # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
-processor = NERProcessor(
-    tokenizer=tokenizer, max_seq_len=128, data_dir="../data/conll03-de"
-)
 ner_labels = ["[PAD]", "X", "O", "B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-OTH", "I-OTH"]
-processor.add_task("ner", "seq_f1", ner_labels)
+
+processor = NERProcessor(
+    tokenizer=tokenizer, max_seq_len=128, data_dir="../data/conll03-de", metric="seq_f1",label_list=ner_labels
+)
 
 # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
 data_silo = DataSilo(processor=processor, batch_size=batch_size)
