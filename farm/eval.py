@@ -129,7 +129,6 @@ class Evaluator:
                         label_all[head_num],
                         preds_all[head_num],
                         digits=4,
-                        labels=range(len(head.label_list)),
                         target_names=head.label_list)
 
             all_results.append(result)
