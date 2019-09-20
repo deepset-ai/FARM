@@ -6,7 +6,7 @@ version: 2
 jobs:
   build:
     docker:
-      - image: circleci/python:3.7.4-stretch
+      - image: circleci/python:3.7.4
 
     working_directory: ~/repo
 
