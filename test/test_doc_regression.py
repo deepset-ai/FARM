@@ -27,7 +27,7 @@ def test_doc_regression(caplog):
         do_lower_case=False)
 
     processor = RegressionProcessor(tokenizer=tokenizer,
-                            max_seq_len=32,
+                            max_seq_len=8,
                             data_dir="samples/doc_regr",
                             train_filename="train-sample.tsv",
                             dev_filename="test-sample.tsv",
