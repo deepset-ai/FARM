@@ -1,5 +1,4 @@
 import logging
-from pprint import pprint
 import numpy as np
 
 from farm.data_handler.data_silo import DataSilo
@@ -83,5 +82,5 @@ def test_doc_classification(caplog):
     assert isinstance(result[0]["predictions"][0]["probability"],np.float32)
 
 
-# if(__name__=="__main__"):
-#     test_doc_classification()
+if(__name__=="__main__"):
+    test_doc_classification()
