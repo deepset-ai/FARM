@@ -1,5 +1,7 @@
 import logging
-import torch
+import resource
+
+import torch.multiprocessing as mp
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
@@ -7,5 +9,9 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-# fix for a file descriptor issue when using multiprocessing: https://github.com/pytorch/pytorch/issues/973
-torch.multiprocessing.set_sharing_strategy("file_system")
+# https://pytorch.org/docs/stable/multiprocessing.html#sharing-strategies
+if "file_descriptor" in mp.get_all_sharing_strategies():
+    mp.set_sharing_strategy("file_descriptor")
+
+    rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
+    resource.setrlimit(resource.RLIMIT_NOFILE, (10_000, rlimit[1]))
