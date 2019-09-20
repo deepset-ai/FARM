@@ -29,7 +29,7 @@ def test_qa(caplog):
     processor = SquadProcessor(
         tokenizer=tokenizer,
         max_seq_len=16,
-        max_query_length=8,
+        max_query_length=4,
         train_filename="train-sample.json",
         dev_filename="dev-sample.json",
         test_filename=None,

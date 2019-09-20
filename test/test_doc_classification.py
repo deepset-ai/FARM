@@ -27,7 +27,7 @@ def test_doc_classification(caplog):
         do_lower_case=False)
 
     processor = TextClassificationProcessor(tokenizer=tokenizer,
-                                            max_seq_len=32,
+                                            max_seq_len=8,
                                             data_dir="samples/doc_class",
                                             train_filename="train-sample.tsv",
                                             label_list=["OTHER", "OFFENSE"],
