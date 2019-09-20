@@ -32,7 +32,7 @@ def test_ner(caplog):
                   "I-OTH"]
 
     processor = NERProcessor(
-        tokenizer=tokenizer, max_seq_len=32, data_dir="samples/ner",train_filename="train-sample.txt",
+        tokenizer=tokenizer, max_seq_len=16, data_dir="samples/ner",train_filename="train-sample.txt",
         dev_filename="dev-sample.txt",test_filename=None, delimiter=" ", label_list=ner_labels, metric="seq_f1"
     )
 

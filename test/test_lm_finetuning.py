@@ -32,7 +32,7 @@ def test_lm_finetuning(caplog):
         test_filename="test-sample.txt",
         dev_filename=None,
         tokenizer=tokenizer,
-        max_seq_len=32,
+        max_seq_len=16,
     )
     data_silo = DataSilo(processor=processor, batch_size=batch_size)
 
