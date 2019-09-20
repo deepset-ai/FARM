@@ -8,6 +8,10 @@
 
 (**F**\ ramework for **A**\ dapting **R**\ epresentation **M**\ odels)
 
+.. image:: https://circleci.com/gh/deepset-ai/FARM.svg?style=svg
+    :target: https://circleci.com/gh/deepset-ai/FARM
+    :alt: Build
+
 .. image:: https://img.shields.io/github/release/deepset-ai/farm
 	:target: https://github.com/deepset-ai/FARM/releases
 	:alt: Release
