@@ -6,10 +6,6 @@ Erzählung Erzählung NN I-NC O
 oder oder KON I-NC O
 : : $. O O
 
-Schwierigkeiten Schwierigkeit NN I-NC O
-beim beim APPRART I-PC O
-nachvollziehenden nachvollziehend ADJA I-NC O
-Verstehen Verstehen NN I-NC O
 Albrecht Albrecht NE B-NC I-PER
 Lehmann Lehmann NE I-NC I-PER
 läßt lassen VVFIN I-VC O
@@ -25,12 +21,6 @@ zu zu APPR I-PC O
 Wort Wort NN I-NC O
 kommen kommen VVFIN I-VC O
 
-Diskussionen Diskussion NN I-NC O
-über über APPR I-PC O
-Asylbewerber- Asylbewerber- TRUNC I-NC O
-, , $, O O
-Aussiedler- Aussiedler- TRUNC I-NC O
-und und KON I-NC O
 Einwanderungsfragen Einwanderungsfrage|Einwanderungsfragen NN I-NC O
 haben haben VAFIN I-VC O
 in in APPR I-PC O
@@ -45,22 +35,6 @@ Medien Medium NN I-NC O
 beherrscht beherrschen VVPP I-VC O
 . . $. O O
 
-Es es PPER I-NC O
-ist sein VAFIN I-VC O
-deswegen deswegen PAV O O
-momentan momentan ADJD I-NC O
-nicht nicht PTKNEG O O
-schwer schwer ADJD O O
-, , $, O O
-mit mit APPR I-PC O
-der d ART I-NC O
-Publikation Publikation NN I-NC O
-eines ein ART B-NC O
-Buches Buch NN I-NC O
-über über APPR I-PC O
-Flüchtlinge Flüchtling NN I-NC O
-und und KON O O
-Vertriebene Vertriebene NN I-NC O
 in in APPR I-PC O
 Westdeutschland Westdeutschland NE I-NC I-LOC
 von von APPR I-PC O
@@ -71,3 +45,4 @@ Aufmerksamkeit Aufmerksamkeit NN I-NC O
 zu zu PTKZU I-VC O
 erregen erregen VVINF I-VC O
 . . $. O O
+
