@@ -62,6 +62,7 @@ def read_ner_file(filename, sep="\t", **kwargs):
     if not (os.path.exists(filename)):
         logger.info(f" Couldn't find {filename} locally. Trying to download ...")
         _download_extract_downstream_data(filename)
+
     f = open(filename)
 
     data = []
@@ -79,6 +80,9 @@ def read_ner_file(filename, sep="\t", **kwargs):
         label.append(splits[-1][:-1])
 
     if len(sentence) > 0:
+        if(label[-1] == ""):
+            logger.error(f"The last NER label: '{splits[-1]}'  in your dataset might have been converted incorrectly. Please insert a newline at the end of the file.")
+            label[-1] = "O"
         data.append({"text": " ".join(sentence), "ner_label": label})
     return data
 

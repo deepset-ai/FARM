@@ -1,4 +1,5 @@
 import logging
+import numpy as np
 
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import BertStyleLMProcessor
@@ -15,9 +16,9 @@ def test_lm_finetuning(caplog):
     caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
-    device, n_gpu = initialize_device_settings(use_cuda=True)
+    device, n_gpu = initialize_device_settings(use_cuda=False)
     n_epochs = 1
-    batch_size = 5
+    batch_size = 1
     evaluate_every = 2
     lang_model = "bert-base-cased"
 
@@ -31,7 +32,7 @@ def test_lm_finetuning(caplog):
         test_filename="test-sample.txt",
         dev_filename=None,
         tokenizer=tokenizer,
-        max_seq_len=64,
+        max_seq_len=12,
     )
     data_silo = DataSilo(processor=processor, batch_size=batch_size)
 
@@ -79,9 +80,9 @@ def test_lm_finetuning(caplog):
     result = model.extract_vectors(dicts=basic_texts)
     assert result[0]["context"] == ['Farmer', "'", 's', 'life', 'is', 'great', '.']
     assert result[0]["vec"].shape == (768,)
-    # TODO check why reults vary accross runs with same seed
-    #assert abs(result[0]["vec"][0] - 0.48960) < 0.01, str(f"Result should be {result[0]['vec'][0]}")
+    # TODO check why results vary accross runs with same seed
+    assert isinstance(result[0]["vec"][0], np.float32)
 
 
-# if(__name__=="__main__"):
-#     test_lm_finetuning()
+if(__name__=="__main__"):
+    test_lm_finetuning()

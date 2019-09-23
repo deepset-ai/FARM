@@ -13,7 +13,7 @@ def squad_subsample():
     with open('../data/squad20/dev-v2.0.json') as json_file:
         data = json.load(json_file)
 
-    ss = data["data"][0]["paragraphs"][:3]
+    ss = data["data"][0]["paragraphs"][:1]
     sample = {}
     sample["data"] = [{"paragraphs": ss}]
     # just creating same train and dev files
@@ -49,7 +49,7 @@ def germeval18_subsample():
 
 if __name__=="__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('--task', type=str, default='', help="Which task to create testdata for: qa, ner, doc_class")
+    parser.add_argument('--task', type=str, default='qa', help="Which task to create testdata for: qa, ner, doc_class")
     args = parser.parse_args()
     if(args.task == "qa"):
         logger.info("Creating test data for Question Answering, please make sure the original data is already downloaded and in data/squad20")

@@ -210,7 +210,7 @@ class RegressionHead(PredictionHead):
             res["predictions"].append(
                 {
                     "context": f"{context}",
-                    "pred": f"{pred[0]}"
+                    "pred": pred[0]
                 }
             )
         return res
