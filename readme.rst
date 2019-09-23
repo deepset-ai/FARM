@@ -8,6 +8,10 @@
 
 (**F**\ ramework for **A**\ dapting **R**\ epresentation **M**\ odels)
 
+.. image:: https://travis-ci.org/deepset-ai/FARM.svg?branch=master
+	:target: https://travis-ci.org/deepset-ai/FARM
+	:alt: Build
+
 .. image:: https://img.shields.io/github/release/deepset-ai/farm
 	:target: https://github.com/deepset-ai/FARM/releases
 	:alt: Release

@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 try:
     from tensorboardX import SummaryWriter
 except ImportError:
-    logger.warn("TensorboardX not installed. Required if you use tensorboard logger.")
+    logger.warning("TensorboardX not installed. Required if you use tensorboard logger.")
 
 
 def set_all_seeds(seed, n_gpu=0):

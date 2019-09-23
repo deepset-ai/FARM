@@ -228,7 +228,7 @@ class DataSilo:
         logger.info("Examples in test : {}".format(self.counts["test"]))
         logger.info("")
         logger.info("Max sequence length:     {}".format(max(seq_lens)))
-        logger.info("Average sequence length: {}".format(self.ave_len))
+        logger.info("Average sequence length after clipping: {}".format(self.ave_len))
         logger.info("Proportion clipped:      {}".format(self.clipped))
         if self.clipped > 0.5:
             logger.info("[Farmer's Tip] {}% of your samples got cut down to {} tokens. "
