@@ -64,8 +64,13 @@ def compute_metrics(metric, preds, labels):
 
 def squad_EM(preds, labels):
     # scoring in tokenized space, so results to public leaderboard will vary
-    pred_start = torch.cat(preds[::2])
-    pred_end = torch.cat(preds[1::2])
+    # pred_start = torch.cat(preds[::2])
+    # pred_end = torch.cat(preds[1::2])
+    # label_start = torch.cat(labels[::2])
+    # label_end = torch.cat(labels[1::2])
+
+    pred_start = np.concatenate(preds[::2])
+    pred_end = np.concatenate(preds[1::2])
     label_start = torch.cat(labels[::2])
     label_end = torch.cat(labels[1::2])
     assert len(label_start) == len(pred_start)
@@ -79,8 +84,11 @@ def squad_EM(preds, labels):
 
 def squad_f1(preds, labels):
     # scoring in tokenized space, so results to public leaderboard will vary
-    pred_start = torch.cat(preds[::2]).cpu().numpy()
-    pred_end = torch.cat(preds[1::2]).cpu().numpy()
+    # pred_start = torch.cat(preds[::2]).cpu().numpy()
+    # pred_end = torch.cat(preds[1::2]).cpu().numpy()
+    pred_start = np.concatenate(preds[::2])
+    pred_end = np.concatenate(preds[1::2])
+
     label_start = torch.cat(labels[::2]).cpu().numpy()
     label_end = torch.cat(labels[1::2]).cpu().numpy()
     assert len(label_start) == len(pred_start)

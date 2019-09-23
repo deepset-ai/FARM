@@ -127,6 +127,9 @@ class AdaptiveModel(nn.Module):
         :return loss: torch.tensor that is the per sample loss (len: batch_size)
         """
         all_losses = self.logits_to_loss_per_head(logits, **kwargs)
+        # this sums up loss per sample across multiple prediction heads
+        # TODO, check if we should take mean here.
+        # Otherwise we have to scale the learning rate in relation to how many Prediction Heads we have
         loss = sum(all_losses)
         return loss
 
