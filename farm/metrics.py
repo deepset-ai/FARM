@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from scipy.stats import pearsonr, spearmanr
-from seqeval.metrics import f1_score as seq_f1_score
+from seqeval.metrics import f1_score as ner_f1_score
 from sklearn.metrics import matthews_corrcoef, f1_score, mean_squared_error, r2_score
 from farm.utils import flatten_list
 
@@ -36,7 +36,8 @@ def pearson_and_spearman(preds, labels):
     }
 
 def compute_metrics(metric, preds, labels):
-    assert len(preds) == len(labels)
+    if not metric == "squad":
+        assert len(preds) == len(labels)
     if metric == "mcc":
         return {"mcc": matthews_corrcoef(labels, preds)}
     elif metric == "acc":
@@ -45,9 +46,9 @@ def compute_metrics(metric, preds, labels):
         return acc_and_f1(preds, labels)
     elif metric == "pear_spear":
         return pearson_and_spearman(preds, labels)
-    # TODO this metric seems very specific for NER and doesnt work for
+    # TODO this metric seems very specific for NER and doesnt work for other sequence labeling tasks
     elif metric == "seq_f1":
-        return {"seq_f1": seq_f1_score(labels, preds)}
+        return {"seq_f1": ner_f1_score(labels, preds)}
     elif metric == "f1_macro":
         return f1_macro(preds, labels)
     elif metric == "squad":
@@ -69,8 +70,8 @@ def squad_EM(preds, labels):
     # label_start = torch.cat(labels[::2])
     # label_end = torch.cat(labels[1::2])
 
-    pred_start = np.concatenate(preds[::2])
-    pred_end = np.concatenate(preds[1::2])
+    pred_start = np.concatenate(preds[::3])
+    pred_end = np.concatenate(preds[1::3])
     label_start = torch.cat(labels[::2])
     label_end = torch.cat(labels[1::2])
     assert len(label_start) == len(pred_start)
@@ -86,8 +87,8 @@ def squad_f1(preds, labels):
     # scoring in tokenized space, so results to public leaderboard will vary
     # pred_start = torch.cat(preds[::2]).cpu().numpy()
     # pred_end = torch.cat(preds[1::2]).cpu().numpy()
-    pred_start = np.concatenate(preds[::2])
-    pred_end = np.concatenate(preds[1::2])
+    pred_start = np.concatenate(preds[::3])
+    pred_end = np.concatenate(preds[1::3])
 
     label_start = torch.cat(labels[::2]).cpu().numpy()
     label_end = torch.cat(labels[1::2]).cpu().numpy()

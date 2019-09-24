@@ -836,7 +836,7 @@ class QuestionAnsweringHead(PredictionHead):
         for i_batch in range(num_batches):
             probabilities[i_batch] = (expit(start_logits[i_batch,best_indices[i_batch,0]]) +
                                       expit(end_logits[i_batch,best_indices[i_batch,1]])) / 2
-        return (best_indices[:,0], best_indices[:,1]), probabilities
+        return (best_indices[:,0], best_indices[:,1], probabilities)
 
     def prepare_labels(self, start_position, end_position, **kwargs):
         """
@@ -871,7 +871,7 @@ class QuestionAnsweringHead(PredictionHead):
         all_preds = []
         # TODO fix inference bug, model.forward is somehow packing logits into list
         # logits = logits[0]
-        (start_idx, end_idx), probs = self.logits_to_preds(logits=logits, segment_ids=segment_ids)
+        start_idx, end_idx, probs = self.logits_to_preds(logits=logits, segment_ids=segment_ids)
         # we have char offsets for the questions context in samples.tokenized
         # we have start and end idx, but with the question tokens in front
         # lets shift this by the index of first segment ID corresponding to context
