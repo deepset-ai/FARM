@@ -35,7 +35,7 @@ class Inferencer:
 
     """
 
-    def __init__(self, model, processor, batch_size=4, gpu=False, name=None):
+    def __init__(self, model, processor, batch_size=4, gpu=False, name=None, return_class_probs=False):
         """
         Initializes inferencer from an AdaptiveModel and a Processor instance.
 
@@ -49,6 +49,8 @@ class Inferencer:
         :type gpu: bool
         :param name: Name for the current inferencer model, displayed in the REST API
         :type name: string
+        :param return_class_probs: either return probability distribution over all labels or the prob of the associated label
+        :type return_class_probs: bool
         :return: An instance of the Inferencer.
 
         """
@@ -72,12 +74,13 @@ class Inferencer:
         # else:
         #     raise NotImplementedError("A model with multiple prediction heads is currently not supported by the Inferencer")
         self.name = name if name != None else f"anonymous-{self.prediction_type}"
+        self.return_class_probs = return_class_probs
 
         model.connect_heads_with_processor(processor.tasks)
         set_all_seeds(42, n_gpu)
 
     @classmethod
-    def load(cls, load_dir, batch_size=4, gpu=False, embedder_only=False):
+    def load(cls, load_dir, batch_size=4, gpu=False, embedder_only=False, return_class_probs=False):
         """
         Initializes inferencer from directory with saved model.
 
@@ -105,7 +108,7 @@ class Inferencer:
             processor = Processor.load_from_dir(load_dir)
 
         name = os.path.basename(load_dir)
-        return cls(model, processor, batch_size=batch_size, gpu=gpu, name=name)
+        return cls(model, processor, batch_size=batch_size, gpu=gpu, name=name, return_class_probs=return_class_probs)
 
     def run_inference(self, dicts):
         """
@@ -145,6 +148,7 @@ class Inferencer:
                     logits=logits,
                     samples=batch_samples,
                     tokenizer=self.processor.tokenizer,
+                    return_class_probs=self.return_class_probs,
                     **batch,
                 )
                 preds_all += preds

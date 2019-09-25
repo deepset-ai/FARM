@@ -261,10 +261,13 @@ class TextClassificationHead(PredictionHead):
         label_ids = kwargs.get(self.label_tensor_name)
         return self.loss_fct(logits, label_ids.view(-1))
 
-    def logits_to_probs(self, logits, **kwargs):
+    def logits_to_probs(self, logits, return_class_probs, **kwargs):
         softmax = torch.nn.Softmax(dim=1)
         probs = softmax(logits)
-        probs = torch.max(probs, dim=1)[0]
+        if return_class_probs:
+            probs = probs
+        else:
+            probs = torch.max(probs, dim=1)[0]
         probs = probs.cpu().numpy()
         return probs
 
@@ -280,24 +283,33 @@ class TextClassificationHead(PredictionHead):
         labels = [self.label_list[int(x)] for x in label_ids]
         return labels
 
-    def formatted_preds(self, logits, samples, **kwargs):
+    def formatted_preds(self, logits, samples, return_class_probs=False, **kwargs):
         preds = self.logits_to_preds(logits)
-        probs = self.logits_to_probs(logits)
+        probs = self.logits_to_probs(logits, return_class_probs)
         contexts = [sample.clear_text["text"] for sample in samples]
 
         assert len(preds) == len(probs) == len(contexts)
 
         res = {"task": "text_classification", "predictions": []}
         for pred, prob, context in zip(preds, probs, contexts):
-            res["predictions"].append(
-                {
+            if not return_class_probs:
+                pred_dict = {
                     "start": None,
                     "end": None,
                     "context": f"{context}",
                     "label": f"{pred}",
                     "probability": prob,
                 }
-            )
+            else:
+                pred_dict = {
+                    "start": None,
+                    "end": None,
+                    "context": f"{context}",
+                    "label": "class_probabilities",
+                    "probability": prob,
+                }
+
+            res["predictions"].append(pred_dict)
         return res
 
 
@@ -438,11 +450,14 @@ class TokenClassificationHead(PredictionHead):
             preds_word_all.append(preds_word)
         return preds_word_all
 
-    def logits_to_probs(self, logits, initial_mask, **kwargs):
+    def logits_to_probs(self, logits, initial_mask, return_class_probs, **kwargs):
         # get per token probs
         softmax = torch.nn.Softmax(dim=2)
         token_probs = softmax(logits)
-        token_probs = torch.max(token_probs, dim=2)[0]
+        if return_class_probs:
+            token_probs = token_probs
+        else:
+            token_probs = torch.max(token_probs, dim=2)[0]
         token_probs = token_probs.cpu().numpy()
 
         # convert to per word probs
@@ -476,9 +491,9 @@ class TokenClassificationHead(PredictionHead):
                 ret.append(s)
         return ret
 
-    def formatted_preds(self, logits, initial_mask, samples, **kwargs):
+    def formatted_preds(self, logits, initial_mask, samples, return_class_probs=False, **kwargs):
         preds = self.logits_to_preds(logits, initial_mask)
-        probs = self.logits_to_probs(logits, initial_mask)
+        probs = self.logits_to_probs(logits, initial_mask,return_class_probs)
 
         # align back with original input by getting the original word spans
         spans = []
