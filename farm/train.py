@@ -126,7 +126,7 @@ class Trainer:
         """ Perform the training procedure. """
 
         # connect the prediction heads with the right output from processor
-        model.connect_heads_with_processor(self.data_silo.processor.tasks)
+        model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
 
         # Check that the tokenizer fits the language model
         self.check_tokenizer_lm(self.data_silo.processor.tokenizer, model.language_model)
