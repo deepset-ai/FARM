@@ -119,11 +119,6 @@ def sample_to_features_text(
         except KeyError:
             # For inference mode we don't expect labels
             label_ids = None
-            logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
-                           "\nIf your are running in *inference* mode: Don't worry!"
-                           "\nIf you are running in *training* mode: Verify you are supplying a proper label list to your processor.")
-
-
         if label_ids is not None:
             feat_dict[task["label_tensor_name"]] = label_ids
     return [feat_dict]
