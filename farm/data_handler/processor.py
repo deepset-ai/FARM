@@ -240,7 +240,7 @@ class Processor(ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def _dict_to_samples(cls, dict: dict, all_dicts=None) -> [Sample]:
+    def _dict_to_samples(cls, dictionary: dict, all_dicts=None) -> [Sample]:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -258,7 +258,7 @@ class Processor(ABC):
     def _init_samples_in_baskets(self):
         for basket in self.baskets:
             all_dicts = [b.raw for b in self.baskets]
-            basket.samples = self._dict_to_samples(dict=basket.raw, all_dicts=all_dicts)
+            basket.samples = self._dict_to_samples(dictionary=basket.raw, all_dicts=all_dicts)
             for num, sample in enumerate(basket.samples):
                  sample.id = f"{basket.id}-{num}"
 
@@ -419,10 +419,10 @@ class TextClassificationProcessor(Processor):
 
         return dicts
 
-    def _dict_to_samples(self, dict: dict, **kwargs) -> [Sample]:
+    def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets
-        tokenized = tokenize_with_metadata(dict["text"], self.tokenizer, self.max_seq_len)
-        return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
+        tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer, self.max_seq_len)
+        return [Sample(id=None, clear_text=dictionary, tokenized=tokenized)]
 
     def _sample_to_features(self, sample) -> dict:
         features = sample_to_features_text(
@@ -500,10 +500,10 @@ class InferenceProcessor(Processor):
     def _file_to_dicts(self, file: str) -> [dict]:
       raise NotImplementedError
 
-    def _dict_to_samples(self, dict: dict, **kwargs) -> [Sample]:
+    def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets
-        tokenized = tokenize_with_metadata(dict["text"], self.tokenizer, self.max_seq_len)
-        return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
+        tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer, self.max_seq_len)
+        return [Sample(id=None, clear_text=dictionary, tokenized=tokenized)]
 
     def _sample_to_features(self, sample) -> dict:
         features = sample_to_features_text(
@@ -558,10 +558,10 @@ class NERProcessor(Processor):
         dicts = read_ner_file(filename=file, sep=self.delimiter)
         return dicts
 
-    def _dict_to_samples(self, dict: dict, **kwargs) -> [Sample]:
+    def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets, which helps to map our entity tags back to original positions
-        tokenized = tokenize_with_metadata(dict["text"], self.tokenizer, self.max_seq_len)
-        return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
+        tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer, self.max_seq_len)
+        return [Sample(id=None, clear_text=dictionary, tokenized=tokenized)]
 
     def _sample_to_features(self, sample) -> dict:
         features = samples_to_features_ner(
@@ -620,8 +620,8 @@ class BertStyleLMProcessor(Processor):
         dicts = read_docs_from_txt(filename=file, delimiter=self.delimiter, max_docs=self.max_docs)
         return dicts
 
-    def _dict_to_samples(self, dict, all_dicts=None):
-        doc = dict["doc"]
+    def _dict_to_samples(self, dictionary, all_dicts=None):
+        doc = dictionary["doc"]
         samples = []
         for idx in range(len(doc) - 1):
             text_a, text_b, is_next_label = get_sentence_pair(doc, all_dicts, idx)
@@ -750,11 +750,11 @@ class SquadProcessor(Processor):
         dict = read_squad_file(filename=file)
         return dict
 
-    def _dict_to_samples(self, dict: dict, **kwargs) -> [Sample]:
+    def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
         # TODO split samples that are too long in this function, related to todo in self._sample_to_features
-        if "paragraphs" not in dict:  # TODO change this inference mode hack
-            dict = self._convert_inference(infer_dict=dict)
-        samples = create_samples_squad(entry=dict)
+        if "paragraphs" not in dictionary:  # TODO change this inference mode hack
+            dictionary = self._convert_inference(infer_dict=dictionary)
+        samples = create_samples_squad(entry=dictionary)
         for sample in samples:
             tokenized = tokenize_with_metadata(
                 text=" ".join(sample.clear_text["doc_tokens"]),
@@ -840,15 +840,15 @@ class RegressionProcessor(Processor):
 
         return dicts
 
-    def _dict_to_samples(self, dict: dict, **kwargs) -> [Sample]:
+    def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets
-        tokenized = tokenize_with_metadata(dict["text"], self.tokenizer, self.max_seq_len)
+        tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer, self.max_seq_len)
         # Samples don't have labels during Inference mode
-        if "label" in dict:
-            label = float(dict["label"])
+        if "label" in dictionary:
+            label = float(dictionary["label"])
             scaled_label = (label - self.tasks["regression"]["label_list"][0]) / self.tasks["regression"]["label_list"][1]
-            dict["label"] = scaled_label
-        return [Sample(id=None, clear_text=dict, tokenized=tokenized)]
+            dictionary["label"] = scaled_label
+        return [Sample(id=None, clear_text=dictionary, tokenized=tokenized)]
 
     def _sample_to_features(self, sample) -> dict:
         features = sample_to_features_text(

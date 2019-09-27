@@ -222,15 +222,19 @@ class AdaptiveModel(nn.Module):
 
         return all_logits
 
-    def connect_heads_with_processor(self, tasks):
+    def connect_heads_with_processor(self, tasks, require_labels=True):
         """
         Populates prediction head with information coming from tasks.
 
         :param tasks: A dictionary where the keys are the names of the tasks and the values are the details of the task (e.g. label_list, metric, tensor name)
+        :param require_labels: If True, an error will be thrown when a task is not supplied with labels)
         :return:
         """
         for head in self.prediction_heads:
             head.label_tensor_name = tasks[head.task_name]["label_tensor_name"]
+            label_list = tasks[head.task_name]["label_list"]
+            if not label_list and require_labels:
+                raise Exception(f"The task \'{head.task_name}\' is missing a valid set of labels")
             head.label_list = tasks[head.task_name]["label_list"]
             head.metric = tasks[head.task_name]["metric"]
 
