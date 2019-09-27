@@ -222,7 +222,7 @@ class AdaptiveModel(nn.Module):
 
         return all_logits
 
-    def connect_heads_with_processor(self, tasks, require_labels):
+    def connect_heads_with_processor(self, tasks, require_labels=True):
         """
         Populates prediction head with information coming from tasks.
 
