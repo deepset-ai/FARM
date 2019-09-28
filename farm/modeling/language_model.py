@@ -28,6 +28,7 @@ from torch import nn
 logger = logging.getLogger(__name__)
 
 from transformers.modeling_bert import BertModel, BertConfig
+from transformers.modeling_roberta import RobertaModel, RobertaConfig
 
 
 class LanguageModel(nn.Module):
@@ -221,6 +222,79 @@ class Bert(LanguageModel):
             bert.model = BertModel.from_pretrained(pretrained_model_name_or_path)
             bert.language = cls._infer_language_from_name(pretrained_model_name_or_path)
         return bert
+
+    def forward(
+        self,
+        input_ids,
+        segment_ids,
+        padding_mask,
+        **kwargs,
+    ):
+        """
+        Perform the forward pass of the BERT model.
+
+        :param input_ids: The ids of each token in the input sequence. Is a tensor of shape [batch_size, max_seq_len]
+        :type input_ids: torch.Tensor
+        :param segment_ids: The id of the segment. For example, in next sentence prediction, the tokens in the
+           first sentence are marked with 0 and those in the second are marked with 1.
+           It is a tensor of shape [batch_size, max_seq_len]
+        :type segment_ids: torch.Tensor
+        :param padding_mask: A mask that assigns a 1 to valid input tokens and 0 to padding tokens
+           of shape [batch_size, max_seq_len]
+        :return: Embeddings for each token in the input sequence.
+        """
+        output_tuple = self.model(
+            input_ids,
+            token_type_ids=segment_ids,
+            attention_mask=padding_mask,
+        )
+        if self.model.encoder.output_hidden_states == True:
+            sequence_output, pooled_output, all_hidden_states = output_tuple[0], output_tuple[1], output_tuple[2]
+            return sequence_output, pooled_output, all_hidden_states
+        else:
+            sequence_output, pooled_output = output_tuple[0], output_tuple[1]
+            return sequence_output, pooled_output
+
+    def enable_hidden_states_output(self):
+        self.model.encoder.output_hidden_states = True
+
+    def disable_hidden_states_output(self):
+        self.model.encoder.output_hidden_states = False
+
+    def save_config(self, save_dir):
+        save_filename = os.path.join(save_dir, "language_model_config.json")
+        with open(save_filename, "w") as file:
+            setattr(self.model.config, "name", self.__class__.__name__)
+            setattr(self.model.config, "language", self.language)
+            string = self.model.config.to_json_string()
+            file.write(string)
+
+class Roberta(LanguageModel):
+    """ A roberta model (xxx) that wraps the HuggingFace's implementation
+    (https://github.com/huggingface/pytorch-pretrained-BERT) to fit the LanguageModel class. """
+
+    def __init__(self):
+        super(Bert, self).__init__()
+        self.model = None
+        self.name = "roberta"
+
+    @classmethod
+    def load(cls, pretrained_model_name_or_path, language=None):
+        roberta = cls()
+        roberta.name = pretrained_model_name_or_path
+        # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
+        farm_lm_config = os.path.join(pretrained_model_name_or_path, "language_model_config.json")
+        if os.path.exists(farm_lm_config):
+            # FARM style
+            bert_config = RobertaConfig.from_pretrained(farm_lm_config)
+            farm_lm_model = os.path.join(pretrained_model_name_or_path, "language_model.bin")
+            roberta.model = RobertaModel.from_pretrained(farm_lm_model, config=bert_config)
+            roberta.language = roberta.model.config.language
+        else:
+            # Pytorch-transformer Style
+            roberta.model = RobertaModel.from_pretrained(pretrained_model_name_or_path)
+            roberta.language = cls._infer_language_from_name(pretrained_model_name_or_path)
+        return roberta
 
     def forward(
         self,

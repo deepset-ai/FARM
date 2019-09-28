@@ -22,6 +22,7 @@ import os
 import unicodedata
 
 from transformers.tokenization_bert import BertTokenizer, WordpieceTokenizer, BasicTokenizer, load_vocab
+from transformers.tokenization_roberta import RobertaTokenizer
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +97,7 @@ class BertTokenizer(BertTokenizer):
         super(BertTokenizer, self).__init__(vocab_file, do_lower_case=do_lower_case, do_basic_tokenize=True, never_split=never_split, never_split_chars=never_split_chars,
                  unk_token="[UNK]", sep_token="[SEP]", pad_token="[PAD]", cls_token="[CLS]",
                  mask_token="[MASK]", tokenize_chinese_chars=tokenize_chinese_chars, **kwargs)
-
+        self.subword_identifier = "##"
         if not os.path.isfile(vocab_file):
             raise ValueError(
                 "Can't find a vocabulary file at path '{}'. To load the vocabulary from a Google pretrained "
@@ -124,7 +125,7 @@ class BertTokenizer(BertTokenizer):
     def _load_custom_vocab(self, custom_vocab_file):
         custom_vocab = {}
         unique_custom_tokens = set()
-        idx = 1
+        idx = 0
         num_dropped = 0
         with open(custom_vocab_file, "r", encoding="utf-8") as reader:
             while True:
