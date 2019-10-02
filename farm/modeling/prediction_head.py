@@ -797,7 +797,7 @@ class QuestionAnsweringHead(PredictionHead):
 
         no_answer_sum = start_logits[:,0] + end_logits[:,0]
         best_answer_sum = np.zeros(num_batches)
-        # check if start or end point to the context. Context is at segment id == 1  (question comes before at segment ids == 0)
+        # check if start or end point to the context. Context starts at segment id == 1  (question comes before at segment ids == 0)
 
         segment_ids = kwargs['segment_ids'].data.cpu().numpy()
         context_start = np.argmax(segment_ids,axis=1)
@@ -815,14 +815,14 @@ class QuestionAnsweringHead(PredictionHead):
             for idx in np.argsort(scores)[::-1]:
                 start = start_comb[idx]
                 end = end_comb[idx]
-                if(start < context_start[i_batch]):
+                if(start < context_start[i_batch]): #TODO check for context end as well
                     continue
                 if(end < context_start[i_batch]):
                     continue
                 if(start > end):
                     continue
-                # need check: end - start > max answer len
-                # maybe need check weather start idx refers to start of word and not to a ##... continuation
+                # need check: end - start > max answer len. How to set max answer len
+                # maybe need check weather start/end idx refers to start of word and not to a ##... continuation
                 best_indices[i_batch,0] = start
                 best_indices[i_batch,1] = end
                 best_answer_sum[i_batch] = scores[idx]
@@ -872,11 +872,9 @@ class QuestionAnsweringHead(PredictionHead):
         # TODO fix inference bug, model.forward is somehow packing logits into list
         # logits = logits[0]
         start_idx, end_idx, probs = self.logits_to_preds(logits=logits, segment_ids=segment_ids)
-        # we have char offsets for the questions context in samples.tokenized
-        # we have start and end idx, but with the question tokens in front
+        # we have char offsets for the context passage in samples.tokenized
+        # we have start and end idx for the selected answer, but with the question tokens in front
         # lets shift this by the index of first segment ID corresponding to context
-        # start_idx = start_idx.cpu().numpy()
-        # end_idx = end_idx.cpu().numpy()
         segment_ids = segment_ids.cpu().numpy()
 
         shifts = np.argmax(segment_ids > 0, axis=1)
