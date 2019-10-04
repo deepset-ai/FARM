@@ -5,8 +5,6 @@ import multiprocessing as mp
 from contextlib import ExitStack
 from functools import partial
 
-
-from torch.utils.data import ConcatDataset
 from torch.utils.data.sampler import SequentialSampler
 from tqdm import tqdm
 
@@ -136,18 +134,13 @@ class Inferencer:
             results = p.imap(
                 partial(self._multiproc_dict_to_samples, processor=self.processor),
                 dicts,
-                chunksize=1,
+                chunksize=self.multiprocessing_chunk_size,
             )
 
-            samples = []
-            datasets = []
+            preds_all = []
             for dataset, tensor_names, sample in tqdm(results, total=dict_batches_to_process):
-                datasets.append(dataset)
-                samples.extend(sample)
+                preds_all.append(self._run_inference(dataset, tensor_names, sample))
 
-            concat_datasets = ConcatDataset(datasets)
-
-        preds_all = self._run_inference(concat_datasets, tensor_names, samples)
         return preds_all
 
     @classmethod
