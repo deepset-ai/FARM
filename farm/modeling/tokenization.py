@@ -93,9 +93,9 @@ class BertTokenizer(BertTokenizer):
                 This should likely be desactivated for Japanese:
                 see: https://github.com/huggingface/pytorch-pretrained-BERT/issues/328
         """
-        super(BertTokenizer, self).__init__(vocab_file, do_lower_case=True, do_basic_tokenize=True, never_split=None, never_split_chars=None,
+        super(BertTokenizer, self).__init__(vocab_file, do_lower_case=do_lower_case, do_basic_tokenize=True, never_split=never_split, never_split_chars=never_split_chars,
                  unk_token="[UNK]", sep_token="[SEP]", pad_token="[PAD]", cls_token="[CLS]",
-                 mask_token="[MASK]", tokenize_chinese_chars=True, **kwargs)
+                 mask_token="[MASK]", tokenize_chinese_chars=tokenize_chinese_chars, **kwargs)
 
         if not os.path.isfile(vocab_file):
             raise ValueError(
@@ -124,7 +124,7 @@ class BertTokenizer(BertTokenizer):
     def _load_custom_vocab(self, custom_vocab_file):
         custom_vocab = {}
         unique_custom_tokens = set()
-        idx = 0
+        idx = 1
         num_dropped = 0
         with open(custom_vocab_file, "r", encoding="utf-8") as reader:
             while True:
