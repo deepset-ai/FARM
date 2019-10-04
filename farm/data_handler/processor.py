@@ -28,13 +28,14 @@ from farm.data_handler.utils import (
     read_squad_file,
     is_json,
 )
-from farm.modeling.tokenization import BertTokenizer, tokenize_with_metadata
+from farm.modeling.tokenization import BertTokenizer, RobertaTokenizer, tokenize_with_metadata
 from farm.utils import MLFlowLogger as MlLogger
 from farm.data_handler.samples import get_sentence_pair
 
 logger = logging.getLogger(__name__)
 
-TOKENIZER_MAP = {"BertTokenizer": BertTokenizer}
+TOKENIZER_MAP = {"BertTokenizer": BertTokenizer,
+                 "RobertaTokenizer": RobertaTokenizer}
 
 
 class Processor(ABC):
@@ -165,11 +166,7 @@ class Processor(ABC):
         processor_config_file = os.path.join(load_dir, "processor_config.json")
         config = json.load(open(processor_config_file))
         # init tokenizer
-        tokenizer = TOKENIZER_MAP[config["tokenizer"]].from_pretrained(
-            load_dir,
-            do_lower_case=config["lower_case"],
-            never_split_chars=config.get("never_split_chars", None),
-        )
+        tokenizer = TOKENIZER_MAP[config["tokenizer"]].from_pretrained(load_dir)
         # add custom vocab to tokenizer if available
         if os.path.exists(os.path.join(load_dir, "custom_vocab.txt")):
             tokenizer.add_custom_vocab(os.path.join(load_dir, "custom_vocab.txt"))
@@ -198,10 +195,11 @@ class Processor(ABC):
         config = self.generate_config()
         # save tokenizer incl. attributes
         config["tokenizer"] = self.tokenizer.__class__.__name__
-        self.tokenizer.save_vocabulary(save_dir)
         # TODO make this generic to other tokenizers. We will probably want an own abstract Tokenizer
-        config["lower_case"] = self.tokenizer.basic_tokenizer.do_lower_case
-        config["never_split_chars"] = self.tokenizer.basic_tokenizer.never_split_chars
+        self.tokenizer.save_pretrained(save_dir)
+        #self.tokenizer.save_vocabulary(save_dir)
+        #config["lower_case"] = self.tokenizer.basic_tokenizer.do_lower_case
+        #config["never_split_chars"] = self.tokenizer.basic_tokenizer.never_split_chars
         # save processor
         config["processor"] = self.__class__.__name__
         output_config_file = os.path.join(save_dir, "processor_config.json")
@@ -476,11 +474,7 @@ class InferenceProcessor(Processor):
         processor_config_file = os.path.join(load_dir, "processor_config.json")
         config = json.load(open(processor_config_file))
         # init tokenizer
-        tokenizer = TOKENIZER_MAP[config["tokenizer"]].from_pretrained(
-            load_dir,
-            do_lower_case=config["lower_case"],
-            never_split_chars=config.get("never_split_chars", None),
-        )
+        tokenizer = TOKENIZER_MAP[config["tokenizer"]].from_pretrained(load_dir)
         # add custom vocab to tokenizer if available
         if os.path.exists(os.path.join(load_dir, "custom_vocab.txt")):
             tokenizer.add_custom_vocab(os.path.join(load_dir, "custom_vocab.txt"))

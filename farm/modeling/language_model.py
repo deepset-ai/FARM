@@ -274,7 +274,7 @@ class Roberta(LanguageModel):
     (https://github.com/huggingface/pytorch-pretrained-BERT) to fit the LanguageModel class. """
 
     def __init__(self):
-        super(Bert, self).__init__()
+        super(Roberta, self).__init__()
         self.model = None
         self.name = "roberta"
 

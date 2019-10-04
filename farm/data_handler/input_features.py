@@ -37,44 +37,18 @@ def sample_to_features_text(
     :rtype: dict
     """
 
-    tokens = sample.tokenized["tokens"]
-    # Account for [CLS] and [SEP] with "- 2"
-    if len(tokens) > max_seq_len - 2:
-        tokens = tokens[: (max_seq_len - 2)]
+    #TODO It might be cleaner to adjust the data structure in sample.tokenized. Verify if this current quickfix really works for pairs
+    tokens_a = sample.tokenized["tokens"]
+    tokens_b = sample.tokenized.get("tokens_b", None)
 
-    # The convention in BERT is:
-    # (a) For sequence pairs:
-    #  tokens:   [CLS] is this jack ##son ##ville ? [SEP] no it is not . [SEP]
-    #  type_ids: 0   0  0    0    0     0       0 0    1  1  1  1   1 1
-    # (b) For single sequences:
-    #  tokens:   [CLS] the dog is hairy . [SEP]
-    #  type_ids: 0   0   0   0  0     0 0
-    #
-    # Where "type_ids" are used to indicate whether this is the first
-    # sequence or the second sequence. The embedding vectors for `type=0` and
-    # `type=1` were learned during pre-training and are added to the wordpiece
-    # embedding vector (and position vector). This is not *strictly* necessary
-    # since the [SEP] token unambiguously separates the sequences, but it makes
-    # it easier for the model to learn the concept of sequences.
-    #
-    # For classification tasks, the first vector (corresponding to [CLS]) is
-    # used as as the "sentence vector". Note that this only makes sense because
-    # the entire model is fine-tuned.
-    #TODO: make this generic for other special tokens
-    #tokens = ["[CLS]"] + tokens + ["[SEP]"]
-
-    # Quickfix to allow multiple text segments (e.g. at inference time)
-    n_segments = tokens.count(tokenizer.sep_token)
-    if n_segments == 1:
-        segment_ids = [0] * len(tokens)
-    elif n_segments == 2:
-        first_sep_idx = tokens.index(tokenizer) + 1
-        segment_ids = [0] * first_sep_idx + [1] * (len(tokens)-first_sep_idx)
-    else:
-        raise ValueError(f"Expected 1 or 2 text segments. Got {n_segments}!")
-
-    input_ids = tokenizer.convert_tokens_to_ids(tokens)
-    input_ids = tokenizer.add_special_tokens_single_sentence(input_ids)
+    inputs = tokenizer.encode_plus(
+        tokens_a,
+        tokens_b,
+        add_special_tokens=True,
+        max_length=max_seq_len,
+        truncate_first_sequence=True  # We're truncating the first sequence in priority
+    )
+    input_ids, segment_ids = inputs["input_ids"], inputs["token_type_ids"]
 
     # The mask has 1 for real tokens and 0 for padding tokens. Only real
     # tokens are attended to.
