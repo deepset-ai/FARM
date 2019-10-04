@@ -63,7 +63,7 @@ def read_ner_file(filename, sep="\t", **kwargs):
         logger.info(f" Couldn't find {filename} locally. Trying to download ...")
         _download_extract_downstream_data(filename)
 
-    f = open(filename)
+    f = open(filename, encoding='utf-8')
 
     data = []
     sentence = []
