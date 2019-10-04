@@ -56,7 +56,7 @@ class DataSilo:
         return dataset
 
     def _get_dataset(self, filename):
-        dicts = self.processor._file_to_dicts(filename)
+        dicts = self.processor.file_to_dicts(filename)
         #shuffle list of dicts here if we later want to have a random dev set splitted from train set
         if filename == self.processor.train_filename:
             if not self.processor.dev_filename:

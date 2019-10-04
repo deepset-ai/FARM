@@ -1,8 +1,14 @@
 import os
 import torch
 import logging
+import multiprocessing as mp
+from contextlib import ExitStack
+from functools import partial
 
+
+from torch.utils.data import ConcatDataset
 from torch.utils.data.sampler import SequentialSampler
+from tqdm import tqdm
 
 from farm.data_handler.dataloader import NamedDataLoader
 from farm.modeling.adaptive_model import AdaptiveModel
@@ -10,6 +16,7 @@ from farm.modeling.adaptive_model import AdaptiveModel
 from farm.utils import initialize_device_settings
 from farm.data_handler.processor import Processor, InferenceProcessor
 from farm.utils import set_all_seeds
+from farm.utils import log_ascii_workers
 
 
 logger = logging.getLogger(__name__)
@@ -29,13 +36,14 @@ class Inferencer:
            {"text": "Martin Müller spielt Handball in Berlin"},
        ]
        model = Inferencer.load(your_model_dir)
-       model.run_inference(dicts=basic_texts)
+       model.inference_from_dicts(dicts=basic_texts)
        # LM embeddings
        model.extract_vectors(dicts=basic_texts)
 
     """
 
-    def __init__(self, model, processor, batch_size=4, gpu=False, name=None, return_class_probs=False):
+    def __init__(self, model, processor, batch_size=4, gpu=False, name=None, return_class_probs=False,
+                 multiprocessing_chunk_size=100):
         """
         Initializes inferencer from an AdaptiveModel and a Processor instance.
 
@@ -75,6 +83,7 @@ class Inferencer:
         #     raise NotImplementedError("A model with multiple prediction heads is currently not supported by the Inferencer")
         self.name = name if name != None else f"anonymous-{self.prediction_type}"
         self.return_class_probs = return_class_probs
+        self.multiprocessing_chunk_size = multiprocessing_chunk_size
 
         model.connect_heads_with_processor(processor.tasks, require_labels=False)
         set_all_seeds(42, n_gpu)
@@ -110,27 +119,48 @@ class Inferencer:
         name = os.path.basename(load_dir)
         return cls(model, processor, batch_size=batch_size, gpu=gpu, name=name, return_class_probs=return_class_probs)
 
-    def run_inference(self, dicts):
-        """
-        Runs down-stream inference using the prediction head.
+    def inference_from_file(self, file):
+        dicts = self.processor.file_to_dicts(file)
 
-        :param dicts: Samples to run inference on provided as a list of dicts. One dict per sample.
-        :type dicst: [dict]
-        :return: dict of predictions
+        dict_batches_to_process = int(len(dicts) / self.multiprocessing_chunk_size)
+        num_cpus = min(mp.cpu_count(), dict_batches_to_process) or 1
 
-        """
-        if self.prediction_type == "embedder":
-            raise TypeError(
-                "You have called run_inference for a model without any prediction head! "
-                "If you want to: "
-                "a) ... extract vectors from the language model: call `Inferencer.extract_vectors(...)`"
-                f"b) ... run inference on a downstream task: make sure your model path {self.name} contains a saved prediction head"
+        with ExitStack() as stack:
+            p = stack.enter_context(mp.Pool(processes=num_cpus))
+
+            logger.info(
+                f"Got ya {num_cpus} parallel workers to do inference on {len(dicts)}dicts (chunksize = {self.multiprocessing_chunk_size})..."
             )
-        dataset, tensor_names = self.processor.dataset_from_dicts(dicts, from_inference=True)
-        samples = []
-        for dict in dicts:
-            samples.extend(self.processor._dict_to_samples(dict))
+            log_ascii_workers(num_cpus, logger)
 
+            results = p.imap(
+                partial(self._multiproc_dict_to_samples, processor=self.processor),
+                dicts,
+                chunksize=1,
+            )
+
+            samples = []
+            datasets = []
+            for dataset, tensor_names, sample in tqdm(results, total=dict_batches_to_process):
+                datasets.append(dataset)
+                samples.extend(sample)
+
+            concat_datasets = ConcatDataset(datasets)
+
+        preds_all = self._run_inference(concat_datasets, tensor_names, samples)
+        return preds_all
+
+    @classmethod
+    def _multiproc_dict_to_samples(cls, dicts, processor):
+        dicts_list = [dicts]
+        dataset, tensor_names = processor.dataset_from_dicts(dicts_list, from_inference=True)
+        samples = []
+        for d in dicts_list:
+            samples.extend(processor._dict_to_samples(d))
+        
+        return dataset, tensor_names, samples
+
+    def _run_inference(self, dataset, tensor_names, samples):
         data_loader = NamedDataLoader(
             dataset=dataset,
             sampler=SequentialSampler(dataset),
@@ -141,7 +171,7 @@ class Inferencer:
         preds_all = []
         for i, batch in enumerate(data_loader):
             batch = {key: batch[key].to(self.device) for key in batch}
-            batch_samples = samples[i * self.batch_size : (i + 1) * self.batch_size]
+            batch_samples = samples[i * self.batch_size: (i + 1) * self.batch_size]
             with torch.no_grad():
                 logits = self.model.forward(**batch)
                 preds = self.model.formatted_preds(
@@ -155,6 +185,31 @@ class Inferencer:
 
         return preds_all
 
+    def inference_from_dicts(self, dicts):
+        """
+        Runs down-stream inference using the prediction head.
+
+        :param dicts: Samples to run inference on provided as a list of dicts. One dict per sample.
+        :type dicts: [dict]
+        :return: dict of predictions
+
+        """
+        if self.prediction_type == "embedder":
+            raise TypeError(
+                "You have called inference_from_dicts for a model without any prediction head! "
+                "If you want to: "
+                "a) ... extract vectors from the language model: call `Inferencer.extract_vectors(...)`"
+                f"b) ... run inference on a downstream task: make sure your model path {self.name} contains a saved prediction head"
+            )
+        dataset, tensor_names = self.processor.dataset_from_dicts(dicts, from_inference=True)
+        samples = []
+        for dict in dicts:
+            samples.extend(self.processor._dict_to_samples(dict))
+
+        preds_all = self._run_inference(dataset, tensor_names, samples)
+
+        return preds_all
+
     def extract_vectors(
         self, dicts, extraction_strategy="cls_token", extraction_layer=-1
     ):
@@ -163,8 +218,8 @@ class Inferencer:
 
         :param dicts: Samples to run inference on provided as a list of dicts. One dict per sample.
         :type dicts: [dict]
-        :param extraction_strategy: Strategy to extract vectors. Choices: 'cls_token' (sentence vector),
-        'reduce_mean' (sentence vector), reduce_max (sentence vector), 'per_token' (individual token vectors)
+        :param extraction_strategy: Strategy to extract vectors. Choices: 'cls_token' (sentence vector), 'reduce_mean'
+                               (sentence vector), reduce_max (sentence vector), 'per_token' (individual token vectors)
         :type extraction_strategy: str
         :param extraction_layer: number of layer from which the embeddings shall be extracted. Default: -1 (very last layer).
         :type: int
