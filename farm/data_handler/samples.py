@@ -1,5 +1,5 @@
 from farm.data_handler.utils import get_sentence_pair
-from pytorch_transformers.tokenization_bert import whitespace_tokenize
+from transformers.tokenization_bert import whitespace_tokenize
 from farm.modeling.tokenization import tokenize_with_metadata
 from farm.visual.ascii.images import SAMPLE
 from tqdm import tqdm
