@@ -21,7 +21,7 @@ from io import open
 import os
 import unicodedata
 
-from pytorch_transformers.tokenization_bert import BertTokenizer, WordpieceTokenizer, BasicTokenizer, load_vocab
+from transformers.tokenization_bert import BertTokenizer, WordpieceTokenizer, BasicTokenizer, load_vocab
 
 logger = logging.getLogger(__name__)
 

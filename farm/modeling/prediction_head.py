@@ -4,7 +4,7 @@ import os
 import numpy as np
 
 import torch
-from pytorch_transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN
+from transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN
 
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss

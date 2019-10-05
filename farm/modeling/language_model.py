@@ -27,7 +27,7 @@ from torch import nn
 
 logger = logging.getLogger(__name__)
 
-from pytorch_transformers.modeling_bert import BertModel, BertConfig
+from transformers.modeling_bert import BertModel, BertConfig
 
 
 class LanguageModel(nn.Module):
