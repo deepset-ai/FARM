@@ -1,5 +1,4 @@
 import logging
-import resource
 
 import torch.multiprocessing as mp
 
@@ -11,6 +10,8 @@ logging.basicConfig(
 
 # https://pytorch.org/docs/stable/multiprocessing.html#sharing-strategies
 if "file_descriptor" in mp.get_all_sharing_strategies():
+    import resource
+
     mp.set_sharing_strategy("file_descriptor")
 
     rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
