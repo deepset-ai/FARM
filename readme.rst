@@ -31,7 +31,7 @@
 What is it?
 ############
 FARM makes cutting edge **Transfer Learning** for NLP simple.
-It is a home for all species of pretrained language models (e.g. BERT) that can be adapted to different
+Building upon `transformers <https://github.com/huggingface/pytorch-transformers>`_, FARM is a home for all species of pretrained language models (e.g. BERT) that can be adapted to different
 **domain languages** or **down-stream tasks**.
 With FARM you can easily create SOTA NLP models for tasks like document classification, NER or question answering.
 The **standardized interfaces** for language models and prediction heads allow flexible extension by researchers and easy application for practitioners.
@@ -134,7 +134,7 @@ Upcoming features
 
 Acknowledgements
 ###################
-- FARM is built upon parts of the great `pytorch-transformers <https://github.com/huggingface/pytorch-transformers>`_  repository from Huggingface. It utilizes their implementations of the BERT model and Tokenizer.
+- FARM is built upon parts of the great `transformers <https://github.com/huggingface/pytorch-transformers>`_  repository from Huggingface. It utilizes their implementations of the BERT model and Tokenizer.
 - The original BERT model and `paper <https://arxiv.org/abs/1810.04805>`_  was published by Jacob Devlin, Ming-Wei Chang, Kenton Lee and Kristina Toutanova.
 
 Citation
