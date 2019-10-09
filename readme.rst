@@ -46,6 +46,7 @@ Core features
 - **Smooth upgrading** to new language models
 - Powerful **experiment tracking** & execution
 - Simple **deployment** and **visualization** to showcase your model
+- Tasks: Question Answering, LM Domain Adaptation, NER, (Multilabel) Doc Classification
 
 Resources
 ##############
