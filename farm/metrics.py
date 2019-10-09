@@ -65,11 +65,6 @@ def compute_metrics(metric, preds, labels):
 
 def squad_EM(preds, labels):
     # scoring in tokenized space, so results to public leaderboard will vary
-    # pred_start = torch.cat(preds[::2])
-    # pred_end = torch.cat(preds[1::2])
-    # label_start = torch.cat(labels[::2])
-    # label_end = torch.cat(labels[1::2])
-
     pred_start = np.concatenate(preds[::3])
     pred_end = np.concatenate(preds[1::3])
     label_start = torch.cat(labels[::2])
@@ -85,9 +80,7 @@ def squad_EM(preds, labels):
 
 def squad_f1(preds, labels):
     # scoring in tokenized space, so results to public leaderboard will vary
-    # pred_start = torch.cat(preds[::2]).cpu().numpy()
-    # pred_end = torch.cat(preds[1::2]).cpu().numpy()
-    pred_start = np.concatenate(preds[::3])
+    pred_start = np.concatenate(preds[::3]) # having start, end and probabilities in preds
     pred_end = np.concatenate(preds[1::3])
 
     label_start = torch.cat(labels[::2]).cpu().numpy()

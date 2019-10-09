@@ -801,10 +801,9 @@ class QuestionAnsweringHead(PredictionHead):
 
         segment_ids = kwargs['segment_ids'].data.cpu().numpy()
         context_start = np.argmax(segment_ids,axis=1)
-        # check if end comes before start
         start_proposals = self._get_best_indexes(start_logits, 3)
         end_proposals = self._get_best_indexes(end_logits, 3)
-        best_indices = np.zeros((num_batches,2),dtype=int) # 0 is start, 1 is end
+        best_indices = np.zeros((num_batches,2),dtype=int) # dimension [:,0] is start, [:,1] is end
         for i_batch in range(num_batches):
             # for each sample create mesh of possible start + end combinations and their score as sum of logits
             mesh_idx = np.meshgrid(start_proposals[i_batch,:],end_proposals[i_batch])
@@ -821,7 +820,7 @@ class QuestionAnsweringHead(PredictionHead):
                     continue
                 if(start > end):
                     continue
-                # need check: end - start > max answer len. How to set max answer len
+                # maybe need check: end - start > max answer len. How to set max answer len?
                 # maybe need check weather start/end idx refers to start of word and not to a ##... continuation
                 best_indices[i_batch,0] = start
                 best_indices[i_batch,1] = end
@@ -834,8 +833,10 @@ class QuestionAnsweringHead(PredictionHead):
         best_indices[idx_no_answer,:] = 0
         probabilities = np.zeros(num_batches)
         for i_batch in range(num_batches):
-            probabilities[i_batch] = (expit(start_logits[i_batch,best_indices[i_batch,0]]) +
-                                      expit(end_logits[i_batch,best_indices[i_batch,1]])) / 2
+            # huggingface takes the softmax of sum of both logits for their n best predictions.
+            # Since we have only one prediction for now, it makes sense to take the mean of both start + end probs
+            probabilities[i_batch] = (expit(start_logits[i_batch, best_indices[i_batch, 0]]) +
+                                      expit(end_logits[i_batch, best_indices[i_batch, 1]])) / 2
         return (best_indices[:,0], best_indices[:,1], probabilities)
 
     def prepare_labels(self, start_position, end_position, **kwargs):
