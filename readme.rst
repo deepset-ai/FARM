@@ -111,7 +111,7 @@ Model
 ************
 AdaptiveModel = Language Model + Prediction Head(s)
 With this modular approach you can easily add prediction heads (multitask learning) and re-use them for different types of language model.
-`(Learn more) <https://farm.deepset.ai/modeling.html>`_
+`(Learn more) <https://farm.deepset.ai/modeling.html>`__
 
 
 .. image:: https://raw.githubusercontent.com/deepset-ai/FARM/master/docs/img/adaptive_model_no_bg_small.jpg
@@ -121,7 +121,7 @@ Data Processing
 ********************
 Custom Datasets can be loaded by customizing the Processor. It converts "raw data" into PyTorch Datasets.
 Much of the heavy lifting is then handled behind the scenes to make it fast & simple to debug.
-`(Learn more) <https://farm.deepset.ai/data_handling.html>`_
+`(Learn more) <https://farm.deepset.ai/data_handling.html>`__
 
 .. image:: https://raw.githubusercontent.com/deepset-ai/FARM/master/docs/img/data_silo_no_bg_small.jpg
 
