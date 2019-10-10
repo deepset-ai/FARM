@@ -190,15 +190,21 @@ def _words_to_tokens(words, word_offsets, tokenizer, max_seq_len):
     token_offsets = []
     start_of_word = []
     for w, w_off in zip(words, word_offsets):
-        # Get tokens of single word
-        tokens_word = tokenizer.tokenize(w)
+        # Get (subword) tokens of single word.
+        # For the first word of a text: we just call the regular tokenize function.
+        # For later words: we need to call it with add_prefix_space=True to get the same results with roberta / gpt2 tokenizer
+        # see discussion here. https://github.com/huggingface/transformers/issues/1196
+        if len(tokens) == 0:
+            tokens_word = tokenizer.tokenize(w)
+        else:
+            tokens_word = tokenizer.tokenize(w, add_prefix_space=True)
 
         # Sometimes the tokenizer returns no tokens
         if len(tokens_word) == 0:
             continue
         tokens += tokens_word
 
-        # get gloabl offset for each token in word + save marker for first tokens of a word
+        # get global offset for each token in word + save marker for first tokens of a word
         first_tok = True
         for tok in tokens_word:
             token_offsets.append(w_off)
@@ -210,6 +216,7 @@ def _words_to_tokens(words, word_offsets, tokenizer, max_seq_len):
                 start_of_word.append(False)
 
     # Clip at max_seq_length. The "-2" is for CLS and SEP token
+    #TODO make this generic for other models (they might have more special tokens)
     tokens = tokens[: max_seq_len - 2]
     token_offsets = token_offsets[: max_seq_len - 2]
     start_of_word = start_of_word[: max_seq_len - 2]
