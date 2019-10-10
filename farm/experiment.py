@@ -13,7 +13,6 @@ from farm.modeling.prediction_head import PredictionHead
 from farm.modeling.tokenization import BertTokenizer
 from farm.data_handler.processor import Processor
 from farm.train import Trainer
-from farm.train import WrappedDataParallel
 from farm.utils import set_all_seeds, initialize_device_settings
 from farm.utils import MLFlowLogger as MlLogger
 from farm.file_utils import read_config, unnestConfig

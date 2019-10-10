@@ -437,7 +437,7 @@ def sample_to_features_squad(
         end_position = 0
         if is_training and not sample.clear_text.is_impossible:
             # For training, if our document chunk does not contain an annotation
-            # we throw it out, since there is nothing to predict.
+            # we keep it but set the start and end position to unanswerable
             doc_start = doc_span.start
             doc_end = doc_span.start + doc_span.length - 1
             out_of_span = False

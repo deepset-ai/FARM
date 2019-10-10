@@ -719,8 +719,12 @@ class SquadProcessor(Processor):
     def dataset_from_dicts(self, dicts, index=None, from_inference=False):
         if(from_inference):
             dicts = [self._convert_inference(x) for x in dicts]
+        if(from_inference):
+            id_prefix = "infer"
+        else:
+            id_prefix = "train"
         self.baskets = [
-            SampleBasket(raw=tr, id="infer - {}".format(i))
+            SampleBasket(raw=tr, id=f"{id_prefix}-{i}")
             for i, tr in enumerate(dicts)
         ]
         self._init_samples_in_baskets()
@@ -751,7 +755,6 @@ class SquadProcessor(Processor):
         return dict
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
-        # TODO split samples that are too long in this function, related to todo in self._sample_to_features
         if "paragraphs" not in dictionary:  # TODO change this inference mode hack
             dictionary = self._convert_inference(infer_dict=dictionary)
         samples = create_samples_squad(entry=dictionary)

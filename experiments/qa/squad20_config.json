@@ -16,7 +16,7 @@
 
   "task": {
     "type":            {"value": null, "default": "token_classification", "desc": "Type."},
-    "language":        {"value": null, "default": "de",                   "desc": "Language."},
+    "language":        {"value": null, "default": "en",                   "desc": "Language."},
     "name":            {"value": null, "default": "SQUAD20",              "desc": "Name of task."},
     "do_eval":         {"value": null, "default": true,             "desc": "Whether to run eval on the dev set."},
     "do_train":        {"value": null, "default": true,             "desc": "Whether to run training. Can be used to only evaluate on an already trained model."},
@@ -35,7 +35,7 @@
     "prediction_head":  {"value": null, "default": "QuestionAnsweringHead", "desc": "Kind of prediction head we use on top of Language Model"},
     "lm_output_type":   {"value": null, "default": "per_token_squad",       "desc":  "Language Model output."},
     "lower_case":       {"value": null, "default": false,                   "desc": "Set to true if you are using an uncased model."},
-    "max_seq_len":      {"value": null, "default": 256,                     "desc": "The maximum total input sequence length after WordPiece tokenization. Some GNAD texts even extend beyond 512 tokens."},
+    "max_seq_len":      {"value": null, "default": 256,                     "desc": "The maximum total input sequence length after WordPiece tokenization."},
     "balance_classes":  {"value": null, "default": false,                   "desc": "Balance classes using weighted CrossEntropyLoss."},
 
     "learning_rate":      {"value": null, "default": 2e-5, "desc": "The initial learning rate for Adam."},
