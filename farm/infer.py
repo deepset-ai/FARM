@@ -196,7 +196,7 @@ class Inferencer:
                 "a) ... extract vectors from the language model: call `Inferencer.extract_vectors(...)`"
                 f"b) ... run inference on a downstream task: make sure your model path {self.name} contains a saved prediction head"
             )
-        dataset, tensor_names = self.processor.dataset_from_dicts(dicts, from_inference=True)
+        dataset, tensor_names = self.processor.dataset_from_dicts(dicts, rest_api_schema=True)
         samples = []
         for dict in dicts:
             samples.extend(self.processor._dict_to_samples(dict))
@@ -221,7 +221,7 @@ class Inferencer:
         :return: dict of predictions
         """
 
-        dataset, tensor_names = self.processor.dataset_from_dicts(dicts, from_inference=True)
+        dataset, tensor_names = self.processor.dataset_from_dicts(dicts, rest_api_schema=True)
         samples = []
         for dict in dicts:
             samples.extend(self.processor._dict_to_samples(dict))

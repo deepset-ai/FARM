@@ -308,8 +308,8 @@ class Processor(ABC):
     #     dataset, tensor_names = self._create_dataset()
     #     return dataset, tensor_names
 
-    #TODO remove useless from_inference flag after refactoring squad processing
-    def dataset_from_dicts(self, dicts, index=None, from_inference=False):
+    #TODO remove useless rest_api_schema flag after refactoring squad processing
+    def dataset_from_dicts(self, dicts, index=None, rest_api_schema=False):
         """
         Contains all the functionality to turn a list of dict objects into a PyTorch Dataset and a
         list of tensor names. This can be used for inference mode.
