@@ -14,7 +14,7 @@ parsed_requirements = [
 
 setup(
     name="farm",
-    version="0.2.0",
+    version="0.2.1",
     author="Malte Pietsch, Timo Moeller, Branden Chan, Tanay Soni, Huggingface Team Authors, Google AI Language Team Authors, Open AI team Authors",
     author_email="malte.pietsch@deepset.ai",
     description="Toolkit for finetuning and evaluating transformer based language models",
@@ -23,7 +23,7 @@ setup(
     keywords="BERT NLP deep learning language-model transformer",
     license="Apache",
     url="https://gitlab.com/deepset-ai/ml/lm/farm",
-    download_url="https://github.com/deepset-ai/FARM/archive/0.2.0.tar.gz",
+    download_url="https://github.com/deepset-ai/FARM/archive/0.2.1.tar.gz",
     packages=find_packages(exclude=["*.tests", "*.tests.*", "tests.*", "tests"]),
     install_requires=parsed_requirements,
     python_requires=">=3.5.0",
