@@ -58,10 +58,10 @@ class DataSilo:
     def _get_dataset(self, filename):
         dicts = self.processor._file_to_dicts(filename)
         #shuffle list of dicts here if we later want to have a random dev set splitted from train set
-        if filename == self.processor.train_filename:
+        if self.processor.train_filename in filename:
             if not self.processor.dev_filename:
                 if self.processor.dev_split > 0.0:
-                    dicts = random.shuffle(dicts)
+                    random.shuffle(dicts)
 
         dict_batches_to_process = int(len(dicts) / self.multiprocessing_chunk_size)
         num_cpus = min(mp.cpu_count(), self.max_processes,  dict_batches_to_process) or 1

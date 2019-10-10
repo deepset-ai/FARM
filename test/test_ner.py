@@ -32,8 +32,15 @@ def test_ner(caplog):
                   "I-OTH"]
 
     processor = NERProcessor(
-        tokenizer=tokenizer, max_seq_len=8, data_dir="samples/ner",train_filename="train-sample.txt",
-        dev_filename="dev-sample.txt",test_filename=None, delimiter=" ", label_list=ner_labels, metric="seq_f1"
+        tokenizer=tokenizer,
+        max_seq_len=8,
+        data_dir="samples/ner",
+        train_filename="train-sample.txt",
+        dev_filename="dev-sample.txt",
+        test_filename=None,
+        delimiter=" ",
+        label_list=ner_labels,
+        metric="seq_f1"
     )
 
     data_silo = DataSilo(processor=processor, batch_size=batch_size)
