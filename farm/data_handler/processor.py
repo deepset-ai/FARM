@@ -20,6 +20,7 @@ from farm.data_handler.samples import (
     Sample,
     SampleBasket,
     create_samples_squad,
+    create_samples_squadOLD
 )
 from farm.data_handler.utils import (
     read_tsv,
@@ -653,7 +654,170 @@ class BertStyleLMProcessor(Processor):
 #########################################
 # SQUAD 2.0 Processor ####
 #########################################
+
 class SquadProcessor(Processor):
+    """ Used to handle the SQuAD dataset"""
+
+    def __init__(
+        self,
+        tokenizer,
+        max_seq_len,
+        data_dir,
+        labels=None,
+        metric=None,
+        train_filename="train-v2.0.json",
+        dev_filename="dev-v2.0.json",
+        test_filename=None,
+        dev_split=0,
+        doc_stride=128,
+        max_query_length=64,
+        **kwargs,
+    ):
+        """
+        :param tokenizer: Used to split a sentence (str) into tokens.
+        :param max_seq_len: Samples are truncated after this many tokens.
+        :type max_seq_len: int
+        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
+        :type data_dir: str
+        :param train_filename: The name of the file containing training data.
+        :type train_filename: str
+        :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
+                             will be a slice of the train set.
+        :type dev_filename: str or None
+        :param test_filename: None
+        :type test_filename: str
+        :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
+        :type dev_split: float
+        :param data_dir: The directory in which the train, test and perhaps dev files can be found.
+        :type data_dir: str
+        :param doc_stride: When the document containing the answer is too long it gets split into part, strided by doc_stride
+        :type doc_stride: int
+        :param max_query_length: Maximum length of the question (in number of subword tokens)
+        :type max_query_length: int
+        :param kwargs: placeholder for passing generic parameters
+        :type kwargs: object
+        """
+
+        self.target = "classification"
+        self.ph_output_type = "per_token_squad"
+
+        self.doc_stride = doc_stride
+        self.max_query_length = max_query_length
+
+        super(SquadProcessor, self).__init__(
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            train_filename=train_filename,
+            dev_filename=dev_filename,
+            test_filename=test_filename,
+            dev_split=dev_split,
+            data_dir=data_dir,
+            tasks={},
+        )
+
+        if metric and labels:
+            self.add_task("question_answering", metric, labels)
+
+    def dataset_from_dicts(self, dicts, index=None, from_inference=False):
+        """ Overwrites the method from the base class since Question Answering processing is quite different.
+        This method allows for documents and questions to be tokenized earlier. Then SampleBaskets are initialized
+        with one document and one question. """
+
+        if from_inference:
+            dicts = [self._convert_inference(x) for x in dicts]
+        self.baskets = self._dicts_to_baskets(dicts)
+        self._init_samples_in_baskets()
+        self._featurize_samples()
+        if index == 0:
+            self._log_samples(3)
+        dataset, tensor_names = self._create_dataset()
+        return dataset, tensor_names
+
+    def _dicts_to_baskets(self, dicts):
+        # Perform tokenization on documents and questions resulting in a nested list of doc-question pairs
+        dicts_tokenized = [self.apply_tokenization(d) for d in dicts]
+
+        baskets = []
+        for d_idx, document in enumerate(dicts_tokenized):
+            for r_idx, raw in enumerate(document):
+               basket = SampleBasket(raw=raw, id=f"{d_idx}_{r_idx}")
+               baskets.append(basket)
+        return baskets
+
+
+    def apply_tokenization(self, dictionary):
+        """ This performs tokenization on all documents and questions. The result is an unnested list where each entry
+        is a document question pair. """
+        raw_baskets = []
+        paragraphs = dictionary["paragraphs"]
+        for paragraph in paragraphs:
+            paragraph_text = paragraph["context"]
+            paragraph_tokenized = tokenize_with_metadata(paragraph_text, self.tokenizer, max_seq_len=None)
+            questions = paragraph["qas"]
+            for question in questions:
+                question_text = question["question"]
+                question_tokenized = tokenize_with_metadata(question_text, self.tokenizer, max_seq_len=None)
+                raw = {"document_tokens": paragraph_tokenized["tokens"],
+                       "document_offsets": paragraph_tokenized["offsets"],
+                       "question_tokens": question_tokenized["tokens"],
+                       "question_offsets": question_tokenized["offsets"],
+                       "document_text": paragraph_text,
+                       "question_text": question_text}
+                raw_baskets.append(raw)
+        return raw_baskets
+
+    def _convert_inference(self, infer_dict):
+        # convert input coming from inferencer to SQuAD format
+        converted = {}
+        converted["paragraphs"] = [
+            {
+                "qas": [
+                    {
+                        "question": infer_dict.get("questions", ["Missing?"])[0],
+                        "id": "unusedID",
+                    }
+                ],
+                "context": infer_dict.get("text", "Missing!"),
+            }
+        ]
+        return converted
+
+    def _file_to_dicts(self, file: str) -> [dict]:
+        dict = read_squad_file(filename=file)
+        return dict
+
+    def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
+        # TODO split samples that are too long in this function, related to todo in self._sample_to_features
+        if "paragraphs" not in dictionary:  # TODO change this inference mode hack
+            dictionary = self._convert_inference(infer_dict=dictionary)
+
+        samples = create_samples_squad(dictionary, self.tokenizer)
+        # samples = create_samples_squadOLD(dictionary)
+
+        for sample in samples:
+            tokenized = tokenize_with_metadata(
+                text=" ".join(sample.clear_text["doc_tokens"]),
+                tokenizer=self.tokenizer,
+                max_seq_len=self.max_seq_len,
+            )
+            sample.tokenized = tokenized
+
+        return samples
+
+    def _sample_to_features(self, sample) -> dict:
+        # TODO, make this function return one set of features per sample
+        features = sample_to_features_squad(
+            sample=sample,
+            tokenizer=self.tokenizer,
+            max_seq_len=self.max_seq_len,
+            doc_stride=self.doc_stride,
+            max_query_length=self.max_query_length,
+            tasks=self.tasks
+        )
+        return features
+
+
+class SquadProcessorOLD(Processor):
     """ Used to handle the SQuAD dataset"""
 
     def __init__(
@@ -756,7 +920,7 @@ class SquadProcessor(Processor):
             dictionary = self._convert_inference(infer_dict=dictionary)
         samples = create_samples_squad(entry=dictionary)
         for sample in samples:
-            tokenized = tokenize_with_metadata(
+            tokenized = tokenize_with_metadataOLD(
                 text=" ".join(sample.clear_text["doc_tokens"]),
                 tokenizer=self.tokenizer,
                 max_seq_len=self.max_seq_len,
