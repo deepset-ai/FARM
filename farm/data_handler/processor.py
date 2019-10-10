@@ -717,10 +717,10 @@ class SquadProcessor(Processor):
         if metric and labels:
             self.add_task("question_answering", metric, labels)
 
-    def dataset_from_dicts(self, dicts, index=None, from_inference=False):
-        if(from_inference):
-            dicts = [self._convert_inference(x) for x in dicts]
-        if(from_inference):
+    def dataset_from_dicts(self, dicts, index=None, rest_api_schema=False):
+        if rest_api_schema:
+            dicts = [self._convert_rest_api_dict(x) for x in dicts]
+        if rest_api_schema:
             id_prefix = "infer"
         else:
             id_prefix = "train"
@@ -735,7 +735,7 @@ class SquadProcessor(Processor):
         dataset, tensor_names = self._create_dataset()
         return dataset, tensor_names
 
-    def _convert_inference(self, infer_dict):
+    def _convert_rest_api_dict(self, infer_dict):
         # convert input coming from inferencer to SQuAD format
         converted = {}
         converted["paragraphs"] = [
@@ -757,7 +757,7 @@ class SquadProcessor(Processor):
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
         if "paragraphs" not in dictionary:  # TODO change this inference mode hack
-            dictionary = self._convert_inference(infer_dict=dictionary)
+            dictionary = self._convert_rest_api_dict(infer_dict=dictionary)
         samples = create_samples_squad(entry=dictionary)
         for sample in samples:
             tokenized = tokenize_with_metadata(
