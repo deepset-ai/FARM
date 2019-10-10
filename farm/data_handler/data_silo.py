@@ -81,8 +81,10 @@ class DataSilo:
             )
 
             datasets = []
-            for dataset, tensor_names in tqdm(results, total=len(dicts)/self.multiprocessing_chunk_size):
-                datasets.append(dataset)
+            with tqdm(total=len(dicts), unit=' Dicts') as pbar:
+                for dataset, tensor_names in results:
+                    datasets.append(dataset)
+                    pbar.update(self.multiprocessing_chunk_size)
             
             concat_datasets = ConcatDataset(datasets)
             return concat_datasets, tensor_names
