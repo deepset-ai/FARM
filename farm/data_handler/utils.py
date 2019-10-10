@@ -359,8 +359,8 @@ def is_json(x):
 
 def grouper(iterable, n):
     """
-    >>> list(grouper('ABCDEFG'), 3)
-    [['A', 'B', 'C'], ['D', 'E', 'F'], ['G']]
+    >>> list(grouper('ABCDEFG', 3))
+    [[(0, 'A'), (1, 'B'), (2, 'C')], [(3, 'D'), (4, 'E'), (5, 'F')], [(6, 'G')]]
     """
     iterable = iter(enumerate(iterable))
     return iter(lambda: list(islice(iterable, n)), [])

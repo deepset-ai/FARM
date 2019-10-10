@@ -318,8 +318,13 @@ class Processor(ABC):
         :type dicts: list of dicts
         :return: a Pytorch dataset and a list of tensor names.
         """
+        if rest_api_schema:
+            id_prefix = "infer"
+        else:
+            id_prefix = "train"
+            # We need to add the index (coming from multiprocessing chunks) to have a unique basket ID
         self.baskets = [
-            SampleBasket(raw=tr, id="infer - {}".format(i))
+            SampleBasket(raw=tr, id=f"{id_prefix}-{i + index}")
             for i, tr in enumerate(dicts)
         ]
         self._init_samples_in_baskets()
@@ -736,16 +741,25 @@ class SquadProcessor(Processor):
             id_prefix = "infer"
         else:
             id_prefix = "train"
+        #We need to add the index (coming from multiprocessing chunks) to have a unique basket ID
         self.baskets = [
-            SampleBasket(raw=tr, id=f"{id_prefix}-{i}")
+            SampleBasket(raw=tr, id=(i+index)*10000)
             for i, tr in enumerate(dicts)
         ]
-        self._init_samples_in_baskets()
+        self._init_samples_in_baskets_squad()
         self._featurize_samples()
         if index == 0:
             self._log_samples(3)
         dataset, tensor_names = self._create_dataset()
         return dataset, tensor_names
+
+    def _init_samples_in_baskets_squad(self):
+        #this function is only needed to work with integer IDs instead of strings
+        for basket in self.baskets:
+            all_dicts = [b.raw for b in self.baskets]
+            basket.samples = self._dict_to_samples(dictionary=basket.raw, all_dicts=all_dicts)
+            for num, sample in enumerate(basket.samples):
+                 sample.id = basket.id + num
 
     def _convert_rest_api_dict(self, infer_dict):
         # convert input coming from inferencer to SQuAD format

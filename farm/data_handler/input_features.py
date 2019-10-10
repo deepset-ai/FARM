@@ -461,6 +461,7 @@ def sample_to_features_squad(
         inp_feat["start_position"] = start_position
         inp_feat["end_position"] = end_position
         inp_feat["is_impossible"] = sample.clear_text.is_impossible
+        inp_feat["sample_id"] = sample.id
         features.append(inp_feat)
         unique_id += 1
 

@@ -837,7 +837,7 @@ class QuestionAnsweringHead(PredictionHead):
             # Since we have only one prediction for now, it makes sense to take the mean of both start + end probs
             probabilities[i_batch] = (expit(start_logits[i_batch, best_indices[i_batch, 0]]) +
                                       expit(end_logits[i_batch, best_indices[i_batch, 1]])) / 2
-        return (best_indices[:,0], best_indices[:,1], probabilities)
+        return (best_indices[:,0], best_indices[:,1], probabilities, kwargs["sample_id"].cpu().numpy())
 
     def prepare_labels(self, start_position, end_position, **kwargs):
         """

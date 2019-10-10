@@ -1,5 +1,6 @@
 import torch
 import numpy as np
+import pandas as pd
 from scipy.stats import pearsonr, spearmanr
 from seqeval.metrics import f1_score as ner_f1_score
 from sklearn.metrics import matthews_corrcoef, f1_score, mean_squared_error, r2_score
@@ -65,17 +66,21 @@ def compute_metrics(metric, preds, labels):
 
 def squad_EM(preds, labels):
     # scoring in tokenized space, so results to public leaderboard will vary
-    pred_start = np.concatenate(preds[::3])
-    pred_end = np.concatenate(preds[1::3])
-    label_start = torch.cat(labels[::2])
-    label_end = torch.cat(labels[1::2])
-    assert len(label_start) == len(pred_start)
-    num_total = len(label_start)
-    num_correct = 0
-    for i in range(num_total):
-        if pred_start[i] == label_start[i] and pred_end[i] == label_end[i]:
-            num_correct += 1
-    return num_correct / num_total
+    data = {}
+    data["pred_start"] = np.concatenate(preds[::4])
+    data["pred_end"] = np.concatenate(preds[1::4])
+    data["prob"] = np.concatenate(preds[2::4])
+    data["sample_id"] = np.concatenate(preds[3::4])
+    data["label_start"] = torch.cat(labels[::2]).cpu().numpy()
+    data["label_end"] = torch.cat(labels[1::2]).cpu().numpy()
+    df = pd.DataFrame(data=data)
+    # compute if a prediction matches the label exactly
+    df.loc[:,"correct"] = np.logical_and(df.pred_start == df.label_start, df.pred_end == df.label_end)
+    # we want to group by sample ID and only take the highest probable prediction for scoring
+    df.loc[:,"max_prob"] = df.groupby(by="sample_id")['prob'].transform(max)
+    df=df.loc[df.prob == df.max_prob,:]
+    em = np.sum(df.correct)/df.shape[0]
+    return em
 
 
 def squad_f1(preds, labels):
