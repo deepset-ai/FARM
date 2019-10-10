@@ -138,15 +138,17 @@ class Inferencer:
             )
 
             preds_all = []
-            for dataset, tensor_names, sample in tqdm(results, total=dict_batches_to_process):
-                preds_all.append(self._run_inference(dataset, tensor_names, sample))
+            with tqdm(total=len(dicts), unit=' Dicts') as pbar:
+                for dataset, tensor_names, sample in results:
+                    preds_all.append(self._run_inference(dataset, tensor_names, sample))
+                    pbar.update(self.multiprocessing_chunk_size)
 
         return preds_all
 
     @classmethod
     def _multiproc_dict_to_samples(cls, dicts, processor):
         dicts_list = [dicts]
-        dataset, tensor_names = processor.dataset_from_dicts(dicts_list, from_inference=True)
+        dataset, tensor_names = processor.dataset_from_dicts(dicts_list)
         samples = []
         for d in dicts_list:
             samples.extend(processor._dict_to_samples(d))
