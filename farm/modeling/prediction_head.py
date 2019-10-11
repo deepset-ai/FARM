@@ -730,6 +730,7 @@ class QuestionAnsweringHead(PredictionHead):
             "span_classification"
         )  # predicts start and end token of answer
         self.task_name = task_name
+        self.max_ans_len = 42
         self.generate_config()
 
     def forward(self, X):
@@ -798,12 +799,12 @@ class QuestionAnsweringHead(PredictionHead):
         no_answer_sum = start_logits[:,0] + end_logits[:,0]
         best_answer_sum = np.zeros(num_batches)
         # check if start or end point to the context. Context starts at segment id == 1  (question comes before at segment ids == 0)
-
         segment_ids = kwargs['segment_ids'].data.cpu().numpy()
         context_start = np.argmax(segment_ids,axis=1)
+        context_end = segment_ids.shape[1] - np.argmax(segment_ids[::-1],axis=1)
         start_proposals = self._get_best_indexes(start_logits, 3)
         end_proposals = self._get_best_indexes(end_logits, 3)
-        best_indices = np.zeros((num_batches,2),dtype=int) # dimension [:,0] is start, [:,1] is end
+        best_indices = np.zeros((num_batches,2),dtype=int)
         for i_batch in range(num_batches):
             # for each sample create mesh of possible start + end combinations and their score as sum of logits
             mesh_idx = np.meshgrid(start_proposals[i_batch,:],end_proposals[i_batch])
@@ -814,18 +815,22 @@ class QuestionAnsweringHead(PredictionHead):
             for idx in np.argsort(scores)[::-1]:
                 start = start_comb[idx]
                 end = end_comb[idx]
-                if(start < context_start[i_batch]): #TODO check for context end as well
+                if start < context_start[i_batch]:
                     continue
-                if(end < context_start[i_batch]):
+                if end > context_end[i_batch]:
                     continue
-                if(start > end):
+                if end < context_start[i_batch]:
                     continue
-                # maybe need check: end - start > max answer len. How to set max answer len?
+                if start > end:
+                    continue
+                if(end - start > self.max_ans_len):
+                    continue
                 # maybe need check weather start/end idx refers to start of word and not to a ##... continuation
+
                 best_indices[i_batch,0] = start
                 best_indices[i_batch,1] = end
                 best_answer_sum[i_batch] = scores[idx]
-                break
+                break # since we take most likely predictions first, we stop when finding a valid prediction
 
 
         # TODO upweight no answers here?
