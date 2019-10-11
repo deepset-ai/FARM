@@ -184,7 +184,7 @@ class Inferencer:
             preds_all = []
             with tqdm(total=len(dicts), unit=" Dicts") as pbar:
                 for dataset, tensor_names, sample in results:
-                    preds_all.append(self._run_inference(dataset, tensor_names, sample))
+                    preds_all.extend(self._run_inference(dataset, tensor_names, sample))
                     pbar.update(self.multiprocessing_chunk_size)
 
         return preds_all
