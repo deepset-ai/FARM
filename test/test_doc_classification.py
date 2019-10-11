@@ -79,7 +79,7 @@ def test_doc_classification(caplog):
 
 
     inf = Inferencer.load(save_dir,batch_size=2)
-    result = inf.run_inference(dicts=basic_texts)
+    result = inf.inference_from_dicts(dicts=basic_texts)
     assert isinstance(result[0]["predictions"][0]["probability"],np.float32)
 
 
