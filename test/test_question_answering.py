@@ -78,7 +78,7 @@ def test_qa(caplog):
     ]
 
     model = Inferencer.load(save_dir)
-    result = model.run_inference(dicts=QA_input)
+    result = model.inference_from_dicts(dicts=QA_input)
     assert isinstance(result[0]["predictions"][0]["end"],int)
 
 if(__name__=="__main__"):

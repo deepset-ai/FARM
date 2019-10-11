@@ -75,7 +75,7 @@ def test_doc_regression(caplog):
     ]
 
     model = Inferencer.load(save_dir)
-    result = model.run_inference(dicts=basic_texts)
+    result = model.inference_from_dicts(dicts=basic_texts)
     assert isinstance(result[0]["predictions"][0]["pred"], np.float32)
 
 if(__name__=="__main__"):

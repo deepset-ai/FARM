@@ -4,6 +4,7 @@ from abc import ABC
 import random
 import logging
 import json
+import time
 import inspect
 from inspect import signature
 import numpy as np
@@ -41,7 +42,7 @@ class Processor(ABC):
     """
     Is used to generate PyTorch Datasets from input data. An implementation of this abstract class should be created
     for each new data source.
-    Implement the abstract methods: _file_to_dicts(), _dict_to_samples(), _sample_to_features()
+    Implement the abstract methods: file_to_dicts(), _dict_to_samples(), _sample_to_features()
     to be compatible with your data format
     """
 
@@ -236,7 +237,7 @@ class Processor(ABC):
         }
 
     @abc.abstractmethod
-    def _file_to_dicts(self, file: str) -> [dict]:
+    def file_to_dicts(self, file: str) -> [dict]:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -248,7 +249,7 @@ class Processor(ABC):
         raise NotImplementedError()
 
     def _init_baskets_from_file(self, file):
-        dicts = self._file_to_dicts(file)
+        dicts = self.file_to_dicts(file)
         dataset_name = os.path.splitext(os.path.basename(file))[0]
         baskets = [
             SampleBasket(raw=tr, id=f"{dataset_name}-{i}") for i, tr in enumerate(dicts)
@@ -307,8 +308,8 @@ class Processor(ABC):
     #     dataset, tensor_names = self._create_dataset()
     #     return dataset, tensor_names
 
-    #TODO remove useless from_inference flag after refactoring squad processing
-    def dataset_from_dicts(self, dicts, index=None, from_inference=False):
+    #TODO remove useless rest_api_schema flag after refactoring squad processing
+    def dataset_from_dicts(self, dicts, index=None, rest_api_schema=False):
         """
         Contains all the functionality to turn a list of dict objects into a PyTorch Dataset and a
         list of tensor names. This can be used for inference mode.
@@ -406,7 +407,7 @@ class TextClassificationProcessor(Processor):
                           label_column_name=label_column_name,
                           task_type=task_type)
 
-    def _file_to_dicts(self, file: str) -> [dict]:
+    def file_to_dicts(self, file: str) -> [dict]:
         column_mapping = {task["label_column_name"]: task["label_name"] for task in self.tasks.values()}
         dicts = read_tsv(
             filename=file,
@@ -497,7 +498,7 @@ class InferenceProcessor(Processor):
         return processor
 
 
-    def _file_to_dicts(self, file: str) -> [dict]:
+    def file_to_dicts(self, file: str) -> [dict]:
       raise NotImplementedError
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
@@ -554,7 +555,7 @@ class NERProcessor(Processor):
         if metric and label_list:
             self.add_task("ner", metric, label_list)
 
-    def _file_to_dicts(self, file: str) -> [dict]:
+    def file_to_dicts(self, file: str) -> [dict]:
         dicts = read_ner_file(filename=file, sep=self.delimiter)
         return dicts
 
@@ -616,7 +617,7 @@ class BertStyleLMProcessor(Processor):
             self.add_task("nextsentence", "acc", ["False", "True"])
 
 
-    def _file_to_dicts(self, file: str) -> list:
+    def file_to_dicts(self, file: str) -> list:
         dicts = read_docs_from_txt(filename=file, delimiter=self.delimiter, max_docs=self.max_docs)
         return dicts
 
@@ -716,10 +717,10 @@ class SquadProcessor(Processor):
         if metric and labels:
             self.add_task("question_answering", metric, labels)
 
-    def dataset_from_dicts(self, dicts, index=None, from_inference=False):
-        if(from_inference):
-            dicts = [self._convert_inference(x) for x in dicts]
-        if(from_inference):
+    def dataset_from_dicts(self, dicts, index=None, rest_api_schema=False):
+        if rest_api_schema:
+            dicts = [self._convert_rest_api_dict(x) for x in dicts]
+        if rest_api_schema:
             id_prefix = "infer"
         else:
             id_prefix = "train"
@@ -734,7 +735,7 @@ class SquadProcessor(Processor):
         dataset, tensor_names = self._create_dataset()
         return dataset, tensor_names
 
-    def _convert_inference(self, infer_dict):
+    def _convert_rest_api_dict(self, infer_dict):
         # convert input coming from inferencer to SQuAD format
         converted = {}
         converted["paragraphs"] = [
@@ -750,13 +751,13 @@ class SquadProcessor(Processor):
         ]
         return converted
 
-    def _file_to_dicts(self, file: str) -> [dict]:
+    def file_to_dicts(self, file: str) -> [dict]:
         dict = read_squad_file(filename=file)
         return dict
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
         if "paragraphs" not in dictionary:  # TODO change this inference mode hack
-            dictionary = self._convert_inference(infer_dict=dictionary)
+            dictionary = self._convert_rest_api_dict(infer_dict=dictionary)
         samples = create_samples_squad(entry=dictionary)
         for sample in samples:
             tokenized = tokenize_with_metadata(
@@ -822,7 +823,7 @@ class RegressionProcessor(Processor):
         self.add_task(name="regression", metric="mse", label_list= [scaler_mean, scaler_scale], label_column_name=label_column_name, task_type="regression", label_name=label_name)
 
 
-    def _file_to_dicts(self, file: str) -> [dict]:
+    def file_to_dicts(self, file: str) -> [dict]:
         column_mapping = {task["label_column_name"]: task["label_name"] for task in self.tasks.values()}
         dicts = read_tsv(
             rename_columns=column_mapping,

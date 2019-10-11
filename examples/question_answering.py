@@ -104,7 +104,7 @@ QA_input = [
         }]
 
 model = Inferencer.load(save_dir)
-result = model.run_inference(dicts=QA_input)
+result = model.inference_from_dicts(dicts=QA_input)
 
 for x in result:
     pprint.pprint(x)
