@@ -15,6 +15,7 @@ from farm.utils import initialize_device_settings
 from farm.data_handler.processor import Processor, InferenceProcessor
 from farm.utils import set_all_seeds
 from farm.utils import log_ascii_workers
+from farm.data_handler.utils import grouper
 
 
 logger = logging.getLogger(__name__)
@@ -119,6 +120,27 @@ class Inferencer:
 
     def inference_from_file(self, file):
         dicts = self.processor.file_to_dicts(file)
+        preds_all = self.inference_from_dicts(dicts, rest_api_schema=False)
+        return preds_all
+
+    def inference_from_dicts(self, dicts, rest_api_schema=True):
+        """
+        Runs down-stream inference using the prediction head.
+
+        :param dicts: Samples to run inference on provided as a list of dicts. One dict per sample.
+        :type dicts: [dict]
+        :param rest_api_schema: whether conform to the schema used for dicts in the HTTP API for Inference.
+        :type rest_api_schema: bool
+        :return: dict of predictions
+
+        """
+        if self.prediction_type == "embedder":
+            raise TypeError(
+                "You have called inference_from_dicts for a model without any prediction head! "
+                "If you want to: "
+                "a) ... extract vectors from the language model: call `Inferencer.extract_vectors(...)`"
+                f"b) ... run inference on a downstream task: make sure your model path {self.name} contains a saved prediction head"
+            )
 
         dict_batches_to_process = int(len(dicts) / self.multiprocessing_chunk_size)
         num_cpus = min(mp.cpu_count(), dict_batches_to_process) or 1
@@ -132,9 +154,9 @@ class Inferencer:
             log_ascii_workers(num_cpus, logger)
 
             results = p.imap(
-                partial(self._multiproc_dict_to_samples, processor=self.processor),
-                dicts,
-                chunksize=self.multiprocessing_chunk_size,
+                partial(self._multiproc, processor=self.processor, rest_api_schema=rest_api_schema),
+                grouper(dicts, self.multiprocessing_chunk_size),
+                1
             )
 
             preds_all = []
@@ -146,11 +168,11 @@ class Inferencer:
         return preds_all
 
     @classmethod
-    def _multiproc_dict_to_samples(cls, dicts, processor):
-        dicts_list = [dicts]
-        dataset, tensor_names = processor.dataset_from_dicts(dicts_list)
+    def _multiproc(cls, chunk, processor, rest_api_schema):
+        dicts = [d[1] for d in chunk]
+        dataset, tensor_names = processor.dataset_from_dicts(dicts, rest_api_schema)
         samples = []
-        for d in dicts_list:
+        for d in dicts:
             samples.extend(processor._dict_to_samples(d))
         
         return dataset, tensor_names, samples
@@ -177,31 +199,6 @@ class Inferencer:
                     **batch,
                 )
                 preds_all += preds
-
-        return preds_all
-
-    def inference_from_dicts(self, dicts):
-        """
-        Runs down-stream inference using the prediction head.
-
-        :param dicts: Samples to run inference on provided as a list of dicts. One dict per sample.
-        :type dicts: [dict]
-        :return: dict of predictions
-
-        """
-        if self.prediction_type == "embedder":
-            raise TypeError(
-                "You have called inference_from_dicts for a model without any prediction head! "
-                "If you want to: "
-                "a) ... extract vectors from the language model: call `Inferencer.extract_vectors(...)`"
-                f"b) ... run inference on a downstream task: make sure your model path {self.name} contains a saved prediction head"
-            )
-        dataset, tensor_names = self.processor.dataset_from_dicts(dicts, rest_api_schema=True)
-        samples = []
-        for dict in dicts:
-            samples.extend(self.processor._dict_to_samples(dict))
-
-        preds_all = self._run_inference(dataset, tensor_names, samples)
 
         return preds_all
 
