@@ -5,6 +5,9 @@ from scipy.stats import pearsonr, spearmanr
 from seqeval.metrics import f1_score as ner_f1_score
 from sklearn.metrics import matthews_corrcoef, f1_score, mean_squared_error, r2_score
 from farm.utils import flatten_list
+import logging
+
+logger = logging.getLogger(__name__)
 
 def simple_accuracy(preds, labels):
     # works also with nested lists of different lengths (needed for masked LM task)
@@ -64,67 +67,85 @@ def compute_metrics(metric, preds, labels):
         raise KeyError(metric)
 
 
-def squad_EM(preds, labels):
+def squad(preds=None, labels=None,df=None):
     # scoring in tokenized space, so results to public leaderboard will vary
-    data = {}
-    data["pred_start"] = np.concatenate(preds[::4])
-    data["pred_end"] = np.concatenate(preds[1::4])
-    data["prob"] = np.concatenate(preds[2::4])
-    data["sample_id"] = np.concatenate(preds[3::4])
-    data["label_start"] = torch.cat(labels[::2]).cpu().numpy()
-    data["label_end"] = torch.cat(labels[1::2]).cpu().numpy()
-    df = pd.DataFrame(data=data)
-    # compute if a prediction matches the label exactly
-    df.loc[:,"correct"] = np.logical_and(df.pred_start == df.label_start, df.pred_end == df.label_end)
-    # we want to group by sample ID and only take the highest probable prediction for scoring
-    df.loc[:,"max_prob"] = df.groupby(by="sample_id")['prob'].transform(max)
-    df=df.loc[df.prob == df.max_prob,:]
-    em = np.sum(df.correct)/df.shape[0]
-    return em
+    if preds is not None:
+        data = {}
+        data["pred_start"] = np.concatenate(preds[::4])
+        data["pred_end"] = np.concatenate(preds[1::4])
+        data["prob"] = np.concatenate(preds[2::4])
+        data["sample_id"] = np.concatenate(preds[3::4])
+        data["label_start"] = torch.cat(labels[::2]).cpu().numpy()
+        data["label_end"] = torch.cat(labels[1::2]).cpu().numpy()
+        df = pd.DataFrame(data=data)
+        df.to_csv("predictions.csv",index=False)
+    # we sometimes have multiple predictions for one sample (= paragraph question pair)
+    # because we split the paragraph into smaller passages
+    # we want to check weather this sample belongs to is_impossible (all 0 start + end labels for all passages)
+    # and compute metrics for the most likely prediction
+    unique_sample_ids = df.sample_id.unique()
+    em_all = []
+    f1_all = []
+    precision_all = []
+    recall_all = []
+    for uid in unique_sample_ids:
+        group = df.loc[df.sample_id == uid,:]
+        is_impossible = (np.sum(group.label_start) + np.sum(group.label_end)) == 0
+        max_pred = group.loc[group.prob == np.max(group.prob)]
+        if(max_pred.shape[0] > 1):
+            max_pred = max_pred.loc[0,:] # hack away and just take first pred. Should rarely occur.
+            logger.info(f"Multiple predictions having exactly the same probability value. "
+                        f"Something might be wrong at sample ids: {str(max_pred.sample_id.values)}")
+        if not is_impossible:
+            # cover special case: there is an answer span in labels
+            # so we need to weight how to deal with no answer predictions from other passages
+            # for now we just take the highest prediction over all
+            # TODO: add weighting of no answer predicitons vs answer predictions
+            if(max_pred.pred_start.values[0] + max_pred.pred_end.values[0] == 0):
+                em_all.append(0)
+                precision_all.append(0)
+                recall_all.append(0)
+                f1_all.append(0)
+                continue
+        em,p,r,f1 = compute_qa_f1(pred_start=max_pred.pred_start.values[0],
+                                 pred_end=max_pred.pred_end.values[0],
+                                 label_start= max_pred.label_start.values[0],
+                                 label_end= max_pred.label_end.values[0])
+        em_all.append(em)
+        precision_all.append(p)
+        recall_all.append(r)
+        f1_all.append(f1)
 
 
-def squad_f1(preds, labels):
+    return {"EM": np.mean(em_all),
+            "Precision": np.mean(precision_all),
+            "Recall": np.mean(recall_all),
+            "F1": np.mean(f1_all)}
+
+
+def compute_qa_f1(pred_start, pred_end, label_start, label_end):
     # scoring in tokenized space, so results to public leaderboard will vary
-    pred_start = np.concatenate(preds[::3]) # having start, end and probabilities in preds
-    pred_end = np.concatenate(preds[1::3])
-
-    label_start = torch.cat(labels[::2]).cpu().numpy()
-    label_end = torch.cat(labels[1::2]).cpu().numpy()
-    assert len(label_start) == len(pred_start)
-    num_total = len(label_start)
-    f1_scores = []
-    prec_scores = []
-    recall_scores = []
-    for i in range(num_total):
-        if (pred_start[i] + pred_end[i]) <= 0 or (label_start[i] + label_end[i]) <= 0:
-            # If either is no-answer, then F1 is 1 if they agree, 0 otherwise
-            f1_scores.append(pred_end[i] == label_end[i])
-            prec_scores.append(pred_end[i] == label_end[i])
-            recall_scores.append(pred_end[i] == label_end[i])
+    em = pred_start == label_start and pred_end == label_end
+    if (pred_start + pred_end) <= 0 or (label_start + label_end) <= 0:
+        # If either is no-answer, then F1 is 1 if they agree, 0 otherwise
+        f1 = pred_end == label_end
+        precision = pred_end == label_end
+        recall = pred_end == label_end
+    else:
+        pred_range = set(range(pred_start, pred_end + 1)) # include end pred
+        true_range = set(range(label_start, label_end + 1))
+        num_same = len(true_range.intersection(pred_range))
+        if num_same == 0:
+            f1 = 0
+            precision = 0
+            recall = 0
         else:
-            pred_range = set(range(pred_start[i], pred_end[i]))
-            true_range = set(range(label_start[i], label_end[i]))
-            num_same = len(true_range.intersection(pred_range))
-            if num_same == 0:
-                f1_scores.append(0)
-                prec_scores.append(0)
-                recall_scores.append(0)
-            else:
-                precision = 1.0 * num_same / len(pred_range)
-                recall = 1.0 * num_same / len(true_range)
-                f1 = (2 * precision * recall) / (precision + recall)
-                f1_scores.append(f1)
-                prec_scores.append(precision)
-                recall_scores.append(recall)
-    return (
-        np.mean(np.array(prec_scores)),
-        np.mean(np.array(recall_scores)),
-        np.mean(np.array(f1_scores)),
-    )
+            precision = 1.0 * num_same / len(pred_range)
+            recall = 1.0 * num_same / len(true_range)
+            f1 = (2 * precision * recall) / (precision + recall)
+    return em,precision, recall, f1
 
 
-def squad(preds, labels):
-    em = squad_EM(preds=preds, labels=labels)
-    f1 = squad_f1(preds=preds, labels=labels)
-
-    return {"EM": em, "f1": f1}
+if(__name__ == "__main__"):
+    df = pd.read_csv("../examples/predictions.csv")
+    print(squad(df =df ))
