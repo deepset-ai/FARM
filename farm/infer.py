@@ -41,10 +41,18 @@ class Inferencer:
 
     """
 
-    def __init__(self, model, processor, batch_size=4, gpu=False, name=None, return_class_probs=False,
-                 multiprocessing_chunk_size=100):
+    def __init__(
+        self,
+        model,
+        processor,
+        batch_size=4,
+        gpu=False,
+        name=None,
+        return_class_probs=False,
+        multiprocessing_chunk_size=100,
+    ):
         """
-        Initializes inferencer from an AdaptiveModel and a Processor instance.
+        Initializes Inferencer from an AdaptiveModel and a Processor instance.
 
         :param model: AdaptiveModel to run in inference mode
         :type model: AdaptiveModel
@@ -54,7 +62,7 @@ class Inferencer:
         :type batch_size: int
         :param gpu: If GPU shall be used
         :type gpu: bool
-        :param name: Name for the current inferencer model, displayed in the REST API
+        :param name: Name for the current Inferencer model, displayed in the REST API
         :type name: string
         :param return_class_probs: either return probability distribution over all labels or the prob of the associated label
         :type return_class_probs: bool
@@ -62,9 +70,7 @@ class Inferencer:
 
         """
         # Init device and distributed settings
-        device, n_gpu = initialize_device_settings(
-            use_cuda=gpu, local_rank=-1, fp16=False
-        )
+        device, n_gpu = initialize_device_settings(use_cuda=gpu, local_rank=-1, fp16=False)
 
         self.processor = processor
         self.model = model
@@ -75,7 +81,7 @@ class Inferencer:
         # TODO adjust for multiple prediction heads
         if len(self.model.prediction_heads) == 1:
             self.prediction_type = self.model.prediction_heads[0].model_type
-            #self.label_map = self.processor.label_maps[0]
+            # self.label_map = self.processor.label_maps[0]
         elif len(self.model.prediction_heads) == 0:
             self.prediction_type = "embedder"
         # else:
@@ -88,9 +94,17 @@ class Inferencer:
         set_all_seeds(42, n_gpu)
 
     @classmethod
-    def load(cls, load_dir, batch_size=4, gpu=False, embedder_only=False, return_class_probs=False):
+    def load(
+        cls,
+        load_dir,
+        batch_size=4,
+        gpu=False,
+        embedder_only=False,
+        return_class_probs=False,
+        multiprocessing_chunk_size=100,
+    ):
         """
-        Initializes inferencer from directory with saved model.
+        Initializes Inferencer from directory with saved model.
 
         :param load_dir: Directory where the saved model is located.
         :type load_dir: str
@@ -101,12 +115,12 @@ class Inferencer:
         :param embedder_only: If true, a faster processor (InferenceProcessor) is loaded. This should only be used
         for extracting embeddings (no downstream predictions).
         :type embedder_only: bool
+        :param multiprocessing_chunk_size: chunksize param for Python Multiprocessing imap().
+        :type multiprocessing_chunk_size: int
         :return: An instance of the Inferencer.
         """
 
-        device, n_gpu = initialize_device_settings(
-            use_cuda=gpu, local_rank=-1, fp16=False
-        )
+        device, n_gpu = initialize_device_settings(use_cuda=gpu, local_rank=-1, fp16=False)
 
         model = AdaptiveModel.load(load_dir, device)
         if embedder_only:
@@ -116,14 +130,22 @@ class Inferencer:
             processor = Processor.load_from_dir(load_dir)
 
         name = os.path.basename(load_dir)
-        return cls(model, processor, batch_size=batch_size, gpu=gpu, name=name, return_class_probs=return_class_probs)
+        return cls(
+            model,
+            processor,
+            batch_size=batch_size,
+            gpu=gpu,
+            name=name,
+            return_class_probs=return_class_probs,
+            multiprocessing_chunk_size=multiprocessing_chunk_size,
+        )
 
     def inference_from_file(self, file):
         dicts = self.processor.file_to_dicts(file)
         preds_all = self.inference_from_dicts(dicts, rest_api_schema=False)
         return preds_all
 
-    def inference_from_dicts(self, dicts, rest_api_schema=True):
+    def inference_from_dicts(self, dicts, rest_api_schema=False):
         """
         Runs down-stream inference using the prediction head.
 
@@ -156,11 +178,11 @@ class Inferencer:
             results = p.imap(
                 partial(self._multiproc, processor=self.processor, rest_api_schema=rest_api_schema),
                 grouper(dicts, self.multiprocessing_chunk_size),
-                1
+                1,
             )
 
             preds_all = []
-            with tqdm(total=len(dicts), unit=' Dicts') as pbar:
+            with tqdm(total=len(dicts), unit=" Dicts") as pbar:
                 for dataset, tensor_names, sample in results:
                     preds_all.append(self._run_inference(dataset, tensor_names, sample))
                     pbar.update(self.multiprocessing_chunk_size)
@@ -174,26 +196,23 @@ class Inferencer:
         samples = []
         for d in dicts:
             samples.extend(processor._dict_to_samples(d))
-        
+
         return dataset, tensor_names, samples
 
     def _run_inference(self, dataset, tensor_names, samples):
         data_loader = NamedDataLoader(
-            dataset=dataset,
-            sampler=SequentialSampler(dataset),
-            batch_size=self.batch_size,
-            tensor_names=tensor_names,
+            dataset=dataset, sampler=SequentialSampler(dataset), batch_size=self.batch_size, tensor_names=tensor_names
         )
 
         preds_all = []
         for i, batch in enumerate(data_loader):
             batch = {key: batch[key].to(self.device) for key in batch}
-            batch_samples = samples[i * self.batch_size: (i + 1) * self.batch_size]
+            batch_samples = samples[i * self.batch_size : (i + 1) * self.batch_size]
             with torch.no_grad():
                 logits = self.model.forward(**batch)
                 preds = self.model.formatted_preds(
                     logits=logits,
-                    samples=batch_samples,
+                    samples=batch_samples,  # TODO batch_samples and logits are not aligned
                     tokenizer=self.processor.tokenizer,
                     return_class_probs=self.return_class_probs,
                     **batch,
@@ -202,9 +221,7 @@ class Inferencer:
 
         return preds_all
 
-    def extract_vectors(
-        self, dicts, extraction_strategy="cls_token", extraction_layer=-1
-    ):
+    def extract_vectors(self, dicts, extraction_strategy="cls_token", extraction_layer=-1):
         """
         Converts a text into vector(s) using the language model only (no prediction head involved).
 
@@ -224,10 +241,7 @@ class Inferencer:
             samples.extend(self.processor._dict_to_samples(dict))
 
         data_loader = NamedDataLoader(
-            dataset=dataset,
-            sampler=SequentialSampler(dataset),
-            batch_size=self.batch_size,
-            tensor_names=tensor_names,
+            dataset=dataset, sampler=SequentialSampler(dataset), batch_size=self.batch_size, tensor_names=tensor_names
         )
 
         preds_all = []
@@ -256,6 +270,7 @@ class FasttextInferencer:
     @classmethod
     def load(cls, load_dir, batch_size=4, gpu=False, embedder_only=True):
         import fasttext
+
         if os.path.isfile(load_dir):
             return cls(model=fasttext.load_model(load_dir))
         else:
