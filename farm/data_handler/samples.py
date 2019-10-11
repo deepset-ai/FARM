@@ -141,8 +141,148 @@ def create_samples_sentence_pairs(baskets, tokenizer, max_seq_len):
             basket.samples.append(Sample(id=id, clear_text=sample_in_clear_text, tokenized=tokenized))
     return baskets
 
+def create_samples_squad(dictionary, max_query_len, max_seq_len, doc_stride):
+    """
+    Chunk a document-question pairs into passages which will each form one sample.
 
-def create_samples_squad(entry):
+    :param dictionary:
+    :param tokenizer:
+    :param max_query_len:
+    :param max_seq_len:
+    :param doc_stride:
+    :return:
+    """
+
+    # TODO: Check ID
+    # TODO: CHECK THAT EVERYTHING IS ALIGNED
+
+    is_training = check_if_training(dictionary)
+
+    question_tokens = dictionary["question_tokens"][:max_query_len]
+    question_len_t = len(question_tokens)
+    question_offsets = dictionary["question_offsets"]
+    doc_tokens = dictionary["document_tokens"]
+    doc_len_t = len(doc_tokens)
+    doc_offsets = dictionary["document_offsets"]
+    doc_text = dictionary["document_text"]
+    passage_len_t = max_seq_len - question_len_t
+
+    samples = []
+    passage_id = 0
+
+    # Perform chunking of document into passages. Passage length is calculated from the question length and max
+    # sequence length. The sliding window moves in steps of doc_stride. The "t" and "c" in variables stands for
+    # token and character respectively.
+    while True:
+
+        # This section handles the chunking of document into passages. It will calculate the start and end
+        # indicies relative to document indices. passage_offsets will be relative to the start of the
+        # passage (i.e. they will start at 0)
+        passage_start_t = passage_id * doc_stride
+        passage_end_t = passage_start_t + passage_len_t
+        if passage_start_t >= doc_len_t:
+            break
+        passage_start_c = doc_offsets[passage_start_t]
+        try:
+            passage_end_c = doc_offsets[passage_end_t + 1] - 1
+        except IndexError:
+            passage_end_c = len(doc_text)
+
+        passage_tokens = doc_tokens[passage_start_t: passage_end_t]
+        passage_offsets = doc_offsets[passage_start_t: passage_end_t]
+        passage_offsets = [x - passage_offsets[0] for x in passage_offsets]
+        passage_text = dictionary["document_text"][passage_start_c: passage_end_c]
+
+        # There can be multiple answers (such as in Squad dev set)
+        # Makes answer start and end indices relative to passage rather than document
+        answers_clear = []
+        answers_tokenized = []
+        for answer in dictionary["answers"]:
+
+            # This section calculates start and end relative to document
+            answer_text = answer["text"]
+            answer_len_c = len(answer_text)
+            answer_start_c = answer["offset"]
+            answer_end_c = answer_start_c + answer_len_c - 1
+            answer_start_t = offset_to_token_idx(doc_offsets, answer_start_c)
+            answer_end_t = offset_to_token_idx(doc_offsets, answer_end_c) - 1
+
+            # This section converts start and end so that they are relative to the passage
+            answer_start_c -= passage_start_c
+            answer_end_c -= passage_start_c
+            answer_start_t -= passage_start_t
+            answer_end_t -= passage_start_t
+
+            curr_answer_clear = {"text": answer_text,
+                                 "start_c": answer_start_c,
+                                 "end_c": answer_end_c}
+            curr_answer_tokenized = {"start_t": answer_start_t,
+                                     "end_t": answer_end_t}
+            answers_clear.append(curr_answer_clear)
+            answers_tokenized.append(curr_answer_tokenized)
+
+        clear_text = {"passage_text": passage_text,
+                      "question_text": dictionary["question_text"],
+                      "passage_id": passage_id,
+                      "answers": answers_clear,
+                      "is_impossible": dictionary["is_impossible"],
+                      "is_training": is_training}
+        tokenized = {"passage_tokens": passage_tokens,
+                     "passage_offsets": passage_offsets,
+                     "question_tokens": question_tokens,
+                     "question_offsets": question_offsets,
+                     "answers": answers_tokenized}
+        samples.append(Sample(id="FIX ME",
+                               clear_text=clear_text,
+                               tokenized=tokenized,
+                               features=None))
+        passage_id += 1
+    return samples
+
+
+
+
+    #
+    #         is_impossible = question["is_impossible"]
+    #         if is_impossible:
+    #             # TODO: Why are these -1 and not 0 for the CLS token?
+    #             start_token_idx = -1
+    #             end_token_idx = -1
+    #             orig_answer_text = ""
+    #         else:
+    #             answer = question["answers"][0]
+    #             orig_answer_text = answer["text"]
+    #             answer_offset = answer["answer_start"]
+    #             answer_length = len(orig_answer_text)
+    #             answer_start = answer_offset
+    #             answer_end = answer_offset + answer_length
+    #             start_token_idx = offset_to_token_idx(paragraph_offsets, answer_start)
+    #             end_token_idx = offset_to_token_idx(paragraph_offsets, answer_end) - 1
+    #             # tODO: check there is a match
+    #             reconstructed_answer = "".join(paragraph_tokens[start_token_idx: end_token_idx + 1])
+    #             if reconstructed_answer != orig_answer_text.replace(" ", ""):
+    #                 print()
+
+
+
+
+
+
+
+def offset_to_token_idx(token_offsets, ch_idx):
+    """ Returns the idx of the token at the given character idx"""
+    for i, to in enumerate(token_offsets):
+        if ch_idx <= to:
+            return i
+    return None
+
+def check_if_training(dictionary):
+    if "is_impossible" in dictionary:
+        return True
+    return False
+
+
+def create_samples_squadOLD(entry):
     """Read a SQuAD json file into a list of SquadExample."""
 
     def is_whitespace(c):

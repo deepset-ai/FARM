@@ -163,10 +163,8 @@ class BertTokenizer(BertTokenizer):
 
         return self.vocab
 
-
-
-
-def tokenize_with_metadata(text, tokenizer, max_seq_len):
+def tokenize_with_metadata(text, tokenizer, max_seq_len=None):
+    # TODO: max_seq_len needs to be removed - it should be decoupled from tokenization
     # split text into "words" (here: simple whitespace tokenizer)
     words = text.split(" ")
     word_offsets = []
@@ -177,14 +175,15 @@ def tokenize_with_metadata(text, tokenizer, max_seq_len):
 
     # split "words"into "subword tokens"
     tokens, offsets, start_of_word = _words_to_tokens(
-        words, word_offsets, tokenizer, max_seq_len
+        words, word_offsets, tokenizer, max_seq_len=max_seq_len
     )
 
     tokenized = {"tokens": tokens, "offsets": offsets, "start_of_word": start_of_word}
     return tokenized
 
 
-def _words_to_tokens(words, word_offsets, tokenizer, max_seq_len):
+def _words_to_tokens(words, word_offsets, tokenizer, max_seq_len=None):
+    #TODO: Special tokens handling is currently hardcoded - this needs to change
     tokens = []
     token_offsets = []
     start_of_word = []
@@ -208,10 +207,11 @@ def _words_to_tokens(words, word_offsets, tokenizer, max_seq_len):
             else:
                 start_of_word.append(False)
 
-    # Clip at max_seq_length. The "-2" is for CLS and SEP token
-    tokens = tokens[: max_seq_len - 2]
-    token_offsets = token_offsets[: max_seq_len - 2]
-    start_of_word = start_of_word[: max_seq_len - 2]
+    if max_seq_len:
+        # Clip at max_seq_length. The "-2" is for CLS and SEP token
+        tokens = tokens[: max_seq_len - 2]
+        token_offsets = token_offsets[: max_seq_len - 2]
+        start_of_word = start_of_word[: max_seq_len - 2]
 
     assert len(tokens) == len(token_offsets) == len(start_of_word)
     return tokens, token_offsets, start_of_word

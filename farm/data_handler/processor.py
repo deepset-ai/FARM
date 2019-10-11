@@ -739,31 +739,36 @@ class SquadProcessor(Processor):
 
         baskets = []
         for d_idx, document in enumerate(dicts_tokenized):
-            for r_idx, raw in enumerate(document):
-               basket = SampleBasket(raw=raw, id=f"{d_idx}_{r_idx}")
-               baskets.append(basket)
+            for q_idx, raw in enumerate(document):
+                basket = SampleBasket(raw=raw, id=f"{d_idx}_{q_idx}")
+                baskets.append(basket)
         return baskets
 
 
     def apply_tokenization(self, dictionary):
         """ This performs tokenization on all documents and questions. The result is an unnested list where each entry
-        is a document question pair. """
+        is a document question pair. Also populates the output with answers"""
         raw_baskets = []
-        paragraphs = dictionary["paragraphs"]
-        for paragraph in paragraphs:
-            paragraph_text = paragraph["context"]
-            paragraph_tokenized = tokenize_with_metadata(paragraph_text, self.tokenizer, max_seq_len=None)
-            questions = paragraph["qas"]
-            for question in questions:
-                question_text = question["question"]
-                question_tokenized = tokenize_with_metadata(question_text, self.tokenizer, max_seq_len=None)
-                raw = {"document_tokens": paragraph_tokenized["tokens"],
-                       "document_offsets": paragraph_tokenized["offsets"],
-                       "question_tokens": question_tokenized["tokens"],
-                       "question_offsets": question_tokenized["offsets"],
-                       "document_text": paragraph_text,
-                       "question_text": question_text}
-                raw_baskets.append(raw)
+        paragraph_text = dictionary["context"]
+        paragraph_tokenized = tokenize_with_metadata(paragraph_text, self.tokenizer, max_seq_len=None)
+        questions = dictionary["qas"]
+        for question in questions:
+            question_text = question["question"]
+            question_tokenized = tokenize_with_metadata(question_text, self.tokenizer, max_seq_len=None)
+            answers = []
+            for answer in question["answers"]:
+                a = {"text": answer["text"],
+                     "offset": answer["answer_start"]}
+                answers.append(a)
+            raw = {"document_tokens": paragraph_tokenized["tokens"],
+                    "document_offsets": paragraph_tokenized["offsets"],
+                    "question_tokens": question_tokenized["tokens"],
+                    "question_offsets": question_tokenized["offsets"],
+                    "document_text": paragraph_text,
+                    "question_text": question_text,
+                    "answers": answers,
+                    "is_impossible": question["is_impossible"]}
+            raw_baskets.append(raw)
         return raw_baskets
 
     def _convert_inference(self, infer_dict):
@@ -783,24 +788,28 @@ class SquadProcessor(Processor):
         return converted
 
     def _file_to_dicts(self, file: str) -> [dict]:
-        dict = read_squad_file(filename=file)
-        return dict
+        nested_dicts = read_squad_file(filename=file)
+        dicts = [y for x in nested_dicts for y in x["paragraphs"]]
+        return dicts
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
         # TODO split samples that are too long in this function, related to todo in self._sample_to_features
-        if "paragraphs" not in dictionary:  # TODO change this inference mode hack
-            dictionary = self._convert_inference(infer_dict=dictionary)
+        # Currently commented out because the format of dicts has changed
+        # if "paragraphs" not in dictionary:  # TODO change this inference mode hack
+        #     dictionary = self._convert_inference(infer_dict=dictionary)
 
-        samples = create_samples_squad(dictionary, self.tokenizer)
+        samples = create_samples_squad(dictionary=dictionary,
+                                       max_query_len=self.max_query_length,
+                                       max_seq_len=self.max_seq_len,
+                                       doc_stride=self.doc_stride)
         # samples = create_samples_squadOLD(dictionary)
-
-        for sample in samples:
-            tokenized = tokenize_with_metadata(
-                text=" ".join(sample.clear_text["doc_tokens"]),
-                tokenizer=self.tokenizer,
-                max_seq_len=self.max_seq_len,
-            )
-            sample.tokenized = tokenized
+        # for sample in samples:
+        #     tokenized = tokenize_with_metadata(
+        #         text=" ".join(sample.clear_text["doc_tokens"]),
+        #         tokenizer=self.tokenizer,
+        #         max_seq_len=self.max_seq_len,
+        #     )
+        #     sample.tokenized = tokenized
 
         return samples
 
