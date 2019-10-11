@@ -5,7 +5,7 @@ import numpy as np
 from scipy.special import expit
 
 import torch
-from transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN
+from transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN, BertForQuestionAnswering
 
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
@@ -917,3 +917,37 @@ class QuestionAnsweringHead(PredictionHead):
         """Get the n-best logits from a numpy array."""
         idx = np.argsort(logits,axis=1)[:,-n_best_size:]
         return idx
+
+class SquadHead(QuestionAnsweringHead):
+    """
+    Almost identical to a TextClassificationHead. Only difference: we can load the weights from
+     a pretrained language model that was saved in the pytorch-transformers style (all in one model).
+    """
+    @classmethod
+    def load(cls, pretrained_model_name_or_path):
+
+        if os.path.exists(pretrained_model_name_or_path) \
+                and "config.json" in pretrained_model_name_or_path \
+                and "prediction_head" in pretrained_model_name_or_path:
+            config_file = os.path.exists(pretrained_model_name_or_path)
+            # a) FARM style
+            #TODO validate saving/loading after switching to processor.tasks
+            model_file = cls._get_model_file(config_file)
+            config = json.load(open(config_file))
+            prediction_head = cls(**config)
+            logger.info("Loading prediction head from {}".format(model_file))
+            prediction_head.load_state_dict(torch.load(model_file, map_location=torch.device("cpu")))
+        else:
+            # b) pytorch-transformers style
+            # load weights from bert model
+            # (we might change this later to load directly from a state_dict to generalize for other language models)
+            bert_qa = BertForQuestionAnswering.from_pretrained(pretrained_model_name_or_path)
+
+            # init empty head
+            head = cls(layer_dims=[bert_qa.config.hidden_size, 2], loss_ignore_index=-1, task_name="question_answering")
+
+            # load weights
+            head.feed_forward.feed_forward[0].load_state_dict(bert_qa.qa_outputs.state_dict())
+            del bert_qa
+
+        return head
