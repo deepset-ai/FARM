@@ -15,4 +15,5 @@ if "file_descriptor" in mp.get_all_sharing_strategies():
     mp.set_sharing_strategy("file_descriptor")
 
     rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
-    resource.setrlimit(resource.RLIMIT_NOFILE, (10_000, rlimit[1]))
+    # seting soft limit to hard limit (=rlimit[1]) minus a small amount to be safe
+    resource.setrlimit(resource.RLIMIT_NOFILE, (rlimit[1]-512, rlimit[1]))
