@@ -90,6 +90,7 @@ class Evaluator:
                 # converting from string preds back to multi-hot encoding
                 from sklearn.preprocessing import MultiLabelBinarizer
                 mlb = MultiLabelBinarizer(classes=head.label_list)
+                # TODO check why .fit() should be called on predictions, rather than on labels
                 preds_all[head_num] = mlb.fit_transform(preds_all[head_num])
                 label_all[head_num] = mlb.transform(label_all[head_num])
 
