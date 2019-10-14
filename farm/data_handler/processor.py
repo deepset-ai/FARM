@@ -622,6 +622,7 @@ class BertStyleLMProcessor(Processor):
         return dicts
 
     def _dict_to_samples(self, dictionary, all_dicts=None):
+        assert len(all_dicts) > 1, "Need at least 2 documents to sample random sentences from"
         doc = dictionary["doc"]
         samples = []
         for idx in range(len(doc) - 1):
