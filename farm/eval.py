@@ -114,11 +114,7 @@ class Evaluator:
                     raise NotImplementedError
 
                 # CHANGE PARAMETERS, not all report_fn accept digits
-                if head.ph_output_type == "per_sequence_continuous":
-                    result["report"] = report_fn(
-                        label_all[head_num], preds_all[head_num]
-                    )
-                elif head.ph_output_type == "per_token":
+                if head.ph_output_type in ["per_sequence_continuous","per_token"]:
                     result["report"] = report_fn(
                         label_all[head_num], preds_all[head_num]
                     )
@@ -129,6 +125,7 @@ class Evaluator:
                         label_all[head_num],
                         preds_all[head_num],
                         digits=4,
+                        labels=head.label_list,
                         target_names=head.label_list)
 
             all_results.append(result)
