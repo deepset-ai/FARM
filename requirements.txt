@@ -24,4 +24,4 @@ flask
 flask-restplus
 flask-cors
 # optional: for inference with fasttext
-fasttext==0.9.1
+#fasttext==0.9.1
