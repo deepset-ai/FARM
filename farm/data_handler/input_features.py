@@ -46,7 +46,7 @@ def sample_to_features_text(
         tokens_b,
         add_special_tokens=True,
         max_length=max_seq_len,
-        truncate_first_sequence=True  # We're truncating the first sequence in priority
+        truncation_strategy='longest_first' # We're truncating the first sequence in priority
     )
     input_ids, segment_ids = inputs["input_ids"], inputs["token_type_ids"]
 
