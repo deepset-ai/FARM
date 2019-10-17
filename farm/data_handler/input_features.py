@@ -327,16 +327,37 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
 
     return [feature_dict]
 
-def sample_to_features_squad(sample, tokenizer, max_seq_len):
-    is_training = sample.clear_text["is_training"]
-    is_impossible = sample.clear_text["is_impossible"]
-    encoded = tokenizer.encode_plus(text=sample.tokenized["question_tokens"],
-                                      text_pair=sample.tokenized["passage_tokens"],
-                                      add_special_tokens=True,
-                                      max_length=max_seq_len,
-                                      truncation_strategy='only_second',
-                                      return_tensors=None)
 
+def sample_to_features_squad(sample, tokenizer, max_seq_len):
+    """ Prepares data for processing by the model. Supports cases where there are
+    multiple answers for the one question/document pair."""
+
+    # Initialize some basic variables
+    is_impossible = sample.clear_text["is_impossible"]
+    question_tokens = sample.tokenized["question_tokens"]
+    question_len_t = len(question_tokens)
+    passage_tokens = sample.tokenized["passage_tokens"]
+    passage_len_t = len(passage_tokens)
+    answers = sample.tokenized["answers"]
+
+    # Generate a start and end label vec. Each has length = (question_len_t + passage_len_t + n_special_tokens).
+    # They will be no longer than max_seq_len and are positionally aligned with input_ids
+    start_vec, end_vec = generate_label_vecs(answers,
+                                             passage_len_t,
+                                             question_len_t,
+                                             tokenizer)
+
+    # Combines question_tokens and passage_tokens (str) into a single encoded vector of token indices (int)
+    # called input_ids. This encoded vector also contains special tokens (e.g. [CLS]). It will have length =
+    # (question_len_t + passage_len_t + n_special_tokens). This may be less than max_seq_len but will not be greater
+    # than max_seq_len since truncation was already performed when the document was chunked into passages
+    # (c.f. create_samples_squad() )
+    encoded = tokenizer.encode_plus(text=sample.tokenized["question_tokens"],
+                                    text_pair=sample.tokenized["passage_tokens"],
+                                    add_special_tokens=True,
+                                    max_length=None,
+                                    truncation_strategy='only_second',
+                                    return_tensors=None)
     input_ids = encoded["input_ids"]
     segment_ids = encoded["token_type_ids"]
 
@@ -349,40 +370,79 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len):
     input_ids += padding
     padding_mask += padding
     segment_ids += padding
-
-    # Creates the label vectors called start and end.
-    # Each is max_seq_len long and can contain any number of positive labels (1)
-    # If is_impossible, st
-    start_vec = [0] * max_seq_len
-    end_vec = [0] * max_seq_len
-
-    # If is impossible, the model is taught to set the CLS token at idx 0 to be the start and  end
-    if sample.clear_text["is_impossible"]:
-        start_vec[0] = 1
-        end_vec[0] = 1
-    else:
-        for answer in sample.tokenized["answers"]:
-            start_idx = answer["start_t"]
-            end_idx = answer["end_t"]
-            # start and end indicies are only valid if they are both between 0 and max_seq_len
-            # TODO: Think through this logic - not convinced this is correct
-            if start_idx < max_seq_len and start_idx > 0 and \
-                    end_idx < max_seq_len and end_idx > 0:
-                start_vec[start_idx] = 1
-                end_vec[end_idx] = 1
-            else:
-                start_vec[0] = 1
-                end_vec[0] = 1
+    start_vec += padding
+    end_vec += padding
 
     feature_dict = {"input_ids": input_ids,
-                "padding_mask": padding_mask,
-                "segment_ids": segment_ids,
-                "start_vec": start_vec,
-                "end_vec": end_vec,
-                "is_impossible": is_impossible}
+                    "padding_mask": padding_mask,
+                    "segment_ids": segment_ids,
+                    "start_vec": start_vec,
+                    "end_vec": end_vec,
+                    "is_impossible": is_impossible}
 
     return [feature_dict]
 
+
+def generate_label_vecs(answers, passage_len_t, question_len_t, tokenizer):
+    """ Creates QA label vectors: one for start and one for end. Takes in to consideration the question tokens,
+    and also special tokens such as [CLS]. When the answer is not fully contained in the passage, or the question
+    is impossible to answer, the start and end labels are on the special token at idx=0 """
+
+    # The two label vectors (start and end) are composed of sections that correspond to the question and
+    # passage tokens. These are initialized here. The section corresponding to the question
+    # will always be composed of 0s.
+    start_vec_question = [0] * question_len_t
+    end_vec_question = [0] * question_len_t
+    start_vec_passage = [0] * passage_len_t
+    end_vec_passage = [0] * passage_len_t
+
+    for answer in answers:
+        start_idx = answer["start_t"]
+        end_idx = answer["end_t"]
+
+        # If the answer is in the current passage, populate the label vector with 1s for start and end
+        if answer_in_passage(start_idx, end_idx, passage_len_t):
+            start_vec_passage[start_idx] = 1
+            end_vec_passage[end_idx] = 1
+
+    # Combine the sections of the label vectors. The length of each of these will be:
+    # question_len_t + passage_len_t + n_special_tokens
+    start_vec = combine_label_vecs(start_vec_question,
+                                   start_vec_passage,
+                                   tokenizer)
+    end_vec = combine_label_vecs(end_vec_question,
+                                 end_vec_passage,
+                                 tokenizer)
+
+    start_label_present = 1 in start_vec
+    end_label_present = 1 in end_vec
+    # This is triggered if the answer is not in the passage or the question is_impossible
+    # In both cases, the token at idx=0 (in BERT, this is the [CLS] token) is given both the start and end label
+    if start_label_present is False and end_label_present is False:
+        start_vec[0] = 1
+        end_vec[0] = 1
+    if start_label_present != end_label_present:
+        raise Exception("The label vectors are lacking either a start or end label")
+    return start_vec, end_vec
+
+
+def combine_label_vecs(question_label_vec, passage_label_vec, tokenizer):
+    """ Combine the question_label_vec and passage_label_vec. Will add slots in
+    the returned vector for special tokens like [CLS]."""
+
+    # Join question_label_vec and passage_label_vec and add slots for special tokens
+    vec = tokenizer.build_inputs_with_special_tokens(token_ids_0=question_label_vec,
+                                                     token_ids_1=passage_label_vec)
+
+    # Turn special token indices into 0s for the purpose of creating the label vector
+    vec = [0 if x != 1 else x for x in vec]
+    return vec
+
+
+def answer_in_passage(start_idx, end_idx, passage_len):
+    if passage_len > start_idx > 0 and passage_len > end_idx > 0:
+        return True
+    return False
 
 
 def sample_to_features_squadOLD(

@@ -744,14 +744,13 @@ class SquadProcessor(Processor):
                 baskets.append(basket)
         return baskets
 
-
     def apply_tokenization(self, dictionary):
-        """ This performs tokenization on all documents and questions. The result is an unnested list where each entry
-        is a document question pair. Also populates the output with answers"""
-        # TODO: Check how tokenize_with_metadata interacts with tokenizer.encode_plus in terms of truncation
+        """ This performs tokenization on all documents and questions. The result is a list (unnested)
+        where each entry is a dictionary for one document-question pair (potentially mutliple answers). """
+
         raw_baskets = []
-        paragraph_text = dictionary["context"]
-        paragraph_tokenized = tokenize_with_metadata(paragraph_text, self.tokenizer, max_seq_len=None)
+        document_text = dictionary["context"]
+        document_tokenized = tokenize_with_metadata(document_text, self.tokenizer, max_seq_len=None)
         questions = dictionary["qas"]
         for question in questions:
             question_text = question["question"]
@@ -761,14 +760,14 @@ class SquadProcessor(Processor):
                 a = {"text": answer["text"],
                      "offset": answer["answer_start"]}
                 answers.append(a)
-            raw = {"document_tokens": paragraph_tokenized["tokens"],
-                    "document_offsets": paragraph_tokenized["offsets"],
-                    "question_tokens": question_tokenized["tokens"],
-                    "question_offsets": question_tokenized["offsets"],
-                    "document_text": paragraph_text,
-                    "question_text": question_text,
-                    "answers": answers,
-                    "is_impossible": question["is_impossible"]}
+            raw = {"document_text": document_text,
+                   "document_tokens": document_tokenized["tokens"],
+                   "document_offsets": document_tokenized["offsets"],
+                   "question_text": question_text,
+                   "question_tokens": question_tokenized["tokens"],
+                   "question_offsets": question_tokenized["offsets"],
+                   "answers": answers,
+                   "is_impossible": question["is_impossible"]}
             raw_baskets.append(raw)
         return raw_baskets
 
@@ -794,23 +793,16 @@ class SquadProcessor(Processor):
         return dicts
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
-        # TODO split samples that are too long in this function, related to todo in self._sample_to_features
-        # Currently commented out because the format of dicts has changed
         # if "paragraphs" not in dictionary:  # TODO change this inference mode hack
         #     dictionary = self._convert_inference(infer_dict=dictionary)
+
+        n_special_tokens = self.tokenizer.num_added_tokens(pair=True)
 
         samples = create_samples_squad(dictionary=dictionary,
                                        max_query_len=self.max_query_length,
                                        max_seq_len=self.max_seq_len,
-                                       doc_stride=self.doc_stride)
-        # samples = create_samples_squadOLD(dictionary)
-        # for sample in samples:
-        #     tokenized = tokenize_with_metadata(
-        #         text=" ".join(sample.clear_text["doc_tokens"]),
-        #         tokenizer=self.tokenizer,
-        #         max_seq_len=self.max_seq_len,
-        #     )
-        #     sample.tokenized = tokenized
+                                       doc_stride=self.doc_stride,
+                                       n_special_tokens=n_special_tokens)
 
         return samples
 
