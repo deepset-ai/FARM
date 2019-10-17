@@ -1,27 +1,6 @@
 import logging
-from farm.modeling.tokenization import BertTokenizer, RobertaTokenizer, XLNetTokenizer, tokenize_with_metadata
+from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
 import re
-
-# deprecated:
-# def test_bert_a_never_split_chars(caplog):
-#     caplog.set_level(logging.CRITICAL)
-#     lang_model = "bert-base-cased"
-#
-#     tokenizer = BertTokenizer.from_pretrained(
-#         pretrained_model_name_or_path=lang_model,
-#         do_lower_case=False,
-#         never_split_chars=["-","_","/"])
-#
-#     basic_text = "Some Text with neverseentokens plus !215?#. and a combined-token_with/chars"
-#
-#     # original tokenizer from transformer repo
-#     tokenized = tokenizer.tokenize(basic_text)
-#     assert tokenized == ['Some', 'Text', 'with', 'never', '##see', '##nto', '##ken', '##s', 'plus', '!', '215', '?', '#','.', 'and', 'a', 'combined', '##-', '##tok', '##en', '##_', '##with', '##/', '##cha', '##rs']
-#     # ours with metadata
-#     tokenized_meta = tokenize_with_metadata(text=basic_text, tokenizer=tokenizer,max_seq_len=64)
-#     assert tokenized_meta["tokens"] == tokenized
-#     assert tokenized_meta["offsets"] == [0, 5, 10, 15, 31, 36, 37, 40, 41, 42, 44, 48, 50, 58, 59, 62, 64, 65, 69, 70, 73]
-#     assert tokenized_meta["start_of_word"] == [True, True, True, True, True, True, False, False, False, False, True, True, True, False, False, False, False, False, False, False, False]
 
 
 def test_bert_tokenizer_all_meta(caplog):
@@ -29,12 +8,10 @@ def test_bert_tokenizer_all_meta(caplog):
 
     lang_model = "bert-base-cased"
 
-    #Note: we must actively set never_split_chars to None here, since it got set to other values before in other tests and seems to change the class definition somewhere in transformer repo
-    tokenizer = BertTokenizer.from_pretrained(
+    tokenizer = Tokenizer.load(
         pretrained_model_name_or_path=lang_model,
-        do_lower_case=False,
-        never_split_chars=None)
-    #tokenizer.add_special_tokens()
+        do_lower_case=False
+        )
 
     basic_text = "Some Text with neverseentokens plus !215?#. and a combined-token_with/chars"
 
@@ -43,27 +20,61 @@ def test_bert_tokenizer_all_meta(caplog):
     assert tokenized == ['Some', 'Text', 'with', 'never', '##see', '##nto', '##ken', '##s', 'plus', '!', '215', '?', '#', '.', 'and', 'a', 'combined', '-', 'token', '_', 'with', '/', 'ch', '##ars']
 
     # ours with metadata
-    tokenized_meta = tokenize_with_metadata(text=basic_text, tokenizer=tokenizer,max_seq_len=64)
+    tokenized_meta = tokenize_with_metadata(text=basic_text, tokenizer=tokenizer)
     assert tokenized_meta["tokens"] == tokenized
     assert tokenized_meta["offsets"] == [0, 5, 10, 15, 20, 23, 26, 29, 31, 36, 37, 40, 41, 42, 44, 48, 50, 58, 59, 64, 65, 69, 70, 72]
     assert tokenized_meta["start_of_word"] == [True, True, True, True, False, False, False, False, True, True, False, False, False, False, True, True, True, False, False, False, False, False, False, False]
+
+def test_save_load(caplog):
+    caplog.set_level(logging.CRITICAL)
+
+    lang_names = ["bert-base-cased", "roberta-base", "xlnet-base-cased"]
+    tokenizers = []
+    for lang_name in lang_names:
+        t = Tokenizer.load(lang_name, lower_case=False)
+        t.add_tokens(new_tokens=["neverseentokens"])
+        tokenizers.append(t)
+
+    basic_text = "Some Text with neverseentokens plus !215?#. and a combined-token_with/chars"
+
+    for tokenizer in tokenizers:
+        save_dir = f"testsave"
+        tokenizer_type = tokenizer.__class__.__name__
+        tokenizer.save_pretrained(save_dir)
+        tokenizer_loaded = Tokenizer.load(save_dir, tokenizer_class=tokenizer_type)
+        tokenized_before = tokenize_with_metadata(text=basic_text, tokenizer=tokenizer)
+        tokenized_after = tokenize_with_metadata(text=basic_text, tokenizer=tokenizer_loaded)
+        assert tokenized_before == tokenized_after
+
+def test_truncate_sequences(caplog):
+    caplog.set_level(logging.CRITICAL)
+
+    lang_names = ["bert-base-cased", "roberta-base", "xlnet-base-cased"]
+    tokenizers = []
+    for lang_name in lang_names:
+        t = Tokenizer.load(lang_name, lower_case=False)
+        tokenizers.append(t)
+
+    # artificial sequences (could be tokens, offsets, or anything else)
+    seq_a = list(range(10))
+    seq_b = list(range(15))
+    max_seq_len = 20
+    for tokenizer in tokenizers:
+        for strategy in ["longest_first", "only_first","only_second"]:
+            trunc_a, trunc_b, overflow = truncate_sequences(seq_a=seq_a,seq_b=seq_b,tokenizer=tokenizer,
+                                                        max_seq_len=max_seq_len, truncation_strategy=strategy)
+
+            assert len(trunc_a) + len(trunc_b) + tokenizer.num_added_tokens(pair=True) == max_seq_len
 
 
 def test_all_tokenizer_on_special_cases(caplog):
     caplog.set_level(logging.CRITICAL)
 
-    #Note: we must actively set never_split_chars to None here, since it got set to other values before in other tests and seems to change the class definition somewhere in transformer repo
-    bert_tokenizer = BertTokenizer.from_pretrained(
-        pretrained_model_name_or_path="bert-base-cased",
-        do_lower_case=False,
-        never_split_chars=None)
-
-    roberta_tokenizer = RobertaTokenizer.from_pretrained(
-        pretrained_model_name_or_path="roberta-base")
-
-    xlnet_tokenizer = XLNetTokenizer.from_pretrained(pretrained_model_name_or_path="xlnet-base-cased")
-
-    tokenizers = [roberta_tokenizer, bert_tokenizer, xlnet_tokenizer]
+    lang_names = ["bert-base-cased", "roberta-base", "xlnet-base-cased"]
+    tokenizers = []
+    for lang_name in lang_names:
+        t = Tokenizer.load(lang_name, lower_case=False)
+        tokenizers.append(t)
 
     texts = [
      "This is a sentence",
@@ -101,7 +112,7 @@ def test_all_tokenizer_on_special_cases(caplog):
             assert tokenized == tokenized_by_word
 
             # 3. our tokenizer with metadata on "whitespace tokenized words"
-            tokenized_meta = tokenize_with_metadata(text=text, tokenizer=tokenizer, max_seq_len=128)
+            tokenized_meta = tokenize_with_metadata(text=text, tokenizer=tokenizer)
 
             # verify that tokenization on full sequence is the same as the one on "whitespace tokenized words"
             assert tokenized_meta["tokens"] == tokenized, f"Failed using {tokenizer.__class__.__name__}"
@@ -124,11 +135,10 @@ def test_bert_custom_vocab(caplog):
 
     lang_model = "bert-base-cased"
 
-    #Note: we must actively set never_split_chars to None here, since it got set to other values before in other tests and seems to change the class definition somewhere in transformer repo
-    tokenizer = BertTokenizer.from_pretrained(
+    tokenizer = Tokenizer.load(
         pretrained_model_name_or_path=lang_model,
-        do_lower_case=False,
-        never_split_chars=None)
+        do_lower_case=False
+        )
 
     #deprecated: tokenizer.add_custom_vocab("samples/tokenizer/custom_vocab.txt")
     tokenizer.add_tokens(new_tokens=["neverseentokens"])
@@ -140,7 +150,7 @@ def test_bert_custom_vocab(caplog):
     assert tokenized == ['Some', 'Text', 'with', 'neverseentokens', 'plus', '!', '215', '?', '#', '.', 'and', 'a', 'combined', '-', 'token', '_', 'with', '/', 'ch', '##ars']
 
     # ours with metadata
-    tokenized_meta = tokenize_with_metadata(text=basic_text, tokenizer=tokenizer,max_seq_len=64)
+    tokenized_meta = tokenize_with_metadata(text=basic_text, tokenizer=tokenizer)
     assert tokenized_meta["tokens"] == tokenized
     assert tokenized_meta["offsets"] == [0, 5, 10, 15, 31, 36, 37, 40, 41, 42, 44, 48, 50, 58, 59, 64, 65, 69, 70, 72]
     assert tokenized_meta["start_of_word"] == [True, True, True, True, True, True, False, False, False, False, True, True, True, False, False, False, False, False, False, False]

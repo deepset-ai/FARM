@@ -28,14 +28,11 @@ from farm.data_handler.utils import (
     read_squad_file,
     is_json,
 )
-from farm.modeling.tokenization import BertTokenizer, RobertaTokenizer, tokenize_with_metadata
+from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
 from farm.utils import MLFlowLogger as MlLogger
 from farm.data_handler.samples import get_sentence_pair
 
 logger = logging.getLogger(__name__)
-
-TOKENIZER_MAP = {"BertTokenizer": BertTokenizer,
-                 "RobertaTokenizer": RobertaTokenizer}
 
 
 class Processor(ABC):
@@ -166,10 +163,7 @@ class Processor(ABC):
         processor_config_file = os.path.join(load_dir, "processor_config.json")
         config = json.load(open(processor_config_file))
         # init tokenizer
-        tokenizer = TOKENIZER_MAP[config["tokenizer"]].from_pretrained(load_dir)
-        # add custom vocab to tokenizer if available
-        if os.path.exists(os.path.join(load_dir, "custom_vocab.txt")):
-            tokenizer.add_custom_vocab(os.path.join(load_dir, "custom_vocab.txt"))
+        tokenizer = Tokenizer.load(load_dir, tokenizer_class=config["tokenizer"])
         # we have to delete the tokenizer string from config, because we pass it as Object
         del config["tokenizer"]
 
@@ -195,11 +189,7 @@ class Processor(ABC):
         config = self.generate_config()
         # save tokenizer incl. attributes
         config["tokenizer"] = self.tokenizer.__class__.__name__
-        # TODO make this generic to other tokenizers. We will probably want an own abstract Tokenizer
         self.tokenizer.save_pretrained(save_dir)
-        #self.tokenizer.save_vocabulary(save_dir)
-        #config["lower_case"] = self.tokenizer.basic_tokenizer.do_lower_case
-        #config["never_split_chars"] = self.tokenizer.basic_tokenizer.never_split_chars
         # save processor
         config["processor"] = self.__class__.__name__
         output_config_file = os.path.join(save_dir, "processor_config.json")
@@ -418,8 +408,12 @@ class TextClassificationProcessor(Processor):
         return dicts
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
-        # this tokenization also stores offsets
-        tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer, self.max_seq_len)
+        # this tokenization also stores offsets and a start_of_word mask
+        tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer)
+        # truncate tokens, offsets and start_of_word to max_seq_len that can be handled by the model
+        for seq_name in tokenized.keys():
+            tokenized[seq_name], _, _ = truncate_sequences(seq_a=tokenized[seq_name], seq_b=None, tokenizer=self.tokenizer,
+                                                max_seq_len=self.max_seq_len)
         return [Sample(id=None, clear_text=dictionary, tokenized=tokenized)]
 
     def _sample_to_features(self, sample) -> dict:
@@ -474,10 +468,7 @@ class InferenceProcessor(Processor):
         processor_config_file = os.path.join(load_dir, "processor_config.json")
         config = json.load(open(processor_config_file))
         # init tokenizer
-        tokenizer = TOKENIZER_MAP[config["tokenizer"]].from_pretrained(load_dir)
-        # add custom vocab to tokenizer if available
-        if os.path.exists(os.path.join(load_dir, "custom_vocab.txt")):
-            tokenizer.add_custom_vocab(os.path.join(load_dir, "custom_vocab.txt"))
+        tokenizer = Tokenizer.load(load_dir, tokenizer_class=config["tokenizer"])
         # we have to delete the tokenizer string from config, because we pass it as Object
         del config["tokenizer"]
 
@@ -490,13 +481,16 @@ class InferenceProcessor(Processor):
 
         return processor
 
-
     def _file_to_dicts(self, file: str) -> [dict]:
       raise NotImplementedError
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets
-        tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer, self.max_seq_len)
+        tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer)
+        # truncate tokens, offsets and start_of_word to max_seq_len that can be handled by the model
+        for seq_name in tokenized.keys():
+            tokenized[seq_name], _, _ = truncate_sequences(seq_a=tokenized[seq_name], seq_b=None, tokenizer=self.tokenizer,
+                                                max_seq_len=self.max_seq_len)
         return [Sample(id=None, clear_text=dictionary, tokenized=tokenized)]
 
     def _sample_to_features(self, sample) -> dict:
@@ -554,7 +548,11 @@ class NERProcessor(Processor):
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets, which helps to map our entity tags back to original positions
-        tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer, self.max_seq_len)
+        tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer)
+        # truncate tokens, offsets and start_of_word to max_seq_len that can be handled by the model
+        for seq_name in tokenized.keys():
+            tokenized[seq_name], _, _ = truncate_sequences(seq_a=tokenized[seq_name], seq_b=None, tokenizer=self.tokenizer,
+                                                max_seq_len=self.max_seq_len)
         return [Sample(id=None, clear_text=dictionary, tokenized=tokenized)]
 
     def _sample_to_features(self, sample) -> dict:
@@ -752,8 +750,7 @@ class SquadProcessor(Processor):
         for sample in samples:
             tokenized = tokenize_with_metadata(
                 text=" ".join(sample.clear_text["doc_tokens"]),
-                tokenizer=self.tokenizer,
-                max_seq_len=self.max_seq_len,
+                tokenizer=self.tokenizer
             )
             sample.tokenized = tokenized
 

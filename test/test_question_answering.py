@@ -7,7 +7,7 @@ from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
 from farm.modeling.optimization import initialize_optimizer
 from farm.modeling.prediction_head import QuestionAnsweringHead
-from farm.modeling.tokenization import BertTokenizer
+from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer
 from farm.utils import set_all_seeds, initialize_device_settings
 
@@ -22,7 +22,7 @@ def test_qa(caplog):
     evaluate_every = 4
     base_LM_model = "bert-base-cased"
 
-    tokenizer = BertTokenizer.from_pretrained(
+    tokenizer = Tokenizer.load(
         pretrained_model_name_or_path=base_LM_model, do_lower_case=False
     )
     label_list = ["start_token", "end_token"]

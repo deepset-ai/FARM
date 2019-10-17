@@ -192,21 +192,24 @@ def truncate_seq_pair(tokens_a, tokens_b, max_length):
             tokens_b.pop()
 
 
-def add_cls_sep(seq, cls_token, sep_token):
-    # Inference mode
-    if not seq:
-        return None
-    ret = [cls_token]
-    ret += seq
-    ret += [sep_token]
-    return ret
+# def add_cls_sep(seq, cls_token, sep_token):
+#     # Inference mode
+#     if not seq:
+#         return None
+#     ret = [cls_token]
+#     ret += seq
+#     ret += [sep_token]
+#     return ret
 
 
-def pad(seq, max_seq_len, pad_token):
+def pad(seq, max_seq_len, pad_token, pad_on_left=False):
     ret = seq
     n_required_pad = max_seq_len - len(seq)
     for _ in range(n_required_pad):
-        ret.append(pad_token)
+        if pad_on_left:
+            ret.insert(0, pad_token)
+        else:
+            ret.append(pad_token)
     return ret
 
 

@@ -6,12 +6,12 @@ Contains functions that turn readable clear text input into dictionaries of feat
 import logging
 import collections
 from dotmap import DotMap
+import numpy as np
 
 from farm.data_handler.samples import Sample
 from farm.data_handler.utils import (
     truncate_seq_pair,
     expand_labels,
-    add_cls_sep,
     pad,
     mask_random_words,
 )
@@ -32,12 +32,13 @@ def sample_to_features_text(
     :param max_seq_len: Sequences are truncated after this many tokens
     :type max_seq_len: int
     :param tokenizer: A tokenizer object that can turn string sentences into a list of tokens
-    :return: A dictionary containing the keys "input_ids", "padding_mask" and "segment_ids" (also "label_ids" if not
+    :return: A list with one dictionary containing the keys "input_ids", "padding_mask" and "segment_ids" (also "label_ids" if not
              in inference mode). The values are lists containing those features.
-    :rtype: dict
+    :rtype: list
     """
 
-    #TODO It might be cleaner to adjust the data structure in sample.tokenized. Verify if this current quickfix really works for pairs
+    #TODO It might be cleaner to adjust the data structure in sample.tokenized
+    # Verify if this current quickfix really works for pairs
     tokens_a = sample.tokenized["tokens"]
     tokens_b = sample.tokenized.get("tokens_b", None)
 
@@ -46,19 +47,29 @@ def sample_to_features_text(
         tokens_b,
         add_special_tokens=True,
         max_length=max_seq_len,
-        truncation_strategy='longest_first' # We're truncating the first sequence in priority
+        truncation_strategy='do_not_truncate' # We've already truncated our tokens before
     )
+
     input_ids, segment_ids = inputs["input_ids"], inputs["token_type_ids"]
 
     # The mask has 1 for real tokens and 0 for padding tokens. Only real
     # tokens are attended to.
     padding_mask = [1] * len(input_ids)
 
-    # Zero-pad up to the sequence length.
-    padding = [0] * (max_seq_len - len(input_ids))
-    input_ids += padding
-    padding_mask += padding
-    segment_ids += padding
+    # Padding up to the sequence length.
+    # Normal case: adding multiple 0 to the right
+    # Special cases:
+    # a) xlnet pads on the left and uses  "4"  for padding token_type_ids
+    if tokenizer.__class__.__name__ == "XLNetTokenizer":
+        pad_on_left = True
+        segment_ids = pad(segment_ids, max_seq_len, 4, pad_on_left=pad_on_left)
+    else:
+        pad_on_left = False
+        segment_ids = pad(segment_ids, max_seq_len, 0, pad_on_left=pad_on_left)
+
+    input_ids = pad(input_ids, max_seq_len, tokenizer.pad_token_id, pad_on_left=pad_on_left)
+    padding_mask = pad(padding_mask, max_seq_len, 0, pad_on_left=pad_on_left)
+
 
     assert len(input_ids) == max_seq_len
     assert len(padding_mask) == max_seq_len
@@ -105,8 +116,6 @@ def samples_to_features_ner(
     tasks,
     max_seq_len,
     tokenizer,
-    cls_token="[CLS]",
-    sep_token="[SEP]",
     non_initial_token="X",
     **kwargs
 ):
@@ -120,33 +129,32 @@ def samples_to_features_ner(
     :param max_seq_len: Sequences are truncated after this many tokens
     :type max_seq_len: int
     :param tokenizer: A tokenizer object that can turn string sentences into a list of tokens
-    :param cls_token: Token used to represent the beginning of the sequence
-    :type cls_token: str
-    :param sep_token: Token used to represent the border between two sequences
-    :type sep_token: str
     :param non_initial_token: Token that is inserted into the label sequence in positions where there is a
                               non-word-initial token. This is done since the default NER performs prediction
                               only on word initial tokens
-    :return: A dictionary containing the keys "input_ids", "padding_mask", "segment_ids", "initial_mask"
+    :return: A list with one dictionary containing the keys "input_ids", "padding_mask", "segment_ids", "initial_mask"
              (also "label_ids" if not in inference mode). The values are lists containing those features.
-    :rtype: dict
+    :rtype: list
     """
 
-    # Tokenize words and extend the labels so they are aligned with the tokens
-    # words = sample.clear_text["text"].split(" ")
-    # tokens, initial_mask = words_to_tokens(words, tokenizer, max_seq_len)
-
     tokens = sample.tokenized["tokens"]
+    inputs = tokenizer.encode_plus(text=tokens,
+                                   text_pair=None,
+                                   add_special_tokens=True,
+                                   max_length=max_seq_len,
+                                   truncation_strategy='do_not_truncate' # We've already truncated our tokens before
+    )
+
+    input_ids, segment_ids, special_tokens_mask = inputs["input_ids"], inputs["token_type_ids"], inputs["special_tokens_mask"]
+
+    # We construct a mask to identify the first token of a word. We will later only use them for predicting entities.
+    # Special tokens don't count as initial tokens => we add 0 at the positions of special tokens
+    # For BERT we add a 0 in the start and end (for CLS and SEP)
     initial_mask = [int(x) for x in sample.tokenized["start_of_word"]]
-
-    # initial_mask =
-    # Add CLS and SEP tokens
-    tokens = add_cls_sep(tokens, cls_token, sep_token)
-    initial_mask = [0] + initial_mask + [0]  # CLS and SEP don't count as initial tokens
-    padding_mask = [1] * len(tokens)
-
-    # Convert to input and labels to ids, generate masks
-    input_ids = tokenizer.convert_tokens_to_ids(tokens)
+    special_tokens_indices = np.where(np.array(special_tokens_mask) == 1)[0]
+    for idx in special_tokens_indices:
+        initial_mask.insert(idx, 0)
+    assert len(initial_mask) == len(input_ids)
 
     for task_name, task in tasks.items():
         try:
@@ -169,14 +177,26 @@ def samples_to_features_ner(
                            "\nIf your are running in *inference* mode: Don't worry!"
                            "\nIf you are running in *training* mode: Verify you are supplying a proper label list to your processor and check that labels in input data are correct.")
 
-        segment_ids = [0] * max_seq_len
+        # This mask has 1 for real tokens and 0 for padding tokens. Only real
+        # tokens are attended to.
+        padding_mask = [1] * len(input_ids)
 
-        # Pad
-        input_ids = pad(input_ids, max_seq_len, 0)
+        # Padding up to the sequence length.
+        # Normal case: adding multiple 0 to the right
+        # Special cases:
+        # a) xlnet pads on the left and uses  "4" for padding token_type_ids
+        if tokenizer.__class__.__name__ == "XLNetTokenizer":
+            pad_on_left = True
+            segment_ids = pad(segment_ids, max_seq_len, 4, pad_on_left=pad_on_left)
+        else:
+            pad_on_left = False
+            segment_ids = pad(segment_ids, max_seq_len, 0, pad_on_left=pad_on_left)
+
+        input_ids = pad(input_ids, max_seq_len, tokenizer.pad_token_id, pad_on_left=pad_on_left)
+        padding_mask = pad(padding_mask, max_seq_len, 0, pad_on_left=pad_on_left)
+        initial_mask = pad(initial_mask, max_seq_len, 0, pad_on_left=pad_on_left)
         if label_ids:
-            label_ids = pad(label_ids, max_seq_len, 0)
-        initial_mask = pad(initial_mask, max_seq_len, 0)
-        padding_mask = pad(padding_mask, max_seq_len, 0)
+            label_ids = pad(label_ids, max_seq_len, 0, pad_on_left=pad_on_left)
 
         feature_dict = {
             "input_ids": input_ids,

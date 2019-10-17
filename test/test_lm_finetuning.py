@@ -7,7 +7,7 @@ from farm.experiment import initialize_optimizer
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Bert
 from farm.modeling.prediction_head import BertLMHead, NextSentenceHead
-from farm.modeling.tokenization import BertTokenizer
+from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer
 from farm.utils import set_all_seeds, initialize_device_settings
 from farm.infer import Inferencer
@@ -22,8 +22,8 @@ def test_lm_finetuning(caplog):
     evaluate_every = 2
     lang_model = "bert-base-cased"
 
-    tokenizer = BertTokenizer.from_pretrained(
-        pretrained_model_name_or_path=lang_model, do_lower_case=False, never_split_chars=["-", "_"]
+    tokenizer = Tokenizer.load(
+        pretrained_model_name_or_path=lang_model, do_lower_case=False
     )
 
     processor = BertStyleLMProcessor(
