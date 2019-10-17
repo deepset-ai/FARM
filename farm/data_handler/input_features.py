@@ -327,8 +327,65 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
 
     return [feature_dict]
 
+def sample_to_features_squad(sample, tokenizer, max_seq_len):
+    is_training = sample.clear_text["is_training"]
+    is_impossible = sample.clear_text["is_impossible"]
+    encoded = tokenizer.encode_plus(text=sample.tokenized["question_tokens"],
+                                      text_pair=sample.tokenized["passage_tokens"],
+                                      add_special_tokens=True,
+                                      max_length=max_seq_len,
+                                      truncation_strategy='only_second',
+                                      return_tensors=None)
 
-def sample_to_features_squad(
+    input_ids = encoded["input_ids"]
+    segment_ids = encoded["token_type_ids"]
+
+    # The mask has 1 for real tokens and 0 for padding tokens. Only real
+    # tokens are attended to.
+    padding_mask = [1] * len(input_ids)
+
+    # Zero-pad up to the sequence length.
+    padding = [0] * (max_seq_len - len(input_ids))
+    input_ids += padding
+    padding_mask += padding
+    segment_ids += padding
+
+    # Creates the label vectors called start and end.
+    # Each is max_seq_len long and can contain any number of positive labels (1)
+    # If is_impossible, st
+    start_vec = [0] * max_seq_len
+    end_vec = [0] * max_seq_len
+
+    # If is impossible, the model is taught to set the CLS token at idx 0 to be the start and  end
+    if sample.clear_text["is_impossible"]:
+        start_vec[0] = 1
+        end_vec[0] = 1
+    else:
+        for answer in sample.tokenized["answers"]:
+            start_idx = answer["start_t"]
+            end_idx = answer["end_t"]
+            # start and end indicies are only valid if they are both between 0 and max_seq_len
+            # TODO: Think through this logic - not convinced this is correct
+            if start_idx < max_seq_len and start_idx > 0 and \
+                    end_idx < max_seq_len and end_idx > 0:
+                start_vec[start_idx] = 1
+                end_vec[end_idx] = 1
+            else:
+                start_vec[0] = 1
+                end_vec[0] = 1
+
+    feature_dict = {"input_ids": input_ids,
+                "padding_mask": padding_mask,
+                "segment_ids": segment_ids,
+                "start_vec": start_vec,
+                "end_vec": end_vec,
+                "is_impossible": is_impossible}
+
+    return [feature_dict]
+
+
+
+def sample_to_features_squadOLD(
     sample, tokenizer, max_seq_len, doc_stride, max_query_length, tasks,
 ):
     sample.clear_text = DotMap(sample.clear_text, _dynamic=False)

@@ -153,7 +153,6 @@ def create_samples_squad(dictionary, max_query_len, max_seq_len, doc_stride):
     :return:
     """
 
-    # TODO: Check ID
     # TODO: CHECK THAT EVERYTHING IS ALIGNED
 
     is_training = check_if_training(dictionary)
@@ -169,6 +168,8 @@ def create_samples_squad(dictionary, max_query_len, max_seq_len, doc_stride):
 
     samples = []
     passage_id = 0
+
+    #TODO: Calculate chunk indices first rather than while True - allows for factoring of the contents of loop
 
     # Perform chunking of document into passages. Passage length is calculated from the question length and max
     # sequence length. The sliding window moves in steps of doc_stride. The "t" and "c" in variables stands for
@@ -232,7 +233,7 @@ def create_samples_squad(dictionary, max_query_len, max_seq_len, doc_stride):
                      "question_tokens": question_tokens,
                      "question_offsets": question_offsets,
                      "answers": answers_tokenized}
-        samples.append(Sample(id="FIX ME",
+        samples.append(Sample(id=passage_id,
                                clear_text=clear_text,
                                tokenized=tokenized,
                                features=None))
@@ -274,7 +275,8 @@ def offset_to_token_idx(token_offsets, ch_idx):
     for i, to in enumerate(token_offsets):
         if ch_idx <= to:
             return i
-    return None
+    # This case is triggered if the ch_idx points to the end of the last word
+    return i + 1
 
 def check_if_training(dictionary):
     if "is_impossible" in dictionary:

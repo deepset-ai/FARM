@@ -740,7 +740,7 @@ class SquadProcessor(Processor):
         baskets = []
         for d_idx, document in enumerate(dicts_tokenized):
             for q_idx, raw in enumerate(document):
-                basket = SampleBasket(raw=raw, id=f"{d_idx}_{q_idx}")
+                basket = SampleBasket(raw=raw, id=f"{d_idx}-{q_idx}")
                 baskets.append(basket)
         return baskets
 
@@ -748,6 +748,7 @@ class SquadProcessor(Processor):
     def apply_tokenization(self, dictionary):
         """ This performs tokenization on all documents and questions. The result is an unnested list where each entry
         is a document question pair. Also populates the output with answers"""
+        # TODO: Check how tokenize_with_metadata interacts with tokenizer.encode_plus in terms of truncation
         raw_baskets = []
         paragraph_text = dictionary["context"]
         paragraph_tokenized = tokenize_with_metadata(paragraph_text, self.tokenizer, max_seq_len=None)
@@ -815,14 +816,9 @@ class SquadProcessor(Processor):
 
     def _sample_to_features(self, sample) -> dict:
         # TODO, make this function return one set of features per sample
-        features = sample_to_features_squad(
-            sample=sample,
-            tokenizer=self.tokenizer,
-            max_seq_len=self.max_seq_len,
-            doc_stride=self.doc_stride,
-            max_query_length=self.max_query_length,
-            tasks=self.tasks
-        )
+        features = sample_to_features_squad(sample=sample,
+                                            tokenizer=self.tokenizer,
+                                            max_seq_len=self.max_seq_len)
         return features
 
 
