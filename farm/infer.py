@@ -195,7 +195,8 @@ class Inferencer:
     @classmethod
     def _multiproc(cls, chunk, processor, rest_api_schema):
         dicts = [d[1] for d in chunk]
-        dataset, tensor_names = processor.dataset_from_dicts(dicts, rest_api_schema)
+        index = chunk[0][0]
+        dataset, tensor_names = processor.dataset_from_dicts(dicts, index, rest_api_schema)
         samples = []
         for d in dicts:
             samples.extend(processor._dict_to_samples(d))
