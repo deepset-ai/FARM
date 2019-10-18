@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 from transformers.modeling_bert import BertModel, BertConfig
 from transformers.modeling_roberta import RobertaModel, RobertaConfig
 from transformers.modeling_xlnet import XLNetModel, XLNetConfig
-
+from transformers.modeling_utils import SequenceSummary
 
 class LanguageModel(nn.Module):
     """
@@ -360,6 +360,7 @@ class XLNet(LanguageModel):
         super(XLNet, self).__init__()
         self.model = None
         self.name = "xlnet"
+        self.pooler = None
 
     @classmethod
     def load(cls, pretrained_model_name_or_path, language=None):
@@ -373,10 +374,12 @@ class XLNet(LanguageModel):
             farm_lm_model = os.path.join(pretrained_model_name_or_path, "language_model.bin")
             xlnet.model = XLNetModel.from_pretrained(farm_lm_model, config=config)
             xlnet.language = xlnet.model.config.language
+            xlnet.pooler = SequenceSummary(config)
         else:
             # Pytorch-transformer Style
             xlnet.model = XLNetModel.from_pretrained(pretrained_model_name_or_path)
             xlnet.language = cls._infer_language_from_name(pretrained_model_name_or_path)
+            xlnet.pooler = SequenceSummary(xlnet.model.config)
         return xlnet
 
     def forward(
@@ -400,29 +403,31 @@ class XLNet(LanguageModel):
         :return: Embeddings for each token in the input sequence.
         """
 
-        #TODO check & edit input args
-        # in the transformers repo the forward is:
-        # def forward(self, input_ids, attention_mask=None, mems=None, perm_mask=None, target_mapping=None,
-        #            token_type_ids=None, input_mask=None, head_mask=None):
+        # Note: XLNet has a couple of special input tensors for pretraining / text generation  (perm_mask, target_mapping ...)
+        # We will need to implement them, if we wanna support LM adaptation
 
         output_tuple = self.model(
             input_ids,
             token_type_ids=segment_ids,
             attention_mask=padding_mask,
         )
+        # XLNet also only returns the sequence_output (one vec per token)
+        # We need to manually aggregate that to get a pooled output (one vec per seq)
+        #TODO verify that this is really doing correct pooling
+        pooled_output = self.pooler(output_tuple[0])
 
-        if self.model.encoder.output_hidden_states == True:
-            sequence_output, pooled_output, all_hidden_states = output_tuple[0], output_tuple[1], output_tuple[2]
+        if self.model.output_hidden_states == True:
+            sequence_output, all_hidden_states = output_tuple[0], output_tuple[1]
             return sequence_output, pooled_output, all_hidden_states
         else:
-            sequence_output, pooled_output = output_tuple[0], output_tuple[1]
+            sequence_output = output_tuple[0]
             return sequence_output, pooled_output
 
     def enable_hidden_states_output(self):
-        self.model.encoder.output_hidden_states = True
+        self.model.output_hidden_states = True
 
     def disable_hidden_states_output(self):
-        self.model.encoder.output_hidden_states = False
+        self.model.output_hidden_states = False
 
     def save_config(self, save_dir):
         save_filename = os.path.join(save_dir, "language_model_config.json")

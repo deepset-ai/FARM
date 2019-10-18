@@ -1,6 +1,29 @@
 import logging
 from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
+from transformers import BertTokenizer, RobertaTokenizer, XLNetTokenizer
 import re
+
+
+def test_basic_loading(caplog):
+
+    tokenizer = Tokenizer.load(
+        pretrained_model_name_or_path="bert-base-cased",
+        do_lower_case=True
+        )
+    assert type(tokenizer) == BertTokenizer
+    assert tokenizer.basic_tokenizer.do_lower_case == True
+
+    tokenizer = Tokenizer.load(
+        pretrained_model_name_or_path="xlnet-base-cased",
+        do_lower_case=True
+        )
+    assert type(tokenizer) == XLNetTokenizer
+    assert tokenizer.do_lower_case == True
+
+    tokenizer = Tokenizer.load(
+        pretrained_model_name_or_path="roberta-base"
+        )
+    assert type(tokenizer) == RobertaTokenizer
 
 
 def test_bert_tokenizer_all_meta(caplog):
@@ -127,7 +150,6 @@ def test_all_tokenizer_on_special_cases(caplog):
                 #tok = tokenizer.decode(tokenizer.convert_tokens_to_ids(tok))
                 original_tok = text[offset:offset+len(tok)]
                 assert tok == original_tok, f"Offset alignment wrong for {tokenizer.__class__.__name__} and text '{text}'"
-
 
 
 def test_bert_custom_vocab(caplog):

@@ -22,8 +22,12 @@ DOWNSTREAM_TASK_MAP = {
     "conll03detrain": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/training_data_for_Stanford_NER/NER-de-train-conll-formated.txt",
     "conll03dedev": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/training_data_for_Stanford_NER/NER-de-dev-conll-formated.txt",
     "conll03detest": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/training_data_for_Stanford_NER/NER-de-test-conll-formated.txt",
+    "conll03entrain": "https://raw.githubusercontent.com/synalp/NER/master/corpus/CoNLL-2003/eng.train",
+    "conll03endev": "https://raw.githubusercontent.com/synalp/NER/master/corpus/CoNLL-2003/eng.testa",
+    "conll03entest": "https://raw.githubusercontent.com/synalp/NER/master/corpus/CoNLL-2003/eng.testb",
     "lm_finetune_nips": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/lm_finetune_nips.tar.gz",
     "toxic-comments": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/toxic-comments.tar.gz",
+    'cola': "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/cola.tar.gz",
 }
 
 
@@ -106,12 +110,17 @@ def _download_extract_downstream_data(input_file):
     logger.info(
         "downloading and extracting file {} to dir {}".format(taskname, datadir)
     )
-    if "conll03" in taskname and "de" in taskname:
+    if "conll03" in taskname:
         # conll03 is copyrighted, but luckily somebody put it on github. Kudos!
         if not os.path.exists(directory):
             os.makedirs(directory)
         for dataset in ["train", "dev", "test"]:
-            _conll03get(dataset, directory)
+            if "de" in taskname:
+                _conll03get(dataset, directory, "de")
+            elif "en" in taskname:
+                _conll03get(dataset, directory, "en")
+            else:
+                logger.error("Cannot download {}. Unknown data source.".format(taskname))
     elif taskname not in DOWNSTREAM_TASK_MAP:
         logger.error("Cannot download {}. Unknown data source.".format(taskname))
     else:
@@ -124,11 +133,11 @@ def _download_extract_downstream_data(input_file):
         # temp_file gets deleted here
 
 
-def _conll03get(dataset, directory):
+def _conll03get(dataset, directory, language):
     # open in binary mode
     with open(os.path.join(directory, f"{dataset}.txt"), "wb") as file:
         # get request
-        response = get(DOWNSTREAM_TASK_MAP[f"conll03de{dataset}"])
+        response = get(DOWNSTREAM_TASK_MAP[f"conll03{language}{dataset}"])
         # write to file
         file.write(response.content)
 

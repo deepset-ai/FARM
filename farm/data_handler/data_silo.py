@@ -217,7 +217,7 @@ class DataSilo:
         seq_lens = []
         for dataset in self.data["train"].datasets:
             train_input_numpy = dataset[:][0].numpy()
-            seq_lens.extend(np.sum(train_input_numpy != 0, axis=1))
+            seq_lens.extend(np.sum(train_input_numpy != self.processor.tokenizer.pad_token_id, axis=1))
         max_seq_len = dataset[:][0].shape[1]
 
         self.clipped = np.mean(np.array(seq_lens) == max_seq_len)
