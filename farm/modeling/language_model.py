@@ -134,16 +134,14 @@ class LanguageModel(nn.Module):
             language = "english"
             logger.warning(
                 "Could not automatically detect from language model name what language it is. \n"
-                "We guess it's an *ENGLISH* model ... \n"
-                "If not: Init the language model by supplying the 'language' param.\n"
-                "Example: Bert.load('my_mysterious_model_name', language='de')"
+                "\t We guess it's an *ENGLISH* model ... \n"
+                "\t If not: Init the language model by supplying the 'language' param."
             )
         elif len(matches) > 1:
             raise ValueError(
                 "Could not automatically detect from language model name what language it is.\n"
-                f"Found multiple matches: {matches}\n"
-                "Please init the language model by manually supplying the 'language' as a parameter.\n"
-                "Example: Bert.load('my_mysterious_model_name', language='de')"
+                f"\t Found multiple matches: {matches}\n"
+                "\t Please init the language model by manually supplying the 'language' as a parameter.\n"
             )
         else:
             language = matches[0]
