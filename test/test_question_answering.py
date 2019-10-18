@@ -34,7 +34,7 @@ def test_qa(caplog):
         dev_filename="dev-sample.json",
         test_filename=None,
         data_dir="samples/qa",
-        labels=label_list,
+        label_list=label_list,
         metric="squad"
     )
 
