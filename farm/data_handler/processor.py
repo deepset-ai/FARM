@@ -15,6 +15,7 @@ from farm.data_handler.input_features import (
     samples_to_features_bert_lm,
     sample_to_features_text,
     sample_to_features_squad,
+    sample_to_features_squadOLD
 )
 from farm.data_handler.samples import (
     Sample,
@@ -863,7 +864,7 @@ class SquadProcessorOLD(Processor):
         self.doc_stride = doc_stride
         self.max_query_length = max_query_length
 
-        super(SquadProcessor, self).__init__(
+        super(SquadProcessorOLD, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
             train_filename=train_filename,
@@ -915,9 +916,9 @@ class SquadProcessorOLD(Processor):
         # TODO split samples that are too long in this function, related to todo in self._sample_to_features
         if "paragraphs" not in dictionary:  # TODO change this inference mode hack
             dictionary = self._convert_inference(infer_dict=dictionary)
-        samples = create_samples_squad(entry=dictionary)
+        samples = create_samples_squadOLD(entry=dictionary)
         for sample in samples:
-            tokenized = tokenize_with_metadataOLD(
+            tokenized = tokenize_with_metadata(
                 text=" ".join(sample.clear_text["doc_tokens"]),
                 tokenizer=self.tokenizer,
                 max_seq_len=self.max_seq_len,
@@ -928,7 +929,7 @@ class SquadProcessorOLD(Processor):
 
     def _sample_to_features(self, sample) -> dict:
         # TODO, make this function return one set of features per sample
-        features = sample_to_features_squad(
+        features = sample_to_features_squadOLD(
             sample=sample,
             tokenizer=self.tokenizer,
             max_seq_len=self.max_seq_len,

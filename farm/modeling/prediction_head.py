@@ -707,7 +707,6 @@ class FeedForwardBlock(nn.Module):
         logits = self.feed_forward(X)
         return logits
 
-
 class QuestionAnsweringHead(PredictionHead):
     """
     A question answering head predicts the start and end of the answer on token level.
@@ -721,6 +720,108 @@ class QuestionAnsweringHead(PredictionHead):
         :type kwargs: object
         """
         super(QuestionAnsweringHead, self).__init__()
+        self.layer_dims = layer_dims
+        self.feed_forward = FeedForwardBlock(self.layer_dims)
+        self.num_labels = self.layer_dims[-1]
+        self.ph_output_type = "per_token_squad"
+        self.model_type = (
+            "span_classification"
+        )  # predicts start and end token of answer
+        self.task_name = task_name
+        self.generate_config()
+
+    def forward(self, X):
+        """
+        One forward pass through the prediction head model, starting with language model output on token level
+
+        :param X: Output of language model, of shape [batch_size, seq_length, LM_embedding_dim]
+        :type X: torch.tensor
+        :return: (start_logits, end_logits), logits for the start and end of answer
+        :rtype: tuple[torch.tensor,torch.tensor]
+        """
+        logits = self.feed_forward(X)
+        start_logits, end_logits = logits.split(1, dim=-1)
+        start_logits = start_logits.squeeze(-1)
+        end_logits = end_logits.squeeze(-1)
+        return (start_logits, end_logits)
+
+    def logits_to_loss(self, logits, start_position, end_position, **kwargs):
+        """
+        Combine predictions and labels to a per sample loss.
+
+        :param logits: (start_logits, end_logits), logits for the start and end of answer
+        :type logits: tuple[torch.tensor,torch.tensor]
+        :param start_position: tensor with indices of START positions per sample
+        :type start_position: torch.tensor
+        :param end_position: tensor with indices of END positions per sample
+        :type end_position: torch.tensor
+        :param kwargs: placeholder for passing generic parameters
+        :type kwargs: object
+        :return: per_sample_loss: Per sample loss : )
+        :rtype: torch.tensor
+        """
+        (start_logits, end_logits) = logits
+
+        if len(start_position.size()) > 1:
+            start_position = start_position.squeeze(-1)
+        if len(end_position.size()) > 1:
+            end_position = end_position.squeeze(-1)
+        # sometimes the start/end positions (the labels read from file) are outside our model predictions, we ignore these terms
+        ignored_index = start_logits.size(1)
+        start_position.clamp_(0, ignored_index)
+        end_position.clamp_(0, ignored_index)
+
+        loss_fct = BCEWithLogitsLoss(reduction="none")
+        start_loss = loss_fct(start_logits, start_position.to(dtype=torch.float32))
+        end_loss = loss_fct(end_logits, end_position.to(dtype=torch.float32))
+        per_sample_loss = (start_loss + end_loss) / 2
+        return per_sample_loss
+
+    def logits_to_preds(self, logits, **kwargs):
+        """
+        Get the predicted index of start and end token of the answer.
+
+        :param logits: (start_logits, end_logits), logits for the start and end of answer
+        :type logits: tuple[torch.tensor,torch.tensor]
+        :param kwargs: placeholder for passing generic parameters
+        :type kwargs: object
+        :return: (start_idx, end_idx), start and end indices for all samples in batch
+        :rtype: (torch.tensor,torch.tensor)
+        """
+        (start_logits, end_logits) = logits
+        # TODO add checking for validity, e.g. end_idx coming after start_idx
+        start_idx = torch.argmax(start_logits, dim=1)
+        end_idx = torch.argmax(end_logits, dim=1)
+        return (start_idx, end_idx)
+
+    def prepare_labels(self, start_position, end_position, **kwargs):
+        """
+        We want to pack labels into a tuple, to be compliant with later functions
+
+        :param start_position: indices of answer start positions (in token space)
+        :type start_position: torch.tensor
+        :param end_position: indices of answer end positions (in token space)
+        :type end_position: torch.tensor
+        :param kwargs: placeholder for passing generic parameters
+        :type kwargs: object
+        :return: tuplefied positions
+        :rtype: tuple(torch.tensor,torch.tensor)
+        """
+        return (start_position, end_position)
+
+class QuestionAnsweringHeadOLD(PredictionHead):
+    """
+    A question answering head predicts the start and end of the answer on token level.
+    """
+
+    def __init__(self, layer_dims, task_name="question_answering", **kwargs):
+        """
+        :param layer_dims: dimensions of Feed Forward block, e.g. [768,2], for adjusting to BERT embedding. Output should be always 2
+        :type layer_dims: List[Int]
+        :param kwargs: placeholder for passing generic parameters
+        :type kwargs: object
+        """
+        super(QuestionAnsweringHeadOLD, self).__init__()
         self.layer_dims = layer_dims
         self.feed_forward = FeedForwardBlock(self.layer_dims)
         self.num_labels = self.layer_dims[-1]
@@ -791,6 +892,7 @@ class QuestionAnsweringHead(PredictionHead):
         """
         (start_logits, end_logits) = logits
         # TODO add checking for validity, e.g. end_idx coming after start_idx
+        # TODO preserve top N predictions
         start_idx = torch.argmax(start_logits, dim=1)
         end_idx = torch.argmax(end_logits, dim=1)
         return (start_idx, end_idx)

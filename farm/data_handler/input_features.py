@@ -342,7 +342,7 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len):
 
     # Generate a start and end label vec. Each has length = (question_len_t + passage_len_t + n_special_tokens).
     # They will be no longer than max_seq_len and are positionally aligned with input_ids
-    start_vec, end_vec = generate_label_vecs(answers,
+    start_position, end_position = generate_label_vecs(answers,
                                              passage_len_t,
                                              question_len_t,
                                              tokenizer)
@@ -370,14 +370,14 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len):
     input_ids += padding
     padding_mask += padding
     segment_ids += padding
-    start_vec += padding
-    end_vec += padding
+    start_position += padding
+    end_position += padding
 
     feature_dict = {"input_ids": input_ids,
                     "padding_mask": padding_mask,
                     "segment_ids": segment_ids,
-                    "start_vec": start_vec,
-                    "end_vec": end_vec,
+                    "start_position": start_position,
+                    "end_position": end_position,
                     "is_impossible": is_impossible}
 
     return [feature_dict]
@@ -423,12 +423,18 @@ def generate_label_vecs(answers, passage_len_t, question_len_t, tokenizer):
         end_vec[0] = 1
     if start_label_present != end_label_present:
         raise Exception("The label vectors are lacking either a start or end label")
+    start_vec = [float(x) for x in start_vec]
+    end_vec = [float(x) for x in end_vec]
     return start_vec, end_vec
 
 
 def combine_label_vecs(question_label_vec, passage_label_vec, tokenizer):
     """ Combine the question_label_vec and passage_label_vec. Will add slots in
     the returned vector for special tokens like [CLS]."""
+
+    # The method of combining the vectors does not work if any of the special tokens have an index of 1
+    special_token_ids = tokenizer.all_special_ids
+    assert 1 not in special_token_ids
 
     # Join question_label_vec and passage_label_vec and add slots for special tokens
     vec = tokenizer.build_inputs_with_special_tokens(token_ids_0=question_label_vec,

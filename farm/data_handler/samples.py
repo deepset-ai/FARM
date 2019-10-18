@@ -164,21 +164,21 @@ def create_samples_squad(dictionary, max_query_len, max_seq_len, doc_stride, n_s
     passage_len_t = max_seq_len - question_len_t - n_special_tokens
 
     # Perform chunking of document into passages. The sliding window moves in steps of doc_stride.
-    # passage_idxs is a list of dictionaries where each defines the start and end of each passage
+    # passage_spans is a list of dictionaries where each defines the start and end of each passage
     # on both token and character level
-    passage_idxs = chunk_into_passages(doc_offsets,
-                                       doc_stride,
-                                       passage_len_t,
-                                       doc_text)
+    passage_spans = chunk_into_passages(doc_offsets,
+                                        doc_stride,
+                                        passage_len_t,
+                                        doc_text)
 
-    for idx_dict in passage_idxs:
+    for passage_span in passage_spans:
         # Unpack each variable in the dictionary. The "_t" and "_c" indicate
         # whether the index is on the token or character level
-        passage_start_t = idx_dict["passage_start_t"]
-        passage_end_t = idx_dict["passage_end_t"]
-        passage_start_c = idx_dict["passage_start_c"]
-        passage_end_c = idx_dict["passage_end_c"]
-        passage_id = idx_dict["passage_id"]
+        passage_start_t = passage_span["passage_start_t"]
+        passage_end_t = passage_span["passage_end_t"]
+        passage_start_c = passage_span["passage_start_c"]
+        passage_end_c = passage_span["passage_end_c"]
+        passage_id = passage_span["passage_id"]
 
         # passage_offsets will be relative to the start of the passage (i.e. they will start at 0)
         # TODO: Is passage offsets actually needed? At this point, maybe we only care about token level
@@ -257,7 +257,7 @@ def chunk_into_passages(doc_offsets,
                         doc_text):
     """ Returns a list of dictionaries which each describe the start, end and id of a passage
     that is formed when chunking a document using a sliding window approach. """
-    passage_idxs = []
+    passage_spans = []
     passage_id = 0
     doc_len_t = len(doc_offsets)
     while True:
@@ -273,14 +273,14 @@ def chunk_into_passages(doc_offsets,
         # If the calculated end_idx is past the end of the passage, set end_idx to be the last token in the passage
         except IndexError:
             passage_end_c = len(doc_text)
-        passage_idx = {"passage_start_t": passage_start_t,
-                       "passage_end_t": passage_end_t,
-                       "passage_start_c": passage_start_c,
-                       "passage_end_c": passage_end_c,
-                       "passage_id": passage_id}
-        passage_idxs.append(passage_idx)
+        passage_span = {"passage_start_t": passage_start_t,
+                        "passage_end_t": passage_end_t,
+                        "passage_start_c": passage_start_c,
+                        "passage_end_c": passage_end_c,
+                        "passage_id": passage_id}
+        passage_spans.append(passage_span)
         passage_id += 1
-    return passage_idxs
+    return passage_spans
 
 
 def offset_to_token_idx(token_offsets, ch_idx):
