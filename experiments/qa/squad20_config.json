@@ -4,7 +4,7 @@
     "data_dir":   {"value": null, "default": "data/squad20", "desc": "Input directory for downstream task. For SQuAD the test set is private. You need to submit models that are then evaluated."},
     "output_dir": {"value": null, "default": "saved_models", "desc": "Output directory where model predictions and checkpoints will be saved."},
 
-    "cuda":        {"value": null, "default": true,  "desc": "CUDA flag,  uses CUDA if available."},
+    "cuda":        {"value": null, "default": false,  "desc": "CUDA flag,  uses CUDA if available."},
     "local_rank":  {"value": null, "default": -1,    "desc": "If local_rank == -1 -> multiGPU mode on one machine,  other values signal distributed computation across several nodes (apex install required)."},
     "fp16":        {"value": null, "default": false, "desc": "Floating point precision. IF true it halves the precision and therefore the memory requirements,  so you can doulbe the batch size."},
     "loss_scale":  {"value": null, "default": 0,     "desc": "Loss scaling to improve fp16 numeric stability. Only used when fp16 set to True. 0 (default value): dynamic loss scaling. Positive power of 2: static loss scaling value."},
@@ -26,7 +26,7 @@
     "train_filename":   {"value": null, "default": "train-v2.0.json",      "desc": "Filename for training."},
     "dev_filename":     {"value": null, "default": "dev-v2.0.json",        "desc": "Filename for development. Contains multiple possible answers."},
     "test_filename":    {"value": null, "default": null,       "desc": "Filename for testing. It is the submission file from competition."},
-    "label_list":           {"value": null, "default": ["start_token", "end_token"], "desc": ""},
+    "labels":           {"value": null, "default": ["start_token", "end_token"], "desc": ""},
     "metric":          {"value": null, "default": "squad",       "desc": "Metric used. A f1 scored tailored to sequences of labels."}
   },
 
