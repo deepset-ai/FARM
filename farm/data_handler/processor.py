@@ -406,6 +406,9 @@ class TextClassificationProcessor(Processor):
                           label_list=label_list,
                           label_column_name=label_column_name,
                           task_type=task_type)
+        else:
+            logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
+                        "using the default task or add a custom task later via processor.add_task()")
 
     def file_to_dicts(self, file: str) -> [dict]:
         column_mapping = {task["label_column_name"]: task["label_name"] for task in self.tasks.values()}
@@ -554,6 +557,9 @@ class NERProcessor(Processor):
 
         if metric and label_list:
             self.add_task("ner", metric, label_list)
+        else:
+            logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
+                        "using the default task or add a custom task later via processor.add_task()")
 
     def file_to_dicts(self, file: str) -> [dict]:
         dicts = read_ner_file(filename=file, sep=self.delimiter)
@@ -717,6 +723,9 @@ class SquadProcessor(Processor):
 
         if metric and labels:
             self.add_task("question_answering", metric, labels)
+        else:
+            logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
+                        "using the default task or add a custom task later via processor.add_task()")
 
     def dataset_from_dicts(self, dicts, index=None, rest_api_schema=False):
         if rest_api_schema:
