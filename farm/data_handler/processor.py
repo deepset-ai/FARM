@@ -30,7 +30,7 @@ from farm.data_handler.utils import (
 )
 from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
 from farm.utils import MLFlowLogger as MlLogger
-from farm.data_handler.samples import get_sentence_pair
+from farm.data_handler.utils import get_sentence_pair
 
 logger = logging.getLogger(__name__)
 
@@ -266,35 +266,6 @@ class Processor(ABC):
         dataset, tensor_names = convert_features_to_dataset(features=features_flat)
         return dataset, tensor_names
 
-    # def dataset_from_file(self, file, log_time=True):
-    #     """
-    #     Contains all the functionality to turn a data file into a PyTorch Dataset and a
-    #     list of tensor names. This is used for training and evaluation.
-    #
-    #     :param file: Name of the file containing the data.
-    #     :type file: str
-    #     :return: a Pytorch dataset and a list of tensor names.
-    #     """
-    #     if log_time:
-    #         a = time.time()
-    #         self._init_baskets_from_file(file)
-    #         b = time.time()
-    #         MlLogger.log_metrics(metrics={"t_from_file": (b - a) / 60}, step=0)
-    #         self._init_samples_in_baskets()
-    #         c = time.time()
-    #         MlLogger.log_metrics(metrics={"t_init_samples": (c - b) / 60}, step=0)
-    #         self._featurize_samples()
-    #         d = time.time()
-    #         MlLogger.log_metrics(metrics={"t_featurize_samples": (d - c) / 60}, step=0)
-    #         self._log_samples(3)
-    #     else:
-    #         self._init_baskets_from_file(file)
-    #         self._init_samples_in_baskets()
-    #         self._featurize_samples()
-    #         self._log_samples(3)
-    #     dataset, tensor_names = self._create_dataset()
-    #     return dataset, tensor_names
-
     #TODO remove useless from_inference flag after refactoring squad processing
     def dataset_from_dicts(self, dicts, index=None, from_inference=False):
         """
@@ -382,7 +353,6 @@ class TextClassificationProcessor(Processor):
             data_dir=data_dir,
             tasks={},
         )
-        #TODO raise info when no task is added due to missing "metric" or "labels" arg
         if metric and label_list:
             if multilabel:
                 task_type = "multilabel_classification"
@@ -393,6 +363,9 @@ class TextClassificationProcessor(Processor):
                           label_list=label_list,
                           label_column_name=label_column_name,
                           task_type=task_type)
+        else:
+            logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
+                        "adding a default text classification task or add a custom task later via processor.add_task()")
 
     def _file_to_dicts(self, file: str) -> [dict]:
         column_mapping = {task["label_column_name"]: task["label_name"] for task in self.tasks.values()}
@@ -541,6 +514,9 @@ class NERProcessor(Processor):
 
         if metric and label_list:
             self.add_task("ner", metric, label_list)
+        else:
+            logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
+                        "adding a default NER task or add a custom task later via processor.add_task()")
 
     def _file_to_dicts(self, file: str) -> [dict]:
         dicts = read_ner_file(filename=file, sep=self.delimiter)
@@ -607,7 +583,6 @@ class BertStyleLMProcessor(Processor):
         if self.next_sent_pred:
             self.add_task("nextsentence", "acc", ["False", "True"])
 
-
     def _file_to_dicts(self, file: str) -> list:
         dicts = read_docs_from_txt(filename=file, delimiter=self.delimiter, max_docs=self.max_docs)
         return dicts
@@ -615,23 +590,52 @@ class BertStyleLMProcessor(Processor):
     def _dict_to_samples(self, dictionary, all_dicts=None):
         doc = dictionary["doc"]
         samples = []
+
+        # create one sample for each sentence in the doc (except for the very last -> "nextSentence" is impossible)
         for idx in range(len(doc) - 1):
-            text_a, text_b, is_next_label = get_sentence_pair(doc, all_dicts, idx)
-            sample_in_clear_text = {
-                "text_a": text_a,
-                "text_b": text_b,
-                "nextsentence_label": is_next_label,
-            }
             tokenized = {}
-            tokenized["text_a"] = tokenize_with_metadata(
-                text_a, self.tokenizer, self.max_seq_len
-            )
-            tokenized["text_b"] = tokenize_with_metadata(
-                text_b, self.tokenizer, self.max_seq_len
-            )
-            samples.append(
-                Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized)
-            )
+            if self.next_sent_pred:
+                text_a, text_b, is_next_label = get_sentence_pair(doc, all_dicts, idx)
+                sample_in_clear_text = {
+                    "text_a": text_a,
+                    "text_b": text_b,
+                    "nextsentence_label": is_next_label,
+                }
+                # tokenize
+                tokenized["text_a"] = tokenize_with_metadata(
+                    text_a, self.tokenizer
+                )
+                tokenized["text_b"] = tokenize_with_metadata(
+                    text_b, self.tokenizer
+                )
+                # truncate to max_seq_len
+                for seq_name in ["tokens", "offsets", "start_of_word"]:
+                    tokenized["text_a"][seq_name], tokenized["text_b"][seq_name], _ = truncate_sequences(
+                        seq_a=tokenized["text_a"][seq_name],
+                        seq_b=tokenized["text_b"][seq_name],
+                        tokenizer=self.tokenizer,
+                        max_seq_len=self.max_seq_len)
+                    samples.append(Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized))
+            # if we don't do next sentence prediction, we should feed in a single sentence
+            else:
+                text_a = doc[idx]
+                sample_in_clear_text = {
+                    "text_a": text_a,
+                    "text_b": None,
+                    "nextsentence_label": None,
+                }
+                # tokenize
+                tokenized["text_a"] = tokenize_with_metadata(
+                    text_a, self.tokenizer
+                )
+                # truncate to max_seq_len
+                for seq_name in ["tokens", "offsets", "start_of_word"]:
+                    tokenized["text_a"][seq_name], _, _ = truncate_sequences(
+                        seq_a=tokenized["text_a"][seq_name],
+                        seq_b=None,
+                        tokenizer=self.tokenizer,
+                        max_seq_len=self.max_seq_len)
+                    samples.append(Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized))
         return samples
 
     def _sample_to_features(self, sample) -> dict:
@@ -809,7 +813,6 @@ class RegressionProcessor(Processor):
 
         self.add_task(name="regression", metric="mse", label_list= [scaler_mean, scaler_scale], label_column_name=label_column_name, task_type="regression", label_name=label_name)
 
-
     def _file_to_dicts(self, file: str) -> [dict]:
         column_mapping = {task["label_column_name"]: task["label_name"] for task in self.tasks.values()}
         dicts = read_tsv(
@@ -833,7 +836,12 @@ class RegressionProcessor(Processor):
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets
-        tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer, self.max_seq_len)
+        tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer)
+        # truncate tokens, offsets and start_of_word to max_seq_len that can be handled by the model
+        for seq_name in tokenized.keys():
+            tokenized[seq_name], _, _ = truncate_sequences(seq_a=tokenized[seq_name], seq_b=None,
+                                                           tokenizer=self.tokenizer,
+                                                           max_seq_len=self.max_seq_len)
         # Samples don't have labels during Inference mode
         if "label" in dictionary:
             label = float(dictionary["label"])

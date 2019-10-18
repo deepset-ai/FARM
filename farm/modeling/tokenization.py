@@ -18,6 +18,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import logging
 import unicodedata
 import re
+import numpy as np
 
 from transformers.tokenization_bert import BertTokenizer
 from transformers.tokenization_roberta import RobertaTokenizer
@@ -121,3 +122,11 @@ def truncate_sequences(seq_a, seq_b, tokenizer, max_seq_len, truncation_strategy
                                                                     truncation_strategy=truncation_strategy,
                                                                     stride=stride)
     return (seq_a, seq_b, overflowing_tokens)
+
+
+def insert_at_special_tokens_pos(seq, special_tokens_mask, insert_element):
+    new_seq = seq.copy()
+    special_tokens_indices = np.where(np.array(special_tokens_mask) == 1)[0]
+    for idx in special_tokens_indices:
+        new_seq.insert(idx, insert_element)
+    return new_seq
