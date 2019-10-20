@@ -67,18 +67,17 @@ def compute_metrics(metric, preds, labels):
         raise KeyError(metric)
 
 
-def squad(preds=None, labels=None,df=None):
+def squad(preds=None, labels=None):
     # scoring in tokenized space, so results to public leaderboard will vary
-    if preds is not None:
-        data = {}
-        data["pred_start"] = np.concatenate(preds[::4])
-        data["pred_end"] = np.concatenate(preds[1::4])
-        data["prob"] = np.concatenate(preds[2::4])
-        data["sample_id"] = np.concatenate(preds[3::4])
-        data["label_start"] = torch.cat(labels[::2]).cpu().numpy()
-        data["label_end"] = torch.cat(labels[1::2]).cpu().numpy()
-        df = pd.DataFrame(data=data)
-        df.to_csv("predictions.csv",index=False)
+    data = {}
+    data["pred_start"] = np.concatenate(preds[::4])
+    data["pred_end"] = np.concatenate(preds[1::4])
+    data["prob"] = np.concatenate(preds[2::4])
+    data["sample_id"] = np.concatenate(preds[3::4])
+    data["label_start"] = torch.cat(labels[::2]).cpu().numpy()
+    data["label_end"] = torch.cat(labels[1::2]).cpu().numpy()
+    df = pd.DataFrame(data=data)
+
     # we sometimes have multiple predictions for one sample (= paragraph question pair)
     # because we split the paragraph into smaller passages
     # we want to check weather this sample belongs to is_impossible (all 0 start + end labels for all passages)
@@ -144,8 +143,3 @@ def compute_qa_f1(pred_start, pred_end, label_start, label_end):
             recall = 1.0 * num_same / len(true_range)
             f1 = (2 * precision * recall) / (precision + recall)
     return em,precision, recall, f1
-
-
-if(__name__ == "__main__"):
-    df = pd.read_csv("../examples/predictions.csv")
-    print(squad(df =df ))

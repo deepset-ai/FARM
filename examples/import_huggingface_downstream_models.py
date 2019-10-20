@@ -6,11 +6,11 @@ from farm.data_handler.processor import SquadProcessor
 from farm.utils import  initialize_device_settings
 
 
-####################### loads a SQUAD v1.0 finetuned model
+####################### loads a SQUAD finetuned model
 # saves it as a FARM adaptive model
 device, n_gpu = initialize_device_settings(use_cuda=True)
-model = "bert-large-cased-whole-word-masking-finetuned-squad"
-save_dir = "saved_models/farm-bert-large-cased-wwm-squad"
+model = "hugging_squad"
+save_dir = "saved_models/farm-hugging-squad"
 lm = Bert.load(model)
 ph = SquadHead.load(model)
 am = AdaptiveModel(language_model=lm,prediction_heads=[ph],embeds_dropout_prob=0.1,lm_output_types="per_token",device=device)
