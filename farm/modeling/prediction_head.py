@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import numpy as np
+import pandas as pd
 from scipy.special import expit
 
 import torch
@@ -794,18 +795,18 @@ class QuestionAnsweringHead(PredictionHead):
         (start_logits, end_logits) = logits
         start_logits = start_logits.cpu().numpy()
         end_logits = end_logits.cpu().numpy()
-        num_batches = start_logits.shape[0]
+        num_per_batch = start_logits.shape[0]
 
         no_answer_sum = start_logits[:,0] + end_logits[:,0]
-        best_answer_sum = np.zeros(num_batches)
+        best_answer_sum = np.zeros(num_per_batch)
         # check if start or end point to the context. Context starts at segment id == 1  (question comes before at segment ids == 0)
         segment_ids = kwargs['segment_ids'].data.cpu().numpy()
         context_start = np.argmax(segment_ids,axis=1)
         context_end = segment_ids.shape[1] - np.argmax(segment_ids[::-1],axis=1)
         start_proposals = self._get_best_indexes(start_logits, 3)
         end_proposals = self._get_best_indexes(end_logits, 3)
-        best_indices = np.zeros((num_batches,2),dtype=int)
-        for i_batch in range(num_batches):
+        best_indices = np.zeros((num_per_batch,2),dtype=int)
+        for i_batch in range(num_per_batch):
             # for each sample create mesh of possible start + end combinations and their score as sum of logits
             mesh_idx = np.meshgrid(start_proposals[i_batch,:],end_proposals[i_batch])
             start_comb = mesh_idx[0].flatten()
@@ -836,8 +837,8 @@ class QuestionAnsweringHead(PredictionHead):
         # TODO upweight no answers here?
         idx_no_answer = no_answer_sum >= best_answer_sum
         best_indices[idx_no_answer,:] = 0
-        probabilities = np.zeros(num_batches)
-        for i_batch in range(num_batches):
+        probabilities = np.zeros(num_per_batch)
+        for i_batch in range(num_per_batch):
             # huggingface takes the softmax of sum of both logits for their n best predictions.
             # Since we have only one prediction for now, it makes sense to take the mean of both start + end probs
             probabilities[i_batch] = (expit(start_logits[i_batch, best_indices[i_batch, 0]]) +
@@ -859,7 +860,7 @@ class QuestionAnsweringHead(PredictionHead):
         """
         return (start_position, end_position)
 
-    def formatted_preds(self, logits, samples, segment_ids, **kwargs) -> [str]:
+    def formatted_preds(self, logits, preds, all_samples, all_segment_ids, all_passage_shifts):
         """
         Format predictions into actual answer strings (substrings of context). Used for Inference!
 
@@ -875,43 +876,89 @@ class QuestionAnsweringHead(PredictionHead):
         :rtype: list(str)
         """
         all_preds = []
-        # TODO fix inference bug, model.forward is somehow packing logits into list
-        # logits = logits[0]
-        start_idx, end_idx, probs = self.logits_to_preds(logits=logits, segment_ids=segment_ids)
-        # we have char offsets for the context passage in samples.tokenized
-        # we have start and end idx for the selected answer, but with the question tokens in front
-        # lets shift this by the index of first segment ID corresponding to context
-        segment_ids = segment_ids.cpu().numpy()
 
-        shifts = np.argmax(segment_ids > 0, axis=1)
-        start_idx = start_idx - shifts
-        start_idx[start_idx < 0] = 0
-        end_idx = end_idx - shifts
-        end_idx[end_idx < 0] = 0
-        end_idx = end_idx + 1  # slicing up to and including end
+        all_passage_shifts = torch.cat([x.view(1) for x in all_passage_shifts]).cpu().numpy()
+        # we want first occurence. torch argmax gives last occurence, so we need to convert to numpy
+        all_question_shifts = [np.argmax(x.cpu().numpy() > 0) for x in all_segment_ids]
+
+        max_per_sample = self._aggregate_passages(preds, all_passage_shifts, all_question_shifts)
+
+
+
+        # # we have char offsets for the context passage in samples.tokenized
+        # # we have start and end idx for the selected answer, but with the question tokens in front
+        # # lets shift this by the index of first segment ID corresponding to context
+
+        # start_idx = start_idx - shifts
+        # start_idx[start_idx < 0] = 0
+        # end_idx = end_idx - shifts
+        # end_idx[end_idx < 0] = 0
+        # end_idx = end_idx + 1  # slicing up to and including end
         result = {}
         result["task"] = "qa"
 
-        # TODO features and samples might not be aligned. We still sometimes split a sample into multiple features
-        for i, sample in enumerate(samples):
+        sample_id_to_index = dict([(sample.id,i) for i,sample in enumerate(all_samples)])
+        for i, temp in enumerate(max_per_sample):
+            s_i = temp[0,0]
+            e_i = temp[0,1]
+            p_i = temp[0,2]
+            sampleid_i = temp[0,3]
+            passage_shift_i = temp[0,4] # TODO check for validity
+            question_shift_i = temp[0,5] # TODO check for validity
+            current_sample = all_samples[sample_id_to_index[sampleid_i]]
+
             pred = {}
-            pred["context"] = sample.clear_text["question_text"]
-            pred["probability"] = probs[i]
+            pred["context"] = current_sample.clear_text["question_text"]
+            # matching
+            pred["probability"] = p_i
             try: #char offsets or indices might be out of range, then we just return no answer
-                start = sample.tokenized["offsets"][start_idx[i]]
-                end = sample.tokenized["offsets"][end_idx[i]]
-                pred["start"] = start
-                pred["end"] = end
-                answer = " ".join(sample.clear_text["doc_tokens"])[start:end]
-                answer = answer.strip()
+                if(s_i + e_i == 0):
+                    answer = ""
+                    pred["start"] = 0
+                    pred["end"] = 0
+                else:
+                    current_start = int(s_i + passage_shift_i - question_shift_i)
+                    current_end = int(e_i + passage_shift_i - question_shift_i) + 1
+                    start = current_sample.tokenized["offsets"][current_start]
+                    end = current_sample.tokenized["offsets"][current_end]
+                    pred["start"] = start
+                    pred["end"] = end
+                    answer = " ".join(current_sample.clear_text["doc_tokens"])[start:end]
+                    answer = answer.strip()
             except Exception as e:
                 answer = ""
                 logger.info(e)
             pred["label"] = answer
+            pred["sample_id"] = sampleid_i
+            pred["question_id"] = current_sample.clear_text.qas_id
             all_preds.append(pred)
 
         result["predictions"] = all_preds
         return result
+
+    def _aggregate_passages(self, preds, all_passage_shifts, all_question_shifts):
+        data = {}
+        data["pred_start"] = np.concatenate([x[0] for x in preds])
+        data["pred_end"] = np.concatenate([x[1] for x in preds])
+        data["prob"] = np.concatenate([x[2] for x in preds])
+        data["sample_id"] = np.concatenate([x[3] for x in preds])
+        data["passage_shift"] = all_passage_shifts
+        data["question_shift"] = all_question_shifts
+        df = pd.DataFrame(data=data)
+
+        # we sometimes have multiple predictions for one sample (= paragraph question pair)
+        # because we split the paragraph into smaller passages
+        # we group all predictions by sample_id and take the most likely
+        unique_sample_ids = df.sample_id.unique()
+        max_per_sample = []
+        for uid in unique_sample_ids:
+            group = df.loc[df.sample_id == uid, :]
+            max_pred = group.loc[group.prob == np.max(group.prob)]
+            if (max_pred.shape[0] > 1):
+                max_pred = max_pred.loc[0, :]  # hack away and just take first pred. Should rarely occur.
+            max_per_sample.append(max_pred.values)
+        return max_per_sample
+
 
     def _get_best_indexes(self, logits, n_best_size):
         """Get the n-best logits from a numpy array."""

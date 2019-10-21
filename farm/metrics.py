@@ -96,9 +96,10 @@ def squad(preds=None, labels=None):
             logger.info(f"Multiple predictions having exactly the same probability value. "
                         f"Something might be wrong at sample ids: {str(max_pred.sample_id.values)}")
         if not is_impossible:
-            # cover special case: there is an answer span in labels
-            # so we need to weight how to deal with no answer predictions from other passages
-            # for now we just take the highest prediction over all
+            # cover special case: for a doc splitted into multiple passages, there is one passage with a text label
+            # but we have max_pred pointing to another passage that did not contain this answer (so the label for
+            # this passage is also "no_answer")
+
             # TODO: add weighting of no answer predicitons vs answer predictions
             if(max_pred.pred_start.values[0] + max_pred.pred_end.values[0] == 0):
                 em_all.append(0)

@@ -309,7 +309,7 @@ class Processor(ABC):
     #     return dataset, tensor_names
 
     #TODO remove useless rest_api_schema flag after refactoring squad processing
-    def dataset_from_dicts(self, dicts, index=None, rest_api_schema=False):
+    def dataset_from_dicts(self, dicts, index=None, rest_api_schema=False, return_baskets = False):
         """
         Contains all the functionality to turn a list of dict objects into a PyTorch Dataset and a
         list of tensor names. This can be used for inference mode.
@@ -331,8 +331,12 @@ class Processor(ABC):
         self._featurize_samples()
         if index == 0:
             self._log_samples(3)
-        dataset, tensor_names = self._create_dataset()
-        return dataset, tensor_names
+        if return_baskets:
+            dataset, tensor_names = self._create_dataset(keep_baskets=True)
+            return dataset, tensor_names, self.baskets
+        else:
+            dataset, tensor_names = self._create_dataset()
+            return dataset, tensor_names
 
     def _log_samples(self, n_samples):
         logger.info("*** Show {} random examples ***".format(n_samples))
@@ -734,10 +738,9 @@ class SquadProcessor(Processor):
             logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
                         "using the default task or add a custom task later via processor.add_task()")
 
-    def dataset_from_dicts(self, dicts, index=None, rest_api_schema=False):
+    def dataset_from_dicts(self, dicts, index=None, rest_api_schema=False, return_baskets = False):
         if rest_api_schema:
             dicts = [self._convert_rest_api_dict(x) for x in dicts]
-        if rest_api_schema:
             id_prefix = "infer"
         else:
             id_prefix = "train"
@@ -750,8 +753,13 @@ class SquadProcessor(Processor):
         self._featurize_samples()
         if index == 0:
             self._log_samples(3)
-        dataset, tensor_names = self._create_dataset()
-        return dataset, tensor_names
+
+        if return_baskets:
+            dataset, tensor_names = self._create_dataset(keep_baskets=True)
+            return dataset, tensor_names, self.baskets
+        else:
+            dataset, tensor_names = self._create_dataset(keep_baskets=False)
+            return dataset, tensor_names
 
     def _init_samples_in_baskets_squad(self):
         #this function is only needed to work with integer IDs instead of strings

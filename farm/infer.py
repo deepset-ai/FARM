@@ -7,6 +7,7 @@ from contextlib import ExitStack
 from functools import partial
 
 from torch.utils.data.sampler import SequentialSampler
+from torch.utils.data import ConcatDataset
 from tqdm import tqdm
 
 from farm.data_handler.dataloader import NamedDataLoader
@@ -184,24 +185,33 @@ class Inferencer:
                 1,
             )
 
-            preds_all = []
-            with tqdm(total=len(dicts), unit=" Dicts") as pbar:
-                for dataset, tensor_names, sample in results:
-                    preds_all.extend(self._run_inference(dataset, tensor_names, sample))
-                    pbar.update(multiprocessing_chunk_size)
+            if self.prediction_type != "span_classification":
+                preds_all = []
+                with tqdm(total=len(dicts), unit=" Dicts") as pbar:
+                    for dataset, tensor_names, sample in results:
+                        preds_all.extend(self._run_inference(dataset, tensor_names, sample))
+                        pbar.update(multiprocessing_chunk_size)
+            else:
+                datasets = []
+                all_samples = []
+                with tqdm(total=len(dicts), unit=" Dicts") as pbar:
+                    for dataset, tensor_names, basket in results:
+                        datasets.append(dataset)
+                        all_samples.extend(basket[0].samples)
+                concat_datasets = ConcatDataset(datasets)
 
+
+        if self.prediction_type == "span_classification":
+            preds_all = self._run_inference_qa(concat_datasets,tensor_names,all_samples)
         return preds_all
 
     @classmethod
     def _multiproc(cls, chunk, processor, rest_api_schema):
         dicts = [d[1] for d in chunk]
         index = chunk[0][0]
-        dataset, tensor_names = processor.dataset_from_dicts(dicts, index, rest_api_schema)
-        samples = []
-        for d in dicts:
-            samples.extend(processor._dict_to_samples(d))
+        dataset, tensor_names, baskets = processor.dataset_from_dicts(dicts, index, rest_api_schema, return_baskets=True)
 
-        return dataset, tensor_names, samples
+        return dataset, tensor_names, baskets
 
     def _run_inference(self, dataset, tensor_names, samples):
         data_loader = NamedDataLoader(
@@ -222,6 +232,31 @@ class Inferencer:
                     **batch,
                 )
                 preds_all += preds
+
+        return preds_all
+
+    def _run_inference_qa(self, concatdataset, tensor_names, all_samples ):
+        data_loader = NamedDataLoader(
+            dataset=concatdataset, sampler=SequentialSampler(concatdataset), batch_size=self.batch_size, tensor_names=tensor_names
+        )
+
+        all_preds = []
+        all_segment_ids = []
+        all_sample_ids = []
+        all_passage_shifts = []
+        for i, batch in enumerate(data_loader):
+            batch = {key: batch[key].to(self.device) for key in batch}
+            with torch.no_grad():
+                logits = self.model.forward(**batch)
+                preds = self.model.logits_to_preds(logits=logits, **batch)
+                all_preds += preds
+                all_segment_ids += list(batch["segment_ids"])
+                all_passage_shifts += list(batch["passage_shift"])
+
+        preds_all = self.model.prediction_heads[0].formatted_preds(logits=None,preds=all_preds,
+                                               all_samples=all_samples,
+                                               all_segment_ids=all_segment_ids,
+                                               all_passage_shifts=all_passage_shifts)
 
         return preds_all
 
