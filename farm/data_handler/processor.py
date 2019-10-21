@@ -669,7 +669,7 @@ class SquadProcessor(Processor):
         tokenizer,
         max_seq_len,
         data_dir,
-        labels=None,
+        label_list=None,
         metric=None,
         train_filename="train-v2.0.json",
         dev_filename="dev-v2.0.json",
@@ -685,6 +685,10 @@ class SquadProcessor(Processor):
         :type max_seq_len: int
         :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
         :type data_dir: str
+        :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
+        :type label_list: list
+        :param metric: name of metric that shall be used for evaluation, e.g. "squad".
+        :type metric: str
         :param train_filename: The name of the file containing training data.
         :type train_filename: str
         :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
@@ -694,8 +698,6 @@ class SquadProcessor(Processor):
         :type test_filename: str
         :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
         :type dev_split: float
-        :param data_dir: The directory in which the train, test and perhaps dev files can be found.
-        :type data_dir: str
         :param doc_stride: When the document containing the answer is too long it gets split into part, strided by doc_stride
         :type doc_stride: int
         :param max_query_length: Maximum length of the question (in number of subword tokens)
@@ -721,8 +723,8 @@ class SquadProcessor(Processor):
             tasks={},
         )
 
-        if metric and labels:
-            self.add_task("question_answering", metric, labels)
+        if metric and label_list:
+            self.add_task("question_answering", metric, label_list)
         else:
             logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
                         "using the default task or add a custom task later via processor.add_task()")
