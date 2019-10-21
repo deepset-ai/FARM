@@ -26,7 +26,7 @@
     "train_filename":   {"value": null, "default": "train-v2.0.json",      "desc": "Filename for training."},
     "dev_filename":     {"value": null, "default": "dev-v2.0.json",        "desc": "Filename for development. Contains multiple possible answers."},
     "test_filename":    {"value": null, "default": null,       "desc": "Filename for testing. It is the submission file from competition."},
-    "labels":           {"value": null, "default": ["start_token", "end_token"], "desc": ""},
+    "label_list":           {"value": null, "default": ["start_token", "end_token"], "desc": ""},
     "metric":          {"value": null, "default": "squad",       "desc": "Metric used. A f1 scored tailored to sequences of labels."}
   },
 
