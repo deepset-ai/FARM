@@ -764,9 +764,11 @@ class SquadProcessor(Processor):
             raw = {"document_text": document_text,
                    "document_tokens": document_tokenized["tokens"],
                    "document_offsets": document_tokenized["offsets"],
+                   "document_start_of_word": document_tokenized["start_of_word"],
                    "question_text": question_text,
                    "question_tokens": question_tokenized["tokens"],
                    "question_offsets": question_tokenized["offsets"],
+                   "question_start_of_word": question_tokenized["start_of_word"],
                    "answers": answers,
                    "is_impossible": question["is_impossible"]}
             raw_baskets.append(raw)

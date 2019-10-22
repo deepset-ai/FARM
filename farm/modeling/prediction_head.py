@@ -745,12 +745,13 @@ class QuestionAnsweringHead(PredictionHead):
         end_logits = end_logits.squeeze(-1)
         return (start_logits, end_logits)
 
-    def logits_to_loss(self, logits, start_position, end_position, **kwargs):
+    def logits_to_loss(self, logits, labels, **kwargs):
         """
         Combine predictions and labels to a per sample loss.
 
         :param logits: (start_logits, end_logits), logits for the start and end of answer
         :type logits: tuple[torch.tensor,torch.tensor]
+        TODO Rewrite these param descriptions
         :param start_position: tensor with indices of START positions per sample
         :type start_position: torch.tensor
         :param end_position: tensor with indices of END positions per sample
@@ -760,6 +761,11 @@ class QuestionAnsweringHead(PredictionHead):
         :return: per_sample_loss: Per sample loss : )
         :rtype: torch.tensor
         """
+
+        # todo explain how we only use first answer for train
+        start_position = labels[:, 0, 0]
+        end_position = labels[:, 0, 1]
+
         (start_logits, end_logits) = logits
 
         if len(start_position.size()) > 1:
@@ -771,13 +777,13 @@ class QuestionAnsweringHead(PredictionHead):
         start_position.clamp_(0, ignored_index)
         end_position.clamp_(0, ignored_index)
 
-        loss_fct = BCEWithLogitsLoss(reduction="none")
-        start_loss = loss_fct(start_logits, start_position.to(dtype=torch.float32))
-        end_loss = loss_fct(end_logits, end_position.to(dtype=torch.float32))
+        loss_fct = CrossEntropyLoss(reduction="none")
+        start_loss = loss_fct(start_logits, start_position)
+        end_loss = loss_fct(end_logits, end_position)
         per_sample_loss = (start_loss + end_loss) / 2
         return per_sample_loss
 
-    def logits_to_preds(self, logits, **kwargs):
+    def logits_to_preds(self, logits, padding_mask, n_best=5, max_answer_length=100, **kwargs):
         """
         Get the predicted index of start and end token of the answer.
 
@@ -789,12 +795,64 @@ class QuestionAnsweringHead(PredictionHead):
         :rtype: (torch.tensor,torch.tensor)
         """
         (start_logits, end_logits) = logits
-        # TODO add checking for validity, e.g. end_idx coming after start_idx
-        start_idx = torch.argmax(start_logits, dim=1)
-        end_idx = torch.argmax(end_logits, dim=1)
-        return (start_idx, end_idx)
+        n_non_padding = torch.sum(padding_mask, dim=1)
+        batch_size = start_logits.size()[0]
+        all_top_n = []
+        # TODO just taking n_best helps performance but doesn't ensure optimal results - we are copying HF
+        start_idxs_sorted = torch.argsort(start_logits, dim=1)[:, :n_best]
+        end_idxs_sorted = torch.argsort(end_logits, dim=1)[:, :n_best]
+        # start_matrix = start_logits.unsqueeze(1).expand(-1, 256, -1)
+        # end_matrix = end_logits.unsqueeze(2).expand(-1, -1, 256)
+        # start_end_matrix = start_matrix + end_matrix
+        # torch.argsort(start_end_matrix)
+        # TODO this would be better with some kind of matrix operation but for now we will iterate
+        # TODO this is optimal sorting but very inefficient
+        for sample_idx in range(batch_size):
+            sample_top_n = []
+            for start_idx in start_idxs_sorted[sample_idx]:
+                for end_idx in end_idxs_sorted[sample_idx]:
+                    # TODO This allows surprisingly few to be stored
+                    if self.valid_answer_idxs(start_idx.item(), end_idx.item(),
+                                              n_non_padding[sample_idx].item(),
+                                              max_answer_length=max_answer_length):
+                        score = start_logits[sample_idx][start_idx] + end_logits[sample_idx][end_idx]
+                        sample_top_n.append([start_idx.item(), end_idx.item(), score.item()])
+            sample_top_n = sorted(sample_top_n, key=lambda x: x[2], reverse=True)[:n_best]
+            if not self.has_no_answer_idxs(sample_top_n):
+                no_answer_score = start_logits[sample_idx][0] + end_logits[sample_idx][0]
+                sample_top_n.append([0, 0, no_answer_score.item()])
+            all_top_n.append(sample_top_n)
+        # TODO we saw a strange pattern where every second in all_top_n had less than n_best
+        return all_top_n
 
-    def prepare_labels(self, start_position, end_position, **kwargs):
+    def has_no_answer_idxs(self, sample_top_n):
+        for start, end, score in sample_top_n:
+            if start == 0 and end == 0:
+                return True
+        return False
+
+    def valid_answer_idxs(self, start_idx, end_idx, n_non_padding, max_answer_length):
+        # Continue if start or end label points to a padding token
+        if start_idx >= n_non_padding:
+            return False
+        if end_idx >= n_non_padding:
+            return False
+        # Check if start comes after end
+        if end_idx < start_idx:
+            return False
+        # if start_idx not in feature.token_to_orig_map:
+        #     continue
+        # if end_idx not in feature.token_to_orig_map:
+        #     continue
+        # if not feature.token_is_max_context.get(start_index, False):
+        #     continue
+
+        length = end_idx - start_idx + 1
+        if length > max_answer_length:
+            return False
+        return True
+
+    def prepare_labels(self, labels, **kwargs):
         """
         We want to pack labels into a tuple, to be compliant with later functions
 
@@ -807,7 +865,76 @@ class QuestionAnsweringHead(PredictionHead):
         :return: tuplefied positions
         :rtype: tuple(torch.tensor,torch.tensor)
         """
-        return (start_position, end_position)
+
+        return labels
+
+    def aggregate(self, preds, labels, passage_start_t, ids, n_best=5):
+        # adjust offsets
+        # group by id
+        # identify top 5 per group
+
+        n_samples = len(preds)
+        all_basket_preds = {}
+        all_basket_labels = {}
+        for sample_idx in range(n_samples):
+            document_id, question_id, _ = ids[sample_idx]
+            basket_id = f"{document_id}-{question_id}"
+            curr_passage_start_t = passage_start_t[sample_idx]
+            pred_d = self.pred_to_doc_idxs(preds[sample_idx], curr_passage_start_t)
+            label_d = self.label_to_doc_idxs(labels[sample_idx], curr_passage_start_t)
+            if basket_id not in all_basket_preds:
+                all_basket_preds[basket_id] = []
+                all_basket_labels[basket_id] = []
+            all_basket_preds[basket_id] += pred_d
+            all_basket_labels[basket_id] += label_d
+
+        all_basket_preds = {k: self.reduce_preds(v) for k, v in all_basket_preds.items()}
+        all_basket_labels = {k: self.reduce_labels(v) for k, v in all_basket_labels.items()}
+
+        print()
+
+    def reduce_labels(self, labels):
+        positive_answers = [(start, end) for start, end in labels if start != 0 and end != 0 ]
+        if not positive_answers:
+            return [(0, 0)]
+        else:
+            return list(set(positive_answers))
+
+    def reduce_preds(self, preds, n_best=5):
+        # todo write with start, end unpacking instead of indices
+        positive_answers = [x for x in preds if not (x[0] == 0 and x[1] == 0)]
+        positive_answers_sorted = sorted(positive_answers, key=lambda x: x[2], reverse=True)
+        positive_answers_filtered = positive_answers_sorted[:n_best]
+
+        no_answer = [x for x in preds if x[0] == 0 and x[1] == 0]
+        no_answer_sorted = sorted(no_answer, key=lambda x: x[2], reverse=True)
+        no_answers_min = no_answer_sorted[-1]
+
+        return positive_answers_filtered + no_answers_min
+
+    def pred_to_doc_idxs(self, pred, passage_start_t):
+        new_pred = []
+        for start, end, score in pred:
+            if start == 0 and end == 0:
+                pass
+            else:
+                start += passage_start_t
+                end += passage_start_t
+            new_pred.append([start, end, score])
+        return new_pred
+
+    def label_to_doc_idxs(self, label, passage_start_t):
+        # Todo Write note about why we see -1 and how this will filter them out
+        new_label = []
+        for start, end in label:
+            # If there is a valid label
+            if start > 0 or end > 0:
+                new_label.add((start + passage_start_t, end + passage_start_t))
+            # If the label is a no answer
+            if start == 0 and end == 0:
+                new_label.add((start, end))
+        return new_label
+
 
 class QuestionAnsweringHeadOLD(PredictionHead):
     """
@@ -971,3 +1098,4 @@ class QuestionAnsweringHeadOLD(PredictionHead):
 
         result["predictions"] = all_preds
         return result
+

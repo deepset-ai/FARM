@@ -59,6 +59,8 @@ class Evaluator:
         loss_all = [0 for _ in model.prediction_heads]
         preds_all = [[] for _ in model.prediction_heads]
         label_all = [[] for _ in model.prediction_heads]
+        ids_all = [[] for _ in model.prediction_heads]
+        passage_start_t_all = [[] for _ in model.prediction_heads]
 
         for step, batch in enumerate(
             tqdm(self.data_loader, desc="Evaluating", mininterval=10)
@@ -81,7 +83,8 @@ class Evaluator:
                 loss_all[head_num] += np.sum(to_numpy(losses_per_head[head_num]))
                 preds_all[head_num] += list(to_numpy(preds[head_num]))
                 label_all[head_num] += list(to_numpy(labels[head_num]))
-
+                ids_all[head_num] += list(to_numpy(batch["id"]))
+                passage_start_t_all[head_num] += list(to_numpy(batch["passage_start_t"]))
 
         # Evaluate per prediction head
         all_results = []
@@ -92,6 +95,12 @@ class Evaluator:
                 mlb = MultiLabelBinarizer(classes=head.label_list)
                 preds_all[head_num] = mlb.fit_transform(preds_all[head_num])
                 label_all[head_num] = mlb.transform(label_all[head_num])
+            if hasattr(head, 'aggregate'):
+                preds_all[head_num], label_all[head_num] = head.aggregate(preds=preds_all[head_num],
+                                                                          labels=label_all[head_num],
+                                                                          passage_start_t=passage_start_t_all[head_num],
+                                                                          ids=ids_all[head_num])
+
 
             result = {"loss": loss_all[head_num] / len(self.data_loader.dataset),
                       "task_name": head.task_name}

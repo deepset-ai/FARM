@@ -28,11 +28,11 @@ ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_question_
 set_all_seeds(seed=42)
 device, n_gpu = initialize_device_settings(use_cuda=True)
 batch_size = 24
-n_epochs = 2
-evaluate_every = 500
+n_epochs = 1
+evaluate_every = 2
 base_LM_model = "bert-base-cased"
-train_filename="train-v2.0.json"
-dev_filename="dev-v2.0.json"
+train_filename="train_small-v2.0.json"
+dev_filename="dev_small-v2.0.json"
 
 # 1.Create a tokenizer
 tokenizer = BertTokenizer.from_pretrained(

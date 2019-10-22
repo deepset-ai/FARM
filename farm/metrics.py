@@ -62,6 +62,7 @@ def compute_metrics(metric, preds, labels):
         raise KeyError(metric)
 
 def squad_EM(preds, labels):
+    # TODO write comment describing function
     # scoring in tokenized space, so results to public leaderboard will vary
     pred_start = torch.cat(preds[::2])
     pred_end = torch.cat(preds[1::2])
@@ -71,6 +72,13 @@ def squad_EM(preds, labels):
     num_total = len(label_start)
     num_correct = 0
     for i in range(num_total):
+
+
+
+
+
+
+
         pred_idx_start = pred_start[i]
         pred_idx_end = pred_end[i]
         if label_start[i][pred_idx_start] == 1 and label_end[i][pred_idx_end] == 1:
