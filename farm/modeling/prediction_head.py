@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import numpy as np
+import tqdm
 
 import torch
 from transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN
@@ -783,6 +784,48 @@ class QuestionAnsweringHead(PredictionHead):
         per_sample_loss = (start_loss + end_loss) / 2
         return per_sample_loss
 
+    # def logits_to_preds(self, logits, padding_mask, n_best=5, max_answer_length=100, **kwargs):
+    #     """
+    #     Get the predicted index of start and end token of the answer.
+    #
+    #     :param logits: (start_logits, end_logits), logits for the start and end of answer
+    #     :type logits: tuple[torch.tensor,torch.tensor]
+    #     :param kwargs: placeholder for passing generic parameters
+    #     :type kwargs: object
+    #     :return: (start_idx, end_idx), start and end indices for all samples in batch
+    #     :rtype: (torch.tensor,torch.tensor)
+    #     """
+    #     (start_logits, end_logits) = logits
+    #     n_non_padding = torch.sum(padding_mask, dim=1)
+    #     batch_size = start_logits.size()[0]
+    #     all_top_n = []
+    #     # TODO just taking n_best helps performance but doesn't ensure optimal results - we are copying HF
+    #     start_idxs_sorted = torch.argsort(start_logits, dim=1)[:, :n_best]
+    #     end_idxs_sorted = torch.argsort(end_logits, dim=1)[:, :n_best]
+    #     # start_matrix = start_logits.unsqueeze(1).expand(-1, 256, -1)
+    #     # end_matrix = end_logits.unsqueeze(2).expand(-1, -1, 256)
+    #     # start_end_matrix = start_matrix + end_matrix
+    #     # torch.argsort(start_end_matrix)
+    #     # TODO this would be better with some kind of matrix operation but for now we will iterate
+    #     # TODO this is optimal sorting but very inefficient
+    #     for sample_idx in range(batch_size):
+    #         sample_top_n = []
+    #         for start_idx in start_idxs_sorted[sample_idx]:
+    #             for end_idx in end_idxs_sorted[sample_idx]:
+    #                 # TODO This allows surprisingly few to be stored
+    #                 if self.valid_answer_idxs(start_idx.item(), end_idx.item(),
+    #                                           n_non_padding[sample_idx].item(),
+    #                                           max_answer_length=max_answer_length):
+    #                     score = start_logits[sample_idx][start_idx] + end_logits[sample_idx][end_idx]
+    #                     sample_top_n.append([start_idx.item(), end_idx.item(), score.item()])
+    #         sample_top_n = sorted(sample_top_n, key=lambda x: x[2], reverse=True)[:n_best]
+    #         if not self.has_no_answer_idxs(sample_top_n):
+    #             no_answer_score = start_logits[sample_idx][0] + end_logits[sample_idx][0]
+    #             sample_top_n.append([0, 0, no_answer_score.item()])
+    #         all_top_n.append(sample_top_n)
+    #     # TODO we saw a strange pattern where every second in all_top_n had less than n_best
+    #     return all_top_n
+
     def logits_to_preds(self, logits, padding_mask, n_best=5, max_answer_length=100, **kwargs):
         """
         Get the predicted index of start and end token of the answer.
@@ -798,31 +841,40 @@ class QuestionAnsweringHead(PredictionHead):
         n_non_padding = torch.sum(padding_mask, dim=1)
         batch_size = start_logits.size()[0]
         all_top_n = []
-        # TODO just taking n_best helps performance but doesn't ensure optimal results - we are copying HF
-        start_idxs_sorted = torch.argsort(start_logits, dim=1)[:, :n_best]
-        end_idxs_sorted = torch.argsort(end_logits, dim=1)[:, :n_best]
-        # start_matrix = start_logits.unsqueeze(1).expand(-1, 256, -1)
-        # end_matrix = end_logits.unsqueeze(2).expand(-1, -1, 256)
-        # start_end_matrix = start_matrix + end_matrix
-        # torch.argsort(start_end_matrix)
-        # TODO this would be better with some kind of matrix operation but for now we will iterate
-        # TODO this is optimal sorting but very inefficient
-        for sample_idx in range(batch_size):
+        # get scores for all combinations of start and end logits => candidate answers
+        start_matrix = start_logits.unsqueeze(1).expand(-1, 256, -1)
+        end_matrix = end_logits.unsqueeze(2).expand(-1, -1, 256)
+        start_end_matrix = start_matrix + end_matrix
+        # Sort the candidate answers by their score
+        # Sorting happens on the flattened matrix. The returned indices are then converted back to the original
+        # dimensionality of the matrix
+        flat_sorted_indices = start_end_matrix.view(batch_size, -1).sort(descending=True)[1].view(batch_size, -1, 1)
+        # The returned indices are then converted back to the original dimensionality of the matrix.
+        # sorted_candidates.shape : (batch_size, max_seq_len^2, 2)
+        d = start_end_matrix.shape[1] # target dim
+        sorted_candidates = torch.cat((flat_sorted_indices // d, flat_sorted_indices % d), dim=2)
+        # Get the n_best candidate answers for each sample that are valid (via some heuristic checks)
+        for sample_idx in tqdm(range(batch_size)):
             sample_top_n = []
-            for start_idx in start_idxs_sorted[sample_idx]:
-                for end_idx in end_idxs_sorted[sample_idx]:
+            for candidate_idx in range(sorted_candidates.shape[1]):
+                if len(sample_top_n) == n_best:
+                    break
+                else:
+                    start_idx = sorted_candidates[sample_idx, candidate_idx, 0]
+                    end_idx = sorted_candidates[sample_idx, candidate_idx, 1]
                     # TODO This allows surprisingly few to be stored
                     if self.valid_answer_idxs(start_idx.item(), end_idx.item(),
                                               n_non_padding[sample_idx].item(),
                                               max_answer_length=max_answer_length):
-                        score = start_logits[sample_idx][start_idx] + end_logits[sample_idx][end_idx]
+                        score = start_end_matrix[sample_idx, start_idx, end_idx]
                         sample_top_n.append([start_idx.item(), end_idx.item(), score.item()])
-            sample_top_n = sorted(sample_top_n, key=lambda x: x[2], reverse=True)[:n_best]
+
+            # We always want the score for no_answer to be included in the candidates. We need it later in aggregate_preds()
+            # in case of a long document that got split into multiple passages.
             if not self.has_no_answer_idxs(sample_top_n):
                 no_answer_score = start_logits[sample_idx][0] + end_logits[sample_idx][0]
                 sample_top_n.append([0, 0, no_answer_score.item()])
             all_top_n.append(sample_top_n)
-        # TODO we saw a strange pattern where every second in all_top_n had less than n_best
         return all_top_n
 
     def has_no_answer_idxs(self, sample_top_n):
