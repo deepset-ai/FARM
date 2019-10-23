@@ -147,6 +147,7 @@ def get_adaptive_model(
     class_weights=None,
 ):
     parsed_lm_output_types = lm_output_type.split(",")
+    language_model = LanguageModel.load(model)
 
     initialized_heads = []
     for head_name in prediction_heads.split(","):
@@ -157,8 +158,6 @@ def get_adaptive_model(
                 class_weights=class_weights,
             )
         )
-
-    language_model = LanguageModel.load(model)
 
     model = AdaptiveModel(
         language_model=language_model,

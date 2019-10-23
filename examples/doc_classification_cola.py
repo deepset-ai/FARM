@@ -6,9 +6,9 @@ from farm.data_handler.processor import TextClassificationProcessor
 from farm.modeling.optimization import initialize_optimizer
 from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
-from farm.modeling.language_model import Bert, Roberta
+from farm.modeling.language_model import LanguageModel
 from farm.modeling.prediction_head import TextClassificationHead
-from farm.modeling.tokenization import BertTokenizer, RobertaTokenizer
+from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer
 from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
 
@@ -29,12 +29,11 @@ n_epochs = 2
 batch_size = 100
 evaluate_every = 20
 lang_model = "bert-base-cased"
+do_lower_case = False
 
 # lang_model = "roberta-base"
 # 1.Create a tokenizer
-tokenizer = BertTokenizer.from_pretrained(
-    pretrained_model_name_or_path=lang_model,
-    do_lower_case=False)
+tokenizer = Tokenizer.load(pretrained_model_name_or_path=lang_model, do_lower_case=do_lower_case)
 
 # tokenizer = RobertaTokenizer.from_pretrained(
 #     pretrained_model_name_or_path=lang_model)
@@ -49,7 +48,8 @@ processor = TextClassificationProcessor(tokenizer=tokenizer,
                                         max_seq_len=64,
                                         data_dir="../data/cola",
                                         dev_filename="dev.tsv",
-                                        test_filename=None,
+                                        dev_split=None,
+                                        test_filename="dev.tsv",
                                         label_list=label_list,
                                         metric=metric,
                                         label_column_name="label"
@@ -62,14 +62,12 @@ data_silo = DataSilo(
 
 # 4. Create an AdaptiveModel
 # a) which consists of a pretrained language model as a basis
-language_model = Bert.load(lang_model)
+language_model = LanguageModel.load(lang_model)
 
 # language_model = Roberta.load(lang_model)
 # b) and a prediction head on top that is suited for our task => Text classification
 prediction_head = TextClassificationHead(layer_dims=[768, len(processor.tasks["text_classification"]["label_list"])],
                                          class_weights=data_silo.calculate_class_weights(task_name="text_classification"))
-
-
 
 model = AdaptiveModel(
     language_model=language_model,
@@ -100,7 +98,7 @@ trainer = Trainer(
 model = trainer.train(model)
 
 # 8. Hooray! You have a model. Store it:
-save_dir = "saved_models/bert-german-doc-tutorial"
+save_dir = "saved_models/bert-doc-tutorial"
 model.save(save_dir)
 processor.save(save_dir)
 
