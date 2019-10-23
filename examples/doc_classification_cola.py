@@ -25,18 +25,14 @@ ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_cola")
 ##########################
 set_all_seeds(seed=42)
 device, n_gpu = initialize_device_settings(use_cuda=True)
-n_epochs = 2
+n_epochs = 5
 batch_size = 100
 evaluate_every = 20
 lang_model = "bert-base-cased"
 do_lower_case = False
 
-# lang_model = "roberta-base"
 # 1.Create a tokenizer
 tokenizer = Tokenizer.load(pretrained_model_name_or_path=lang_model, do_lower_case=do_lower_case)
-
-# tokenizer = RobertaTokenizer.from_pretrained(
-#     pretrained_model_name_or_path=lang_model)
 
 # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
 # Here we load Cola 2018 Data.
@@ -49,7 +45,7 @@ processor = TextClassificationProcessor(tokenizer=tokenizer,
                                         data_dir="../data/cola",
                                         dev_filename="dev.tsv",
                                         dev_split=None,
-                                        test_filename="dev.tsv",
+                                        test_filename=None,
                                         label_list=label_list,
                                         metric=metric,
                                         label_column_name="label"
@@ -104,8 +100,8 @@ processor.save(save_dir)
 
 # 9. Load it & harvest your fruits (Inference)
 basic_texts = [
-    {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei"},
-    {"text": "Martin Müller spielt Handball in Berlin"},
+    {"text": "The box contained the ball from the tree."},
+    {"text": "I'll fix you a drink."},
 ]
 model = Inferencer.load(save_dir)
 result = model.run_inference(dicts=basic_texts)

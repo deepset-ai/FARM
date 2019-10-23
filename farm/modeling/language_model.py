@@ -372,12 +372,18 @@ class XLNet(LanguageModel):
             farm_lm_model = os.path.join(pretrained_model_name_or_path, "language_model.bin")
             xlnet.model = XLNetModel.from_pretrained(farm_lm_model, config=config)
             xlnet.language = xlnet.model.config.language
-            xlnet.pooler = SequenceSummary(config)
         else:
             # Pytorch-transformer Style
             xlnet.model = XLNetModel.from_pretrained(pretrained_model_name_or_path)
             xlnet.language = cls._infer_language_from_name(pretrained_model_name_or_path)
-            xlnet.pooler = SequenceSummary(xlnet.model.config)
+            config = xlnet.model.config
+        # XLNet does not provide a pooled_output by default. Therefore, we need to initialize an extra pooler.
+        # The pooler takes the last hidden representation & feeds it to a dense layer of (hidden_dim x hidden_dim).
+        # We don't want a dropout in the end of the pooler, since we do that already in the adaptive model before we
+        # feed everything to the prediction head
+        config.summary_last_dropout = 0
+        xlnet.pooler = SequenceSummary(config)
+        xlnet.pooler.apply(xlnet.model._init_weights)
         return xlnet
 
     def forward(

@@ -5,7 +5,7 @@ from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import BertStyleLMProcessor
 from farm.experiment import initialize_optimizer
 from farm.modeling.adaptive_model import AdaptiveModel
-from farm.modeling.language_model import Bert
+from farm.modeling.language_model import LanguageModel
 from farm.modeling.prediction_head import BertLMHead, NextSentenceHead
 from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer
@@ -37,7 +37,7 @@ def test_lm_finetuning(caplog):
     )
     data_silo = DataSilo(processor=processor, batch_size=batch_size)
 
-    language_model = Bert.load(lang_model)
+    language_model = LanguageModel.load(lang_model)
     lm_prediction_head = BertLMHead.load(lang_model)
     next_sentence_head = NextSentenceHead.load(lang_model)
 
@@ -110,7 +110,7 @@ def test_lm_finetuning_no_next_sentence(caplog):
     )
     data_silo = DataSilo(processor=processor, batch_size=batch_size)
 
-    language_model = Bert.load(lang_model)
+    language_model = LanguageModel.load(lang_model)
     lm_prediction_head = BertLMHead.load(lang_model)
 
     model = AdaptiveModel(

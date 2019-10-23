@@ -6,9 +6,9 @@ from farm.data_handler.processor import TextClassificationProcessor
 from farm.modeling.optimization import initialize_optimizer
 from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
-from farm.modeling.language_model import Bert
+from farm.modeling.language_model import LanguageModel
 from farm.modeling.prediction_head import MultiLabelTextClassificationHead
-from farm.modeling.tokenization import BertTokenizer
+from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer
 from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
 
@@ -30,11 +30,12 @@ batch_size = 32
 
 evaluate_every = 500
 lang_model = "bert-base-uncased"
+do_lower_case = True
 
 # 1.Create a tokenizer
-tokenizer = BertTokenizer.from_pretrained(
+tokenizer = Tokenizer.load(
     pretrained_model_name_or_path=lang_model,
-    do_lower_case=True)
+    do_lower_case=do_lower_case)
 
 # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
 # Here we load GermEval 2018 Data.
@@ -63,7 +64,7 @@ data_silo = DataSilo(
 
 # 4. Create an AdaptiveModel
 # a) which consists of a pretrained language model as a basis
-language_model = Bert.load(lang_model)
+language_model = LanguageModel.load(lang_model)
 # b) and a prediction head on top that is suited for our task => Text classification
 prediction_head = MultiLabelTextClassificationHead(layer_dims=[768, len(processor.tasks["text_classification"]["label_list"])])
 

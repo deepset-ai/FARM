@@ -6,9 +6,9 @@ from farm.data_handler.processor import RegressionProcessor
 from farm.experiment import initialize_optimizer
 from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
-from farm.modeling.language_model import Bert
+from farm.modeling.language_model import LanguageModel
 from farm.modeling.prediction_head import RegressionHead
-from farm.modeling.tokenization import BertTokenizer
+from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer
 from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
 
@@ -31,7 +31,7 @@ evaluate_every = 30
 lang_model = "bert-base-cased"
 
 # 1.Create a tokenizer
-tokenizer = BertTokenizer.from_pretrained(
+tokenizer = Tokenizer.from_pretrained(
     pretrained_model_name_or_path=lang_model,
     do_lower_case=False)
 
@@ -50,7 +50,7 @@ data_silo = DataSilo(
 
 # 4. Create an AdaptiveModel
 # a) which consists of a pretrained language model as a basis
-language_model = Bert.load(lang_model)
+language_model = LanguageModel.load(lang_model)
 # b) and a prediction head on top that is suited for our task => Text regression
 prediction_head = RegressionHead(layer_dims=[768, 1])
 

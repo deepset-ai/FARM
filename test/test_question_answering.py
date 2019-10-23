@@ -4,7 +4,7 @@ from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import SquadProcessor
 from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
-from farm.modeling.language_model import Bert
+from farm.modeling.language_model import LanguageModel
 from farm.modeling.optimization import initialize_optimizer
 from farm.modeling.prediction_head import QuestionAnsweringHead
 from farm.modeling.tokenization import Tokenizer
@@ -39,7 +39,7 @@ def test_qa(caplog):
     )
 
     data_silo = DataSilo(processor=processor, batch_size=batch_size)
-    language_model = Bert.load(base_LM_model)
+    language_model = LanguageModel.load(base_LM_model)
     prediction_head = QuestionAnsweringHead(layer_dims=[768, len(label_list)])
     model = AdaptiveModel(
         language_model=language_model,
