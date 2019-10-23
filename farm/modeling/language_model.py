@@ -69,6 +69,8 @@ class LanguageModel(nn.Module):
               * `bert-base-german-cased`
               * `roberta-base'
               * `roberta-large`
+              * `xlnet-base-cased`
+              * `xlnet-large-cased`
 
         :type pretrained_model_name_or_path: str
         """
