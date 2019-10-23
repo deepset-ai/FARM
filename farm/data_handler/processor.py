@@ -267,12 +267,11 @@ class Processor(ABC):
         dataset, tensor_names = convert_features_to_dataset(features=features_flat)
         return dataset, tensor_names
 
-    #TODO remove useless from_inference flag after refactoring squad processing
-    def dataset_from_dicts(self, dicts, index=None, from_inference=False):
+    #TODO remove useless rest_api_schema flag after refactoring squad processing
+    def dataset_from_dicts(self, dicts, index=None, rest_api_schema=False):
         """
         Contains all the functionality to turn a list of dict objects into a PyTorch Dataset and a
         list of tensor names. This can be used for inference mode.
-
         :param dicts: List of dictionaries where each contains the data of one input sample.
         :type dicts: list of dicts
         :return: a Pytorch dataset and a list of tensor names.
@@ -455,7 +454,7 @@ class InferenceProcessor(Processor):
 
         return processor
 
-    def _file_to_dicts(self, file: str) -> [dict]:
+    def file_to_dicts(self, file: str) -> [dict]:
       raise NotImplementedError
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
@@ -584,7 +583,7 @@ class BertStyleLMProcessor(Processor):
         if self.next_sent_pred:
             self.add_task("nextsentence", "acc", ["False", "True"])
 
-    def _file_to_dicts(self, file: str) -> list:
+    def file_to_dicts(self, file: str) -> list:
         dicts = read_docs_from_txt(filename=file, delimiter=self.delimiter, max_docs=self.max_docs)
         return dicts
 
@@ -823,7 +822,7 @@ class RegressionProcessor(Processor):
 
         self.add_task(name="regression", metric="mse", label_list= [scaler_mean, scaler_scale], label_column_name=label_column_name, task_type="regression", label_name=label_name)
 
-    def _file_to_dicts(self, file: str) -> [dict]:
+    def file_to_dicts(self, file: str) -> [dict]:
         column_mapping = {task["label_column_name"]: task["label_name"] for task in self.tasks.values()}
         dicts = read_tsv(
             rename_columns=column_mapping,
