@@ -29,7 +29,7 @@ class DataSilo:
     calculate and display some statistics.
      """
 
-    def __init__(self, processor, batch_size, distributed=False, multiprocessing_chunk_size=100):
+    def __init__(self, processor, batch_size, distributed=False):
         """
         :param processor: A dataset specific Processor object which will turn input (file or dict) into a Pytorch Dataset.
         :type processor: Processor
@@ -44,7 +44,6 @@ class DataSilo:
         self.data = {}
         self.batch_size = batch_size
         self.class_weights = None
-        self.multiprocessing_chunk_size = multiprocessing_chunk_size
         self.max_processes = 128
         self._load_data()
 
@@ -56,33 +55,43 @@ class DataSilo:
         return dataset
 
     def _get_dataset(self, filename):
-        dicts = self.processor._file_to_dicts(filename)
+        dicts = self.processor.file_to_dicts(filename)
         #shuffle list of dicts here if we later want to have a random dev set splitted from train set
-        if filename == self.processor.train_filename:
+        if self.processor.train_filename in filename:
             if not self.processor.dev_filename:
                 if self.processor.dev_split > 0.0:
-                    dicts = random.shuffle(dicts)
+                    random.shuffle(dicts)
 
-        dict_batches_to_process = int(len(dicts) / self.multiprocessing_chunk_size)
-        num_cpus = min(mp.cpu_count(), self.max_processes,  dict_batches_to_process) or 1
+        num_cpus = min(mp.cpu_count(), self.max_processes) or 1
+        dicts_per_cpu = np.ceil(len(dicts) / num_cpus)
+        # automatic adjustment of multiprocessing chunksize
+        # for small files (containing few dicts) we want small chunksize to ulitize all available cores but never less
+        # than 2, because we need it to sample another random sentence in LM finetuning
+        # for large files we want to minimize processor spawning without giving too much data to one process, so we
+        # clip it at 5k
+        multiprocessing_chunk_size = int(np.clip((np.ceil(dicts_per_cpu/5)),a_min=2,a_max=5000))
+        dict_batches_to_process = int(len(dicts) / multiprocessing_chunk_size)
+        num_cpus_used = min(mp.cpu_count(), self.max_processes,  dict_batches_to_process) or 1
 
         with ExitStack() as stack:
-            p = stack.enter_context(mp.Pool(processes=num_cpus))
+            p = stack.enter_context(mp.Pool(processes=num_cpus_used))
 
             logger.info(
-                f"Got ya {num_cpus} parallel workers to convert dict chunks to datasets (chunksize = {self.multiprocessing_chunk_size})..."
+                f"Got ya {num_cpus_used} parallel workers to convert dict chunks to datasets (chunksize = {multiprocessing_chunk_size})..."
             )
-            log_ascii_workers(num_cpus, logger)
+            log_ascii_workers(num_cpus_used, logger)
 
             results = p.imap(
                 partial(self._multiproc, processor=self.processor),
-                grouper(dicts, self.multiprocessing_chunk_size),
+                grouper(dicts, multiprocessing_chunk_size),
                 chunksize=1,
             )
 
             datasets = []
-            for dataset, tensor_names in tqdm(results, total=len(dicts)/self.multiprocessing_chunk_size):
-                datasets.append(dataset)
+            with tqdm(total=len(dicts), unit=' Dicts') as pbar:
+                for dataset, tensor_names in results:
+                    datasets.append(dataset)
+                    pbar.update(multiprocessing_chunk_size)
             
             concat_datasets = ConcatDataset(datasets)
             return concat_datasets, tensor_names
@@ -162,20 +171,15 @@ class DataSilo:
         }
 
     def _create_dev_from_train(self):
-        # TODO checks to ensure dev is loaded the right way
         n_dev = int(self.processor.dev_split * len(self.data["train"]))
         n_train = len(self.data["train"]) - n_dev
 
-        # Todo: Seed
-        # if(isinstance(self.data["train"], Dataset)):
-        #     train_dataset, dev_dataset = random_split(self.data["train"], [n_train, n_dev])
-        # else:
         train_dataset, dev_dataset = self.random_split_ConcatDataset(self.data["train"], lengths=[n_train, n_dev])
         self.data["train"] = train_dataset
         if(len(dev_dataset) > 0):
             self.data["dev"] = dev_dataset
         else:
-            logger.warning("No dev set created. Maybe adjust the dev_split parameter or the multiprocessing chunk size")
+            logger.warning("No dev set created. Please adjust the dev_split parameter.")
 
         logger.info(
             f"Took {len(dev_dataset)} samples out of train set to create dev set (dev split is roughly {self.processor.dev_split})"
@@ -194,6 +198,8 @@ class DataSilo:
             raise ValueError("Sum of input lengths does not equal the length of the input dataset!")
 
         idx_dataset = np.where(np.array(ds.cumulative_sizes) > lengths[0])[0][0]
+        assert idx_dataset >= 1, "Dev_split ratio is too large, there is no data in train set. " \
+                             f"Please lower dev_split = {self.processor.dev_split}"
 
         train = ConcatDataset(ds.datasets[:idx_dataset])
         test = ConcatDataset(ds.datasets[idx_dataset:])

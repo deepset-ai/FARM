@@ -44,7 +44,7 @@ metric = "squad"
 processor = SquadProcessor(
     tokenizer=tokenizer,
     max_seq_len=256,
-    labels=label_list,
+    label_list=label_list,
     metric=metric,
     train_filename=train_filename,
     dev_filename=dev_filename,
@@ -104,7 +104,7 @@ QA_input = [
         }]
 
 model = Inferencer.load(save_dir)
-result = model.run_inference(dicts=QA_input)
+result = model.inference_from_dicts(dicts=QA_input)
 
 for x in result:
     pprint.pprint(x)

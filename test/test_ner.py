@@ -32,8 +32,15 @@ def test_ner(caplog):
                   "I-OTH"]
 
     processor = NERProcessor(
-        tokenizer=tokenizer, max_seq_len=8, data_dir="samples/ner",train_filename="train-sample.txt",
-        dev_filename="dev-sample.txt",test_filename=None, delimiter=" ", label_list=ner_labels, metric="seq_f1"
+        tokenizer=tokenizer,
+        max_seq_len=8,
+        data_dir="samples/ner",
+        train_filename="train-sample.txt",
+        dev_filename="dev-sample.txt",
+        test_filename=None,
+        delimiter=" ",
+        label_list=ner_labels,
+        metric="seq_f1"
     )
 
     data_silo = DataSilo(processor=processor, batch_size=batch_size)
@@ -75,7 +82,7 @@ def test_ner(caplog):
         {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei"},
     ]
     model = Inferencer.load(save_dir)
-    result = model.run_inference(dicts=basic_texts)
+    result = model.inference_from_dicts(dicts=basic_texts)
     assert result[0]["predictions"][0]["context"] == "sagte"
     assert isinstance(result[0]["predictions"][0]["probability"], np.float32)
 

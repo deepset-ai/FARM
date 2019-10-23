@@ -79,5 +79,5 @@ b) and a prediction head on top that is suited for our task => Text classificati
         {"text": "Martin Müller spielt Fussball"},
     ]
     model = Inferencer(save_dir)
-    result = model.run_inference(dicts=basic_texts)
+    result = model.inference_from_dicts(dicts=basic_texts)
     print(result)

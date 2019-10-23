@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import numpy as np
+from scipy.special import expit
 
 import torch
 from transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN
@@ -790,10 +791,53 @@ class QuestionAnsweringHead(PredictionHead):
         :rtype: (torch.tensor,torch.tensor)
         """
         (start_logits, end_logits) = logits
-        # TODO add checking for validity, e.g. end_idx coming after start_idx
-        start_idx = torch.argmax(start_logits, dim=1)
-        end_idx = torch.argmax(end_logits, dim=1)
-        return (start_idx, end_idx)
+        start_logits = start_logits.cpu().numpy()
+        end_logits = end_logits.cpu().numpy()
+        num_batches = start_logits.shape[0]
+
+        no_answer_sum = start_logits[:,0] + end_logits[:,0]
+        best_answer_sum = np.zeros(num_batches)
+        # check if start or end point to the context. Context starts at segment id == 1  (question comes before at segment ids == 0)
+
+        segment_ids = kwargs['segment_ids'].data.cpu().numpy()
+        context_start = np.argmax(segment_ids,axis=1)
+        start_proposals = self._get_best_indexes(start_logits, 3)
+        end_proposals = self._get_best_indexes(end_logits, 3)
+        best_indices = np.zeros((num_batches,2),dtype=int) # dimension [:,0] is start, [:,1] is end
+        for i_batch in range(num_batches):
+            # for each sample create mesh of possible start + end combinations and their score as sum of logits
+            mesh_idx = np.meshgrid(start_proposals[i_batch,:],end_proposals[i_batch])
+            start_comb = mesh_idx[0].flatten()
+            end_comb = mesh_idx[1].flatten()
+            scores = start_logits[i_batch,start_comb] + end_logits[i_batch,end_comb]
+            #iterate over combinations and eliminate impossible ones
+            for idx in np.argsort(scores)[::-1]:
+                start = start_comb[idx]
+                end = end_comb[idx]
+                if(start < context_start[i_batch]): #TODO check for context end as well
+                    continue
+                if(end < context_start[i_batch]):
+                    continue
+                if(start > end):
+                    continue
+                # maybe need check: end - start > max answer len. How to set max answer len?
+                # maybe need check weather start/end idx refers to start of word and not to a ##... continuation
+                best_indices[i_batch,0] = start
+                best_indices[i_batch,1] = end
+                best_answer_sum[i_batch] = scores[idx]
+                break
+
+
+        # TODO upweight no answers here?
+        idx_no_answer = no_answer_sum >= best_answer_sum
+        best_indices[idx_no_answer,:] = 0
+        probabilities = np.zeros(num_batches)
+        for i_batch in range(num_batches):
+            # huggingface takes the softmax of sum of both logits for their n best predictions.
+            # Since we have only one prediction for now, it makes sense to take the mean of both start + end probs
+            probabilities[i_batch] = (expit(start_logits[i_batch, best_indices[i_batch, 0]]) +
+                                      expit(end_logits[i_batch, best_indices[i_batch, 1]])) / 2
+        return (best_indices[:,0], best_indices[:,1], probabilities)
 
     def prepare_labels(self, start_position, end_position, **kwargs):
         """
@@ -828,12 +872,10 @@ class QuestionAnsweringHead(PredictionHead):
         all_preds = []
         # TODO fix inference bug, model.forward is somehow packing logits into list
         # logits = logits[0]
-        (start_idx, end_idx) = self.logits_to_preds(logits=logits)
-        # we have char offsets for the questions context in samples.tokenized
-        # we have start and end idx, but with the question tokens in front
+        start_idx, end_idx, probs = self.logits_to_preds(logits=logits, segment_ids=segment_ids)
+        # we have char offsets for the context passage in samples.tokenized
+        # we have start and end idx for the selected answer, but with the question tokens in front
         # lets shift this by the index of first segment ID corresponding to context
-        start_idx = start_idx.cpu().numpy()
-        end_idx = end_idx.cpu().numpy()
         segment_ids = segment_ids.cpu().numpy()
 
         shifts = np.argmax(segment_ids > 0, axis=1)
@@ -849,14 +891,10 @@ class QuestionAnsweringHead(PredictionHead):
         for i, sample in enumerate(samples):
             pred = {}
             pred["context"] = sample.clear_text["question_text"]
-            pred["probability"] = None # TODO add prob from logits. Dunno how though
+            pred["probability"] = probs[i]
             try: #char offsets or indices might be out of range, then we just return no answer
                 start = sample.tokenized["offsets"][start_idx[i]]
                 end = sample.tokenized["offsets"][end_idx[i]]
-                # Todo, remove this once the predictions are corrected
-                if(start > end):
-                    start = 0
-                    end = 0
                 pred["start"] = start
                 pred["end"] = end
                 answer = " ".join(sample.clear_text["doc_tokens"])[start:end]
@@ -869,3 +907,8 @@ class QuestionAnsweringHead(PredictionHead):
 
         result["predictions"] = all_preds
         return result
+
+    def _get_best_indexes(self, logits, n_best_size):
+        """Get the n-best logits from a numpy array."""
+        idx = np.argsort(logits,axis=1)[:,-n_best_size:]
+        return idx

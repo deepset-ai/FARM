@@ -4,6 +4,7 @@ from abc import ABC
 import random
 import logging
 import json
+import time
 import inspect
 from inspect import signature
 import numpy as np
@@ -30,7 +31,7 @@ from farm.data_handler.utils import (
 )
 from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
 from farm.utils import MLFlowLogger as MlLogger
-from farm.data_handler.utils import get_sentence_pair
+from farm.data_handler.samples import get_sentence_pair
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +40,7 @@ class Processor(ABC):
     """
     Is used to generate PyTorch Datasets from input data. An implementation of this abstract class should be created
     for each new data source.
-    Implement the abstract methods: _file_to_dicts(), _dict_to_samples(), _sample_to_features()
+    Implement the abstract methods: file_to_dicts(), _dict_to_samples(), _sample_to_features()
     to be compatible with your data format
     """
 
@@ -224,7 +225,7 @@ class Processor(ABC):
         }
 
     @abc.abstractmethod
-    def _file_to_dicts(self, file: str) -> [dict]:
+    def file_to_dicts(self, file: str) -> [dict]:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -236,7 +237,7 @@ class Processor(ABC):
         raise NotImplementedError()
 
     def _init_baskets_from_file(self, file):
-        dicts = self._file_to_dicts(file)
+        dicts = self.file_to_dicts(file)
         dataset_name = os.path.splitext(os.path.basename(file))[0]
         baskets = [
             SampleBasket(raw=tr, id=f"{dataset_name}-{i}") for i, tr in enumerate(dicts)
@@ -365,9 +366,9 @@ class TextClassificationProcessor(Processor):
                           task_type=task_type)
         else:
             logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
-                        "adding a default text classification task or add a custom task later via processor.add_task()")
+                        "using the default task or add a custom task later via processor.add_task()")
 
-    def _file_to_dicts(self, file: str) -> [dict]:
+    def file_to_dicts(self, file: str) -> [dict]:
         column_mapping = {task["label_column_name"]: task["label_name"] for task in self.tasks.values()}
         dicts = read_tsv(
             filename=file,
@@ -516,9 +517,9 @@ class NERProcessor(Processor):
             self.add_task("ner", metric, label_list)
         else:
             logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
-                        "adding a default NER task or add a custom task later via processor.add_task()")
+                        "using the default task or add a custom task later via processor.add_task()")
 
-    def _file_to_dicts(self, file: str) -> [dict]:
+    def file_to_dicts(self, file: str) -> [dict]:
         dicts = read_ner_file(filename=file, sep=self.delimiter)
         return dicts
 
@@ -588,6 +589,7 @@ class BertStyleLMProcessor(Processor):
         return dicts
 
     def _dict_to_samples(self, dictionary, all_dicts=None):
+        assert len(all_dicts) > 1, "Need at least 2 documents to sample random sentences from"
         doc = dictionary["doc"]
         samples = []
 
@@ -657,7 +659,7 @@ class SquadProcessor(Processor):
         tokenizer,
         max_seq_len,
         data_dir,
-        labels=None,
+        label_list=None,
         metric=None,
         train_filename="train-v2.0.json",
         dev_filename="dev-v2.0.json",
@@ -673,6 +675,10 @@ class SquadProcessor(Processor):
         :type max_seq_len: int
         :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
         :type data_dir: str
+        :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
+        :type label_list: list
+        :param metric: name of metric that shall be used for evaluation, e.g. "squad".
+        :type metric: str
         :param train_filename: The name of the file containing training data.
         :type train_filename: str
         :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
@@ -682,8 +688,6 @@ class SquadProcessor(Processor):
         :type test_filename: str
         :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
         :type dev_split: float
-        :param data_dir: The directory in which the train, test and perhaps dev files can be found.
-        :type data_dir: str
         :param doc_stride: When the document containing the answer is too long it gets split into part, strided by doc_stride
         :type doc_stride: int
         :param max_query_length: Maximum length of the question (in number of subword tokens)
@@ -709,14 +713,21 @@ class SquadProcessor(Processor):
             tasks={},
         )
 
-        if metric and labels:
-            self.add_task("question_answering", metric, labels)
+        if metric and label_list:
+            self.add_task("question_answering", metric, label_list)
+        else:
+            logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
+                        "using the default task or add a custom task later via processor.add_task()")
 
-    def dataset_from_dicts(self, dicts, index=None, from_inference=False):
-        if(from_inference):
-            dicts = [self._convert_inference(x) for x in dicts]
+    def dataset_from_dicts(self, dicts, index=None, rest_api_schema=False):
+        if rest_api_schema:
+            dicts = [self._convert_rest_api_dict(x) for x in dicts]
+        if rest_api_schema:
+            id_prefix = "infer"
+        else:
+            id_prefix = "train"
         self.baskets = [
-            SampleBasket(raw=tr, id="infer - {}".format(i))
+            SampleBasket(raw=tr, id=f"{id_prefix}-{i}")
             for i, tr in enumerate(dicts)
         ]
         self._init_samples_in_baskets()
@@ -726,7 +737,7 @@ class SquadProcessor(Processor):
         dataset, tensor_names = self._create_dataset()
         return dataset, tensor_names
 
-    def _convert_inference(self, infer_dict):
+    def _convert_rest_api_dict(self, infer_dict):
         # convert input coming from inferencer to SQuAD format
         converted = {}
         converted["paragraphs"] = [
@@ -742,14 +753,13 @@ class SquadProcessor(Processor):
         ]
         return converted
 
-    def _file_to_dicts(self, file: str) -> [dict]:
+    def file_to_dicts(self, file: str) -> [dict]:
         dict = read_squad_file(filename=file)
         return dict
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
-        # TODO split samples that are too long in this function, related to todo in self._sample_to_features
         if "paragraphs" not in dictionary:  # TODO change this inference mode hack
-            dictionary = self._convert_inference(infer_dict=dictionary)
+            dictionary = self._convert_rest_api_dict(infer_dict=dictionary)
         samples = create_samples_squad(entry=dictionary)
         for sample in samples:
             tokenized = tokenize_with_metadata(
