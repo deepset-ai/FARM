@@ -842,8 +842,8 @@ class QuestionAnsweringHead(PredictionHead):
         batch_size = start_logits.size()[0]
         all_top_n = []
         # get scores for all combinations of start and end logits => candidate answers
-        start_matrix = start_logits.unsqueeze(1).expand(-1, 256, -1)
-        end_matrix = end_logits.unsqueeze(2).expand(-1, -1, 256)
+        start_matrix = start_logits.unsqueeze(2).expand(-1, -1, 256)
+        end_matrix = end_logits.unsqueeze(1).expand(-1, 256, -1)
         start_end_matrix = start_matrix + end_matrix
         # Sort the candidate answers by their score
         # Sorting happens on the flattened matrix. The returned indices are then converted back to the original
@@ -854,7 +854,7 @@ class QuestionAnsweringHead(PredictionHead):
         d = start_end_matrix.shape[1] # target dim
         sorted_candidates = torch.cat((flat_sorted_indices // d, flat_sorted_indices % d), dim=2)
         # Get the n_best candidate answers for each sample that are valid (via some heuristic checks)
-        for sample_idx in tqdm(range(batch_size)):
+        for sample_idx in range(batch_size):
             sample_top_n = []
             for candidate_idx in range(sorted_candidates.shape[1]):
                 if len(sample_top_n) == n_best:
