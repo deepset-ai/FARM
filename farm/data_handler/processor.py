@@ -31,7 +31,7 @@ from farm.data_handler.utils import (
 )
 from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
 from farm.utils import MLFlowLogger as MlLogger
-from farm.data_handler.samples import get_sentence_pair
+from farm.data_handler.utils import get_sentence_pair
 
 logger = logging.getLogger(__name__)
 
