@@ -195,9 +195,10 @@ class Inferencer:
                 datasets = []
                 all_samples = []
                 with tqdm(total=len(dicts), unit=" Dicts") as pbar:
-                    for dataset, tensor_names, basket in results:
+                    for dataset, tensor_names, baskets in results:
                         datasets.append(dataset)
-                        all_samples.extend(basket[0].samples)
+                        for b in baskets: # number of baskets in _multiproc() related to chunksize
+                            all_samples.extend(b.samples)
                 concat_datasets = ConcatDataset(datasets)
 
 

@@ -731,7 +731,8 @@ class QuestionAnsweringHead(PredictionHead):
             "span_classification"
         )  # predicts start and end token of answer
         self.task_name = task_name
-        self.max_ans_len = 42
+        self.max_ans_len = 1000 # disabling max ans len. Impact on squad performance seems minor
+        self.no_answer_weight = 1 # how much we want to upweight no answer scores compared to producing text answers
         self.generate_config()
 
     def forward(self, X):
@@ -820,8 +821,6 @@ class QuestionAnsweringHead(PredictionHead):
                     continue
                 if end > context_end[i_batch]:
                     continue
-                if end < context_start[i_batch]:
-                    continue
                 if start > end:
                     continue
                 if(end - start > self.max_ans_len):
@@ -833,9 +832,12 @@ class QuestionAnsweringHead(PredictionHead):
                 best_answer_sum[i_batch] = scores[idx]
                 break # since we take most likely predictions first, we stop when finding a valid prediction
 
+        # For each predicted text answer, we want to check weather this question is a "trick question" where the answer
+        # makes kind of sense but is still wrong. These are the is_impossible questions in Squad v2
+        # So for each predicted text answer, we need
 
-        # TODO upweight no answers here?
-        idx_no_answer = no_answer_sum >= best_answer_sum
+
+        idx_no_answer = no_answer_sum * self.no_answer_weight >= best_answer_sum # TODO upweight no answers here?
         best_indices[idx_no_answer,:] = 0
         probabilities = np.zeros(num_per_batch)
         for i_batch in range(num_per_batch):
@@ -903,35 +905,43 @@ class QuestionAnsweringHead(PredictionHead):
             e_i = temp[0,1]
             p_i = temp[0,2]
             sampleid_i = temp[0,3]
-            passage_shift_i = temp[0,4] # TODO check for validity
-            question_shift_i = temp[0,5] # TODO check for validity
-            current_sample = all_samples[sample_id_to_index[sampleid_i]]
-
-            pred = {}
-            pred["context"] = current_sample.clear_text["question_text"]
-            # matching
-            pred["probability"] = p_i
-            try: #char offsets or indices might be out of range, then we just return no answer
-                if(s_i + e_i == 0):
-                    answer = ""
-                    pred["start"] = 0
-                    pred["end"] = 0
-                else:
-                    current_start = int(s_i + passage_shift_i - question_shift_i)
-                    current_end = int(e_i + passage_shift_i - question_shift_i) + 1
-                    start = current_sample.tokenized["offsets"][current_start]
-                    end = current_sample.tokenized["offsets"][current_end]
-                    pred["start"] = start
-                    pred["end"] = end
-                    answer = " ".join(current_sample.clear_text["doc_tokens"])[start:end]
-                    answer = answer.strip()
+            passage_shift_i = temp[0,4]
+            question_shift_i = temp[0,5]
+            try:
+                current_sample = all_samples[sample_id_to_index[sampleid_i]]
             except Exception as e:
-                answer = ""
-                logger.info(e)
-            pred["label"] = answer
-            pred["sample_id"] = sampleid_i
-            pred["question_id"] = current_sample.clear_text.qas_id
-            all_preds.append(pred)
+                current_sample = None
+                logger.warning(f"We have a problem with sample id: {sampleid_i} with error: {e} ")
+
+            if current_sample is not None:
+                pred = {}
+                pred["context"] = current_sample.clear_text["question_text"]
+                # matching
+                pred["probability"] = p_i
+                try: #char offsets or indices might be out of range, then we just return no answer
+                    if(s_i + e_i == 0):
+                        answer = ""
+                        pred["start"] = 0
+                        pred["end"] = 0
+                    else:
+                        current_start = int(s_i + passage_shift_i - question_shift_i)
+                        current_end = int(e_i + passage_shift_i - question_shift_i) + 1
+                        # TODO check if offsets point to doc or passage space
+                        start = current_sample.tokenized["offsets"][current_start]
+                        end = current_sample.tokenized["offsets"][current_end]
+                        pred["start"] = start
+                        pred["end"] = end
+                        # doc_tokens are just whitespace tokenized and not subword tokenized
+                        # therefore we need to join the text and extract the answer in string space
+                        answer = " ".join(current_sample.clear_text["doc_tokens"])[start:end]
+                        answer = answer.strip()
+                except Exception as e:
+                    answer = ""
+                    logger.info(e)
+                pred["label"] = answer
+                pred["sample_id"] = sampleid_i
+                pred["question_id"] = current_sample.clear_text.qas_id
+                all_preds.append(pred)
 
         result["predictions"] = all_preds
         return result
@@ -948,14 +958,23 @@ class QuestionAnsweringHead(PredictionHead):
 
         # we sometimes have multiple predictions for one sample (= paragraph question pair)
         # because we split the paragraph into smaller passages
-        # we group all predictions by sample_id and take the most likely
+        # we group all predictions by sample_id
         unique_sample_ids = df.sample_id.unique()
         max_per_sample = []
         for uid in unique_sample_ids:
             group = df.loc[df.sample_id == uid, :]
+            idx_text_answers = (group.pred_start + group.pred_end) > 0
+            # if we have a text answer in the group we want to discard all no text passages
+            # Reasoning: consider how data is constructed from labels: If we split a document into 5 passages and
+            # only passage no.3 has the text answer, all remaining passages are labeled as no answer.
+            # We want the answer for passage no.3 without regarding the models output for the other passages.
+            if np.sum(idx_text_answers) > 0:
+                group = group.loc[idx_text_answers,:]
             max_pred = group.loc[group.prob == np.max(group.prob)]
             if (max_pred.shape[0] > 1):
-                max_pred = max_pred.loc[0, :]  # hack away and just take first pred. Should rarely occur.
+                # just select one pred if multiple preds have the very same prob. Should rarely occur.
+                max_pred = max_pred.loc[0, :]
+                logger.info(f"Multiple predictions have the same probability of occuring. \n{max_pred.head()}")
             max_per_sample.append(max_pred.values)
         return max_per_sample
 
