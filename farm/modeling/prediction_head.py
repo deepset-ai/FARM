@@ -1,3 +1,4 @@
+import itertools
 import json
 import logging
 import os
@@ -877,76 +878,83 @@ class QuestionAnsweringHead(PredictionHead):
         :return: Answers to the (ultimate) questions
         :rtype: list(str)
         """
-        all_preds = []
 
         all_passage_shifts = torch.cat([x.view(1) for x in all_passage_shifts]).cpu().numpy()
         # we want first occurence. torch argmax gives last occurence, so we need to convert to numpy
         all_question_shifts = [np.argmax(x.cpu().numpy() > 0) for x in all_segment_ids]
+        all_preds_passage_aggregated = self._aggregate_passages(preds, all_passage_shifts, all_question_shifts, 5)
 
-        max_per_sample = self._aggregate_passages(preds, all_passage_shifts, all_question_shifts)
-
-
-
-        # # we have char offsets for the context passage in samples.tokenized
-        # # we have start and end idx for the selected answer, but with the question tokens in front
-        # # lets shift this by the index of first segment ID corresponding to context
-
-        # start_idx = start_idx - shifts
-        # start_idx[start_idx < 0] = 0
-        # end_idx = end_idx - shifts
-        # end_idx[end_idx < 0] = 0
-        # end_idx = end_idx + 1  # slicing up to and including end
         result = {}
         result["task"] = "qa"
-
+        all_preds = []
         sample_id_to_index = dict([(sample.id,i) for i,sample in enumerate(all_samples)])
-        for i, temp in enumerate(max_per_sample):
-            s_i = temp[0,0]
-            e_i = temp[0,1]
-            p_i = temp[0,2]
-            sampleid_i = temp[0,3]
-            passage_shift_i = temp[0,4]
-            question_shift_i = temp[0,5]
+        for current_pred in all_preds_passage_aggregated:
+            sampleid_i = current_pred[0, 3]
             try:
                 current_sample = all_samples[sample_id_to_index[sampleid_i]]
             except Exception as e:
                 current_sample = None
-                logger.warning(f"We have a problem with sample id: {sampleid_i} with error: {e} ")
-
+                logger.warning(f"Sample id: {sampleid_i} could not be laoded. Error: {e} ")
             if current_sample is not None:
-                pred = {}
-                pred["context"] = current_sample.clear_text["question_text"]
-                # matching
-                pred["probability"] = p_i
-                try: #char offsets or indices might be out of range, then we just return no answer
-                    if(s_i + e_i == 0):
+
+                passage_predictions = []
+                for i in range(current_pred.shape[0]):
+                    if(i>0):
+                        muh=1
+                    passage_pred = {}
+                    passage_pred["passage_id"] = i
+                    s_i = current_pred[i,0]
+                    e_i = current_pred[i,1]
+                    p_i = current_pred[i,2]
+                    passage_shift_i = current_pred[i,4]
+                    question_shift_i = current_pred[i,5]
+
+
+                    # matching
+                    passage_pred["probability"] = p_i
+                    try:
+                        #default to returning no answer
+                        start = 0
                         answer = ""
-                        pred["start"] = 0
-                        pred["end"] = 0
-                    else:
-                        current_start = int(s_i + passage_shift_i - question_shift_i)
-                        current_end = int(e_i + passage_shift_i - question_shift_i) + 1
-                        # TODO check if offsets point to doc or passage space
-                        start = current_sample.tokenized["offsets"][current_start]
-                        end = current_sample.tokenized["offsets"][current_end]
-                        pred["start"] = start
-                        pred["end"] = end
-                        # doc_tokens are just whitespace tokenized and not subword tokenized
-                        # therefore we need to join the text and extract the answer in string space
-                        answer = " ".join(current_sample.clear_text["doc_tokens"])[start:end]
-                        answer = answer.strip()
-                except Exception as e:
-                    answer = ""
-                    logger.info(e)
-                pred["label"] = answer
-                pred["sample_id"] = sampleid_i
+                        if(s_i + e_i > 0):
+                            current_start = int(s_i + passage_shift_i - question_shift_i)
+                            current_end = int(e_i + passage_shift_i - question_shift_i) + 1
+                            # TODO check if offsets point to doc or passage space
+                            start = current_sample.tokenized["offsets"][current_start]
+                            end = current_sample.tokenized["offsets"][current_end]
+                            # doc_tokens are just whitespace tokenized and not subword tokenized
+                            # therefore we need to join the text and extract the answer in string space
+                            answer = " ".join(current_sample.clear_text["doc_tokens"])[start:end]
+                            answer = answer.strip()
+                    except Exception as e:
+                        logger.info(e)
+                    passage_pred["start"] = start
+                    passage_pred["prediction"] = answer
+                    passage_predictions.append(passage_pred)
+
+                #filter passage predictions pointing to the same answer (we always have text overlap between passages)
+                if(len(passage_predictions)>1):
+                    remove_p_id = set()
+                    for duo in itertools.combinations(passage_predictions,2):
+                        if( (duo[0]["start"] == duo[1]["start"]) and (duo[0]["prediction"] == duo[1]["prediction"])):
+                            remove_p_id.add(duo[1]["passage_id"])
+                    if(len(remove_p_id) > 0):
+                        for remove_idx in sorted(list(remove_p_id),reverse=True):
+                            del passage_predictions[remove_idx]
+
+
+                pred = {}
+                pred["question"] = current_sample.clear_text.question_text
                 pred["question_id"] = current_sample.clear_text.qas_id
+                pred["document_id"] = current_sample.clear_text.document_id
+                pred["ground_truth"] = current_sample.clear_text.orig_answer_text
+                pred["n_best_preds"] = passage_predictions
                 all_preds.append(pred)
 
         result["predictions"] = all_preds
         return result
 
-    def _aggregate_passages(self, preds, all_passage_shifts, all_question_shifts):
+    def _aggregate_passages(self, preds, all_passage_shifts, all_question_shifts, top_n_passages=None):
         data = {}
         data["pred_start"] = np.concatenate([x[0] for x in preds])
         data["pred_end"] = np.concatenate([x[1] for x in preds])
@@ -970,11 +978,15 @@ class QuestionAnsweringHead(PredictionHead):
             # We want the answer for passage no.3 without regarding the models output for the other passages.
             if np.sum(idx_text_answers) > 0:
                 group = group.loc[idx_text_answers,:]
-            max_pred = group.loc[group.prob == np.max(group.prob)]
-            if (max_pred.shape[0] > 1):
-                # just select one pred if multiple preds have the very same prob. Should rarely occur.
-                max_pred = max_pred.loc[0, :]
-                logger.info(f"Multiple predictions have the same probability of occuring. \n{max_pred.head()}")
+            if top_n_passages is None:
+                max_pred = group.loc[group.prob == np.max(group.prob),:]
+                if (max_pred.shape[0] > 1):
+                    # just select one pred if multiple preds have the very same prob. Should rarely occur.
+                    max_pred = max_pred.iloc[0, :]
+                    logger.info(f"Multiple predictions have the same probability of occuring. \n{max_pred.head()}")
+            else:
+                assert isinstance(top_n_passages, int)
+                max_pred = group.sort_values(by="prob",ascending=False).iloc[:top_n_passages,:]
             max_per_sample.append(max_pred.values)
         return max_per_sample
 

@@ -171,6 +171,7 @@ class Inferencer:
         dict_batches_to_process = int(len(dicts) / multiprocessing_chunk_size)
         num_cpus_used = min(mp.cpu_count(), dict_batches_to_process) or 1
 
+        # preprocess data with multiple cores
         with ExitStack() as stack:
             p = stack.enter_context(mp.Pool(processes=num_cpus_used))
 
@@ -185,25 +186,21 @@ class Inferencer:
                 1,
             )
 
-            if self.prediction_type != "span_classification":
-                preds_all = []
-                with tqdm(total=len(dicts), unit=" Dicts") as pbar:
-                    for dataset, tensor_names, sample in results:
-                        preds_all.extend(self._run_inference(dataset, tensor_names, sample))
-                        pbar.update(multiprocessing_chunk_size)
-            else:
-                datasets = []
-                all_samples = []
-                with tqdm(total=len(dicts), unit=" Dicts") as pbar:
-                    for dataset, tensor_names, baskets in results:
-                        datasets.append(dataset)
-                        for b in baskets: # number of baskets in _multiproc() related to chunksize
-                            all_samples.extend(b.samples)
-                concat_datasets = ConcatDataset(datasets)
+            datasets = []
+            all_samples = []
+            with tqdm(total=len(dicts), unit=" Dicts") as pbar:
+                for dataset, tensor_names, baskets in results:
+                    datasets.append(dataset)
+                    for b in baskets: # number of baskets in _multiproc() related to chunksize
+                        all_samples.extend(b.samples)
+            concat_datasets = ConcatDataset(datasets)
 
-
+        # use the model to create predictions
         if self.prediction_type == "span_classification":
             preds_all = self._run_inference_qa(concat_datasets,tensor_names,all_samples)
+        else:
+            preds_all = self._run_inference(concat_datasets,tensor_names,all_samples)
+
         return preds_all
 
     @classmethod
@@ -220,7 +217,7 @@ class Inferencer:
         )
 
         preds_all = []
-        for i, batch in enumerate(data_loader):
+        for i, batch in enumerate(tqdm(data_loader, desc=f"Inferencing")):
             batch = {key: batch[key].to(self.device) for key in batch}
             batch_samples = samples[i * self.batch_size : (i + 1) * self.batch_size]
             with torch.no_grad():
@@ -236,16 +233,15 @@ class Inferencer:
 
         return preds_all
 
-    def _run_inference_qa(self, concatdataset, tensor_names, all_samples ):
+    def _run_inference_qa(self, concatdataset, tensor_names, all_samples):
         data_loader = NamedDataLoader(
             dataset=concatdataset, sampler=SequentialSampler(concatdataset), batch_size=self.batch_size, tensor_names=tensor_names
         )
 
         all_preds = []
         all_segment_ids = []
-        all_sample_ids = []
         all_passage_shifts = []
-        for i, batch in enumerate(data_loader):
+        for batch in tqdm(data_loader, desc=f"Inferencing"):
             batch = {key: batch[key].to(self.device) for key in batch}
             with torch.no_grad():
                 logits = self.model.forward(**batch)
@@ -254,10 +250,11 @@ class Inferencer:
                 all_segment_ids += list(batch["segment_ids"])
                 all_passage_shifts += list(batch["passage_shift"])
 
-        preds_all = self.model.prediction_heads[0].formatted_preds(logits=None,preds=all_preds,
-                                               all_samples=all_samples,
-                                               all_segment_ids=all_segment_ids,
-                                               all_passage_shifts=all_passage_shifts)
+        preds_all = self.model.prediction_heads[0].formatted_preds(logits=None,
+                                                                   preds=all_preds,
+                                                                   all_samples=all_samples,
+                                                                   all_segment_ids=all_segment_ids,
+                                                                   all_passage_shifts=all_passage_shifts)
 
         return preds_all
 

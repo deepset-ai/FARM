@@ -797,7 +797,7 @@ class SquadProcessor(Processor):
             tokenized = tokenize_with_metadata(
                 text=" ".join(sample.clear_text["doc_tokens"]),
                 tokenizer=self.tokenizer,
-                max_seq_len=self.max_seq_len,
+                max_seq_len=100_000_000,
             )
             sample.tokenized = tokenized
 
