@@ -32,6 +32,7 @@ from transformers.modeling_roberta import RobertaModel, RobertaConfig
 from transformers.modeling_xlnet import XLNetModel, XLNetConfig
 from transformers.modeling_utils import SequenceSummary
 
+
 class LanguageModel(nn.Module):
     """
     The parent class for any kind of model that can embed language into a semantic vector space. Practically
@@ -206,8 +207,9 @@ class LanguageModel(nn.Module):
 
 
 class Bert(LanguageModel):
-    """ A BERT model (https://arxiv.org/abs/1810.04805) that wraps the HuggingFace's implementation
-    (https://github.com/huggingface/pytorch-pretrained-BERT) to fit the LanguageModel class. """
+    """ A BERT model that wraps HuggingFace's implementation
+    (https://github.com/huggingface/transformers) to fit the LanguageModel class.
+     Paper: https://arxiv.org/abs/1810.04805 """
 
     def __init__(self):
         super(Bert, self).__init__()
@@ -216,6 +218,18 @@ class Bert(LanguageModel):
 
     @classmethod
     def load(cls, pretrained_model_name_or_path, language=None):
+        """
+        Load a language model either by supplying
+         * the name of a remote model on s3 ("bert-base-cased" ...)
+         * or a local path of a model trained via transformers ("some_dir/huggingface_model")
+         * or a local path of a model trained via FARM ("some_dir/farm_model")
+
+        :param pretrained_model_name_or_path: name or path of a model
+        :param language: (Optional) Name of language the model was trained for (e.g. "german").
+                         If not supplied, FARM will try to infer it from the model name.
+        :return: Language Model
+        :rtype BERT
+        """
         bert = cls()
         bert.name = pretrained_model_name_or_path
         # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
@@ -280,7 +294,9 @@ class Bert(LanguageModel):
 
 class Roberta(LanguageModel):
     """ A roberta model that wraps the HuggingFace's implementation
-    (https://github.com/huggingface/pytorch-pretrained-BERT) to fit the LanguageModel class. """
+    (https://github.com/huggingface/transformers) to fit the LanguageModel class.
+     Paper: https://arxiv.org/abs/1907.11692
+     """
 
     def __init__(self):
         super(Roberta, self).__init__()
@@ -289,6 +305,18 @@ class Roberta(LanguageModel):
 
     @classmethod
     def load(cls, pretrained_model_name_or_path, language=None):
+        """
+        Load a language model either by supplying
+         * the name of a remote model on s3 ("roberta-base" ...)
+         * or a local path of a model trained via transformers ("some_dir/huggingface_model")
+         * or a local path of a model trained via FARM ("some_dir/farm_model")
+
+        :param pretrained_model_name_or_path: name or path of a model
+        :param language: (Optional) Name of language the model was trained for (e.g. "german").
+                         If not supplied, FARM will try to infer it from the model name.
+        :return: Language Model
+        :rtype Roberta
+        """
         roberta = cls()
         roberta.name = pretrained_model_name_or_path
         # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
@@ -353,8 +381,10 @@ class Roberta(LanguageModel):
 
 
 class XLNet(LanguageModel):
-    """ A roberta model that wraps the HuggingFace's implementation
-    (https://github.com/huggingface/pytorch-pretrained-BERT) to fit the LanguageModel class. """
+    """ A XLNet model that wraps the HuggingFace's implementation
+    (https://github.com/huggingface/transformers) to fit the LanguageModel class.
+     Paper: https://arxiv.org/abs/1906.08237
+     """
 
     def __init__(self):
         super(XLNet, self).__init__()
@@ -364,6 +394,18 @@ class XLNet(LanguageModel):
 
     @classmethod
     def load(cls, pretrained_model_name_or_path, language=None):
+        """
+        Load a language model either by supplying
+         * the name of a remote model on s3 ("xlnet-base-cased" ...)
+         * or a local path of a model trained via transformers ("some_dir/huggingface_model")
+         * or a local path of a model trained via FARM ("some_dir/farm_model")
+
+        :param pretrained_model_name_or_path: name or path of a model
+        :param language: (Optional) Name of language the model was trained for (e.g. "german").
+                         If not supplied, FARM will try to infer it from the model name.
+        :return: Language Model
+        :rtype XLNet
+        """
         xlnet = cls()
         xlnet.name = pretrained_model_name_or_path
         # We need to differentiate between loading model using FARM format and Pytorch-Transformers format

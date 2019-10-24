@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team.
+# Copyright 2018 deepset team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import logging
-import unicodedata
 import re
 import numpy as np
 
@@ -26,11 +25,28 @@ from transformers.tokenization_xlnet import XLNetTokenizer
 
 logger = logging.getLogger(__name__)
 
+# Special characters used by the different tokenizers to indicate start of word / whitespace
+SPECIAL_TOKENIZER_CHARS = r"^(##|Ġ|▁)"
 
-# Simple wrapper for transformers tokenizer to simplify loading of model specific tokenizers
-class Tokenizer():
+
+class Tokenizer:
+    """
+    Simple Wrapper for Tokenizers from the transformers package. Enables loading of different Tokenizer classes with a uniform interface.
+    """
+
     @classmethod
     def load(cls, pretrained_model_name_or_path, tokenizer_class=None, **kwargs):
+        """
+        Enables loading of different Tokenizer classes with a uniform interface. Either infer the class from
+        `pretrained_model_name_or_path` or define it manually via `tokenizer_class`.
+
+        :param pretrained_model_name_or_path:  The path of the saved pretrained model or its name (e.g. `bert-base-uncased`)
+        :type pretrained_model_name_or_path: str
+        :param tokenizer_class: (Optional) Name of the tokenizer class to load (e.g. `BertTokenizer`)
+        :type tokenizer_class: str
+        :param kwargs:
+        :return: Tokenizer
+        """
         # guess tokenizer type from name
         if tokenizer_class is None:
             if "roberta" in pretrained_model_name_or_path.lower():
@@ -50,7 +66,28 @@ class Tokenizer():
         elif tokenizer_class == "XLNetTokenizer":
             return XLNetTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
 
+
 def tokenize_with_metadata(text, tokenizer):
+    """
+    Performing tokenization while storing some important metadata for each token:
+      * offsets: (int) Character index where the token begins in the original text
+      * start_of_word: (bool) If the token is the start of a word. Particularly helpful for NER and QA tasks.
+
+    We do this by first doing whitespace tokenization and then applying the model specific tokenizer to each "word".
+
+    Note:      We don't assume to preserve exact whitespaces in the tokens!
+               This means: \t, \n " " etc will all resolve to a single " ".
+               This doesn't make a difference for BERT + XLNet but it does for RoBERTa.
+               For RoBERTa it has the positive effect of a shorter sequence length, but some information about whitespace
+               type is lost which might be helpful for certain NLP tasks ( e.g \t for tables).
+
+    :param text: Text to tokenize
+    :type text: str
+    :param tokenizer: Tokenizer (e.g. from Tokenizer.load())
+    :return: Dictionary with "tokens", "offsets" and "start_of_word"
+    :rtype: dict
+    """
+
     # split text into "words" (here: simple whitespace tokenizer)
     words = text.split(" ")
     word_offsets = []
@@ -69,6 +106,16 @@ def tokenize_with_metadata(text, tokenizer):
 
 
 def _words_to_tokens(words, word_offsets, tokenizer):
+    """
+    Tokenize "words" into subword tokens while keeping track of offsets and if a token is the start of a word.
+
+    :param words: list of words.
+    :type words: list
+    :param word_offsets: Character indices where each word begins in the original text
+    :type word_offsets: list
+    :param tokenizer: Tokenizer (e.g. from Tokenizer.load())
+    :return: tokens, offsets, start_of_word
+    """
     tokens = []
     token_offsets = []
     start_of_word = []
@@ -96,7 +143,7 @@ def _words_to_tokens(words, word_offsets, tokenizer):
             token_offsets.append(w_off)
             # Depending on the tokenizer type special chars are added to distinguish tokens with preceeding
             # whitespace (=> "start of a word"). We need to get rid of these to calculate the original length of the token
-            orig_tok = re.sub(r"^(##|Ġ|▁)", "", tok)
+            orig_tok = re.sub(SPECIAL_TOKENIZER_CHARS, "", tok)
             w_off += len(orig_tok)
             if first_tok:
                 start_of_word.append(True)
@@ -108,7 +155,34 @@ def _words_to_tokens(words, word_offsets, tokenizer):
     return tokens, token_offsets, start_of_word
 
 
-def truncate_sequences(seq_a, seq_b, tokenizer, max_seq_len, truncation_strategy='longest_first', with_special_tokens=True, stride=0):
+def truncate_sequences(seq_a, seq_b, tokenizer, max_seq_len, truncation_strategy='longest_first',
+                       with_special_tokens=True, stride=0):
+    """
+    Reduces a single sequence or a pair of sequences to a maximum sequence length.
+    The sequences can contain tokens or any other elements (offsets, masks ...).
+    If `with_special_tokens` is enabled, it'll remove some additional tokens to have exactly enough space for later adding special tokens (CLS, SEP etc.)
+
+    :param seq_a: First sequence of tokens/offsets/...
+    :type seq_a: list
+    :param seq_b: Optional second sequence of tokens/offsets/...
+    :type seq_b: None or list
+    :param tokenizer: Tokenizer (e.g. from Tokenizer.load())
+    :param max_seq_len:
+    :type max_seq_len: int
+    :param truncation_strategy: one of the following options from the transformers library:
+                - 'longest_first' (default) Iteratively reduce the inputs sequence until the input is under max_length
+                    starting from the longest one at each token (when there is a pair of input sequences).
+                    Overflowing tokens only contains overflow from the first sequence.
+                - 'only_first': Only truncate the first sequence. raise an error if the first sequence is shorter or equal to than num_tokens_to_remove.
+                - 'only_second': Only truncate the second sequence
+                - 'do_not_truncate': Does not truncate (raise an error if the input sequence is longer than max_length)
+    :type str
+    :param with_special_tokens: If true, it'll remove some additional tokens to have exactly enough space for later adding special tokens (CLS, SEP etc.)
+    :type with_special_tokens: bool
+    :param stride: optional stride of the window during truncation
+    :type stride: int
+    :return: truncated seq_a, truncated seq_b, overflowing tokens
+    """
     pair = bool(seq_b is not None)
     len_a = len(seq_a)
     len_b = len(seq_b) if pair else 0
@@ -125,6 +199,25 @@ def truncate_sequences(seq_a, seq_b, tokenizer, max_seq_len, truncation_strategy
 
 
 def insert_at_special_tokens_pos(seq, special_tokens_mask, insert_element):
+    """
+    Adds elements to a sequence at the positions that align with special tokens.
+    This is useful for expanding label ids or masks, so that they align with corresponding tokens (incl. the special tokens)
+
+    Example:
+        Tokens:  ["CLS", "some", "words","SEP"]
+        ```
+        special_tokens_mask =  [1,0,0,1]
+        lm_label_ids =  [12,200]
+
+        insert_at_special_tokens_pos(lm_label_ids, special_tokens_mask, insert_element=-1)
+        >>  [-1, 12, 200, -1]
+        ```
+
+    :param seq:
+    :param special_tokens_mask:
+    :param insert_element:
+    :return:
+    """
     new_seq = seq.copy()
     special_tokens_indices = np.where(np.array(special_tokens_mask) == 1)[0]
     for idx in special_tokens_indices:
