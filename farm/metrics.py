@@ -63,27 +63,46 @@ def compute_metrics(metric, preds, labels):
 
 def squad_EM(preds, labels):
     # TODO write comment describing function
-    # scoring in tokenized space, so results to public leaderboard will vary
-    pred_start = torch.cat(preds[::2])
-    pred_end = torch.cat(preds[1::2])
-    label_start = torch.cat(labels[::2])
-    label_end = torch.cat(labels[1::2])
-    assert len(label_start) == len(pred_start)
-    num_total = len(label_start)
-    num_correct = 0
-    for i in range(num_total):
+    n_docs = len(preds)
+    n_correct = 0
+    for doc_idx in range(n_docs):
+        # TODO currently the order of a smaples preds means that no answer is never predicted
+        pred_start, pred_end, _ = preds[doc_idx][0]
+        curr_labels = labels[doc_idx]
+        if (pred_start, pred_end) in curr_labels:
+            n_correct += 1
+    print(n_correct)
+    print(n_docs)
+    return n_correct/n_docs
+
+def squad_f1(preds, labels):
+    f1_scores = []
+    n_docs = len(preds)
+    for i in range(n_docs):
+        best_pred = preds[i][0]
+        best_f1 = max([squad_f1_single(best_pred, label) for label in labels[i]])
+        f1_scores.append(best_f1)
+    print(f1_scores)
+    return np.mean(f1_scores)
 
 
-
-
-
-
-
-        pred_idx_start = pred_start[i]
-        pred_idx_end = pred_end[i]
-        if label_start[i][pred_idx_start] == 1 and label_end[i][pred_idx_end] == 1:
-            num_correct += 1
-    return num_correct / num_total
+def squad_f1_single(pred, label):
+    label_start, label_end = label
+    pred_start, pred_end, _ = pred
+    if (pred_start + pred_end == 0) or (label_start + label_end == 0):
+        if pred_start == label_start:
+            return 1.0
+        else:
+            return 0.0
+    pred_span = list(range(pred_start, pred_end + 1))
+    label_span = list(range(label_start, label_end + 1))
+    n_overlap = len([x for x in pred_span if x in label_span])
+    if n_overlap == 0:
+        return 0.0
+    precision = n_overlap / len(pred_span)
+    recall = n_overlap / len(label_span)
+    f1 = (2 * precision * recall) / (precision + recall)
+    return f1
 
 
 def squad_EMOLD(preds, labels):
@@ -99,45 +118,6 @@ def squad_EMOLD(preds, labels):
         if pred_start[i] == label_start[i] and pred_end[i] == label_end[i]:
             num_correct += 1
     return num_correct / num_total
-
-def squad_f1(preds, labels):
-    # scoring in tokenized space, so results to public leaderboard will vary
-    pred_start = torch.cat(preds[::2]).cpu().numpy()
-    pred_end = torch.cat(preds[1::2]).cpu().numpy()
-    label_start = torch.cat(labels[::2]).cpu().numpy()
-    label_end = torch.cat(labels[1::2]).cpu().numpy()
-    assert len(label_start) == len(pred_start)
-    num_total = len(label_start)
-    f1_scores = []
-    prec_scores = []
-    recall_scores = []
-    for i in range(num_total):
-        # TODO why <= and not =?
-        if (pred_start[i] + pred_end[i]) <= 0 or (label_start[i] + label_end[i]) <= 0:
-            # If either is no-answer, then F1 is 1 if they agree, 0 otherwise
-            f1_scores.append(pred_end[i] == label_end[i])
-            prec_scores.append(pred_end[i] == label_end[i])
-            recall_scores.append(pred_end[i] == label_end[i])
-        else:
-            pred_range = set(range(pred_start[i], pred_end[i]))
-            true_range = set(range(label_start[i], label_end[i]))
-            num_same = len(true_range.intersection(pred_range))
-            if num_same == 0:
-                f1_scores.append(0)
-                prec_scores.append(0)
-                recall_scores.append(0)
-            else:
-                precision = 1.0 * num_same / len(pred_range)
-                recall = 1.0 * num_same / len(true_range)
-                f1 = (2 * precision * recall) / (precision + recall)
-                f1_scores.append(f1)
-                prec_scores.append(precision)
-                recall_scores.append(recall)
-    return (
-        np.mean(np.array(prec_scores)),
-        np.mean(np.array(recall_scores)),
-        np.mean(np.array(f1_scores)),
-    )
 
 def squad_f1OLD(preds, labels):
     # scoring in tokenized space, so results to public leaderboard will vary

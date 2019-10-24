@@ -156,6 +156,7 @@ def create_samples_squad(dictionary, max_query_len, max_seq_len, doc_stride, n_s
     doc_tokens = dictionary["document_tokens"]
     doc_offsets = dictionary["document_offsets"]
     doc_text = dictionary["document_text"]
+    doc_start_of_word = dictionary["document_start_of_word"]
     samples = []
 
     # Calculate the number of tokens that can be reserved for the passage. This is calculated by considering
@@ -183,6 +184,7 @@ def create_samples_squad(dictionary, max_query_len, max_seq_len, doc_stride, n_s
         # passage_offsets will be relative to the start of the passage (i.e. they will start at 0)
         # TODO: Is passage offsets actually needed? At this point, maybe we only care about token level
         passage_offsets = doc_offsets[passage_start_t: passage_end_t]
+        passage_start_of_word = doc_start_of_word[passage_start_t: passage_end_t]
         passage_offsets = [x - passage_offsets[0] for x in passage_offsets]
         passage_tokens = doc_tokens[passage_start_t: passage_end_t]
         passage_text = dictionary["document_text"][passage_start_c: passage_end_c]
@@ -202,8 +204,10 @@ def create_samples_squad(dictionary, max_query_len, max_seq_len, doc_stride, n_s
         tokenized = {"passage_start_t": passage_start_t,
                      "passage_tokens": passage_tokens,
                      "passage_offsets": passage_offsets,
+                     "passage_start_of_word": passage_start_of_word,
                      "question_tokens": question_tokens,
                      "question_offsets": question_offsets,
+                     "question_start_of_word": dictionary["question_start_of_word"],
                      "answers": answers_tokenized}
         samples.append(Sample(id=passage_id,
                                clear_text=clear_text,

@@ -238,7 +238,7 @@ class Processor(ABC):
         }
 
     @abc.abstractmethod
-    def _file_to_dicts(self, file: str) -> [dict]:
+    def file_to_dicts(self, file: str) -> [dict]:
         raise NotImplementedError()
 
     @abc.abstractmethod
@@ -719,7 +719,7 @@ class SquadProcessor(Processor):
         if metric and labels:
             self.add_task("question_answering", metric, labels)
 
-    def dataset_from_dicts(self, dicts, index=None, from_inference=False):
+    def dataset_from_dicts(self, dicts, index=None, from_inference=False, return_baskets=False):
         """ Overwrites the method from the base class since Question Answering processing is quite different.
         This method allows for documents and questions to be tokenized earlier. Then SampleBaskets are initialized
         with one document and one question. """
@@ -731,8 +731,14 @@ class SquadProcessor(Processor):
         self._featurize_samples()
         if index == 0:
             self._log_samples(3)
-        dataset, tensor_names = self._create_dataset()
-        return dataset, tensor_names
+        # This mode is for inference where we need to keep baskets
+        if return_baskets:
+            dataset, tensor_names = self._create_dataset(keep_baskets=True)
+            return dataset, tensor_names, self.baskets
+        # This mode is for training where we can free ram by removing baskets
+        else:
+            dataset, tensor_names = self._create_dataset(keep_baskets=False)
+            return dataset, tensor_names
 
     def _dicts_to_baskets(self, dicts):
         # Perform tokenization on documents and questions resulting in a nested list of doc-question pairs
@@ -754,6 +760,7 @@ class SquadProcessor(Processor):
         document_tokenized = tokenize_with_metadata(document_text, self.tokenizer, max_seq_len=None)
         questions = dictionary["qas"]
         for question in questions:
+            squad_id = question["id"]
             question_text = question["question"]
             question_tokenized = tokenize_with_metadata(question_text, self.tokenizer, max_seq_len=None)
             answers = []
@@ -770,7 +777,8 @@ class SquadProcessor(Processor):
                    "question_offsets": question_tokenized["offsets"],
                    "question_start_of_word": question_tokenized["start_of_word"],
                    "answers": answers,
-                   "is_impossible": question["is_impossible"]}
+                   "is_impossible": question["is_impossible"],
+                   "squad_id": squad_id}
             raw_baskets.append(raw)
         return raw_baskets
 
@@ -790,7 +798,7 @@ class SquadProcessor(Processor):
         ]
         return converted
 
-    def _file_to_dicts(self, file: str) -> [dict]:
+    def file_to_dicts(self, file: str) -> [dict]:
         nested_dicts = read_squad_file(filename=file)
         dicts = [y for x in nested_dicts for y in x["paragraphs"]]
         return dicts

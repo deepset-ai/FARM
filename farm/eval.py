@@ -70,12 +70,8 @@ class Evaluator:
             with torch.no_grad():
 
                 logits = model.forward(**batch)
-                # TODO logits_to_loss should be a single, overloaded function
                 losses_per_head = model.logits_to_loss_per_head(logits=logits, **batch)
-                preds = model.logits_to_preds(
-                    logits=logits, **batch
-                )
-
+                preds = model.logits_to_preds(logits=logits, **batch)
                 labels = model.prepare_labels(**batch)
 
             # stack results of all batches per prediction head

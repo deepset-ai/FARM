@@ -337,9 +337,11 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
     # Initialize some basic variables
     is_impossible = sample.clear_text["is_impossible"]
     question_tokens = sample.tokenized["question_tokens"]
+    question_start_of_word = sample.tokenized["question_start_of_word"]
     question_len_t = len(question_tokens)
     passage_start_t = sample.tokenized["passage_start_t"]
     passage_tokens = sample.tokenized["passage_tokens"]
+    passage_start_of_word = sample.tokenized["passage_start_of_word"]
     passage_len_t = len(passage_tokens)
     answers = sample.tokenized["answers"]
 
@@ -355,6 +357,11 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
                              question_len_t,
                              tokenizer,
                              max_answers)
+
+    # Generate a start of word vector for the full sequence (i.e. question + answer + special tokens).
+    # This will allow us to perform evaluation during training without clear text.
+    # Note that in the current implementation, special tokens do not count as start of word.
+    start_of_word = combine_vecs(question_start_of_word, passage_start_of_word, tokenizer)
 
     # Combines question_tokens and passage_tokens (str) into a single encoded vector of token indices (int)
     # called input_ids. This encoded vector also contains special tokens (e.g. [CLS]). It will have length =
@@ -379,6 +386,7 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
     input_ids += padding
     padding_mask += padding
     segment_ids += padding
+    start_of_word += padding
 
     # Todo: explain how only the first of labels will be used in train, and the full array will be used in eval
     feature_dict = {"input_ids": input_ids,
@@ -387,7 +395,8 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
                     "is_impossible": is_impossible,
                     "id": sample_id,
                     "labels": labels,
-                    "passage_start_t": passage_start_t}
+                    "passage_start_t": passage_start_t,
+                    "start_of_word": start_of_word}
     return [feature_dict]
 
 
@@ -425,10 +434,10 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
 
         # Combine the sections of the label vectors. The length of each of these will be:
         # question_len_t + passage_len_t + n_special_tokens
-        start_vec = combine_label_vecs(start_vec_question,
+        start_vec = combine_vecs(start_vec_question,
                                        start_vec_passage,
                                        tokenizer)
-        end_vec = combine_label_vecs(end_vec_question,
+        end_vec = combine_vecs(end_vec_question,
                                      end_vec_passage,
                                      tokenizer)
 
@@ -451,13 +460,8 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
     return label_idxs
 
 
-
-
-
-
-
-def combine_label_vecs(question_label_vec, passage_label_vec, tokenizer):
-    """ Combine the question_label_vec and passage_label_vec. Will add slots in
+def combine_vecs(question_vec, passage_vec, tokenizer):
+    """ Combine a question_vec and passage_vec in a style that is appropriate to the model. Will add slots in
     the returned vector for special tokens like [CLS]."""
 
     # The method of combining the vectors does not work if any of the special tokens have an index of 1
@@ -465,8 +469,8 @@ def combine_label_vecs(question_label_vec, passage_label_vec, tokenizer):
     assert 1 not in special_token_ids
 
     # Join question_label_vec and passage_label_vec and add slots for special tokens
-    vec = tokenizer.build_inputs_with_special_tokens(token_ids_0=question_label_vec,
-                                                     token_ids_1=passage_label_vec)
+    vec = tokenizer.build_inputs_with_special_tokens(token_ids_0=question_vec,
+                                                     token_ids_1=passage_vec)
 
     # Turn special token indices into 0s for the purpose of creating the label vector
     vec = [0 if x != 1 else x for x in vec]
