@@ -49,7 +49,7 @@ class LanguageModel(nn.Module):
         super().__init_subclass__(**kwargs)
         cls.subclasses[cls.__name__] = cls
 
-    def forward(self):
+    def forward(self, input_ids, padding_mask, **kwargs):
         raise NotImplementedError
 
     @classmethod
@@ -190,6 +190,7 @@ class LanguageModel(nn.Module):
         return preds
 
     def _pool_tokens(self, sequence_output, padding_mask, strategy, ignore_first_token):
+
         token_vecs = sequence_output.cpu().numpy()
         # we only take the aggregated value of non-padding tokens
         padding_mask = padding_mask.cpu().numpy()
