@@ -768,7 +768,9 @@ class QuestionAnsweringHead(PredictionHead):
         start_position = labels[:, 0, 0]
         end_position = labels[:, 0, 1]
 
-        (start_logits, end_logits) = logits
+        start_logits, end_logits = logits.split(1, dim=-1)
+        start_logits = start_logits.squeeze(-1)
+        end_logits = end_logits.squeeze(-1)
 
         if len(start_position.size()) > 1:
             start_position = start_position.squeeze(-1)
@@ -853,18 +855,23 @@ class QuestionAnsweringHead(PredictionHead):
                 pred_str = self.span_to_string(start_t, end_t, token_offsets, clear_text)
                 doc_preds_str.append(pred_str)
             ret[squad_id] = doc_preds_str[0]
-        print(ret)
+        return ret
 
 
     @staticmethod
     def span_to_string(start_t, end_t, token_offsets, clear_text):
         if start_t == 0 and end_t == 0:
             return ""
+        #TODO there was a buy where start_t and end_t were 164 but len(token_offsets) was 163. This min is a very hacky quick fix. Need to investigate problem
+        n_tokens = len(token_offsets)
+        start_t = min(start_t, n_tokens-1)
+        end_t = min(end_t + 1, n_tokens)
         start_ch = token_offsets[start_t]
-        try:
-            end_ch = token_offsets[end_t + 1]
-        except IndexError:
+        # i.e. pointing at the END of the last token
+        if end_t == n_tokens:
             end_ch = len(clear_text)
+        else:
+            end_ch = token_offsets[end_t]
         return clear_text[start_ch: end_ch + 1]
 
     def get_top_candidates(self, sorted_candidates,

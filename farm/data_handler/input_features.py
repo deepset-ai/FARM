@@ -394,9 +394,9 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
                     "segment_ids": segment_ids,
                     "is_impossible": is_impossible,
                     "id": sample_id,
-                    "labels": labels,
                     "passage_start_t": passage_start_t,
-                    "start_of_word": start_of_word}
+                    "start_of_word": start_of_word,
+                    "labels": labels}
     return [feature_dict]
 
 
@@ -435,11 +435,11 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
         # Combine the sections of the label vectors. The length of each of these will be:
         # question_len_t + passage_len_t + n_special_tokens
         start_vec = combine_vecs(start_vec_question,
-                                       start_vec_passage,
-                                       tokenizer)
+                                 start_vec_passage,
+                                 tokenizer)
         end_vec = combine_vecs(end_vec_question,
-                                     end_vec_passage,
-                                     tokenizer)
+                               end_vec_passage,
+                               tokenizer)
 
         start_label_present = 1 in start_vec
         end_label_present = 1 in end_vec

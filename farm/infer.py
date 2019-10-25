@@ -187,7 +187,13 @@ class Inferencer:
             preds_all = []
             with tqdm(total=len(dicts), unit=" Dicts") as pbar:
                 for dataset, tensor_names, baskets in results:
-                    preds_all.extend(self._run_inference(dataset, tensor_names, baskets))
+                    formatted_preds = self._run_inference(dataset, tensor_names, baskets)
+                    if type(formatted_preds) == dict:
+                        if type(preds_all) != dict:
+                            preds_all = {}
+                        preds_all.update(formatted_preds)
+                    else:
+                        preds_all.extend(formatted_preds)
                     pbar.update(multiprocessing_chunk_size)
 
         return preds_all
@@ -228,7 +234,7 @@ class Inferencer:
         if aggregate_preds:
             # can assume that we have only complete docs i.e. all the samples of one doc are in the current chunk
             # TODO is there a better way than having to wrap logits all in list?
-            preds_all = self.model.formatted_preds(logits=[logits_all], baskets=baskets)
+            preds_all = self.model.formatted_preds(logits=[logits_all], baskets=baskets)[0]
         return preds_all
 
     def extract_vectors(self, dicts, extraction_strategy="cls_token", extraction_layer=-1):
