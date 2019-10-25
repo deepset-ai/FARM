@@ -110,10 +110,10 @@ class Inferencer:
         :type batch_size: int
         :param gpu: If GPU shall be used
         :type gpu: bool
-        :param embedder_only: If true, a faster processor (InferenceProcessor) is loaded. This should only be used
-        for extracting embeddings (no downstream predictions).
+        :param embedder_only: If true, a faster processor (InferenceProcessor) is loaded. This should only be used for extracting embeddings (no downstream predictions).
         :type embedder_only: bool
         :return: An instance of the Inferencer.
+
         """
 
         device, n_gpu = initialize_device_settings(use_cuda=gpu, local_rank=-1, fp16=False)
