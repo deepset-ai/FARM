@@ -6,9 +6,9 @@ from farm.data_handler.processor import RegressionProcessor
 from farm.modeling.optimization import initialize_optimizer
 from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
-from farm.modeling.language_model import Bert
+from farm.modeling.language_model import LanguageModel
 from farm.modeling.prediction_head import RegressionHead
-from farm.modeling.tokenization import BertTokenizer
+from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer
 from farm.utils import set_all_seeds, initialize_device_settings
 
@@ -22,7 +22,7 @@ def test_doc_regression(caplog):
     evaluate_every = 2
     lang_model = "bert-base-cased"
 
-    tokenizer = BertTokenizer.from_pretrained(
+    tokenizer = Tokenizer.load(
         pretrained_model_name_or_path=lang_model,
         do_lower_case=False)
 
@@ -38,7 +38,7 @@ def test_doc_regression(caplog):
         processor=processor,
         batch_size=batch_size)
 
-    language_model = Bert.load(lang_model)
+    language_model = LanguageModel.load(lang_model)
     prediction_head = RegressionHead(layer_dims=[768, 1])
     model = AdaptiveModel(
         language_model=language_model,

@@ -1,6 +1,6 @@
 import logging
 from farm.data_handler.processor import TextClassificationProcessor
-from farm.modeling.tokenization import BertTokenizer
+from farm.modeling.tokenization import Tokenizer
 from farm.utils import set_all_seeds
 import torch
 
@@ -9,8 +9,8 @@ def test_processor_saving_loading(caplog):
     set_all_seeds(seed=42)
     lang_model = "bert-base-cased"
 
-    tokenizer = BertTokenizer.from_pretrained(
-        pretrained_model_name_or_path=lang_model, do_lower_case=False, never_split_chars=["-", "_"]
+    tokenizer = Tokenizer.load(
+        pretrained_model_name_or_path=lang_model, do_lower_case=False
     )
 
     processor = TextClassificationProcessor(tokenizer=tokenizer,
