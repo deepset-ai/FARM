@@ -140,7 +140,7 @@ class Inferencer:
         preds_all = self.inference_from_dicts(dicts, rest_api_schema=False)
         return preds_all
 
-    def inference_from_dicts(self, dicts, rest_api_schema=False):
+    def inference_from_dicts(self, dicts, rest_api_schema=False, use_multiprocessing=True):
         """
         Runs down-stream inference using the prediction head.
 
@@ -149,6 +149,8 @@ class Inferencer:
         :param rest_api_schema: whether conform to the schema used for dicts in the HTTP API for Inference.
         :type rest_api_schema: bool
         :return: dict of predictions
+        :param use_multiprocessing: time incurred in spawning processes could outweigh performance boost for very small
+        number of dicts, eg, HTTP APIs for inference. This flags allows to disable multiprocessing for such cases.
 
         """
         if self.prediction_type == "embedder":
@@ -170,25 +172,31 @@ class Inferencer:
         dict_batches_to_process = int(len(dicts) / multiprocessing_chunk_size)
         num_cpus_used = min(mp.cpu_count(), dict_batches_to_process) or 1
 
-        with ExitStack() as stack:
-            p = stack.enter_context(mp.Pool(processes=num_cpus_used))
+        if use_multiprocessing:
+            with ExitStack() as stack:
+                p = stack.enter_context(mp.Pool(processes=num_cpus_used))
 
-            logger.info(
-                f"Got ya {num_cpus_used} parallel workers to do inference on {len(dicts)}dicts (chunksize = {multiprocessing_chunk_size})..."
-            )
-            log_ascii_workers(num_cpus_used, logger)
+                logger.info(
+                    f"Got ya {num_cpus_used} parallel workers to do inference on {len(dicts)}dicts (chunksize = {multiprocessing_chunk_size})..."
+                )
+                log_ascii_workers(num_cpus_used, logger)
 
-            results = p.imap(
-                partial(self._multiproc, processor=self.processor, rest_api_schema=rest_api_schema),
-                grouper(dicts, multiprocessing_chunk_size),
-                1,
-            )
+                results = p.imap(
+                    partial(self._multiproc, processor=self.processor, rest_api_schema=rest_api_schema),
+                    grouper(dicts, multiprocessing_chunk_size),
+                    1,
+                )
 
-            preds_all = []
-            with tqdm(total=len(dicts), unit=" Dicts") as pbar:
-                for dataset, tensor_names, sample in results:
-                    preds_all.extend(self._run_inference(dataset, tensor_names, sample))
-                    pbar.update(multiprocessing_chunk_size)
+                preds_all = []
+                with tqdm(total=len(dicts), unit=" Dicts") as pbar:
+                    for dataset, tensor_names, sample in results:
+                        preds_all.extend(self._run_inference(dataset, tensor_names, sample))
+                        pbar.update(multiprocessing_chunk_size)
+
+        else:
+            chunk = next(grouper(dicts, len(dicts)))
+            dataset, tensor_names, sample = self._multiproc(chunk, processor=self.processor, rest_api_schema=rest_api_schema)
+            preds_all = self._run_inference(dataset, tensor_names, sample)
 
         return preds_all
 
