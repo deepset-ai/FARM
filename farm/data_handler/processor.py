@@ -806,17 +806,12 @@ class SquadProcessor(Processor):
         return dicts
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
-        # if "paragraphs" not in dictionary:  # TODO change this inference mode hack
-        #     dictionary = self._convert_inference(infer_dict=dictionary)
-
         n_special_tokens = self.tokenizer.num_added_tokens(pair=True)
-
         samples = create_samples_squad(dictionary=dictionary,
                                        max_query_len=self.max_query_length,
                                        max_seq_len=self.max_seq_len,
                                        doc_stride=self.doc_stride,
                                        n_special_tokens=n_special_tokens)
-
         return samples
 
     def _sample_to_features(self, sample) -> dict:

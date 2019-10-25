@@ -338,10 +338,12 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
     is_impossible = sample.clear_text["is_impossible"]
     question_tokens = sample.tokenized["question_tokens"]
     question_start_of_word = sample.tokenized["question_start_of_word"]
+    question_offsets = sample.tokenized["question_offsets"]
     question_len_t = len(question_tokens)
     passage_start_t = sample.tokenized["passage_start_t"]
     passage_tokens = sample.tokenized["passage_tokens"]
     passage_start_of_word = sample.tokenized["passage_start_of_word"]
+    passage_offsets = sample.tokenized["passage_offsets"]
     passage_len_t = len(passage_tokens)
     answers = sample.tokenized["answers"]
 
@@ -361,7 +363,12 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
     # Generate a start of word vector for the full sequence (i.e. question + answer + special tokens).
     # This will allow us to perform evaluation during training without clear text.
     # Note that in the current implementation, special tokens do not count as start of word.
-    start_of_word = combine_vecs(question_start_of_word, passage_start_of_word, tokenizer)
+    start_of_word = combine_vecs(question_start_of_word, passage_start_of_word, tokenizer, spec_tok_val=0)
+    offsets = combine_vecs(question_offsets, passage_offsets, tokenizer, spec_tok_val=-1)
+
+    # TODO seq_2_start_t is the index of the first token in the second text sequence (e.g. passage)
+    # TODO currently hard coded and hacky - needs to change
+    seq_2_start_t = question_len_t + 2
 
     # Combines question_tokens and passage_tokens (str) into a single encoded vector of token indices (int)
     # called input_ids. This encoded vector also contains special tokens (e.g. [CLS]). It will have length =
@@ -387,8 +394,12 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
     padding_mask += padding
     segment_ids += padding
     start_of_word += padding
+    offsets += padding
 
     # Todo: explain how only the first of labels will be used in train, and the full array will be used in eval
+    # TODO Offset, start of word and spec_tok_mask are not actually needed by model.forward() but are needed for model.formatted_preds()
+    # TODO passage_start_t is index of passage's first token  relative to document
+    # I don't think we actually need offsets or start of word anymore
     feature_dict = {"input_ids": input_ids,
                     "padding_mask": padding_mask,
                     "segment_ids": segment_ids,
@@ -396,7 +407,9 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
                     "id": sample_id,
                     "passage_start_t": passage_start_t,
                     "start_of_word": start_of_word,
-                    "labels": labels}
+                    "offsets": offsets,
+                    "labels": labels,
+                    "seq_2_start_t": seq_2_start_t}
     return [feature_dict]
 
 
@@ -435,11 +448,13 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
         # Combine the sections of the label vectors. The length of each of these will be:
         # question_len_t + passage_len_t + n_special_tokens
         start_vec = combine_vecs(start_vec_question,
-                                 start_vec_passage,
-                                 tokenizer)
+                                    start_vec_passage,
+                                    tokenizer,
+                                    spec_tok_val=0)
         end_vec = combine_vecs(end_vec_question,
-                               end_vec_passage,
-                               tokenizer)
+                                  end_vec_passage,
+                                  tokenizer,
+                                  spec_tok_val=0)
 
         start_label_present = 1 in start_vec
         end_label_present = 1 in end_vec
@@ -460,22 +475,20 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
     return label_idxs
 
 
-def combine_vecs(question_vec, passage_vec, tokenizer):
+def combine_vecs(question_vec, passage_vec, tokenizer, spec_tok_val=-1):
     """ Combine a question_vec and passage_vec in a style that is appropriate to the model. Will add slots in
-    the returned vector for special tokens like [CLS]."""
-
-    # The method of combining the vectors does not work if any of the special tokens have an index of 1
-    special_token_ids = tokenizer.all_special_ids
-    assert 1 not in special_token_ids
+    the returned vector for special tokens like [CLS] where the value is determine by spec_tok_val."""
 
     # Join question_label_vec and passage_label_vec and add slots for special tokens
     vec = tokenizer.build_inputs_with_special_tokens(token_ids_0=question_vec,
                                                      token_ids_1=passage_vec)
+    spec_toks_mask = tokenizer.get_special_tokens_mask(token_ids_0=question_vec,
+                                                       token_ids_1=passage_vec)
 
-    # Turn special token indices into 0s for the purpose of creating the label vector
-    vec = [0 if x != 1 else x for x in vec]
-    return vec
+    # If a value in vec corresponds to a special token, it will be replaced with spec_tok_val
+    combined = [v if not special_token else spec_tok_val for v, special_token in zip(vec, spec_toks_mask)]
 
+    return combined
 
 def answer_in_passage(start_idx, end_idx, passage_len):
     if passage_len > start_idx > 0 and passage_len > end_idx > 0:

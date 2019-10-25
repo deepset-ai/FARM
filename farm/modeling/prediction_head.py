@@ -838,12 +838,13 @@ class QuestionAnsweringHead(PredictionHead):
         # TODO assumes no incomplete docs
         samples = [s for b in baskets for s in b.samples]
         passage_start_t = [s.features[0]["passage_start_t"] for s in samples]
+        seq_2_start_t = [s.features[0]["seq_2_start_t"] for s in samples]
         ids = [s.id.split("-") for s in samples]
         logits = torch.stack(logits)
         padding_mask = torch.tensor([s.features[0]["padding_mask"] for s in samples], dtype=torch.long)
         start_of_word = torch.tensor([s.features[0]["start_of_word"] for s in samples], dtype=torch.long)
         preds_p = self.logits_to_preds(logits, padding_mask, start_of_word)
-        preds_d = self.aggregate_preds(preds_p, passage_start_t, ids)
+        preds_d = self.aggregate_preds(preds_p, passage_start_t, ids, seq_2_start_t)
         assert len(preds_d) == len(baskets)
         ret = {}
         for doc_idx, doc_preds in enumerate(preds_d):
@@ -872,7 +873,7 @@ class QuestionAnsweringHead(PredictionHead):
             end_ch = len(clear_text)
         else:
             end_ch = token_offsets[end_t]
-        return clear_text[start_ch: end_ch + 1]
+        return clear_text[start_ch: end_ch]
 
     def get_top_candidates(self, sorted_candidates,
                            start_end_matrix, start_logits,
@@ -952,7 +953,7 @@ class QuestionAnsweringHead(PredictionHead):
         #         labels_w[i, j, 1] = self.token_to_word_idx(end, start_of_word[i])
         return labels
 
-    def aggregate_preds(self, preds, passage_start_t, ids, labels=None, n_best=5):
+    def aggregate_preds(self, preds, passage_start_t, ids, seq_2_start_t=None, labels=None, n_best=5):
         # adjust offsets
         # group by id
         # identify top 5 per group
@@ -966,8 +967,14 @@ class QuestionAnsweringHead(PredictionHead):
         all_basket_labels = {}
         for sample_idx in range(n_samples):
             document_id, question_id, _ = ids[sample_idx]
+            # TODO this should change to squad id
             basket_id = f"{document_id}-{question_id}"
             curr_passage_start_t = passage_start_t[sample_idx]
+            # TODO this is to account for the fact that all model input sequences start with some special tokens
+            # TODO and also the question tokens before passage tokens
+            if seq_2_start_t:
+                cur_seq_2_start_t = seq_2_start_t[sample_idx]
+                curr_passage_start_t -= cur_seq_2_start_t
             pred_d = self.pred_to_doc_idxs(preds[sample_idx], curr_passage_start_t)
             if labels:
                 label_d = self.label_to_doc_idxs(labels[sample_idx], curr_passage_start_t)
