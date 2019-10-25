@@ -50,12 +50,16 @@ class Sample(object):
         self.tokenized = tokenized
 
     def __str__(self):
+
         if self.clear_text:
             clear_text_str = "\n \t".join(
                 [k + ": " + str(v) for k, v in self.clear_text.items()]
             )
+            if len(clear_text_str) > 100000:
+                clear_text_str = "too long to display"
         else:
             clear_text_str = "None"
+
         if self.features:
             if isinstance(self.features, list):
                 features = self.features[0]
@@ -69,6 +73,8 @@ class Sample(object):
             tokenized_str = "\n \t".join(
                 [k + ": " + str(v) for k, v in self.tokenized.items()]
             )
+            if len(tokenized_str) > 100000:
+                tokenized_str = "too long to display"
         else:
             tokenized_str = "None"
         s = (

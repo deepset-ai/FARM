@@ -4,7 +4,7 @@ import logging
 import os
 import numpy as np
 import pandas as pd
-from scipy.special import expit
+from scipy.special import expit, softmax
 
 import torch
 from transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN, BertForQuestionAnswering
@@ -733,7 +733,9 @@ class QuestionAnsweringHead(PredictionHead):
         )  # predicts start and end token of answer
         self.task_name = task_name
         self.max_ans_len = 1000 # disabling max ans len. Impact on squad performance seems minor
-        self.no_answer_weight = 1 # how much we want to upweight no answer scores compared to producing text answers
+        # disabling no answer for now
+        # TODO find right balance for creating no answer predictions
+        self.no_answer_weight = 0 # how much we want to upweight no answer scores compared to producing text answers
         self.generate_config()
 
     def forward(self, X):
@@ -794,19 +796,23 @@ class QuestionAnsweringHead(PredictionHead):
         :return: (start_idx, end_idx), start and end indices for all samples in batch
         :rtype: (torch.tensor,torch.tensor)
         """
+
+        # cast data into useful types/shapes
         (start_logits, end_logits) = logits
         start_logits = start_logits.cpu().numpy()
         end_logits = end_logits.cpu().numpy()
         num_per_batch = start_logits.shape[0]
+        segment_ids = kwargs['segment_ids'].data.cpu().numpy()
+        sample_ids = kwargs["sample_id"].cpu().numpy()
+
 
         no_answer_sum = start_logits[:,0] + end_logits[:,0]
         best_answer_sum = np.zeros(num_per_batch)
         # check if start or end point to the context. Context starts at segment id == 1  (question comes before at segment ids == 0)
-        segment_ids = kwargs['segment_ids'].data.cpu().numpy()
         context_start = np.argmax(segment_ids,axis=1)
         context_end = segment_ids.shape[1] - np.argmax(segment_ids[::-1],axis=1)
-        start_proposals = self._get_best_indexes(start_logits, 3)
-        end_proposals = self._get_best_indexes(end_logits, 3)
+        start_proposals = self._get_best_textanswer_indices(start_logits, 3)
+        end_proposals = self._get_best_textanswer_indices(end_logits, 3)
         best_indices = np.zeros((num_per_batch,2),dtype=int)
         for i_batch in range(num_per_batch):
             # for each sample create mesh of possible start + end combinations and their score as sum of logits
@@ -833,20 +839,18 @@ class QuestionAnsweringHead(PredictionHead):
                 best_answer_sum[i_batch] = scores[idx]
                 break # since we take most likely predictions first, we stop when finding a valid prediction
 
-        # For each predicted text answer, we want to check weather this question is a "trick question" where the answer
-        # makes kind of sense but is still wrong. These are the is_impossible questions in Squad v2
-        # So for each predicted text answer, we need
-
-
-        idx_no_answer = no_answer_sum * self.no_answer_weight >= best_answer_sum # TODO upweight no answers here?
+        # For each predicted text answer, we want to check weather this question could also be unanswerable with
+        # the given passage
+        # we need to compare the text answer logits with no-answer logits (at position 0)
+        idx_no_answer = no_answer_sum * self.no_answer_weight >= best_answer_sum
         best_indices[idx_no_answer,:] = 0
-        probabilities = np.zeros(num_per_batch)
-        for i_batch in range(num_per_batch):
-            # huggingface takes the softmax of sum of both logits for their n best predictions.
-            # Since we have only one prediction for now, it makes sense to take the mean of both start + end probs
-            probabilities[i_batch] = (expit(start_logits[i_batch, best_indices[i_batch, 0]]) +
-                                      expit(end_logits[i_batch, best_indices[i_batch, 1]])) / 2
-        return (best_indices[:,0], best_indices[:,1], probabilities, kwargs["sample_id"].cpu().numpy())
+
+        start_probs = softmax(start_logits, axis=1)
+        end_probs = softmax(end_logits, axis=1)
+        probabilities = (start_probs[range(best_indices.shape[0]), np.squeeze(best_indices[:, 0])] +
+                         end_probs[range(best_indices.shape[0]), np.squeeze(best_indices[:, 1])]) / 2
+
+        return (best_indices[:, 0], best_indices[:, 1], probabilities, sample_ids)
 
     def prepare_labels(self, start_position, end_position, **kwargs):
         """
@@ -882,7 +886,7 @@ class QuestionAnsweringHead(PredictionHead):
         all_passage_shifts = torch.cat([x.view(1) for x in all_passage_shifts]).cpu().numpy()
         # we want first occurence. torch argmax gives last occurence, so we need to convert to numpy
         all_question_shifts = [np.argmax(x.cpu().numpy() > 0) for x in all_segment_ids]
-        all_preds_passage_aggregated = self._aggregate_passages(preds, all_passage_shifts, all_question_shifts, 5)
+        all_preds_passage_aggregated = self._aggregate_passages(preds, all_passage_shifts, all_question_shifts, 3)
 
         result = {}
         result["task"] = "qa"
@@ -932,17 +936,6 @@ class QuestionAnsweringHead(PredictionHead):
                     passage_pred["prediction"] = answer
                     passage_predictions.append(passage_pred)
 
-                #filter passage predictions pointing to the same answer (we always have text overlap between passages)
-                if(len(passage_predictions)>1):
-                    remove_p_id = set()
-                    for duo in itertools.combinations(passage_predictions,2):
-                        if( (duo[0]["start"] == duo[1]["start"]) and (duo[0]["prediction"] == duo[1]["prediction"])):
-                            remove_p_id.add(duo[1]["passage_id"])
-                    if(len(remove_p_id) > 0):
-                        for remove_idx in sorted(list(remove_p_id),reverse=True):
-                            del passage_predictions[remove_idx]
-
-
                 pred = {}
                 pred["question"] = current_sample.clear_text.question_text
                 pred["question_id"] = current_sample.clear_text.qas_id
@@ -954,7 +947,12 @@ class QuestionAnsweringHead(PredictionHead):
         result["predictions"] = all_preds
         return result
 
-    def _aggregate_passages(self, preds, all_passage_shifts, all_question_shifts, top_n_passages=None):
+    def _aggregate_passages(self, preds, all_passage_shifts, all_question_shifts, top_n_passages=1):
+        def create_answeridx_string(r):
+            start = r["pred_start"] + r["passage_shift"] - r["question_shift"]
+            end = r["pred_end"] + r["passage_shift"] - r["question_shift"]
+            return f"{start}-{end}"
+
         data = {}
         data["pred_start"] = np.concatenate([x[0] for x in preds])
         data["pred_end"] = np.concatenate([x[1] for x in preds])
@@ -963,6 +961,7 @@ class QuestionAnsweringHead(PredictionHead):
         data["passage_shift"] = all_passage_shifts
         data["question_shift"] = all_question_shifts
         df = pd.DataFrame(data=data)
+        df.loc[:,"answer_indices"] = df.apply(lambda row: create_answeridx_string(row), axis=1)
 
         # we sometimes have multiple predictions for one sample (= paragraph question pair)
         # because we split the paragraph into smaller passages
@@ -978,22 +977,28 @@ class QuestionAnsweringHead(PredictionHead):
             # We want the answer for passage no.3 without regarding the models output for the other passages.
             if np.sum(idx_text_answers) > 0:
                 group = group.loc[idx_text_answers,:]
-            if top_n_passages is None:
+            else:
+                logger.info(f"No text answer found in doc: {uid}")
+            if top_n_passages == 1:
                 max_pred = group.loc[group.prob == np.max(group.prob),:]
                 if (max_pred.shape[0] > 1):
-                    # just select one pred if multiple preds have the very same prob. Should rarely occur.
                     max_pred = max_pred.iloc[0, :]
-                    logger.info(f"Multiple predictions have the same probability of occuring. \n{max_pred.head()}")
+                    logger.info(f"Multiple predictions have the exact same probability of occuring: \n{max_pred.head()}")
             else:
                 assert isinstance(top_n_passages, int)
-                max_pred = group.sort_values(by="prob",ascending=False).iloc[:top_n_passages,:]
+                sorted_group = group.sort_values(by="prob",ascending=False)
+                filtered_group = sorted_group.drop_duplicates(keep="first", subset="answer_indices")
+                max_pred = filtered_group.iloc[:top_n_passages,:]
             max_per_sample.append(max_pred.values)
         return max_per_sample
 
 
-    def _get_best_indexes(self, logits, n_best_size):
-        """Get the n-best logits from a numpy array."""
-        idx = np.argsort(logits,axis=1)[:,-n_best_size:]
+    def _get_best_textanswer_indices(self, logits, n_best_size):
+        """Get the n-best logits from a numpy array without considering the zero index.
+        zero index corresponds to no answer, which we deal with separately"""
+        logits_without_zero = logits[:,1:]
+        idx_without_zero = np.argsort(logits_without_zero,axis=1)[:,-n_best_size:]
+        idx = idx_without_zero + 1
         return idx
 
 class SquadHead(QuestionAnsweringHead):

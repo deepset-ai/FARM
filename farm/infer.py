@@ -167,7 +167,7 @@ class Inferencer:
         # than 2, because we need it to sample another random sentence in LM finetuning
         # for large files we want to minimize processor spawning without giving too much data to one process, so we
         # clip it at 5k
-        multiprocessing_chunk_size = int(np.clip((np.ceil(dicts_per_cpu / 5)), a_min=2, a_max=5000))
+        multiprocessing_chunk_size = int(np.clip((np.ceil(dicts_per_cpu / 5)), a_min=4, a_max=5000))
         dict_batches_to_process = int(len(dicts) / multiprocessing_chunk_size)
         num_cpus_used = min(mp.cpu_count(), dict_batches_to_process) or 1
 
