@@ -31,7 +31,7 @@
   },
 
   "parameter": {
-    "model":            {"value": null, "default": "bert-base-cased",       "desc": "Bert pre-trained model selected in the list: bert-base-uncased,  bert-large-uncased,  bert-base-cased,  bert-large-cased,  bert-base-multilingual-uncased,  bert-base-multilingual-cased,  bert-base-chinese."},
+    "model":            {"value": null, "default":  "bert-base-cased",       "desc": "Bert pre-trained model selected in the list: bert-base-uncased,  bert-large-uncased,  bert-base-cased,  bert-large-cased,  bert-base-multilingual-uncased,  bert-base-multilingual-cased,  bert-base-chinese."},
     "prediction_head":  {"value": null, "default": "QuestionAnsweringHead", "desc": "Kind of prediction head we use on top of Language Model"},
     "lm_output_type":   {"value": null, "default": "per_token_squad",       "desc":  "Language Model output."},
     "lower_case":       {"value": null, "default": false,                   "desc": "Set to true if you are using an uncased model."},
