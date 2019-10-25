@@ -72,17 +72,19 @@ class DataSilo:
         dataset = processor.dataset_from_dicts(dicts=dicts, index=index)
         return dataset
 
-    def _get_dataset(self, filename=None, dicts=None):
+    def _get_dataset(self, filename, dicts=None):
         if not filename and not dicts:
             raise ValueError("You must either supply `filename` or `dicts`")
 
+        # loading dicts from file (default)
         if dicts is None:
             dicts = self.processor.file_to_dicts(filename)
-        #shuffle list of dicts here if we later want to have a random dev set splitted from train set
-        if self.processor.train_filename in filename:
-            if not self.processor.dev_filename:
-                if self.processor.dev_split > 0.0:
-                    random.shuffle(dicts)
+            #shuffle list of dicts here if we later want to have a random dev set splitted from train set
+            if self.processor.train_filename in filename:
+                if not self.processor.dev_filename:
+                    if self.processor.dev_split > 0.0:
+                        random.shuffle(dicts)
+
         num_dicts = len(dicts)
         multiprocessing_chunk_size, num_cpus_used = calc_chunksize(num_dicts)
 
