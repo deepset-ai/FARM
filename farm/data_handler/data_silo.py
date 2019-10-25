@@ -29,7 +29,7 @@ class DataSilo:
     calculate and display some statistics.
      """
 
-    def __init__(self, processor, batch_size, distributed=False):
+    def __init__(self, processor, batch_size, distributed=False, automatic_loading=True):
         """
         :param processor: A dataset specific Processor object which will turn input (file or dict) into a Pytorch Dataset.
         :type processor: Processor
@@ -37,6 +37,8 @@ class DataSilo:
         :type batch_size: int
         :param distributed: Set to True if the program is running in a distributed setting.
         :type distributed: bool
+        :param automatic_loading: Set to False, if you don't want to automatically load data at initialization.
+        :type automatic_loading: bool
 
         """
         self.distributed = distributed
@@ -45,17 +47,37 @@ class DataSilo:
         self.batch_size = batch_size
         self.class_weights = None
         self.max_processes = 128
-        self._load_data()
+        # In most cases we want to load all data automatically, but in some cases we rather want to do this later or
+        # load from dicts instead of file (https://github.com/deepset-ai/FARM/issues/85)
+        if automatic_loading:
+            self._load_data()
 
     @classmethod
     def _multiproc(cls, chunk, processor):
+        """
+        Creating a dataset for a chunk (= subset) of dicts. In multiprocessing:
+          * we read in all dicts from a file
+          * split all dicts into chunks
+          * feed *one chunk* to *one process*
+          => the *one chunk*  gets converted to *one dataset* (that's what we do here)
+          * all datasets get collected and concatenated
+        :param chunk: Instead of only having a list of dicts here we also supply an index (ascending int) for each.
+            => [(0, dict), (1, dict) ...]
+        :type chunk: list of tuples
+        :param processor: FARM Processor (e.g. TextClassificationProcessor)
+        :return: PyTorch Dataset
+        """
         dicts = [d[1] for d in chunk]
         index = chunk[0][0]
-        dataset = processor.dataset_from_dicts(dicts=dicts,index=index)
+        dataset = processor.dataset_from_dicts(dicts=dicts, index=index)
         return dataset
 
-    def _get_dataset(self, filename):
-        dicts = self.processor.file_to_dicts(filename)
+    def _get_dataset(self, filename=None, dicts=None):
+        if not filename and not dicts:
+            raise ValueError("You must either supply `filename` or `dicts`")
+
+        if dicts is None:
+            dicts = self.processor.file_to_dicts(filename)
         #shuffle list of dicts here if we later want to have a random dev set splitted from train set
         if self.processor.train_filename in filename:
             if not self.processor.dev_filename:
@@ -88,29 +110,55 @@ class DataSilo:
             concat_datasets = ConcatDataset(datasets)
             return concat_datasets, tensor_names
 
-    def _load_data(self):
+    def _load_data(self, train_dicts=None, dev_dicts=None, test_dicts=None):
+        """
+        Loading the train, dev and test datasets either from files (default) or from supplied dicts.
+        The processor is called to handle the full conversion from "raw data" to a Pytorch Dataset.
+        The resulting datasets are loaded into DataSilo.data
+
+        :param train_dicts: (Optional) dicts containing examples for training.
+        :param dev_dicts: (Optional) dicts containing examples for dev.
+        :param test_dicts: (Optional) dicts containing examples for test.
+        :return: None
+        """
         logger.info("\nLoading data into the data silo ..."
                     "{}".format(TRACTOR_SMALL))
         # train data
-        train_file = os.path.join(self.processor.data_dir, self.processor.train_filename)
-        logger.info("Loading train set from: {} ".format(train_file))
-        self.data["train"], self.tensor_names = self._get_dataset(train_file)
+        if train_dicts:
+            # either from supplied dicts
+            logger.info("Loading train set from supplied dicts ")
+            self.data["train"], self.tensor_names = self._get_dataset(filename=None, dicts=train_dicts)
+        else:
+            # or from a file (default)
+            train_file = os.path.join(self.processor.data_dir, self.processor.train_filename)
+            logger.info("Loading train set from: {} ".format(train_file))
+            self.data["train"], self.tensor_names = self._get_dataset(train_file)
 
         # dev data
-        if not self.processor.dev_filename:
-            if self.processor.dev_split > 0.0:
-                logger.info("Loading dev set as a slice of train set")
-                self._create_dev_from_train()
-            else:
-                logger.info("No dev set is being loaded")
-                self.data["dev"] = None
-        else:
+        if dev_dicts:
+            # either from supplied dicts
+            logger.info("Loading train set from supplied dicts ")
+            self.data["dev"], self.tensor_names = self._get_dataset(filename=None, dicts=dev_dicts)
+        elif self.processor.dev_filename:
+            # or from file (default)
             dev_file = os.path.join(self.processor.data_dir, self.processor.dev_filename)
             logger.info("Loading dev set from: {}".format(dev_file))
             self.data["dev"], _ = self._get_dataset(dev_file)
+        elif self.processor.dev_split > 0.0:
+            # or split it apart from train set
+            logger.info("Loading dev set as a slice of train set")
+            self._create_dev_from_train()
+        else:
+            logger.info("No dev set is being loaded")
+            self.data["dev"] = None
 
         # test data
-        if self.processor.test_filename:
+        if test_dicts:
+            # either from supplied dicts
+            logger.info("Loading train set from supplied dicts ")
+            self.data["test"], self.tensor_names = self._get_dataset(filename=None, dicts=test_dicts)
+        elif self.processor.test_filename:
+            # or from file (default)
             test_file = os.path.join(self.processor.data_dir, self.processor.test_filename)
             logger.info("Loading test set from: {}".format(test_file))
             self.data["test"], _ = self._get_dataset(test_file)
@@ -120,10 +168,12 @@ class DataSilo:
 
         # derive stats and meta data
         self._calculate_statistics()
-        #self.calculate_class_weights()
+        # self.calculate_class_weights()
         self._initialize_data_loaders()
 
     def _initialize_data_loaders(self):
+        """ Initializing train, dev and test data loaders for the already loaded datasets """
+
         if self.distributed:
             sampler_train = DistributedSampler(self.data["train"])
         else:
@@ -163,6 +213,7 @@ class DataSilo:
         }
 
     def _create_dev_from_train(self):
+        """ Split a dev set apart from the train dataset """
         n_dev = int(self.processor.dev_split * len(self.data["train"]))
         n_train = len(self.data["train"]) - n_dev
 
@@ -182,9 +233,10 @@ class DataSilo:
         Roughly split a Concatdataset into non-overlapping new datasets of given lengths.
         Samples inside Concatdataset should already be shuffled
 
-        Arguments:
-            ds (Dataset): Dataset to be split
-            lengths (sequence): lengths of splits to be produced
+        :param ds: Dataset to be split
+        :type ds: Dataset
+        :param lengths: lengths of splits to be produced
+        :type lengths: list
         """
         if sum(lengths) != len(ds):
             raise ValueError("Sum of input lengths does not equal the length of the input dataset!")
@@ -197,7 +249,9 @@ class DataSilo:
         test = ConcatDataset(ds.datasets[idx_dataset:])
         return train, test
 
-    def _calculate_statistics(self,):
+    def _calculate_statistics(self):
+        """ Calculate and log simple summary statistics of the datasets """
+
         self.counts = {
             "train": len(self.data["train"])
         }
@@ -246,6 +300,13 @@ class DataSilo:
         )
 
     def calculate_class_weights(self, task_name):
+        """ For imbalanced datasets, we can calculate class weights that can be used later in the
+        loss function of the prediction head to upweight the loss of minorities.
+
+        :param task_name: name of the task as used in the processor
+        :type task_name: str
+        """
+
         tensor_name = self.processor.tasks[task_name]["label_tensor_name"]
         label_list = self.processor.tasks[task_name]["label_list"]
         tensor_idx = list(self.tensor_names).index(tensor_name)
@@ -257,7 +318,6 @@ class DataSilo:
         #TODO scale e.g. via logarithm to avoid crazy spikes for rare classes
         class_weights = list(compute_class_weight("balanced", np.asarray(label_list), observed_labels))
         return class_weights
-
 
     def get_data_loader(self, dataset):
         return self.loaders[dataset]
