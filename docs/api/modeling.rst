@@ -16,7 +16,7 @@ Language Model
    :members:
    :undoc-members:
    :show-inheritance:
-   :exclude-members: subclasses
+   :exclude-members:
 
 Prediction Head
 ---------------

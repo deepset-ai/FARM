@@ -143,10 +143,9 @@ Much of the heavy lifting is then handled behind the scenes to make it fast & si
 
 Upcoming features
 ###################
-- More pretrained models roBERTa, XLNet  ...
 - Improved functionality for Question Answering Task
 - Additional visualizations and statistics to explore and debug your model
-- SOTA adaptation strategies (Adapter Modules, Discriminative Fine-tuning ...)
+- More pretrained models ALBERT, XLM  ...
 - Enabling large scale deployment for production
 
 Acknowledgements

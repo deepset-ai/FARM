@@ -70,22 +70,24 @@ class Tokenizer:
 def tokenize_with_metadata(text, tokenizer):
     """
     Performing tokenization while storing some important metadata for each token:
-      * offsets: (int) Character index where the token begins in the original text
-      * start_of_word: (bool) If the token is the start of a word. Particularly helpful for NER and QA tasks.
+
+    * offsets: (int) Character index where the token begins in the original text
+    * start_of_word: (bool) If the token is the start of a word. Particularly helpful for NER and QA tasks.
 
     We do this by first doing whitespace tokenization and then applying the model specific tokenizer to each "word".
 
-    Note:      We don't assume to preserve exact whitespaces in the tokens!
-               This means: \t, \n " " etc will all resolve to a single " ".
+    .. note::  We don't assume to preserve exact whitespaces in the tokens!
+               This means: tabs, new lines, multiple whitespace etc will all resolve to a single " ".
                This doesn't make a difference for BERT + XLNet but it does for RoBERTa.
                For RoBERTa it has the positive effect of a shorter sequence length, but some information about whitespace
-               type is lost which might be helpful for certain NLP tasks ( e.g \t for tables).
+               type is lost which might be helpful for certain NLP tasks ( e.g tab for tables).
 
     :param text: Text to tokenize
     :type text: str
     :param tokenizer: Tokenizer (e.g. from Tokenizer.load())
     :return: Dictionary with "tokens", "offsets" and "start_of_word"
     :rtype: dict
+
     """
 
     # split text into "words" (here: simple whitespace tokenizer)
@@ -115,6 +117,7 @@ def _words_to_tokens(words, word_offsets, tokenizer):
     :type word_offsets: list
     :param tokenizer: Tokenizer (e.g. from Tokenizer.load())
     :return: tokens, offsets, start_of_word
+
     """
     tokens = []
     token_offsets = []
@@ -162,6 +165,13 @@ def truncate_sequences(seq_a, seq_b, tokenizer, max_seq_len, truncation_strategy
     The sequences can contain tokens or any other elements (offsets, masks ...).
     If `with_special_tokens` is enabled, it'll remove some additional tokens to have exactly enough space for later adding special tokens (CLS, SEP etc.)
 
+    Supported truncation strategies:
+
+    - longest_first: (default) Iteratively reduce the inputs sequence until the input is under max_length starting from the longest one at each token (when there is a pair of input sequences). Overflowing tokens only contains overflow from the first sequence.
+    - only_first: Only truncate the first sequence. raise an error if the first sequence is shorter or equal to than num_tokens_to_remove.
+    - only_second: Only truncate the second sequence
+    - do_not_truncate: Does not truncate (raise an error if the input sequence is longer than max_length)
+
     :param seq_a: First sequence of tokens/offsets/...
     :type seq_a: list
     :param seq_b: Optional second sequence of tokens/offsets/...
@@ -169,19 +179,14 @@ def truncate_sequences(seq_a, seq_b, tokenizer, max_seq_len, truncation_strategy
     :param tokenizer: Tokenizer (e.g. from Tokenizer.load())
     :param max_seq_len:
     :type max_seq_len: int
-    :param truncation_strategy: one of the following options from the transformers library:
-                - 'longest_first' (default) Iteratively reduce the inputs sequence until the input is under max_length
-                    starting from the longest one at each token (when there is a pair of input sequences).
-                    Overflowing tokens only contains overflow from the first sequence.
-                - 'only_first': Only truncate the first sequence. raise an error if the first sequence is shorter or equal to than num_tokens_to_remove.
-                - 'only_second': Only truncate the second sequence
-                - 'do_not_truncate': Does not truncate (raise an error if the input sequence is longer than max_length)
-    :type str
+    :param truncation_strategy: how the sequence(s) should be truncated down. Default: "longest_first" (see above for other options).
+    :type truncation_strategy: str
     :param with_special_tokens: If true, it'll remove some additional tokens to have exactly enough space for later adding special tokens (CLS, SEP etc.)
     :type with_special_tokens: bool
     :param stride: optional stride of the window during truncation
     :type stride: int
     :return: truncated seq_a, truncated seq_b, overflowing tokens
+
     """
     pair = bool(seq_b is not None)
     len_a = len(seq_a)
@@ -204,19 +209,22 @@ def insert_at_special_tokens_pos(seq, special_tokens_mask, insert_element):
     This is useful for expanding label ids or masks, so that they align with corresponding tokens (incl. the special tokens)
 
     Example:
-        Tokens:  ["CLS", "some", "words","SEP"]
-        ```
-        special_tokens_mask =  [1,0,0,1]
-        lm_label_ids =  [12,200]
 
-        insert_at_special_tokens_pos(lm_label_ids, special_tokens_mask, insert_element=-1)
-        >>  [-1, 12, 200, -1]
-        ```
+    .. code-block:: python
 
-    :param seq:
-    :param special_tokens_mask:
-    :param insert_element:
-    :return:
+      # Tokens:  ["CLS", "some", "words","SEP"]
+      >>> special_tokens_mask =  [1,0,0,1]
+      >>> lm_label_ids =  [12,200]
+      >>> insert_at_special_tokens_pos(lm_label_ids, special_tokens_mask, insert_element=-1)
+      [-1, 12, 200, -1]
+
+    :param seq: List where you want to insert new elements
+    :type seq: list
+    :param special_tokens_mask: list with "1" for positions of special chars
+    :type special_tokens_mask: list
+    :param insert_element: the value you want to insert
+    :return: list
+
     """
     new_seq = seq.copy()
     special_tokens_indices = np.where(np.array(special_tokens_mask) == 1)[0]
