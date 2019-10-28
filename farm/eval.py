@@ -79,8 +79,13 @@ class Evaluator:
             # stack results of all batches per prediction head
             for head_num, head in enumerate(model.prediction_heads):
                 loss_all[head_num] += np.sum(to_numpy(losses_per_head[head_num]))
-                preds_all[head_num] += list(to_numpy(preds[head_num]))
-                label_all[head_num] += list(to_numpy(labels[head_num]))
+                if head.model_type == "span_classification":
+                    # TODO check why adaptive model doesnt pack preds into list of list of tuples
+                    preds_all[head_num] += preds
+                    label_all[head_num] += labels
+                else:
+                    preds_all[head_num] += list(to_numpy(preds[head_num]))
+                    label_all[head_num] += list(to_numpy(labels[head_num]))
 
 
         # Evaluate per prediction head
@@ -93,6 +98,9 @@ class Evaluator:
                 # TODO check why .fit() should be called on predictions, rather than on labels
                 preds_all[head_num] = mlb.fit_transform(preds_all[head_num])
                 label_all[head_num] = mlb.transform(label_all[head_num])
+            elif head.model_type == "span_classification":
+                temp = head._aggregate_passages(preds_all[head_num],top_n_passages=1)
+                preds_all[head_num] = temp
 
             result = {"loss": loss_all[head_num] / len(self.data_loader.dataset),
                       "task_name": head.task_name}

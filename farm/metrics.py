@@ -69,48 +69,24 @@ def compute_metrics(metric, preds, labels):
 
 def squad(preds=None, labels=None):
     # scoring in tokenized space, so results to public leaderboard will vary
-    data = {}
-    data["pred_start"] = np.concatenate(preds[::4])
-    data["pred_end"] = np.concatenate(preds[1::4])
-    data["prob"] = np.concatenate(preds[2::4])
-    data["sample_id"] = np.concatenate(preds[3::4])
-    data["label_start"] = torch.cat(labels[::2]).cpu().numpy()
-    data["label_end"] = torch.cat(labels[1::2]).cpu().numpy()
-    df = pd.DataFrame(data=data)
-
-    # we sometimes have multiple predictions for one sample (= paragraph question pair)
-    # because we split the paragraph into smaller passages
-    # we want to check weather this sample belongs to is_impossible (all 0 start + end labels for all passages)
-    # and compute metrics for the most likely prediction
-    unique_sample_ids = df.sample_id.unique()
     em_all = []
     f1_all = []
     precision_all = []
     recall_all = []
-    for uid in unique_sample_ids:
-        group = df.loc[df.sample_id == uid,:]
-        is_impossible = (np.sum(group.label_start) + np.sum(group.label_end)) == 0
-        max_pred = group.loc[group.prob == np.max(group.prob)]
-        if(max_pred.shape[0] > 1):
-            max_pred = max_pred.loc[0,:] # hack away and just take first pred. Should rarely occur.
-            logger.info(f"Multiple predictions having exactly the same probability value. "
-                        f"Something might be wrong at sample ids: {str(max_pred.sample_id.values)}")
-        if not is_impossible:
-            # cover special case: for a doc splitted into multiple passages, there is one passage with a text label
-            # but we have max_pred pointing to another passage that did not contain this answer (so the label for
-            # this passage is also "no_answer")
+    data = {}
+    data["sample_id"] = np.concatenate([x[0].cpu().numpy() for x in labels])
+    data["start_idx"] = np.concatenate([x[1].cpu().numpy() for x in labels])
+    data["end_idx"] = np.concatenate([x[2].cpu().numpy() for x in labels])
+    df = pd.DataFrame(data=data)
 
-            # TODO: add weighting of no answer predicitons vs answer predictions
-            if(max_pred.pred_start.values[0] + max_pred.pred_end.values[0] == 0):
-                em_all.append(0)
-                precision_all.append(0)
-                recall_all.append(0)
-                f1_all.append(0)
-                continue
-        em,p,r,f1 = compute_qa_f1(pred_start=max_pred.pred_start.values[0],
-                                 pred_end=max_pred.pred_end.values[0],
-                                 label_start= max_pred.label_start.values[0],
-                                 label_end= max_pred.label_end.values[0])
+    for max_pred in preds:
+        sampled_id = max_pred[0,3]
+        label_group = df.loc[df.sample_id == sampled_id, :]
+        label = label_group.loc[label_group.end_idx == np.max(label_group.end_idx), ["start_idx","end_idx"]].values
+        em,p,r,f1 = compute_qa_f1(pred_start=max_pred[0,0],
+                                  pred_end=max_pred[0,1],
+                                  label_start=label[0,0],
+                                  label_end=label[0,1])
         em_all.append(em)
         precision_all.append(p)
         recall_all.append(r)
@@ -144,3 +120,4 @@ def compute_qa_f1(pred_start, pred_end, label_start, label_end):
             recall = 1.0 * num_same / len(true_range)
             f1 = (2 * precision * recall) / (precision + recall)
     return em,precision, recall, f1
+

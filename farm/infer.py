@@ -18,6 +18,7 @@ from farm.data_handler.processor import Processor, InferenceProcessor
 from farm.utils import set_all_seeds
 from farm.utils import log_ascii_workers
 from farm.data_handler.utils import grouper
+from farm.data_handler.data_silo import MIN_CHUNKSIZE, MAX_CHUNKSIZE
 
 
 logger = logging.getLogger(__name__)
@@ -167,7 +168,7 @@ class Inferencer:
         # than 2, because we need it to sample another random sentence in LM finetuning
         # for large files we want to minimize processor spawning without giving too much data to one process, so we
         # clip it at 5k
-        multiprocessing_chunk_size = int(np.clip((np.ceil(dicts_per_cpu / 5)), a_min=4, a_max=5000))
+        multiprocessing_chunk_size = int(np.clip((np.ceil(dicts_per_cpu / 5)), a_min=MIN_CHUNKSIZE, a_max=MAX_CHUNKSIZE))
         dict_batches_to_process = int(len(dicts) / multiprocessing_chunk_size)
         num_cpus_used = min(mp.cpu_count(), dict_batches_to_process) or 1
 
@@ -224,7 +225,7 @@ class Inferencer:
                 logits = self.model.forward(**batch)
                 preds = self.model.formatted_preds(
                     logits=logits,
-                    samples=batch_samples,  # TODO batch_samples and logits are not aligned
+                    samples=batch_samples,
                     tokenizer=self.processor.tokenizer,
                     return_class_probs=self.return_class_probs,
                     **batch,
@@ -239,22 +240,17 @@ class Inferencer:
         )
 
         all_preds = []
-        all_segment_ids = []
-        all_passage_shifts = []
         for batch in tqdm(data_loader, desc=f"Inferencing"):
             batch = {key: batch[key].to(self.device) for key in batch}
             with torch.no_grad():
                 logits = self.model.forward(**batch)
                 preds = self.model.logits_to_preds(logits=logits, **batch)
                 all_preds += preds
-                all_segment_ids += list(batch["segment_ids"])
-                all_passage_shifts += list(batch["passage_shift"])
+
 
         preds_all = self.model.prediction_heads[0].formatted_preds(logits=None,
                                                                    preds=all_preds,
-                                                                   all_samples=all_samples,
-                                                                   all_segment_ids=all_segment_ids,
-                                                                   all_passage_shifts=all_passage_shifts)
+                                                                   all_samples=all_samples)
 
         return preds_all
 

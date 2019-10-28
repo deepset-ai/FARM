@@ -804,6 +804,9 @@ class QuestionAnsweringHead(PredictionHead):
         num_per_batch = start_logits.shape[0]
         segment_ids = kwargs['segment_ids'].data.cpu().numpy()
         sample_ids = kwargs["sample_id"].cpu().numpy()
+        passage_shifts = kwargs["passage_shift"].cpu().numpy()
+
+        question_shifts = np.argmax(segment_ids > 0,axis=1)
 
 
         no_answer_sum = start_logits[:,0] + end_logits[:,0]
@@ -850,7 +853,7 @@ class QuestionAnsweringHead(PredictionHead):
         probabilities = (start_probs[range(best_indices.shape[0]), np.squeeze(best_indices[:, 0])] +
                          end_probs[range(best_indices.shape[0]), np.squeeze(best_indices[:, 1])]) / 2
 
-        return (best_indices[:, 0], best_indices[:, 1], probabilities, sample_ids)
+        return (best_indices[:, 0], best_indices[:, 1], probabilities, sample_ids, question_shifts, passage_shifts)
 
     def prepare_labels(self, start_position, end_position, **kwargs):
         """
@@ -862,12 +865,12 @@ class QuestionAnsweringHead(PredictionHead):
         :type end_position: torch.tensor
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
-        :return: tuplefied positions
-        :rtype: tuple(torch.tensor,torch.tensor)
+        :return: tuplefied sample_id with corresponding positions
+        :rtype: tuple(torch.tensor, torch.tensor,torch.tensor)
         """
-        return (start_position, end_position)
+        return (kwargs["sample_id"], start_position, end_position)
 
-    def formatted_preds(self, logits, preds, all_samples, all_segment_ids, all_passage_shifts):
+    def formatted_preds(self, logits, preds, all_samples):
         """
         Format predictions into actual answer strings (substrings of context). Used for Inference!
 
@@ -883,10 +886,7 @@ class QuestionAnsweringHead(PredictionHead):
         :rtype: list(str)
         """
 
-        all_passage_shifts = torch.cat([x.view(1) for x in all_passage_shifts]).cpu().numpy()
-        # we want first occurence. torch argmax gives last occurence, so we need to convert to numpy
-        all_question_shifts = [np.argmax(x.cpu().numpy() > 0) for x in all_segment_ids]
-        all_preds_passage_aggregated = self._aggregate_passages(preds, all_passage_shifts, all_question_shifts, 3)
+        all_preds_passage_aggregated = self._aggregate_passages(preds=preds, top_n_passages= 3)
 
         result = {}
         result["task"] = "qa"
@@ -903,8 +903,6 @@ class QuestionAnsweringHead(PredictionHead):
 
                 passage_predictions = []
                 for i in range(current_pred.shape[0]):
-                    if(i>0):
-                        muh=1
                     passage_pred = {}
                     passage_pred["passage_id"] = i
                     s_i = current_pred[i,0]
@@ -912,7 +910,6 @@ class QuestionAnsweringHead(PredictionHead):
                     p_i = current_pred[i,2]
                     passage_shift_i = current_pred[i,4]
                     question_shift_i = current_pred[i,5]
-
 
                     # matching
                     passage_pred["probability"] = p_i
@@ -947,7 +944,7 @@ class QuestionAnsweringHead(PredictionHead):
         result["predictions"] = all_preds
         return result
 
-    def _aggregate_passages(self, preds, all_passage_shifts, all_question_shifts, top_n_passages=1):
+    def _aggregate_passages(self, preds, top_n_passages=1):
         def create_answeridx_string(r):
             start = r["pred_start"] + r["passage_shift"] - r["question_shift"]
             end = r["pred_end"] + r["passage_shift"] - r["question_shift"]
@@ -958,8 +955,8 @@ class QuestionAnsweringHead(PredictionHead):
         data["pred_end"] = np.concatenate([x[1] for x in preds])
         data["prob"] = np.concatenate([x[2] for x in preds])
         data["sample_id"] = np.concatenate([x[3] for x in preds])
-        data["passage_shift"] = all_passage_shifts
-        data["question_shift"] = all_question_shifts
+        data["question_shift"] = np.concatenate([x[4] for x in preds])
+        data["passage_shift"] = np.concatenate([x[5] for x in preds])
         df = pd.DataFrame(data=data)
         df.loc[:,"answer_indices"] = df.apply(lambda row: create_answeridx_string(row), axis=1)
 
