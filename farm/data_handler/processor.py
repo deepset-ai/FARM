@@ -164,7 +164,13 @@ class Processor(ABC):
         processor_config_file = os.path.join(load_dir, "processor_config.json")
         config = json.load(open(processor_config_file))
         # init tokenizer
-        tokenizer = Tokenizer.load(load_dir, tokenizer_class=config["tokenizer"])
+        if "lower_case" in config.keys():
+            logger.warning("Loading tokenizer from deprecated FARM config. "
+                           "If you used `custom_vocab` or `never_split_chars`, this won't work anymore.")
+            tokenizer = Tokenizer.load(load_dir, tokenizer_class=config["tokenizer"], do_lower_case=config["lower_case"])
+        else:
+            tokenizer = Tokenizer.load(load_dir, tokenizer_class=config["tokenizer"])
+
         # we have to delete the tokenizer string from config, because we pass it as Object
         del config["tokenizer"]
 
