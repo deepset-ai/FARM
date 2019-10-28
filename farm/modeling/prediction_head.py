@@ -733,8 +733,6 @@ class QuestionAnsweringHead(PredictionHead):
         )  # predicts start and end token of answer
         self.task_name = task_name
         self.max_ans_len = 1000 # disabling max ans len. Impact on squad performance seems minor
-        # disabling no answer for now
-        # TODO find right balance for creating no answer predictions
         self.no_answer_weight = 0 # how much we want to upweight no answer scores compared to producing text answers
         self.generate_config()
 
@@ -908,8 +906,8 @@ class QuestionAnsweringHead(PredictionHead):
                     s_i = current_pred[i,0]
                     e_i = current_pred[i,1]
                     p_i = current_pred[i,2]
-                    passage_shift_i = current_pred[i,4]
-                    question_shift_i = current_pred[i,5]
+                    question_shift_i = current_pred[i,4]
+                    passage_shift_i = current_pred[i,5]
 
                     # matching
                     passage_pred["probability"] = p_i
@@ -920,7 +918,6 @@ class QuestionAnsweringHead(PredictionHead):
                         if(s_i + e_i > 0):
                             current_start = int(s_i + passage_shift_i - question_shift_i)
                             current_end = int(e_i + passage_shift_i - question_shift_i) + 1
-                            # TODO check if offsets point to doc or passage space
                             start = current_sample.tokenized["offsets"][current_start]
                             end = current_sample.tokenized["offsets"][current_end]
                             # doc_tokens are just whitespace tokenized and not subword tokenized
@@ -975,7 +972,7 @@ class QuestionAnsweringHead(PredictionHead):
             if np.sum(idx_text_answers) > 0:
                 group = group.loc[idx_text_answers,:]
             else:
-                logger.info(f"No text answer found in doc: {uid}")
+                logger.info(f"No textual prediction found in doc: {uid}")
             if top_n_passages == 1:
                 max_pred = group.loc[group.prob == np.max(group.prob),:]
                 if (max_pred.shape[0] > 1):
