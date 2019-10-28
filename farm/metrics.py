@@ -40,7 +40,7 @@ def pearson_and_spearman(preds, labels):
     }
 
 def compute_metrics(metric, preds, labels):
-    if not metric == "squad":
+    if not metric in ["squad","squad_top_recall"]:
         assert len(preds) == len(labels)
     if metric == "mcc":
         return {"mcc": matthews_corrcoef(labels, preds)}
@@ -57,6 +57,8 @@ def compute_metrics(metric, preds, labels):
         return f1_macro(preds, labels)
     elif metric == "squad":
         return squad(preds, labels)
+    elif metric == "squad_top_recall":
+        return squad_N_recall(preds=preds, labels=labels)
     elif metric == "mse":
         return {"mse": mean_squared_error(preds, labels)}
     elif metric == "r2":
@@ -66,6 +68,31 @@ def compute_metrics(metric, preds, labels):
     else:
         raise KeyError(metric)
 
+def squad_N_recall(preds=None, labels=None):
+    # scoring in tokenized space, so results to public leaderboard will vary
+    success_all = []
+    data = {}
+    data["sample_id"] = np.concatenate([x[0].cpu().numpy() for x in labels])
+    data["start_idx"] = np.concatenate([x[1].cpu().numpy() for x in labels])
+    data["end_idx"] = np.concatenate([x[2].cpu().numpy() for x in labels])
+    df = pd.DataFrame(data=data)
+
+    for max_pred in preds:
+        sampled_id = max_pred[0,3]
+        label_group = df.loc[df.sample_id == sampled_id, :]
+        label = label_group.loc[label_group.end_idx == np.max(label_group.end_idx), ["start_idx","end_idx"]].values
+        success = 0
+        for i in range(max_pred.shape[0]):
+            em,p,r,f1 = compute_qa_f1(pred_start=max_pred[i,0],
+                                      pred_end=max_pred[i,1],
+                                      label_start=label[0,0],
+                                      label_end=label[0,1])
+            if(r > 0):
+                success = 1
+        success_all.append(success)
+
+
+    return {f"TopN Passage Recall": np.mean(success_all)}
 
 def squad(preds=None, labels=None):
     # scoring in tokenized space, so results to public leaderboard will vary

@@ -734,6 +734,7 @@ class QuestionAnsweringHead(PredictionHead):
         self.task_name = task_name
         self.max_ans_len = 1000 # disabling max ans len. Impact on squad performance seems minor
         self.no_answer_weight = 0 # how much we want to upweight no answer scores compared to producing text answers
+        self.top_n_predictions = 3 # for how many passages we want to get predictions
         self.generate_config()
 
     def forward(self, X):
@@ -884,7 +885,7 @@ class QuestionAnsweringHead(PredictionHead):
         :rtype: list(str)
         """
 
-        all_preds_passage_aggregated = self._aggregate_passages(preds=preds, top_n_passages= 3)
+        all_preds_passage_aggregated = self._aggregate_passages(preds=preds)
 
         result = {}
         result["task"] = "qa"
@@ -941,7 +942,7 @@ class QuestionAnsweringHead(PredictionHead):
         result["predictions"] = all_preds
         return result
 
-    def _aggregate_passages(self, preds, top_n_passages=1):
+    def _aggregate_passages(self, preds):
         def create_answeridx_string(r):
             start = r["pred_start"] + r["passage_shift"] - r["question_shift"]
             end = r["pred_end"] + r["passage_shift"] - r["question_shift"]
@@ -973,16 +974,16 @@ class QuestionAnsweringHead(PredictionHead):
                 group = group.loc[idx_text_answers,:]
             else:
                 logger.info(f"No textual prediction found in doc: {uid}")
-            if top_n_passages == 1:
+            if self.top_n_predictions == 1:
                 max_pred = group.loc[group.prob == np.max(group.prob),:]
                 if (max_pred.shape[0] > 1):
                     max_pred = max_pred.iloc[0, :]
                     logger.info(f"Multiple predictions have the exact same probability of occuring: \n{max_pred.head()}")
             else:
-                assert isinstance(top_n_passages, int)
+                assert isinstance(self.top_n_predictions, int)
                 sorted_group = group.sort_values(by="prob",ascending=False)
                 filtered_group = sorted_group.drop_duplicates(keep="first", subset="answer_indices")
-                max_pred = filtered_group.iloc[:top_n_passages,:]
+                max_pred = filtered_group.iloc[:self.top_n_predictions,:]
             max_per_sample.append(max_pred.values)
         return max_per_sample
 
@@ -997,7 +998,7 @@ class QuestionAnsweringHead(PredictionHead):
 
 class SquadHead(QuestionAnsweringHead):
     """
-    Almost identical to a TextClassificationHead. Only difference: we can load the weights from
+    Almost identical to a QuestionAnsweringHead. Only difference: we can load the weights from
      a pretrained language model that was saved in the pytorch-transformers style (all in one model).
     """
     @classmethod
