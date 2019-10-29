@@ -735,6 +735,8 @@ class QuestionAnsweringHead(PredictionHead):
         self.max_ans_len = 1000 # disabling max ans len. Impact on squad performance seems minor
         self.no_answer_weight = 0 # how much we want to upweight no answer scores compared to producing text answers
         self.top_n_predictions = 3 # for how many passages we want to get predictions
+        # each answer is returned with surrounding context. In # characters surrounding the answer
+        self.context_size = 500
         self.generate_config()
 
     def forward(self, X):
@@ -903,19 +905,19 @@ class QuestionAnsweringHead(PredictionHead):
                 passage_predictions = []
                 for i in range(current_pred.shape[0]):
                     passage_pred = {}
-                    passage_pred["passage_id"] = i
+                    if self.top_n_predictions > 1:
+                        passage_pred["prediction_rank"] = i
                     s_i = current_pred[i,0]
                     e_i = current_pred[i,1]
                     p_i = current_pred[i,2]
                     question_shift_i = current_pred[i,4]
                     passage_shift_i = current_pred[i,5]
-
-                    # matching
                     passage_pred["probability"] = p_i
                     try:
                         #default to returning no answer
                         start = 0
                         answer = ""
+                        context = ""
                         if(s_i + e_i > 0):
                             current_start = int(s_i + passage_shift_i - question_shift_i)
                             current_end = int(e_i + passage_shift_i - question_shift_i) + 1
@@ -923,20 +925,29 @@ class QuestionAnsweringHead(PredictionHead):
                             end = current_sample.tokenized["offsets"][current_end]
                             # doc_tokens are just whitespace tokenized and not subword tokenized
                             # therefore we need to join the text and extract the answer in string space
-                            answer = " ".join(current_sample.clear_text["doc_tokens"])[start:end]
+                            temptext = " ".join(current_sample.clear_text["doc_tokens"])
+                            answer = temptext[start:end]
+                            context_start = int(np.clip((start-self.context_size),a_min=0,a_max=None))
+                            context_end = int(np.clip(end +self.context_size,a_max=len(temptext),a_min=None))
+                            context = temptext[context_start:context_end]
                             answer = answer.strip()
-                    except Exception as e:
+                    except IndexError as e:
                         logger.info(e)
-                    passage_pred["start"] = start
-                    passage_pred["prediction"] = answer
+                    passage_pred["answer"] = answer
+                    passage_pred["context"] = context
+                    passage_pred["offset_start"] = start - context_start
+                    passage_pred["offset_end"] = end - context_start
                     passage_predictions.append(passage_pred)
 
                 pred = {}
                 pred["question"] = current_sample.clear_text.question_text
-                pred["question_id"] = current_sample.clear_text.qas_id
-                pred["document_id"] = current_sample.clear_text.document_id
-                pred["ground_truth"] = current_sample.clear_text.orig_answer_text
-                pred["n_best_preds"] = passage_predictions
+                if "qas_id" in current_sample.clear_text:
+                    pred["question_id"] = current_sample.clear_text.qas_id
+                if "document_id" in current_sample.clear_text:
+                    pred["document_id"] = current_sample.clear_text.document_id
+                if "orig_answer_text" in current_sample.clear_text:
+                    pred["ground_truth"] = current_sample.clear_text.orig_answer_text
+                pred["answers"] = passage_predictions
                 all_preds.append(pred)
 
         result["predictions"] = all_preds
