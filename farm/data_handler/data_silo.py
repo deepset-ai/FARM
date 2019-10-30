@@ -17,13 +17,11 @@ from farm.data_handler.dataloader import NamedDataLoader
 from farm.data_handler.processor import Processor
 from farm.data_handler.utils import grouper
 from farm.utils import MLFlowLogger as MlLogger
-from farm.utils import log_ascii_workers
+from farm.utils import log_ascii_workers, calc_chunksize
 from farm.visual.ascii.images import TRACTOR_SMALL
 
 logger = logging.getLogger(__name__)
 
-MIN_CHUNKSIZE = 4
-MAX_CHUNKSIZE = 5000
 
 class DataSilo:
     """ Generates and stores PyTorch DataLoader objects for the train, dev and test datasets.
@@ -64,16 +62,7 @@ class DataSilo:
                 if self.processor.dev_split > 0.0:
                     random.shuffle(dicts)
 
-        num_cpus = min(mp.cpu_count(), self.max_processes) or 1
-        dicts_per_cpu = np.ceil(len(dicts) / num_cpus)
-        # automatic adjustment of multiprocessing chunksize
-        # for small files (containing few dicts) we want small chunksize to ulitize all available cores but never less
-        # than 2, because we need it to sample another random sentence in LM finetuning
-        # for large files we want to minimize processor spawning without giving too much data to one process, so we
-        # clip it at 5k
-        multiprocessing_chunk_size = int(np.clip((np.ceil(dicts_per_cpu/5)),a_min=MIN_CHUNKSIZE,a_max=MAX_CHUNKSIZE))
-        dict_batches_to_process = int(len(dicts) / multiprocessing_chunk_size)
-        num_cpus_used = min(mp.cpu_count(), self.max_processes,  dict_batches_to_process) or 1
+        multiprocessing_chunk_size, num_cpus_used = calc_chunksize(len(dicts))
 
         with ExitStack() as stack:
             p = stack.enter_context(mp.Pool(processes=num_cpus_used))

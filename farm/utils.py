@@ -3,9 +3,11 @@ import random
 
 import numpy as np
 import torch
+from torch import multiprocessing as mp
 import mlflow
 from copy import deepcopy
 from farm.visual.ascii.images import WELCOME_BARN, WORKER_M, WORKER_F, WORKER_X
+
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +23,21 @@ def set_all_seeds(seed, n_gpu=0):
     torch.manual_seed(seed)
     if n_gpu > 0:
         torch.cuda.manual_seed_all(seed)
+
+def calc_chunksize(num_dicts):
+    MIN_CHUNKSIZE = 4
+    MAX_CHUNKSIZE = 2000
+    num_cpus = mp.cpu_count() or 1
+    dicts_per_cpu = np.ceil(num_dicts / num_cpus)
+    # automatic adjustment of multiprocessing chunksize
+    # for small files (containing few dicts) we want small chunksize to ulitize all available cores but never less
+    # than 2, because we need it to sample another random sentence in LM finetuning
+    # for large files we want to minimize processor spawning without giving too much data to one process, so we
+    # clip it at 5k
+    multiprocessing_chunk_size = int(np.clip((np.ceil(dicts_per_cpu / 5)), a_min=MIN_CHUNKSIZE, a_max=MAX_CHUNKSIZE))
+    dict_batches_to_process = int(num_dicts / multiprocessing_chunk_size)
+    num_cpus_used = min(mp.cpu_count(), dict_batches_to_process) or 1
+    return multiprocessing_chunk_size,num_cpus_used
 
 
 def initialize_device_settings(use_cuda, local_rank=-1, fp16=False):

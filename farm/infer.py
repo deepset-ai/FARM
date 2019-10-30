@@ -1,25 +1,19 @@
-import os
-import torch
 import logging
 import multiprocessing as mp
-import numpy as np
+import os
 from contextlib import ExitStack
 from functools import partial
 
+import torch
 from torch.utils.data.sampler import SequentialSampler
-from torch.utils.data import ConcatDataset
 from tqdm import tqdm
 
 from farm.data_handler.dataloader import NamedDataLoader
-from farm.modeling.adaptive_model import AdaptiveModel
-
-from farm.utils import initialize_device_settings
 from farm.data_handler.processor import Processor, InferenceProcessor
-from farm.utils import set_all_seeds
-from farm.utils import log_ascii_workers
 from farm.data_handler.utils import grouper
-from farm.data_handler.data_silo import MIN_CHUNKSIZE, MAX_CHUNKSIZE
-
+from farm.modeling.adaptive_model import AdaptiveModel
+from farm.utils import initialize_device_settings
+from farm.utils import set_all_seeds, calc_chunksize, log_ascii_workers
 
 logger = logging.getLogger(__name__)
 
@@ -163,16 +157,8 @@ class Inferencer:
                 f"b) ... run inference on a downstream task: make sure your model path {self.name} contains a saved prediction head"
             )
 
-        num_cpus = mp.cpu_count() or 1
-        dicts_per_cpu = np.ceil(len(dicts) / num_cpus)
-        # automatic adjustment of multiprocessing chunksize
-        # for small files (containing few dicts) we want small chunksize to ulitize all available cores but never less
-        # than 2, because we need it to sample another random sentence in LM finetuning
-        # for large files we want to minimize processor spawning without giving too much data to one process, so we
-        # clip it at 5k
-        multiprocessing_chunk_size = int(np.clip((np.ceil(dicts_per_cpu / 5)), a_min=MIN_CHUNKSIZE, a_max=MAX_CHUNKSIZE))
-        dict_batches_to_process = int(len(dicts) / multiprocessing_chunk_size)
-        num_cpus_used = min(mp.cpu_count(), dict_batches_to_process) or 1
+        multiprocessing_chunk_size, num_cpus_used = calc_chunksize(len(dicts))
+        num_cpus_used -= 1 # We reserve one processor to do model inference CPU calculations (besides GPU computations)
 
         if use_multiprocessing:
             with ExitStack() as stack:
@@ -188,28 +174,29 @@ class Inferencer:
                     grouper(dicts, multiprocessing_chunk_size),
                     1,
                 )
-                if self.prediction_type != "span_classification":
-                    preds_all = []
-                    with tqdm(total=len(dicts), unit=" Dicts") as pbar:
-                        for dataset, tensor_names, sample in results:
-                            preds_all.extend(self._run_inference(dataset, tensor_names, sample))
-                            pbar.update(multiprocessing_chunk_size)
-                else:
-                    datasets = []
-                    all_samples = []
-                    with tqdm(total=len(dicts), unit=" Dicts") as pbar:
-                        for dataset, tensor_names, baskets in results:
-                            datasets.append(dataset)
-                            for b in baskets:  # number of baskets in _multiproc() related to chunksize
-                                all_samples.extend(b.samples)
-                    concat_datasets = ConcatDataset(datasets)
-            if self.prediction_type == "span_classification":
-                preds_all = self._run_inference_qa(concat_datasets, tensor_names, all_samples)
 
-        else: #TODO add qa inference for single core
+                preds_all = []
+                with tqdm(total=len(dicts), unit=" Dicts") as pbar:
+                    for dataset, tensor_names, baskets in results:
+                        samples= []
+                        for b in baskets:  # number of baskets in _multiproc() related to chunksize
+                            samples.extend(b.samples)
+                        if self.prediction_type == "span_classification":
+                            preds_all.append(self._run_inference_qa(dataset, tensor_names, samples))
+                        else:
+                            preds_all.extend(self._run_inference(dataset, tensor_names, samples))
+                        pbar.update(multiprocessing_chunk_size)
+
+        else:
             chunk = next(grouper(dicts, len(dicts)))
-            dataset, tensor_names, sample = self._multiproc(chunk, processor=self.processor, rest_api_schema=rest_api_schema)
-            preds_all = self._run_inference(dataset, tensor_names, sample)
+            dataset, tensor_names, baskets = self._multiproc(chunk, processor=self.processor, rest_api_schema=rest_api_schema)
+            samples = []
+            for b in baskets:  # number of baskets in _multiproc() related to chunksize
+                samples.extend(b.samples)
+            if self.prediction_type == "span_classification":
+                preds_all = self._run_inference_qa(dataset, tensor_names, samples)
+            else:
+                preds_all = self._run_inference(dataset, tensor_names, samples)
 
         return preds_all
 
@@ -217,9 +204,7 @@ class Inferencer:
     def _multiproc(cls, chunk, processor, rest_api_schema):
         dicts = [d[1] for d in chunk]
         index = chunk[0][0]
-        #TODO do not return baskets for tasks except QA
         dataset, tensor_names, baskets = processor.dataset_from_dicts(dicts, index, rest_api_schema, return_baskets=True)
-
         return dataset, tensor_names, baskets
 
     def _run_inference(self, dataset, tensor_names, samples):

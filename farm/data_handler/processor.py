@@ -736,10 +736,7 @@ class SquadProcessor(Processor):
     def dataset_from_dicts(self, dicts, index=None, rest_api_schema=False, return_baskets = False):
         if rest_api_schema:
             dicts = [self._convert_rest_api_dict(x) for x in dicts]
-            id_prefix = "infer"
-        else:
-            id_prefix = "train"
-        #We need to add the index (coming from multiprocessing chunks) to have a unique basket ID
+        #We need to add the index (coming from multiprocessing chunks) to have a unique numerical basket ID
         self.baskets = [
             SampleBasket(raw=tr, id=(i+index)*10000)
             for i, tr in enumerate(dicts)

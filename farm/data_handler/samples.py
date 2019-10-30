@@ -146,7 +146,6 @@ def create_samples_squad(entry):
         doc_tokens = paragraph_text.split(" ")
         for i, t in enumerate(doc_tokens):
             char_to_word_offset.extend([i] * (len(t) + 1))
-        char_to_word_offset = char_to_word_offset[:-1]  # cut off last added whitespace
 
         for qa in paragraph["qas"]:
             qas_id = qa["id"]
@@ -158,25 +157,21 @@ def create_samples_squad(entry):
             if is_training:
                 is_impossible = qa["is_impossible"]
                 # TODO check how to transform dev set with multiple possible answers, for now take only 1 answer
-                # if (len(qa["answers"]) != 1) and (not is_impossible):
-                #     raise ValueError(
-                #         "For training, each question should have exactly 1 answer."
-                #     )
                 if not is_impossible:
                     answer = qa["answers"][0]
                     orig_answer_text = answer["text"]
                     answer_offset = answer["answer_start"]
                     answer_length = len(orig_answer_text)
                     start_position = char_to_word_offset[answer_offset]
-                    end_position = char_to_word_offset[
-                        answer_offset + answer_length - 1
-                    ]
+                    try:
+                        end_position = char_to_word_offset[answer_offset + answer_length - 1]
+                    except IndexError:
+                        # if the answer is longer than the cutted document we will return a shorter answer and remove it
+                        end_position = char_to_word_offset[-1]
                     # Only add answers where the text can be exactly recovered from the
-                    # document. If this CAN'T happen it's likely due to weird Unicode
-                    # stuff so we will just skip the example.
-                    #
-                    # Note that this means for training mode, every example is NOT
-                    # guaranteed to be preserved.
+                    # document.
+                    # This can happen when there are newline or tab symbols or multiple whitespace inside the answer
+                    # Or if the answer continues over the edge of the current passage
                     actual_text = " ".join(
                         doc_tokens[start_position : (end_position + 1)]
                     )
