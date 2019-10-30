@@ -916,6 +916,8 @@ class QuestionAnsweringHead(PredictionHead):
                     try:
                         #default to returning no answer
                         start = 0
+                        end = 0
+                        context_start = 0
                         answer = ""
                         context = ""
                         if(s_i + e_i > 0):
@@ -923,8 +925,8 @@ class QuestionAnsweringHead(PredictionHead):
                             current_end = int(e_i + passage_shift_i - question_shift_i) + 1
                             start = current_sample.tokenized["offsets"][current_start]
                             end = current_sample.tokenized["offsets"][current_end]
-                            # doc_tokens are just whitespace tokenized and not subword tokenized
-                            # therefore we need to join the text and extract the answer in string space
+                            # we want the answer in original string space (containing newline, tab or multiple
+                            # whitespace. So we need to join doc tokens and work with character offsets
                             temptext = " ".join(current_sample.clear_text["doc_tokens"])
                             answer = temptext[start:end]
                             context_start = int(np.clip((start-self.context_size),a_min=0,a_max=None))
@@ -941,12 +943,9 @@ class QuestionAnsweringHead(PredictionHead):
 
                 pred = {}
                 pred["question"] = current_sample.clear_text.question_text
-                if "qas_id" in current_sample.clear_text:
-                    pred["question_id"] = current_sample.clear_text.qas_id
-                if "document_id" in current_sample.clear_text:
-                    pred["document_id"] = current_sample.clear_text.document_id
-                if "orig_answer_text" in current_sample.clear_text:
-                    pred["ground_truth"] = current_sample.clear_text.orig_answer_text
+                pred["question_id"] = current_sample.clear_text.get("qas_id", None)
+                pred["document_id"] = current_sample.clear_text.get("document_id", None)
+                pred["ground_truth"] = current_sample.clear_text.get("orig_answer_text", None)
                 pred["answers"] = passage_predictions
                 all_preds.append(pred)
 
