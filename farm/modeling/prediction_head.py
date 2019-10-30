@@ -939,12 +939,12 @@ class QuestionAnsweringHead(PredictionHead):
                     passage_pred["context"] = context
                     passage_pred["offset_start"] = start - context_start
                     passage_pred["offset_end"] = end - context_start
+                    passage_pred["document_id"] = current_sample.clear_text.get("document_id", None)
                     passage_predictions.append(passage_pred)
 
                 pred = {}
                 pred["question"] = current_sample.clear_text.question_text
                 pred["question_id"] = current_sample.clear_text.get("qas_id", None)
-                pred["document_id"] = current_sample.clear_text.get("document_id", None)
                 pred["ground_truth"] = current_sample.clear_text.get("orig_answer_text", None)
                 pred["answers"] = passage_predictions
                 all_preds.append(pred)
