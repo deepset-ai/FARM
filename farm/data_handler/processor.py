@@ -776,11 +776,12 @@ class SquadProcessor(Processor):
             {
                 "qas": [
                     {
-                        "question": infer_dict.get("questions", ["Missing?"])[0],
+                        "question": infer_dict.get("questions", None)[0],
                         "id": "unusedID",
                     }
                 ],
-                "context": infer_dict.get("text", "Missing!"),
+                "context": infer_dict.get("text", None),
+                "document_id": infer_dict.get("document_id", None),
             }
         ]
         return converted

@@ -229,9 +229,7 @@ def create_samples_squad(entry):
             clear_text["end_position"] = end_position
             clear_text["is_impossible"] = is_impossible
             clear_text["is_training"] = is_training
-
-            if "document_id" in paragraph:
-                clear_text["document_id"] = paragraph["document_id"]
+            clear_text["document_id"] = paragraph.get("document_id", None)
             example = Sample(
                 id=None, clear_text=clear_text, features=None, tokenized=None
             )
