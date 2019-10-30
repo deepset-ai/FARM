@@ -12,8 +12,9 @@ from farm.train import Trainer
 from farm.utils import set_all_seeds, initialize_device_settings
 
 
-def test_qa(caplog):
-    caplog.set_level(logging.CRITICAL)
+def test_qa():
+    # caplog):
+    # caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=False)
@@ -79,7 +80,7 @@ def test_qa(caplog):
 
     model = Inferencer.load(save_dir)
     result = model.inference_from_dicts(dicts=QA_input)
-    assert isinstance(result[0]["predictions"][0]["offset_end"],int)
+    assert isinstance(result[0]["predictions"][0]["answers"][0]["offset_start"],int)
 
 if(__name__=="__main__"):
     test_qa()

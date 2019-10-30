@@ -4,9 +4,8 @@ from farm.modeling.tokenization import Tokenizer
 from farm.utils import set_all_seeds
 import torch
 
-def test_processor_saving_loading():
-    # caplog):
-    # caplog.set_level(logging.CRITICAL)
+def test_processor_saving_loading(caplog):
+    caplog.set_level(logging.CRITICAL)
     set_all_seeds(seed=42)
     lang_model = "bert-base-cased"
 
@@ -38,6 +37,3 @@ def test_processor_saving_loading():
     assert tensor_names == tensor_names_loaded
     for i in range(len(data.tensors)):
         assert torch.all(torch.eq(data.tensors[i], data_loaded.tensors[i]))
-
-
-test_processor_saving_loading()
