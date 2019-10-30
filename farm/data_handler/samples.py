@@ -163,28 +163,25 @@ def create_samples_squad(entry):
                     answer_offset = answer["answer_start"]
                     answer_length = len(orig_answer_text)
                     start_position = char_to_word_offset[answer_offset]
-                    try:
-                        end_position = char_to_word_offset[answer_offset + answer_length - 1]
-                    except IndexError:
-                        # if the answer is longer than the cutted document we will return a shorter answer and remove it
-                        end_position = char_to_word_offset[-1]
-                    # Only add answers where the text can be exactly recovered from the
-                    # document.
-                    # This can happen when there are newline or tab symbols or multiple whitespace inside the answer
-                    # Or if the answer continues over the edge of the current passage
-                    actual_text = " ".join(
-                        doc_tokens[start_position : (end_position + 1)]
-                    )
-                    cleaned_answer_text = " ".join(
-                        whitespace_tokenize(orig_answer_text)
-                    )
-                    if actual_text.find(cleaned_answer_text) == -1:
-                        logger.warning(
-                            "Could not find answer: '%s' vs. '%s'",
-                            actual_text,
-                            cleaned_answer_text,
-                        )
-                        continue
+                    end_position = char_to_word_offset[answer_offset + answer_length - 1]
+
+                    # # Only add answers where the text can be exactly recovered from the
+                    # # document.
+                    # # This can happen when there are newline or tab symbols or multiple whitespace inside the answer
+                    # # Or if the answer continues over the edge of the current passage
+                    # actual_text = " ".join(
+                    #     doc_tokens[start_position : (end_position + 1)]
+                    # )
+                    # cleaned_answer_text = " ".join(
+                    #     whitespace_tokenize(orig_answer_text)
+                    # )
+                    # if actual_text.find(cleaned_answer_text) == -1:
+                    #     logger.warning(
+                    #         "Could not find answer: '%s' vs. '%s'",
+                    #         actual_text,
+                    #         cleaned_answer_text,
+                    #     )
+                    #     continue
                 else:
                     start_position = -1
                     end_position = -1

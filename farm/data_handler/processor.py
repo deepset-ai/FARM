@@ -273,7 +273,7 @@ class Processor(ABC):
         dataset, tensor_names = convert_features_to_dataset(features=features_flat)
         return dataset, tensor_names
 
-    def dataset_from_dicts(self, dicts, index=None, rest_api_schema=False, return_baskets = False):
+    def dataset_from_dicts(self, dicts, index=0, rest_api_schema=False, return_baskets = False):
         """
         Contains all the functionality to turn a list of dict objects into a PyTorch Dataset and a
         list of tensor names. This can be used for inference mode.
@@ -733,7 +733,7 @@ class SquadProcessor(Processor):
             logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
                         "using the default task or add a custom task later via processor.add_task()")
 
-    def dataset_from_dicts(self, dicts, index=None, rest_api_schema=False, return_baskets = False):
+    def dataset_from_dicts(self, dicts, index=0, rest_api_schema=False, return_baskets = False):
         if rest_api_schema:
             dicts = [self._convert_rest_api_dict(x) for x in dicts]
         #We need to add the index (coming from multiprocessing chunks) to have a unique numerical basket ID

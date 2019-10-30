@@ -158,7 +158,8 @@ class Inferencer:
             )
 
         multiprocessing_chunk_size, num_cpus_used = calc_chunksize(len(dicts))
-        num_cpus_used -= 1 # We reserve one processor to do model inference CPU calculations (besides GPU computations)
+        if num_cpus_used == mp.cpu_count():
+            num_cpus_used -= 1 # We reserve one processor to do model inference CPU calculations (besides GPU computations)
 
         if use_multiprocessing:
             with ExitStack() as stack:
@@ -229,7 +230,7 @@ class Inferencer:
 
         return preds_all
 
-    def _run_inference_qa(self, concatdataset, tensor_names, all_samples):
+    def _run_inference_qa(self, concatdataset, tensor_names, samples):
         data_loader = NamedDataLoader(
             dataset=concatdataset, sampler=SequentialSampler(concatdataset), batch_size=self.batch_size, tensor_names=tensor_names
         )
@@ -245,7 +246,7 @@ class Inferencer:
 
         preds_all = self.model.prediction_heads[0].formatted_preds(logits=None,
                                                                    preds=all_preds,
-                                                                   all_samples=all_samples)
+                                                                   samples=samples)
 
         return preds_all
 
