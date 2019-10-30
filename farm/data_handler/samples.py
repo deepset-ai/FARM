@@ -52,8 +52,9 @@ class Sample(object):
             clear_text_str = "\n \t".join(
                 [k + ": " + str(v) for k, v in self.clear_text.items()]
             )
-            if len(clear_text_str) > 100000:
-                clear_text_str = "too long to display"
+            if len(clear_text_str) > 10000:
+                clear_text_str = clear_text_str[:10_000] + f"\nTHE REST IS TOO LONG TO DISPLAY. " \
+                                                           f"Remaining chars :{len(clear_text_str)-10_000}"
         else:
             clear_text_str = "None"
 
@@ -70,8 +71,9 @@ class Sample(object):
             tokenized_str = "\n \t".join(
                 [k + ": " + str(v) for k, v in self.tokenized.items()]
             )
-            if len(tokenized_str) > 100000:
-                tokenized_str = "too long to display"
+            if len(tokenized_str) > 10000:
+                tokenized_str = tokenized_str[:10_000] + f"\nTHE REST IS TOO LONG TO DISPLAY. " \
+                                                         f"Remaining chars: {len(tokenized_str)-10_000}"
         else:
             tokenized_str = "None"
         s = (
@@ -165,6 +167,8 @@ def create_samples_squad(entry):
                     start_position = char_to_word_offset[answer_offset]
                     end_position = char_to_word_offset[answer_offset + answer_length - 1]
 
+
+                    # TODO Possibly deprectate: there seems to be no reason why we should exclude these answers
                     # # Only add answers where the text can be exactly recovered from the
                     # # document.
                     # # This can happen when there are newline or tab symbols or multiple whitespace inside the answer

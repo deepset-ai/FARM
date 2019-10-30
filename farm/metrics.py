@@ -69,7 +69,9 @@ def compute_metrics(metric, preds, labels):
         raise KeyError(metric)
 
 def squad_N_recall(preds=None, labels=None):
-    # scoring in tokenized space, so results to public leaderboard will vary
+    # checks weather any one token is within ground truth answer
+    # can be used to only check weather QA model finds the right location
+    # should be used when answering on long documents and difficult questions
     success_all = []
     data = {}
     data["sample_id"] = np.concatenate([x[0].cpu().numpy() for x in labels])
@@ -90,12 +92,11 @@ def squad_N_recall(preds=None, labels=None):
             if(r > 0):
                 success = 1
         success_all.append(success)
-
-
     return {f"TopN Passage Recall": np.mean(success_all)}
 
 def squad(preds=None, labels=None):
-    # scoring in tokenized space, so results to public leaderboard will vary
+    # scoring in tokenized space and with only one answer per sample (in squad dev set multiple answers are given).
+    # So results to official evaluation will vary
     em_all = []
     f1_all = []
     precision_all = []
