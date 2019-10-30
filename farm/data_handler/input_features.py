@@ -436,6 +436,11 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
     start_vec_passage = [0] * passage_len_t
     end_vec_passage = [0] * passage_len_t
 
+    # If there are no answers
+    if len(answers) == 0:
+        label_idxs[0, :] = 0
+        return label_idxs
+
     for i, answer in enumerate(answers):
         start_idx = answer["start_t"]
         end_idx = answer["end_t"]
@@ -471,6 +476,8 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
 
         label_idxs[i, 0] = start_idx
         label_idxs[i, 1] = end_idx
+
+    assert np.max(label_idxs) > -1
 
     return label_idxs
 

@@ -787,7 +787,7 @@ class QuestionAnsweringHead(PredictionHead):
         per_sample_loss = (start_loss + end_loss) / 2
         return per_sample_loss
 
-    def logits_to_preds(self, logits, padding_mask, start_of_word, max_answer_length=100, **kwargs):
+    def logits_to_preds(self, logits, padding_mask, start_of_word, max_answer_length=30, **kwargs):
         """
         Get the predicted index of start and end token of the answer. Note that the output is at token level
         and not word level.
@@ -808,8 +808,9 @@ class QuestionAnsweringHead(PredictionHead):
         all_top_n = []
 
         # get scores for all combinations of start and end logits => candidate answers
-        start_matrix = start_logits.unsqueeze(2).expand(-1, -1, 256)
-        end_matrix = end_logits.unsqueeze(1).expand(-1, 256, -1)
+        max_seq_len = start_logits.shape[1] # target dim
+        start_matrix = start_logits.unsqueeze(2).expand(-1, -1, max_seq_len)
+        end_matrix = end_logits.unsqueeze(1).expand(-1, max_seq_len, -1)
         start_end_matrix = start_matrix + end_matrix
 
         # Sort the candidate answers by their score. Sorting happens on the flattened matrix.
@@ -820,7 +821,6 @@ class QuestionAnsweringHead(PredictionHead):
 
         # The returned indices are then converted back to the original dimensionality of the matrix.
         # sorted_candidates.shape : (batch_size, max_seq_len^2, 2)
-        max_seq_len = start_end_matrix.shape[1] # target dim
         start_indices = flat_sorted_indices // max_seq_len
         end_indices = flat_sorted_indices % max_seq_len
         sorted_candidates = torch.cat((start_indices, end_indices), dim=2)
@@ -1020,7 +1020,9 @@ class QuestionAnsweringHead(PredictionHead):
         _, _, no_answer_min_score = no_answers_min
 
         # todo this is a very basic and probably not very performant way to pick no_answer
-        if no_answer_min_score > top_pos_answer_score:
+        # no answer logic
+        threshold = 0.
+        if no_answer_min_score + threshold > top_pos_answer_score:
             return [no_answers_min] + pos_answers_filtered
         else:
             return pos_answers_filtered + [no_answers_min]

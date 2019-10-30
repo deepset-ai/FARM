@@ -235,7 +235,7 @@ def process_answers(answers, doc_offsets, passage_start_c, passage_start_t):
         answer_start_c = answer["offset"]
         answer_end_c = answer_start_c + answer_len_c - 1
         answer_start_t = offset_to_token_idx(doc_offsets, answer_start_c)
-        answer_end_t = offset_to_token_idx(doc_offsets, answer_end_c) - 1
+        answer_end_t = offset_to_token_idx(doc_offsets, answer_end_c)
 
         # TODO: Perform check that answer can be recovered from document?
 
@@ -290,11 +290,14 @@ def chunk_into_passages(doc_offsets,
 
 def offset_to_token_idx(token_offsets, ch_idx):
     """ Returns the idx of the token at the given character idx"""
-    for i, to in enumerate(token_offsets):
-        if ch_idx <= to:
+    n_tokens = len(token_offsets)
+    for i in range(n_tokens):
+        if i + 1 == n_tokens:
             return i
-    # This case is triggered if the ch_idx points to the end of the last word
-    return i + 1
+        else:
+            if token_offsets[i] <= ch_idx < token_offsets[i + 1]:
+                return i
+
 
 
 def check_if_training(dictionary):
