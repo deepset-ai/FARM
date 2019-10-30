@@ -1,5 +1,5 @@
 # coding=utf-8
-# Copyright 2018 The Google AI Language Team Authors and The HuggingFace Inc. team.
+# Copyright 2018 deepset team.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -15,158 +15,81 @@
 """Tokenization classes."""
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import collections
 import logging
-from io import open
-import os
-import unicodedata
+import re
+import numpy as np
 
-from transformers.tokenization_bert import BertTokenizer, WordpieceTokenizer, BasicTokenizer, load_vocab
+from transformers.tokenization_bert import BertTokenizer
+from transformers.tokenization_roberta import RobertaTokenizer
+from transformers.tokenization_xlnet import XLNetTokenizer
 
 logger = logging.getLogger(__name__)
 
+# Special characters used by the different tokenizers to indicate start of word / whitespace
+SPECIAL_TOKENIZER_CHARS = r"^(##|Ġ|▁)"
 
-class BasicTokenizer(BasicTokenizer):
-    def __init__(self, do_lower_case=True, never_split=None, never_split_chars=None, tokenize_chinese_chars=True):
-        """ Constructs a BasicTokenizer.
 
-        Args:
-            **do_lower_case**: Whether to lower case the input.
-            **never_split**: (`optional`) list of str
-                Kept for backward compatibility purposes.
-                Now implemented directly at the base class level (see :func:`PreTrainedTokenizer.tokenize`)
-                List of token not to split.
-            **tokenize_chinese_chars**: (`optional`) boolean (default True)
-                Whether to tokenize Chinese characters.
-                This should likely be desactivated for Japanese:
-                see: https://github.com/huggingface/pytorch-pretrained-BERT/issues/328
+class Tokenizer:
+    """
+    Simple Wrapper for Tokenizers from the transformers package. Enables loading of different Tokenizer classes with a uniform interface.
+    """
+
+    @classmethod
+    def load(cls, pretrained_model_name_or_path, tokenizer_class=None, **kwargs):
         """
-        if never_split is None:
-            never_split = []
-        self.do_lower_case = do_lower_case
-        self.never_split = never_split
-        self.tokenize_chinese_chars = tokenize_chinese_chars
-        self.never_split_chars = never_split_chars
+        Enables loading of different Tokenizer classes with a uniform interface. Either infer the class from
+        `pretrained_model_name_or_path` or define it manually via `tokenizer_class`.
 
-    def _run_split_on_punc(self, text):
-        """Splits punctuation on a piece of text."""
-        if text in self.never_split:
-            return [text]
-        chars = list(text)
-        i = 0
-        start_new_word = True
-        output = []
-        while i < len(chars):
-            char = chars[i]
-            if _is_punctuation(char, excluded_chars=self.never_split_chars):
-                output.append([char])
-                start_new_word = True
-            else:
-                if start_new_word:
-                    output.append([])
-                start_new_word = False
-                output[-1].append(char)
-            i += 1
-
-        return ["".join(x) for x in output]
-
-
-class BertTokenizer(BertTokenizer):
-
-    def __init__(self, vocab_file, do_lower_case=True, do_basic_tokenize=True, never_split=None, never_split_chars=None,
-                 unk_token="[UNK]", sep_token="[SEP]", pad_token="[PAD]", cls_token="[CLS]",
-                 mask_token="[MASK]", tokenize_chinese_chars=True, **kwargs):
-        """Constructs a BertTokenizer.
-
-        Args:
-            **vocab_file**: Path to a one-wordpiece-per-line vocabulary file
-            **do_lower_case**: (`optional`) boolean (default True)
-                Whether to lower case the input
-                Only has an effect when do_basic_tokenize=True
-            **do_basic_tokenize**: (`optional`) boolean (default True)
-                Whether to do basic tokenization before wordpiece.
-            **never_split**: (`optional`) list of string
-                List of tokens which will never be split during tokenization.
-                Only has an effect when do_basic_tokenize=True
-            **tokenize_chinese_chars**: (`optional`) boolean (default True)
-                Whether to tokenize Chinese characters.
-                This should likely be desactivated for Japanese:
-                see: https://github.com/huggingface/pytorch-pretrained-BERT/issues/328
+        :param pretrained_model_name_or_path:  The path of the saved pretrained model or its name (e.g. `bert-base-uncased`)
+        :type pretrained_model_name_or_path: str
+        :param tokenizer_class: (Optional) Name of the tokenizer class to load (e.g. `BertTokenizer`)
+        :type tokenizer_class: str
+        :param kwargs:
+        :return: Tokenizer
         """
-        super(BertTokenizer, self).__init__(vocab_file, do_lower_case=do_lower_case, do_basic_tokenize=True, never_split=never_split, never_split_chars=never_split_chars,
-                 unk_token="[UNK]", sep_token="[SEP]", pad_token="[PAD]", cls_token="[CLS]",
-                 mask_token="[MASK]", tokenize_chinese_chars=tokenize_chinese_chars, **kwargs)
-
-        if not os.path.isfile(vocab_file):
-            raise ValueError(
-                "Can't find a vocabulary file at path '{}'. To load the vocabulary from a Google pretrained "
-                "model use `tokenizer = BertTokenizer.from_pretrained(PRETRAINED_MODEL_NAME)`".format(vocab_file))
-        self.vocab = load_vocab(vocab_file)
-        self.ids_to_tokens = collections.OrderedDict(
-            [(ids, tok) for tok, ids in self.vocab.items()])
-        self.do_basic_tokenize = do_basic_tokenize
-        if do_basic_tokenize:
-            self.basic_tokenizer = BasicTokenizer(do_lower_case=do_lower_case,
-                                                  never_split=never_split,
-                                                  never_split_chars=never_split_chars,
-                                                  tokenize_chinese_chars=tokenize_chinese_chars)
-        self.wordpiece_tokenizer = WordpieceTokenizer(vocab=self.vocab, unk_token=self.unk_token)
-        assert len(self.vocab) > 0
-        assert self.wordpiece_tokenizer is not None
-
-
-    def add_custom_vocab(self, custom_vocab_file):
-        self.vocab = self._load_custom_vocab(custom_vocab_file)
-        self.ids_to_tokens = collections.OrderedDict(
-            [(ids, tok) for tok, ids in self.vocab.items()])
-        self.wordpiece_tokenizer = WordpieceTokenizer(vocab=self.vocab, unk_token=self.unk_token)
-
-    def _load_custom_vocab(self, custom_vocab_file):
-        custom_vocab = {}
-        unique_custom_tokens = set()
-        idx = 1
-        num_dropped = 0
-        with open(custom_vocab_file, "r", encoding="utf-8") as reader:
-            while True:
-                token = reader.readline().strip()
-                if not token:
-                    break
-
-                if token not in unique_custom_tokens:
-                    if token not in self.vocab.keys():
-                        key = "[unused{}]".format(idx)
-                        custom_vocab[key] = token
-                        idx += 1
-                        unique_custom_tokens.add(token)
-                    else:
-                        num_dropped += 1
-                        logger.info("Dropped custom token (already in original vocab): {}".format(token))
-                else:
-                    logger.info("Dropped custom token (duplicate): {}".format(token))
-        # merge vocabs
-        update_count = 0
-        updated_vocab = []
-        for k,v in self.vocab.items():
-            if k in custom_vocab.keys():
-                updated_vocab.append((custom_vocab[k], v))
-                update_count += 1
+        # guess tokenizer type from name
+        if tokenizer_class is None:
+            if "roberta" in pretrained_model_name_or_path.lower():
+                tokenizer_class = "RobertaTokenizer"
+            elif "bert" in pretrained_model_name_or_path.lower():
+                tokenizer_class = "BertTokenizer"
+            elif "xlnet" in pretrained_model_name_or_path.lower():
+                tokenizer_class = "XLNetTokenizer"
             else:
-                updated_vocab.append((k, v))
-        self.vocab = collections.OrderedDict(updated_vocab)
-
-        if update_count < len(custom_vocab):
-            logger.warning("Updated vocabulary only with {} out of {} tokens from supplied custom vocabulary. The original vocab might not have enough unused tokens.".format(update_count, len(custom_vocab)))
-        else:
-            logger.info("Updated vocabulary with {} out of {} tokens from custom vocabulary.".format(update_count, len(custom_vocab)))
-        if(num_dropped > 0):
-            logger.info(f"Dropped {num_dropped} items from custom vocab, because they were already contained in original vocab.")
-
-        return self.vocab
+                raise ValueError(f"Could not infer tokenizer_type from name '{pretrained_model_name_or_path}'. Set arg `tokenizer_type` in Tokenizer.load() to one of: 'bert', 'roberta', 'xlnet' ")
+            logger.info(f"Loading tokenizer of type '{tokenizer_class}'")
+        # return appropriate tokenizer object
+        if tokenizer_class == "RobertaTokenizer":
+            return RobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        elif tokenizer_class == "BertTokenizer":
+            return BertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        elif tokenizer_class == "XLNetTokenizer":
+            return XLNetTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
 
 
+def tokenize_with_metadata(text, tokenizer):
+    """
+    Performing tokenization while storing some important metadata for each token:
 
+    * offsets: (int) Character index where the token begins in the original text
+    * start_of_word: (bool) If the token is the start of a word. Particularly helpful for NER and QA tasks.
 
-def tokenize_with_metadata(text, tokenizer, max_seq_len):
+    We do this by first doing whitespace tokenization and then applying the model specific tokenizer to each "word".
+
+    .. note::  We don't assume to preserve exact whitespaces in the tokens!
+               This means: tabs, new lines, multiple whitespace etc will all resolve to a single " ".
+               This doesn't make a difference for BERT + XLNet but it does for RoBERTa.
+               For RoBERTa it has the positive effect of a shorter sequence length, but some information about whitespace
+               type is lost which might be helpful for certain NLP tasks ( e.g tab for tables).
+
+    :param text: Text to tokenize
+    :type text: str
+    :param tokenizer: Tokenizer (e.g. from Tokenizer.load())
+    :return: Dictionary with "tokens", "offsets" and "start_of_word"
+    :rtype: dict
+
+    """
+
     # split text into "words" (here: simple whitespace tokenizer)
     words = text.split(" ")
     word_offsets = []
@@ -177,60 +100,134 @@ def tokenize_with_metadata(text, tokenizer, max_seq_len):
 
     # split "words"into "subword tokens"
     tokens, offsets, start_of_word = _words_to_tokens(
-        words, word_offsets, tokenizer, max_seq_len
+        words, word_offsets, tokenizer
     )
 
     tokenized = {"tokens": tokens, "offsets": offsets, "start_of_word": start_of_word}
     return tokenized
 
 
-def _words_to_tokens(words, word_offsets, tokenizer, max_seq_len):
+def _words_to_tokens(words, word_offsets, tokenizer):
+    """
+    Tokenize "words" into subword tokens while keeping track of offsets and if a token is the start of a word.
+
+    :param words: list of words.
+    :type words: list
+    :param word_offsets: Character indices where each word begins in the original text
+    :type word_offsets: list
+    :param tokenizer: Tokenizer (e.g. from Tokenizer.load())
+    :return: tokens, offsets, start_of_word
+
+    """
     tokens = []
     token_offsets = []
     start_of_word = []
     for w, w_off in zip(words, word_offsets):
-        # Get tokens of single word
-        tokens_word = tokenizer.tokenize(w)
+        # Get (subword) tokens of single word.
+        # For the first word of a text: we just call the regular tokenize function.
+        # For later words: we need to call it with add_prefix_space=True to get the same results with roberta / gpt2 tokenizer
+        # see discussion here. https://github.com/huggingface/transformers/issues/1196
+        if len(tokens) == 0:
+            tokens_word = tokenizer.tokenize(w)
+        else:
+            try:
+                tokens_word = tokenizer.tokenize(w, add_prefix_space=True)
+            except TypeError:
+                tokens_word = tokenizer.tokenize(w)
 
         # Sometimes the tokenizer returns no tokens
         if len(tokens_word) == 0:
             continue
         tokens += tokens_word
 
-        # get gloabl offset for each token in word + save marker for first tokens of a word
+        # get global offset for each token in word + save marker for first tokens of a word
         first_tok = True
         for tok in tokens_word:
             token_offsets.append(w_off)
-            w_off += len(tok.replace("##", ""))
+            # Depending on the tokenizer type special chars are added to distinguish tokens with preceeding
+            # whitespace (=> "start of a word"). We need to get rid of these to calculate the original length of the token
+            orig_tok = re.sub(SPECIAL_TOKENIZER_CHARS, "", tok)
+            w_off += len(orig_tok)
             if first_tok:
                 start_of_word.append(True)
                 first_tok = False
             else:
                 start_of_word.append(False)
 
-    # Clip at max_seq_length. The "-2" is for CLS and SEP token
-    tokens = tokens[: max_seq_len - 2]
-    token_offsets = token_offsets[: max_seq_len - 2]
-    start_of_word = start_of_word[: max_seq_len - 2]
-
     assert len(tokens) == len(token_offsets) == len(start_of_word)
     return tokens, token_offsets, start_of_word
 
-def _is_punctuation(char, excluded_chars=None):
-    """Checks whether `chars` is a punctuation character."""
-    cp = ord(char)
-    # We treat all non-letter/number ASCII as punctuation.
-    # Characters such as "^", "$", and "`" are not in the Unicode
-    # Punctuation class but we treat them as punctuation anyways, for
-    # consistency.
-    if excluded_chars:
-        if char in excluded_chars:
-            return False
 
-    if ((cp >= 33 and cp <= 47) or (cp >= 58 and cp <= 64) or
-            (cp >= 91 and cp <= 96) or (cp >= 123 and cp <= 126)):
-        return True
-    cat = unicodedata.category(char)
-    if cat.startswith("P"):
-        return True
-    return False
+def truncate_sequences(seq_a, seq_b, tokenizer, max_seq_len, truncation_strategy='longest_first',
+                       with_special_tokens=True, stride=0):
+    """
+    Reduces a single sequence or a pair of sequences to a maximum sequence length.
+    The sequences can contain tokens or any other elements (offsets, masks ...).
+    If `with_special_tokens` is enabled, it'll remove some additional tokens to have exactly enough space for later adding special tokens (CLS, SEP etc.)
+
+    Supported truncation strategies:
+
+    - longest_first: (default) Iteratively reduce the inputs sequence until the input is under max_length starting from the longest one at each token (when there is a pair of input sequences). Overflowing tokens only contains overflow from the first sequence.
+    - only_first: Only truncate the first sequence. raise an error if the first sequence is shorter or equal to than num_tokens_to_remove.
+    - only_second: Only truncate the second sequence
+    - do_not_truncate: Does not truncate (raise an error if the input sequence is longer than max_length)
+
+    :param seq_a: First sequence of tokens/offsets/...
+    :type seq_a: list
+    :param seq_b: Optional second sequence of tokens/offsets/...
+    :type seq_b: None or list
+    :param tokenizer: Tokenizer (e.g. from Tokenizer.load())
+    :param max_seq_len:
+    :type max_seq_len: int
+    :param truncation_strategy: how the sequence(s) should be truncated down. Default: "longest_first" (see above for other options).
+    :type truncation_strategy: str
+    :param with_special_tokens: If true, it'll remove some additional tokens to have exactly enough space for later adding special tokens (CLS, SEP etc.)
+    :type with_special_tokens: bool
+    :param stride: optional stride of the window during truncation
+    :type stride: int
+    :return: truncated seq_a, truncated seq_b, overflowing tokens
+
+    """
+    pair = bool(seq_b is not None)
+    len_a = len(seq_a)
+    len_b = len(seq_b) if pair else 0
+    num_special_tokens = tokenizer.num_added_tokens(pair=pair) if with_special_tokens else 0
+    total_len = len_a + len_b + num_special_tokens
+    overflowing_tokens = []
+
+    if max_seq_len and total_len > max_seq_len:
+        seq_a, seq_b, overflowing_tokens = tokenizer.truncate_sequences(seq_a, pair_ids=seq_b,
+                                                                    num_tokens_to_remove=total_len - max_seq_len,
+                                                                    truncation_strategy=truncation_strategy,
+                                                                    stride=stride)
+    return (seq_a, seq_b, overflowing_tokens)
+
+
+def insert_at_special_tokens_pos(seq, special_tokens_mask, insert_element):
+    """
+    Adds elements to a sequence at the positions that align with special tokens.
+    This is useful for expanding label ids or masks, so that they align with corresponding tokens (incl. the special tokens)
+
+    Example:
+
+    .. code-block:: python
+
+      # Tokens:  ["CLS", "some", "words","SEP"]
+      >>> special_tokens_mask =  [1,0,0,1]
+      >>> lm_label_ids =  [12,200]
+      >>> insert_at_special_tokens_pos(lm_label_ids, special_tokens_mask, insert_element=-1)
+      [-1, 12, 200, -1]
+
+    :param seq: List where you want to insert new elements
+    :type seq: list
+    :param special_tokens_mask: list with "1" for positions of special chars
+    :type special_tokens_mask: list
+    :param insert_element: the value you want to insert
+    :return: list
+
+    """
+    new_seq = seq.copy()
+    special_tokens_indices = np.where(np.array(special_tokens_mask) == 1)[0]
+    for idx in special_tokens_indices:
+        new_seq.insert(idx, insert_element)
+    return new_seq

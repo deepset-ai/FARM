@@ -9,27 +9,39 @@ Welcome to the FARM!
 **F**\ ramework for **A**\ dapting **R**\ epresentation **M**\ odels
 
 What is it?
-#############
+############
 FARM makes cutting edge **Transfer Learning** for NLP simple.
-It is a home for all species of pretrained language models (e.g. BERT) that can be adapted to different down-stream
-tasks (e.g. NER) by simply switching the prediction head.
-The standardized interfaces for language models and prediction heads allow a flexible extension by researchers and an easy adaptation for practitioners.
-Additional experiment tracking and visualizations support you along the way to adapt a SOTA model to your own NLP problem and showcase it as a PoC.
+Building upon `transformers <https://github.com/huggingface/pytorch-transformers>`_, FARM is a home for all species of pretrained language models (e.g. BERT) that can be adapted to different
+**domain languages** or **down-stream tasks**.
+With FARM you can easily create SOTA NLP models for tasks like document classification, NER or question answering.
+The **standardized interfaces** for language models and prediction heads allow flexible extension by researchers and easy application for practitioners.
+Additional experiment tracking and visualizations support you along the way to adapt a SOTA model to your own NLP problem and have a **fast proof-of-concept**.
 
 Core features
-###############
-- Easy adaptation of pretrained language models (e.g. BERT) to your own use case
-- Modular design of language model and prediction heads
-- Easy experiment tracking & execution
-- Simple deployment and visualization to showcase your PoC
+##############
+- **Easy adaptation of language models** (e.g. BERT) to your own use case
+- Fast integration of **custom datasets** via Processor class
+- **Modular design** of language model and prediction heads
+- Switch between heads or just combine them for  **multitask learning**
+- **Smooth upgrading** to new language models
+- Powerful **experiment tracking** & execution
+- Simple **deployment** and **visualization** to showcase your model
 
-
-Upcoming features
-###################
-- More pretrained models XLNet, XLM ...
-- SOTA adaptation strategies (Adapter Modules, Discriminative Fine-tuning ...)
-- Enabling large scale deployment for production
-- Additional Visualizations and statistics to explore and debug your model
++------------------------------+-------------------+-------------------+-------------------+
+| Task                         |      BERT         |  RoBERTa          |  XLNet            |
++==============================+===================+===================+===================+
+| Text classification          | x                 |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+
+| NER                          | x                 |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+
+| Question Answering           | x                 |                   |                   |
++------------------------------+-------------------+-------------------+-------------------+
+| Language Model Fine-tuning   | x                 |                   |                   |
++------------------------------+-------------------+-------------------+-------------------+
+| Text Regression              | x                 |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+
+| Multilabel Text classif.     | x                 |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+
 
 
 .. toctree::

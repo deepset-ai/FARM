@@ -46,7 +46,23 @@ Core features
 - **Smooth upgrading** to new language models
 - Powerful **experiment tracking** & execution
 - Simple **deployment** and **visualization** to showcase your model
-- Tasks: Question Answering, LM Domain Adaptation, NER, (Multilabel) Doc Classification
+
++------------------------------+-------------------+-------------------+-------------------+
+| Task                         |      BERT         |  RoBERTa          |  XLNet            |
++==============================+===================+===================+===================+
+| Text classification          | x                 |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+
+| NER                          | x                 |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+
+| Question Answering           | x                 |                   |                   |
++------------------------------+-------------------+-------------------+-------------------+
+| Language Model Fine-tuning   | x                 |                   |                   |
++------------------------------+-------------------+-------------------+-------------------+
+| Text Regression              | x                 |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+
+| Multilabel Text classif.     | x                 |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+
+
 
 Resources
 ##############
@@ -127,10 +143,9 @@ Much of the heavy lifting is then handled behind the scenes to make it fast & si
 
 Upcoming features
 ###################
-- More pretrained models roBERTa, XLNet  ...
 - Improved functionality for Question Answering Task
 - Additional visualizations and statistics to explore and debug your model
-- SOTA adaptation strategies (Adapter Modules, Discriminative Fine-tuning ...)
+- More pretrained models ALBERT, XLM  ...
 - Enabling large scale deployment for production
 
 Acknowledgements

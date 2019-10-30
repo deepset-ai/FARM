@@ -6,15 +6,15 @@ Contains functions that turn readable clear text input into dictionaries of feat
 import logging
 import collections
 from dotmap import DotMap
+import numpy as np
 
 from farm.data_handler.samples import Sample
 from farm.data_handler.utils import (
-    truncate_seq_pair,
     expand_labels,
-    add_cls_sep,
     pad,
     mask_random_words,
 )
+from farm.modeling.tokenization import insert_at_special_tokens_pos
 
 logger = logging.getLogger(__name__)
 
@@ -32,57 +32,44 @@ def sample_to_features_text(
     :param max_seq_len: Sequences are truncated after this many tokens
     :type max_seq_len: int
     :param tokenizer: A tokenizer object that can turn string sentences into a list of tokens
-    :return: A dictionary containing the keys "input_ids", "padding_mask" and "segment_ids" (also "label_ids" if not
+    :return: A list with one dictionary containing the keys "input_ids", "padding_mask" and "segment_ids" (also "label_ids" if not
              in inference mode). The values are lists containing those features.
-    :rtype: dict
+    :rtype: list
     """
 
-    tokens = sample.tokenized["tokens"]
-    # Account for [CLS] and [SEP] with "- 2"
-    if len(tokens) > max_seq_len - 2:
-        tokens = tokens[: (max_seq_len - 2)]
+    #TODO It might be cleaner to adjust the data structure in sample.tokenized
+    # Verify if this current quickfix really works for pairs
+    tokens_a = sample.tokenized["tokens"]
+    tokens_b = sample.tokenized.get("tokens_b", None)
 
-    # The convention in BERT is:
-    # (a) For sequence pairs:
-    #  tokens:   [CLS] is this jack ##son ##ville ? [SEP] no it is not . [SEP]
-    #  type_ids: 0   0  0    0    0     0       0 0    1  1  1  1   1 1
-    # (b) For single sequences:
-    #  tokens:   [CLS] the dog is hairy . [SEP]
-    #  type_ids: 0   0   0   0  0     0 0
-    #
-    # Where "type_ids" are used to indicate whether this is the first
-    # sequence or the second sequence. The embedding vectors for `type=0` and
-    # `type=1` were learned during pre-training and are added to the wordpiece
-    # embedding vector (and position vector). This is not *strictly* necessary
-    # since the [SEP] token unambiguously separates the sequences, but it makes
-    # it easier for the model to learn the concept of sequences.
-    #
-    # For classification tasks, the first vector (corresponding to [CLS]) is
-    # used as as the "sentence vector". Note that this only makes sense because
-    # the entire model is fine-tuned.
-    tokens = ["[CLS]"] + tokens + ["[SEP]"]
+    inputs = tokenizer.encode_plus(
+        tokens_a,
+        tokens_b,
+        add_special_tokens=True,
+        max_length=max_seq_len,
+        truncation_strategy='do_not_truncate' # We've already truncated our tokens before
+    )
 
-    # Quickfix to allow multiple text segments (e.g. at inference time)
-    n_segments = tokens.count("[SEP]")
-    if n_segments == 1:
-        segment_ids = [0] * len(tokens)
-    elif n_segments == 2:
-        first_sep_idx = tokens.index("[SEP]") + 1
-        segment_ids = [0] * first_sep_idx + [1] * (len(tokens)-first_sep_idx)
-    else:
-        raise ValueError(f"Expected 1 or 2 text segments. Got {n_segments}!")
-
-    input_ids = tokenizer.convert_tokens_to_ids(tokens)
+    input_ids, segment_ids = inputs["input_ids"], inputs["token_type_ids"]
 
     # The mask has 1 for real tokens and 0 for padding tokens. Only real
     # tokens are attended to.
     padding_mask = [1] * len(input_ids)
 
-    # Zero-pad up to the sequence length.
-    padding = [0] * (max_seq_len - len(input_ids))
-    input_ids += padding
-    padding_mask += padding
-    segment_ids += padding
+    # Padding up to the sequence length.
+    # Normal case: adding multiple 0 to the right
+    # Special cases:
+    # a) xlnet pads on the left and uses  "4"  for padding token_type_ids
+    if tokenizer.__class__.__name__ == "XLNetTokenizer":
+        pad_on_left = True
+        segment_ids = pad(segment_ids, max_seq_len, 4, pad_on_left=pad_on_left)
+    else:
+        pad_on_left = False
+        segment_ids = pad(segment_ids, max_seq_len, 0, pad_on_left=pad_on_left)
+
+    input_ids = pad(input_ids, max_seq_len, tokenizer.pad_token_id, pad_on_left=pad_on_left)
+    padding_mask = pad(padding_mask, max_seq_len, 0, pad_on_left=pad_on_left)
+
 
     assert len(input_ids) == max_seq_len
     assert len(padding_mask) == max_seq_len
@@ -129,8 +116,6 @@ def samples_to_features_ner(
     tasks,
     max_seq_len,
     tokenizer,
-    cls_token="[CLS]",
-    sep_token="[SEP]",
     non_initial_token="X",
     **kwargs
 ):
@@ -144,33 +129,30 @@ def samples_to_features_ner(
     :param max_seq_len: Sequences are truncated after this many tokens
     :type max_seq_len: int
     :param tokenizer: A tokenizer object that can turn string sentences into a list of tokens
-    :param cls_token: Token used to represent the beginning of the sequence
-    :type cls_token: str
-    :param sep_token: Token used to represent the border between two sequences
-    :type sep_token: str
     :param non_initial_token: Token that is inserted into the label sequence in positions where there is a
                               non-word-initial token. This is done since the default NER performs prediction
                               only on word initial tokens
-    :return: A dictionary containing the keys "input_ids", "padding_mask", "segment_ids", "initial_mask"
+    :return: A list with one dictionary containing the keys "input_ids", "padding_mask", "segment_ids", "initial_mask"
              (also "label_ids" if not in inference mode). The values are lists containing those features.
-    :rtype: dict
+    :rtype: list
     """
 
-    # Tokenize words and extend the labels so they are aligned with the tokens
-    # words = sample.clear_text["text"].split(" ")
-    # tokens, initial_mask = words_to_tokens(words, tokenizer, max_seq_len)
-
     tokens = sample.tokenized["tokens"]
+    inputs = tokenizer.encode_plus(text=tokens,
+                                   text_pair=None,
+                                   add_special_tokens=True,
+                                   max_length=max_seq_len,
+                                   truncation_strategy='do_not_truncate' # We've already truncated our tokens before
+    )
+
+    input_ids, segment_ids, special_tokens_mask = inputs["input_ids"], inputs["token_type_ids"], inputs["special_tokens_mask"]
+
+    # We construct a mask to identify the first token of a word. We will later only use them for predicting entities.
+    # Special tokens don't count as initial tokens => we add 0 at the positions of special tokens
+    # For BERT we add a 0 in the start and end (for CLS and SEP)
     initial_mask = [int(x) for x in sample.tokenized["start_of_word"]]
-
-    # initial_mask =
-    # Add CLS and SEP tokens
-    tokens = add_cls_sep(tokens, cls_token, sep_token)
-    initial_mask = [0] + initial_mask + [0]  # CLS and SEP don't count as initial tokens
-    padding_mask = [1] * len(tokens)
-
-    # Convert to input and labels to ids, generate masks
-    input_ids = tokenizer.convert_tokens_to_ids(tokens)
+    initial_mask = insert_at_special_tokens_pos(initial_mask, special_tokens_mask, insert_element=0)
+    assert len(initial_mask) == len(input_ids)
 
     for task_name, task in tasks.items():
         try:
@@ -193,14 +175,26 @@ def samples_to_features_ner(
                            "\nIf your are running in *inference* mode: Don't worry!"
                            "\nIf you are running in *training* mode: Verify you are supplying a proper label list to your processor and check that labels in input data are correct.")
 
-        segment_ids = [0] * max_seq_len
+        # This mask has 1 for real tokens and 0 for padding tokens. Only real
+        # tokens are attended to.
+        padding_mask = [1] * len(input_ids)
 
-        # Pad
-        input_ids = pad(input_ids, max_seq_len, 0)
+        # Padding up to the sequence length.
+        # Normal case: adding multiple 0 to the right
+        # Special cases:
+        # a) xlnet pads on the left and uses  "4" for padding token_type_ids
+        if tokenizer.__class__.__name__ == "XLNetTokenizer":
+            pad_on_left = True
+            segment_ids = pad(segment_ids, max_seq_len, 4, pad_on_left=pad_on_left)
+        else:
+            pad_on_left = False
+            segment_ids = pad(segment_ids, max_seq_len, 0, pad_on_left=pad_on_left)
+
+        input_ids = pad(input_ids, max_seq_len, tokenizer.pad_token_id, pad_on_left=pad_on_left)
+        padding_mask = pad(padding_mask, max_seq_len, 0, pad_on_left=pad_on_left)
+        initial_mask = pad(initial_mask, max_seq_len, 0, pad_on_left=pad_on_left)
         if label_ids:
-            label_ids = pad(label_ids, max_seq_len, 0)
-        initial_mask = pad(initial_mask, max_seq_len, 0)
-        padding_mask = pad(padding_mask, max_seq_len, 0)
+            label_ids = pad(label_ids, max_seq_len, 0, pad_on_left=pad_on_left)
 
         feature_dict = {
             "input_ids": input_ids,
@@ -228,93 +222,68 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
     :return: InputFeatures, containing all inputs and labels of one sample as IDs (as used for model training)
     """
 
-    tokens_a = sample.tokenized["text_a"]["tokens"]
-    tokens_b = sample.tokenized["text_b"]["tokens"]
-    # Modifies `tokens_a` and `tokens_b` in place so that the total
-    # length is less than the specified length.
-    # Account for [CLS], [SEP], [SEP] or [CLS], [SEP]
-    if not next_sent_pred:
-        n_special_tokens = 2
-    else:
-        n_special_tokens = 3
-    truncate_seq_pair(tokens_a, tokens_b, max_seq_len - n_special_tokens)
-
-    tokens_a, t1_label = mask_random_words(tokens_a, tokenizer.vocab,
-                                           token_groups=sample.tokenized["text_a"]["start_of_word"])
-    # convert lm labels to ids
-    t1_label_ids = [-1 if tok == '' else tokenizer.vocab[tok] for tok in t1_label]
-
     if next_sent_pred:
+        tokens_a = sample.tokenized["text_a"]["tokens"]
+        tokens_b = sample.tokenized["text_b"]["tokens"]
+
+        # mask random words
+        tokens_a, t1_label = mask_random_words(tokens_a, tokenizer.vocab,
+                                               token_groups=sample.tokenized["text_a"]["start_of_word"])
+
         tokens_b, t2_label = mask_random_words(tokens_b, tokenizer.vocab,
                                                token_groups=sample.tokenized["text_b"]["start_of_word"])
+        # convert lm labels to ids
+        t1_label_ids = [-1 if tok == '' else tokenizer.vocab[tok] for tok in t1_label]
         t2_label_ids = [-1 if tok == '' else tokenizer.vocab[tok] for tok in t2_label]
+        lm_label_ids = t1_label_ids + t2_label_ids
 
-        # concatenate lm labels and account for CLS, SEP, SEP
-        lm_label_ids = [-1] + t1_label_ids + [-1] + t2_label_ids + [-1]
-
+        # Convert is_next_label: Note that in Bert, is_next_labelid = 0 is used for next_sentence=true!
+        if sample.clear_text["nextsentence_label"]:
+            is_next_label_id = [0]
+        else:
+            is_next_label_id = [1]
     else:
-        lm_label_ids = [-1] + t1_label_ids + [-1]
+        tokens_a = sample.tokenized["text_a"]["tokens"]
+        tokens_b = None
+        tokens_a, t1_label = mask_random_words(tokens_a, tokenizer.vocab,
+                                               token_groups=sample.tokenized["text_a"]["start_of_word"])
+        # convert lm labels to ids
+        lm_label_ids = [-1 if tok == '' else tokenizer.vocab[tok] for tok in t1_label]
 
-    # The convention in BERT is:
-    # (a) For sequence pairs:
-    #  tokens:   [CLS] is this jack ##son ##ville ? [SEP] no it is not . [SEP]
-    #  type_ids: 0   0  0    0    0     0       0 0    1  1  1  1   1 1
-    # (b) For single sequences:
-    #  tokens:   [CLS] the dog is hairy . [SEP]
-    #  type_ids: 0   0   0   0  0     0 0
-    #
-    # Where "type_ids" are used to indicate whether this is the first
-    # sequence or the second sequence. The embedding vectors for `type=0` and
-    # `type=1` were learned during pre-training and are added to the wordpiece
-    # embedding vector (and position vector). This is not *strictly* necessary
-    # since the [SEP] token unambigiously separates the sequences, but it makes
-    # it easier for the model to learn the concept of sequences.
-    #
-    # For classification tasks, the first vector (corresponding to [CLS]) is
-    # used as as the "sentence vector". Note that this only makes sense because
-    # the entire model is fine-tuned.
-    tokens = []
-    segment_ids = []
-    tokens.append("[CLS]")
-    segment_ids.append(0)
-    for token in tokens_a:
-        tokens.append(token)
-        segment_ids.append(0)
-    tokens.append("[SEP]")
-    segment_ids.append(0)
+    # encode string tokens to input_ids and add special tokens
+    inputs = tokenizer.encode_plus(text=tokens_a,
+                                   text_pair=tokens_b,
+                                   add_special_tokens=True,
+                                   max_length=max_seq_len,
+                                   truncation_strategy='do_not_truncate'
+                                   # We've already truncated our tokens before
+                                   )
 
-    if next_sent_pred:
-        assert len(tokens_b) > 0
-        for token in tokens_b:
-            tokens.append(token)
-            segment_ids.append(1)
-        tokens.append("[SEP]")
-        segment_ids.append(1)
+    input_ids, segment_ids, special_tokens_mask = inputs["input_ids"], inputs["token_type_ids"], inputs[
+        "special_tokens_mask"]
 
-    input_ids = tokenizer.convert_tokens_to_ids(tokens)
+    # account for special tokens (CLS, SEP, SEP..) in lm_label_ids
+    lm_label_ids = insert_at_special_tokens_pos(lm_label_ids, special_tokens_mask, insert_element=-1)
 
     # The mask has 1 for real tokens and 0 for padding tokens. Only real
     # tokens are attended to.
     padding_mask = [1] * len(input_ids)
 
     # Zero-pad up to the sequence length.
-    while len(input_ids) < max_seq_len:
-        input_ids.append(0)
-        padding_mask.append(0)
-        segment_ids.append(0)
-        lm_label_ids.append(-1)
+    # Padding up to the sequence length.
+    # Normal case: adding multiple 0 to the right
+    # Special cases:
+    # a) xlnet pads on the left and uses  "4" for padding token_type_ids
+    if tokenizer.__class__.__name__ == "XLNetTokenizer":
+        pad_on_left = True
+        segment_ids = pad(segment_ids, max_seq_len, 4, pad_on_left=pad_on_left)
+    else:
+        pad_on_left = False
+        segment_ids = pad(segment_ids, max_seq_len, 0, pad_on_left=pad_on_left)
 
-    # Convert is_next_label: Note that in Bert, is_next_labelid = 0 is used for next_sentence=true!
-    if next_sent_pred:
-        if sample.clear_text["nextsentence_label"]:
-            is_next_label_id = [0]
-        else:
-            is_next_label_id = [1]
-
-    assert len(input_ids) == max_seq_len
-    assert len(padding_mask) == max_seq_len
-    assert len(segment_ids) == max_seq_len
-    assert len(lm_label_ids) == max_seq_len
+    input_ids = pad(input_ids, max_seq_len, tokenizer.pad_token_id, pad_on_left=pad_on_left)
+    padding_mask = pad(padding_mask, max_seq_len, 0, pad_on_left=pad_on_left)
+    lm_label_ids = pad(lm_label_ids, max_seq_len, -1, pad_on_left=pad_on_left)
 
     feature_dict = {
         "input_ids": input_ids,
@@ -322,8 +291,14 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
         "segment_ids": segment_ids,
         "lm_label_ids": lm_label_ids,
     }
+
     if next_sent_pred:
         feature_dict["nextsentence_label_ids"] = is_next_label_id
+
+    assert len(input_ids) == max_seq_len
+    assert len(padding_mask) == max_seq_len
+    assert len(segment_ids) == max_seq_len
+    assert len(lm_label_ids) == max_seq_len
 
     return [feature_dict]
 

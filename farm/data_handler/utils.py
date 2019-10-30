@@ -22,8 +22,12 @@ DOWNSTREAM_TASK_MAP = {
     "conll03detrain": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/training_data_for_Stanford_NER/NER-de-train-conll-formated.txt",
     "conll03dedev": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/training_data_for_Stanford_NER/NER-de-dev-conll-formated.txt",
     "conll03detest": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/training_data_for_Stanford_NER/NER-de-test-conll-formated.txt",
+    "conll03entrain": "https://raw.githubusercontent.com/synalp/NER/master/corpus/CoNLL-2003/eng.train",
+    "conll03endev": "https://raw.githubusercontent.com/synalp/NER/master/corpus/CoNLL-2003/eng.testa",
+    "conll03entest": "https://raw.githubusercontent.com/synalp/NER/master/corpus/CoNLL-2003/eng.testb",
     "lm_finetune_nips": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/lm_finetune_nips.tar.gz",
     "toxic-comments": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/toxic-comments.tar.gz",
+    'cola': "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/cola.tar.gz",
 }
 
 
@@ -106,12 +110,17 @@ def _download_extract_downstream_data(input_file):
     logger.info(
         "downloading and extracting file {} to dir {}".format(taskname, datadir)
     )
-    if "conll03" in taskname and "de" in taskname:
+    if "conll03" in taskname:
         # conll03 is copyrighted, but luckily somebody put it on github. Kudos!
         if not os.path.exists(directory):
             os.makedirs(directory)
         for dataset in ["train", "dev", "test"]:
-            _conll03get(dataset, directory)
+            if "de" in taskname:
+                _conll03get(dataset, directory, "de")
+            elif "en" in taskname:
+                _conll03get(dataset, directory, "en")
+            else:
+                logger.error("Cannot download {}. Unknown data source.".format(taskname))
     elif taskname not in DOWNSTREAM_TASK_MAP:
         logger.error("Cannot download {}. Unknown data source.".format(taskname))
     else:
@@ -124,11 +133,11 @@ def _download_extract_downstream_data(input_file):
         # temp_file gets deleted here
 
 
-def _conll03get(dataset, directory):
+def _conll03get(dataset, directory, language):
     # open in binary mode
     with open(os.path.join(directory, f"{dataset}.txt"), "wb") as file:
         # get request
-        response = get(DOWNSTREAM_TASK_MAP[f"conll03de{dataset}"])
+        response = get(DOWNSTREAM_TASK_MAP[f"conll03{language}{dataset}"])
         # write to file
         file.write(response.content)
 
@@ -175,38 +184,14 @@ def read_docs_from_txt(filename, delimiter="", encoding="utf-8", max_docs=None):
     return all_docs
 
 
-def truncate_seq_pair(tokens_a, tokens_b, max_length):
-    """Truncates a sequence pair in place to the maximum length."""
-
-    # This is a simple heuristic which will always truncate the longer sequence
-    # one token at a time. This makes more sense than truncating an equal percent
-    # of tokens from each, since if one sequence is very short then each token
-    # that's truncated likely contains more information than a longer sequence.
-    while True:
-        total_length = len(tokens_a) + len(tokens_b)
-        if total_length <= max_length:
-            break
-        if len(tokens_a) > len(tokens_b):
-            tokens_a.pop()
-        else:
-            tokens_b.pop()
-
-
-def add_cls_sep(seq, cls_token, sep_token):
-    # Inference mode
-    if not seq:
-        return None
-    ret = [cls_token]
-    ret += seq
-    ret += [sep_token]
-    return ret
-
-
-def pad(seq, max_seq_len, pad_token):
+def pad(seq, max_seq_len, pad_token, pad_on_left=False):
     ret = seq
     n_required_pad = max_seq_len - len(seq)
     for _ in range(n_required_pad):
-        ret.append(pad_token)
+        if pad_on_left:
+            ret.insert(0, pad_token)
+        else:
+            ret.append(pad_token)
     return ret
 
 
@@ -229,17 +214,20 @@ def expand_labels(labels_word, initial_mask, non_initial_token):
     return labels_token
 
 
-def get_sentence_pair(doc, all_baskets, idx):
+def get_sentence_pair(doc, all_baskets, idx, prob_next_sentence=0.5):
     """
     Get one sample from corpus consisting of two sentences. With prob. 50% these are two subsequent sentences
     from one doc. With 50% the second sentence will be a random one from another doc.
 
+    :param doc: The current document
+    :param all_baskets: SampleBaskets containing multiple other docs from which we can sample the second sentence
+    if we need a random one.
     :param idx: int, index of sample.
     :return: (str, str, int), sentence 1, sentence 2, isNextSentence Label
     """
     sent_1, sent_2 = doc[idx], doc[idx + 1]
 
-    if random.random() > 0.5:
+    if random.random() > prob_next_sentence:
         label = True
     else:
         sent_2 = _get_random_sentence(all_baskets, forbidden_doc=doc)
@@ -296,6 +284,8 @@ def mask_random_words(tokens, vocab, token_groups=None, max_predictions_per_seq=
     :type masked_lm_prob: float
     :return: (list of str, list of int), masked tokens and related labels for LM prediction
     """
+
+    #TODO make special tokens model independent
 
     # 1. Combine tokens to one group (e.g. all subtokens of a word)
     cand_indices = []

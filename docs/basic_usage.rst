@@ -16,12 +16,12 @@ FARM offers two modes for model training:
 **Option 2: Stick together your own building blocks**::
 
     # Basic building blocks for data handling
-    tokenizer = BertTokenizer.from_pretrained(pretrained_model_name_or_path=lang_model)
+    tokenizer = Tokenizer.from_pretrained(pretrained_model_name_or_path=lang_model)
     processor = NERProcessor(tokenizer=tokenizer, data_dir="../data/conll03-de", max_seq_len=128)
     ...
 
     # AdaptiveModel = LanguageModel + PredictionHead(s)
-    language_model = Bert.load(lang_model)
+    language_model = LanguageModel.load(lang_model)
     prediction_head = TokenClassificationHead(layer_dims=[768, num_labels])
     model = AdaptiveModel(language_model=language_model, prediction_heads=[prediction_head], ...)
     ...
@@ -95,7 +95,8 @@ UI Docker
 
 The UI container can be launched in addition to provide a frontend that queries the API exposed on port 5000 by the other container.
 Start the container via docker-compose or individually via
- :code:`docker run -d -p 3000:80 deepset/farm-inference-ui`
+
+:code:`docker run -d -p 3000:80 deepset/farm-inference-ui`
 
 Open localhost:3000 in your browser. Then simply select the tab with your task on the left (e.g. QA), one of the models
 exposed by the API and enter some text that you want to feed to the model.

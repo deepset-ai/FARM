@@ -19,10 +19,12 @@ from farm.experiment import run_experiment, load_experiments
 def main():
     config_files = [
         "experiments/ner/conll2003_de_config.json",
+        "experiments/ner/conll2003_en_config.json",
         "experiments/ner/germEval14_config.json",
         "experiments/text_classification/germEval18Fine_config.json",
         "experiments/text_classification/germEval18Coarse_config.json",
         "experiments/text_classification/gnad_config.json",
+        "experiments/text_classification/cola_config.json",
         "experiments/qa/squad20_config.json",
     ]
 

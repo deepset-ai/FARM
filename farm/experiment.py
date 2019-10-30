@@ -1,16 +1,11 @@
 import logging
-import torch
 
 from farm.data_handler.data_silo import DataSilo
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import LanguageModel
-from farm.modeling.optimization import (
-    BertAdam,
-    WarmupLinearSchedule,
-    initialize_optimizer,
-)
+from farm.modeling.optimization import initialize_optimizer
 from farm.modeling.prediction_head import PredictionHead
-from farm.modeling.tokenization import BertTokenizer
+from farm.modeling.tokenization import Tokenizer
 from farm.data_handler.processor import Processor
 from farm.train import Trainer
 from farm.utils import set_all_seeds, initialize_device_settings
@@ -72,20 +67,10 @@ def run_experiment(args):
     set_all_seeds(args.general.seed)
 
     # Prepare Data
-    tokenizer = BertTokenizer.from_pretrained(
+    tokenizer = Tokenizer.load(
         args.parameter.model, do_lower_case=args.parameter.lower_case
     )
-    # processor = Processor.load(
-    #     tokenizer=tokenizer,
-    #     max_seq_len=args.parameter.max_seq_len,
-    #     data_dir=args.general.data_dir,
-    #     train_filename=args.task.train_filename,
-    #     dev_filename=args.task.dev_filename,
-    #     test_filename=args.task.test_filename,
-    #     dev_split=args.task.dev_split,
-    #     metrics=args.task.metrics,
-    #     **args.task.toDict(),  # args is of type DotMap and needs conversion to std python dicts
-    # )
+
     processor = Processor.load(
         tokenizer=tokenizer,
         max_seq_len=args.parameter.max_seq_len,
@@ -162,6 +147,7 @@ def get_adaptive_model(
     class_weights=None,
 ):
     parsed_lm_output_types = lm_output_type.split(",")
+    language_model = LanguageModel.load(model)
 
     initialized_heads = []
     for head_name in prediction_heads.split(","):
@@ -172,8 +158,6 @@ def get_adaptive_model(
                 class_weights=class_weights,
             )
         )
-
-    language_model = LanguageModel.load(model)
 
     model = AdaptiveModel(
         language_model=language_model,

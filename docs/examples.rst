@@ -9,7 +9,7 @@ Document Classification
 
 1.Create a tokenizer::
 
-    tokenizer = BertTokenizer.from_pretrained(
+    tokenizer = Tokenizer.from_pretrained(
         pretrained_model_name_or_path=lang_model,
         do_lower_case=False)
 
@@ -28,7 +28,7 @@ Document Classification
 4. Create an AdaptiveModel
 a) which consists of a pretrained language model as a basis::
 
-    language_model = Bert.load(lang_model)
+    language_model = LanguageModel.load(lang_model)
 
 b) and a prediction head on top that is suited for our task => Text classification::
 

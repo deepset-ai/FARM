@@ -112,10 +112,10 @@ class Inferencer:
         :type batch_size: int
         :param gpu: If GPU shall be used
         :type gpu: bool
-        :param embedder_only: If true, a faster processor (InferenceProcessor) is loaded. This should only be used
-        for extracting embeddings (no downstream predictions).
+        :param embedder_only: If true, a faster processor (InferenceProcessor) is loaded. This should only be used for extracting embeddings (no downstream predictions).
         :type embedder_only: bool
         :return: An instance of the Inferencer.
+
         """
 
         device, n_gpu = initialize_device_settings(use_cuda=gpu, local_rank=-1, fp16=False)
@@ -142,7 +142,7 @@ class Inferencer:
         preds_all = self.inference_from_dicts(dicts, rest_api_schema=False)
         return preds_all
 
-    def inference_from_dicts(self, dicts, rest_api_schema=False):
+    def inference_from_dicts(self, dicts, rest_api_schema=False, use_multiprocessing=True):
         """
         Runs down-stream inference using the prediction head.
 
@@ -151,6 +151,8 @@ class Inferencer:
         :param rest_api_schema: whether conform to the schema used for dicts in the HTTP API for Inference.
         :type rest_api_schema: bool
         :return: dict of predictions
+        :param use_multiprocessing: time incurred in spawning processes could outweigh performance boost for very small
+        number of dicts, eg, HTTP APIs for inference. This flags allows to disable multiprocessing for such cases.
 
         """
         if self.prediction_type == "embedder":
@@ -172,35 +174,42 @@ class Inferencer:
         dict_batches_to_process = int(len(dicts) / multiprocessing_chunk_size)
         num_cpus_used = min(mp.cpu_count(), dict_batches_to_process) or 1
 
-        # preprocess data with multiple cores
-        with ExitStack() as stack:
-            p = stack.enter_context(mp.Pool(processes=num_cpus_used))
+        if use_multiprocessing:
+            with ExitStack() as stack:
+                p = stack.enter_context(mp.Pool(processes=num_cpus_used))
 
-            logger.info(
-                f"Got ya {num_cpus_used} parallel workers to do inference on {len(dicts)}dicts (chunksize = {multiprocessing_chunk_size})..."
-            )
-            log_ascii_workers(num_cpus_used, logger)
+                logger.info(
+                    f"Got ya {num_cpus_used} parallel workers to do inference on {len(dicts)}dicts (chunksize = {multiprocessing_chunk_size})..."
+                )
+                log_ascii_workers(num_cpus_used, logger)
 
-            results = p.imap(
-                partial(self._multiproc, processor=self.processor, rest_api_schema=rest_api_schema),
-                grouper(dicts, multiprocessing_chunk_size),
-                1,
-            )
+                results = p.imap(
+                    partial(self._multiproc, processor=self.processor, rest_api_schema=rest_api_schema),
+                    grouper(dicts, multiprocessing_chunk_size),
+                    1,
+                )
+                if self.prediction_type != "span_classification":
+                    preds_all = []
+                    with tqdm(total=len(dicts), unit=" Dicts") as pbar:
+                        for dataset, tensor_names, sample in results:
+                            preds_all.extend(self._run_inference(dataset, tensor_names, sample))
+                            pbar.update(multiprocessing_chunk_size)
+                else:
+                    datasets = []
+                    all_samples = []
+                    with tqdm(total=len(dicts), unit=" Dicts") as pbar:
+                        for dataset, tensor_names, baskets in results:
+                            datasets.append(dataset)
+                            for b in baskets:  # number of baskets in _multiproc() related to chunksize
+                                all_samples.extend(b.samples)
+                    concat_datasets = ConcatDataset(datasets)
+            if self.prediction_type == "span_classification":
+                preds_all = self._run_inference_qa(concat_datasets, tensor_names, all_samples)
 
-            datasets = []
-            all_samples = []
-            with tqdm(total=len(dicts), unit=" Dicts") as pbar:
-                for dataset, tensor_names, baskets in results:
-                    datasets.append(dataset)
-                    for b in baskets: # number of baskets in _multiproc() related to chunksize
-                        all_samples.extend(b.samples)
-            concat_datasets = ConcatDataset(datasets)
-
-        # use the model to create predictions
-        if self.prediction_type == "span_classification":
-            preds_all = self._run_inference_qa(concat_datasets,tensor_names,all_samples)
-        else:
-            preds_all = self._run_inference(concat_datasets,tensor_names,all_samples)
+        else: #TODO add qa inference for single core
+            chunk = next(grouper(dicts, len(dicts)))
+            dataset, tensor_names, sample = self._multiproc(chunk, processor=self.processor, rest_api_schema=rest_api_schema)
+            preds_all = self._run_inference(dataset, tensor_names, sample)
 
         return preds_all
 
@@ -208,6 +217,7 @@ class Inferencer:
     def _multiproc(cls, chunk, processor, rest_api_schema):
         dicts = [d[1] for d in chunk]
         index = chunk[0][0]
+        #TODO do not return baskets for tasks except QA
         dataset, tensor_names, baskets = processor.dataset_from_dicts(dicts, index, rest_api_schema, return_baskets=True)
 
         return dataset, tensor_names, baskets

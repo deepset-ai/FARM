@@ -1,0 +1,67 @@
+{
+  "general": {
+    "cache_dir":  {"value": null, "default": "",                "desc": "Path for storing pre-trained models downloaded from s3."}, 
+    "data_dir":   {"value": null, "default": "data/conll03-en", "desc": "Input directory for downstream task. Should contain train + test (+ dev) files."},
+    "output_dir": {"value": null, "default": "saved_models",    "desc": "Output directory where model predictions and checkpoints will be saved."},
+
+    "cuda":        {"value": null, "default": true,  "desc": "CUDA flag,  uses CUDA if available."},
+    "local_rank":  {"value": null, "default": -1,    "desc": "If local_rank == -1 -> multiGPU mode on one machine,  other values signal distributed computation across several nodes (apex install required)."},
+    "fp16":        {"value": null, "default": false, "desc": "Floating point precision. IF true it halves the precision and therefore the memory requirements,  so you can doulbe the batch size."}, 
+    "loss_scale":  {"value": null, "default": 0,     "desc": "Loss scaling to improve fp16 numeric stability. Only used when fp16 set to True. 0 (default value): dynamic loss scaling. Positive power of 2: static loss scaling value."}, 
+
+    "seed":        {"value": null, "default": 42, "desc": "Random seed for initializations."},
+    "server_ip":   {"value": null, "default": "", "desc": "Can be used for distant debugging."},
+    "server_port": {"value": null, "default": "", "desc": "Can be used for distant debugging."}
+  }, 
+
+  "task": {
+    "name":             {"value": null, "default": "CONLL2003",      "desc": "Name of task"},
+    "type":             {"value": null, "default": "ner"},
+    "language":         {"value": null, "default": "en"},
+    "do_eval":          {"value": null, "default": true,             "desc": "Whether to run eval on the dev set."},
+    "do_train":         {"value": null, "default": true,             "desc": "Whether to run training. Can be used to only evaluate on an already trained model."},
+
+    "processor_name":   {"value": null, "default": "NERProcessor",   "desc": "A Dataprocessor that is suited for tabular data. Needs special data parameters defined."},
+    "dev_split":        {"value": null, "default": 0.0,              "desc": "Split a dev set from the training set using dev_split as proportion."},
+    "train_filename":   {"value": null, "default": "train.txt",      "desc": "Filename for training."},
+    "dev_filename":     {"value": null, "default": "dev.txt",        "desc": "Filename for development. Missing in case of GermEval2018."},
+    "test_filename":    {"value": null, "default": "test.txt",       "desc": "Filename for testing. It is the submission file from competition."},
+    "delimiter":        {"value": null, "default": " ",             "desc": "Delimiter used to seprate columns in input data."},
+    "label_list":           {"value": null, "default": ["[PAD]", "X", "O", "B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-OTH", "I-OTH"], "desc": ""},
+    "metric":           {"value": null, "default": "seq_f1",       "desc": "Metric used. A f1 scored tailored to sequences of labels."}
+  }, 
+
+  "parameter": {
+    "model":           {"value": null, "default":  ["bert-base-cased", "roberta-base","xlnet-base-cased"],  "desc": "Bert pre-trained model selected in the list: bert-base-uncased,  bert-large-uncased,  bert-base-cased,  bert-large-cased,  bert-base-multilingual-uncased,  bert-base-multilingual-cased,  bert-base-chinese."},
+    "prediction_head": {"value": null, "default": "TokenClassificationHead", "desc":  "Kind of prediction head we use on top of Language Model"},
+    "lm_output_type":  {"value": null, "default": "per_token",               "desc":  "Language Model output."},
+    "lower_case":      {"value": null, "default": false,                     "desc": "Set to true if you are using an uncased model."},
+    "max_seq_len":     {"value": null, "default": 128,                       "desc": "The maximum total input sequence length after WordPiece tokenization. Some GNAD texts even extend beyond 512 tokens."},
+    "balance_classes": {"value": null, "default": false,                     "desc": "Balance classes using weighted CrossEntropyLoss."},
+
+    "learning_rate":     {"value": null, "default": 5e-5, "desc": "The initial learning rate for Adam."},
+    "warmup_proportion": {"value": null, "default": 0.4,  "desc": "Proportion of training to perform linear learning rate warmup for. E.g.,  0.1 = 10%% of training."},
+
+    "epochs":                       {"value": null, "default": 2,         "desc": "Total number of training epochs to perform."},
+    "batch_size":                   {"value": null, "default": 64,        "desc": "Total batch size for training on one V100 GPU. If using multiGPU, the total batch size will be automatically adjusted."},
+    "gradient_accumulation_steps":  {"value": null, "default": 1,         "desc": "Number of updates steps (batches) to accumulate before performing a backward/update pass."},
+    "embeds_dropout_prob":          {"value": null, "default": 0.1,       "desc": "Strength of dropout to be applied to the word embeddings generated by the language model."},
+    "layer_dims":                   {"value": null, "default": [768, 15], "desc": "Cannot do experiments on this value, since it is already a list. Dimensions of the prediction head. Needs to be of type String, otherwise it gets iterated over."}
+  }, 
+
+  "logging": {
+    "eval_every":    {"value": null,                                "default": 60,   "desc": "Steps per training loop (batches) required for evaluation on dev set. Set to 0 when you do not want to do evaluation on dev set during training."},
+    "mlflow_url":    {"value": "https://public-mlflow.deepset.ai/", "default": null, "desc": "Mlflow server for tracking experiments (e.g. https://public-mlflow.deepset.ai/)"},
+    "mlflow_nested": {"value": null,                                "default": true, "desc": "Nesting mlflow experiments. For doing multiple runs across a set of hyperparameters."},
+
+    "mlflow_experiment": {"value": "Public_FARM",         "default": null, "desc": "Experiment name used for mlflow"},
+    "mlflow_run_name":   {"value": "conll2003 by config", "default": null, "desc": "Name of the particular run for mlflow"}
+  }
+}
+
+
+
+
+
+
+
