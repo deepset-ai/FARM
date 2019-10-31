@@ -11,10 +11,7 @@ from farm.visual.ascii.images import WELCOME_BARN, WORKER_M, WORKER_F, WORKER_X
 
 logger = logging.getLogger(__name__)
 
-try:
-    from tensorboardX import SummaryWriter
-except ImportError:
-    logger.warning("TensorboardX not installed. Required if you use tensorboard logger.")
+
 
 
 def set_all_seeds(seed, n_gpu=0):
@@ -120,6 +117,7 @@ class TensorBoardLogger(BaseMLLogger):
     """
 
     def __init__(self, **kwargs):
+        from tensorboardX import SummaryWriter
         TensorBoardLogger.summary_writer = SummaryWriter()
         super().__init__(**kwargs)
 
