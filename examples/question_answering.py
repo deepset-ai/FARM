@@ -37,9 +37,8 @@ dev_filename="dev-v2.0.json"
 save_dir = "../saved_models/full_train"
 inference_file = "../data/squad20/dev-v2.0.json"
 predictions_file = save_dir + "/predictions.json"
-train = True
+train = False
 inference = True
-
 
 if train:
     # 1.Create a tokenizer
@@ -124,4 +123,4 @@ if inference:
         pprint.pprint(y)
 
     import json
-    json.dump(result, open(predictions_file, "w"))
+    json.dump(result, open(predictions_file, "w"), indent=4)

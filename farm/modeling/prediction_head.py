@@ -735,48 +735,32 @@ class QuestionAnsweringHead(PredictionHead):
         """
         One forward pass through the prediction head model, starting with language model output on token level
 
-        :param X: Output of language model, of shape [batch_size, seq_length, LM_embedding_dim]
-        :type X: torch.tensor
-        :return: (start_logits, end_logits), logits for the start and end of answer
-        :rtype: tuple[torch.tensor,torch.tensor]
         """
-        # # tODO don't understand why we have to split start end logits
         logits = self.feed_forward(X)
-        # start_logits, end_logits = logits.split(1, dim=-1)
-        # start_logits = start_logits.squeeze(-1)
-        # end_logits = end_logits.squeeze(-1)
         return logits
 
     def logits_to_loss(self, logits, labels, **kwargs):
         """
         Combine predictions and labels to a per sample loss.
-
-        :param logits: (start_logits, end_logits), logits for the start and end of answer
-        :type logits: tuple[torch.tensor,torch.tensor]
-        TODO Rewrite these param descriptions
-        :param start_position: tensor with indices of START positions per sample
-        :type start_position: torch.tensor
-        :param end_position: tensor with indices of END positions per sample
-        :type end_position: torch.tensor
-        :param kwargs: placeholder for passing generic parameters
-        :type kwargs: object
-        :return: per_sample_loss: Per sample loss : )
-        :rtype: torch.tensor
         """
-
         # todo explain how we only use first answer for train
+        # labels.shape =  [batch_size, n_max_answers, 2]. n_max_answers is by default 6 since this is the
+        # most that occurs in the SQuAD dev set. The 2 in the final dimension corresponds to [start, end]
         start_position = labels[:, 0, 0]
         end_position = labels[:, 0, 1]
 
+        # logits is of shape [batch_size, max_seq_len, 2]. Like above, the final dimension corresponds to [start, end]
         start_logits, end_logits = logits.split(1, dim=-1)
         start_logits = start_logits.squeeze(-1)
         end_logits = end_logits.squeeze(-1)
 
+        # Squeeze final singleton dimensions
         if len(start_position.size()) > 1:
             start_position = start_position.squeeze(-1)
         if len(end_position.size()) > 1:
             end_position = end_position.squeeze(-1)
-        # sometimes the start/end positions (the labels read from file) are outside our model predictions, we ignore these terms
+
+        # TODO don't understand ignored_index - this currently not used but was used in older QA head - need to investigate
         ignored_index = start_logits.size(1)
         start_position.clamp_(0, ignored_index)
         end_position.clamp_(0, ignored_index)
@@ -787,28 +771,30 @@ class QuestionAnsweringHead(PredictionHead):
         per_sample_loss = (start_loss + end_loss) / 2
         return per_sample_loss
 
-    def logits_to_preds(self, logits, padding_mask, start_of_word, max_answer_length=30, **kwargs):
+    def logits_to_preds(self, logits, padding_mask, start_of_word, seq_2_start_t, max_answer_length=30, **kwargs):
         """
         Get the predicted index of start and end token of the answer. Note that the output is at token level
-        and not word level.
-
-        :param logits: (start_logits, end_logits), logits for the start and end of answer
-        :type logits: tuple[torch.tensor,torch.tensor]
-        :param kwargs: placeholder for passing generic parameters
-        :type kwargs: object
-        :return: (start_idx, end_idx), start and end indices for all samples in batch
-        :rtype: (torch.tensor,torch.tensor)
+        and not word level. Note also that these logits correspond to the tokens of a sample
+        (i.e. special tokens, question tokens, passage_tokens)
         """
 
+        # Will be populated with the top-n predictions of each sample in the batch
+        # shape = batch_size x ~top_n
+        # Note that ~top_n = n   if no_answer is     within the top_n predictions
+        #           ~top_n = n+1 if no_answer is not within the top_n predictions
+        all_top_n = []
+
+        # logits is of shape [batch_size, max_seq_len, 2]. The final dimension corresponds to [start, end]
         start_logits, end_logits = logits.split(1, dim=-1)
         start_logits = start_logits.squeeze(-1)
         end_logits = end_logits.squeeze(-1)
-        n_non_padding = torch.sum(padding_mask, dim=1)
+
+        # Calculate a few useful variables
         batch_size = start_logits.size()[0]
-        all_top_n = []
+        max_seq_len = start_logits.shape[1] # target dim
+        n_non_padding = torch.sum(padding_mask, dim=1)
 
         # get scores for all combinations of start and end logits => candidate answers
-        max_seq_len = start_logits.shape[1] # target dim
         start_matrix = start_logits.unsqueeze(2).expand(-1, -1, max_seq_len)
         end_matrix = end_logits.unsqueeze(1).expand(-1, max_seq_len, -1)
         start_end_matrix = start_matrix + end_matrix
@@ -828,36 +814,128 @@ class QuestionAnsweringHead(PredictionHead):
         # Get the n_best candidate answers for each sample that are valid (via some heuristic checks)
         for sample_idx in range(batch_size):
             sample_top_n = self.get_top_candidates(sorted_candidates[sample_idx], start_end_matrix[sample_idx],
-                                                   start_logits[sample_idx], end_logits[sample_idx],
-                                                   n_non_padding[sample_idx], max_answer_length)
+                                                   n_non_padding[sample_idx], max_answer_length,
+                                                   seq_2_start_t[sample_idx])
             all_top_n.append(sample_top_n)
 
         return all_top_n
 
+    def get_top_candidates(self, sorted_candidates, start_end_matrix,
+                           n_non_padding, max_answer_length, seq_2_start_t, n_best=5):
+        """ Returns top candidate answers. Operates on a matrix of summed start and end logits. This matrix corresponds
+        to a single sample (includes special tokens, question tokens, passage tokens). If no_answer is not within
+        the n_best candidates, it will also be appended to top_candidates. Hence this method can return n or n+1
+        candidates. """
+
+        # Initialize some variables
+        top_candidates = []
+        n_candidates = sorted_candidates.shape[0]
+
+        # Iterate over all candidates and break when we have all our n_best candidates
+        for candidate_idx in range(n_candidates):
+            if len(top_candidates) == n_best:
+                break
+            else:
+                # Retrieve candidate's indices
+                start_idx = sorted_candidates[candidate_idx, 0].item()
+                end_idx = sorted_candidates[candidate_idx, 1].item()
+                # Check that the candidate's indices are valid and save them if they are
+                if self.valid_answer_idxs(start_idx, end_idx, n_non_padding, max_answer_length, seq_2_start_t):
+                    score = start_end_matrix[start_idx, end_idx].item()
+                    top_candidates.append([start_idx, end_idx, score])
+
+        # We always want the score for no_answer to be included in the candidates
+        # since we need it later in aggregate_preds()
+        if not self.has_no_answer_idxs(top_candidates):
+            no_answer_score = start_end_matrix[0, 0].item()
+            top_candidates.append([0, 0, no_answer_score])
+        return top_candidates
+
+    @staticmethod
+    def valid_answer_idxs(start_idx, end_idx, n_non_padding, max_answer_length, seq_2_start_t):
+        #TODO rethink this method - remember that these indexes are on sample level (special tokens + queestion tokens + passage+tokens)
+        # Also method should be static
+
+        # This function can seriously slow down inferencing and eval
+        # Continue if start or end label points to a padding token
+        if start_idx < seq_2_start_t and start_idx != 0:
+            return False
+        if end_idx < seq_2_start_t and end_idx != 0:
+            return False
+        if start_idx >= n_non_padding:
+            return False
+        if end_idx >= n_non_padding:
+            return False
+        # Check if start comes after end
+        if end_idx < start_idx:
+            return False
+        # # If one of the two indices is 0, the other must also be 0
+        # if start_idx == 0 and end_idx != 0:
+        #     return False
+        # if start_idx != 0 and end_idx == 0:
+        #     return False
+
+        # if start_idx not in feature.token_to_orig_map:
+        #     continue
+        # if end_idx not in feature.token_to_orig_map:
+        #     continue
+        # if not feature.token_is_max_context.get(start_index, False):
+        #     continue
+
+        length = end_idx - start_idx + 1
+        if length > max_answer_length:
+            return False
+        return True
+
     def formatted_preds(self, logits, baskets):
-        # TODO assumes no incomplete docs
+        """ Takes a list of logits, each corresponding to one sample, and converts them into document level predictions.
+        Leverages information in the SampleBaskets. Assumes that we are being passed logits from ALL samples in the one
+        SampleBasket i.e. all passages of a document. """
+
+        # Unpack some useful variables
+        # passage_start_t is the token index of the passage relative to the document (usually a multiple of doc_stride)
+        # seq_2_start_t is the token index of the first token in passage relative to the input sequence (i.e. number of
+        # special tokens and question tokens that come before the passage tokens)
         samples = [s for b in baskets for s in b.samples]
+        ids = [s.id.split("-") for s in samples]
         passage_start_t = [s.features[0]["passage_start_t"] for s in samples]
         seq_2_start_t = [s.features[0]["seq_2_start_t"] for s in samples]
-        ids = [s.id.split("-") for s in samples]
+
+        # TODO would challenge why they are being wrapped here in tensor - Aren't they in the batch?
         logits = torch.stack(logits)
         padding_mask = torch.tensor([s.features[0]["padding_mask"] for s in samples], dtype=torch.long)
         start_of_word = torch.tensor([s.features[0]["start_of_word"] for s in samples], dtype=torch.long)
-        preds_p = self.logits_to_preds(logits, padding_mask, start_of_word)
+
+        # Return one prediction per passage / sample
+        preds_p = self.logits_to_preds(logits, padding_mask, start_of_word, seq_2_start_t)
+
+        # Aggregate passage level predictions to create document level predictions.
+        # This method assumes that all passages of each document are contained in preds_p
+        # i.e. that there are no incomplete documents. The output of this step
+        # are prediction spans
         preds_d = self.aggregate_preds(preds_p, passage_start_t, ids, seq_2_start_t)
         assert len(preds_d) == len(baskets)
+
+        # Takes document level prediction spans and..... TODO
+        formatted = self.stringify(preds_d, baskets)
+
+        return formatted
+
+    def stringify(self, preds_d, baskets):
         ret = {}
         for doc_idx, doc_preds in enumerate(preds_d):
             token_offsets = baskets[doc_idx].raw["document_offsets"]
             clear_text = baskets[doc_idx].raw["document_text"]
             squad_id = baskets[doc_idx].raw["squad_id"]
             doc_preds_str = []
+            full_preds = []
             for start_t, end_t, score in doc_preds:
                 pred_str = self.span_to_string(start_t, end_t, token_offsets, clear_text)
                 doc_preds_str.append(pred_str)
-            ret[squad_id] = doc_preds_str[0]
+                full_preds.append([start_t, end_t, score])
+            ret[squad_id] = {"texts": doc_preds_str,
+                             "other": full_preds}
         return ret
-
 
     @staticmethod
     def span_to_string(start_t, end_t, token_offsets, clear_text):
@@ -875,83 +953,11 @@ class QuestionAnsweringHead(PredictionHead):
             end_ch = token_offsets[end_t]
         return clear_text[start_ch: end_ch]
 
-    def get_top_candidates(self, sorted_candidates,
-                           start_end_matrix, start_logits,
-                           end_logits, n_non_padding,
-                           max_answer_length, n_best=5):
-        # TODO say it operates on single sample
-        sample_top_n = []
-        for candidate_idx in range(sorted_candidates.shape[0]):
-            if len(sample_top_n) == n_best:
-                break
-            else:
-                start_idx = sorted_candidates[candidate_idx, 0].item()
-                end_idx = sorted_candidates[candidate_idx, 1].item()
-                if self.valid_answer_idxs(start_idx, end_idx, n_non_padding, max_answer_length):
-                    score = start_end_matrix[start_idx, end_idx].item()
-                    sample_top_n.append([start_idx, end_idx, score])
-
-        # We always want the score for no_answer to be included in the candidates. We need it later in aggregate_preds()
-        # in case of a long document that got split into multiple passages.
-        if not self.has_no_answer_idxs(sample_top_n):
-            no_answer_score = start_logits[0] + end_logits[0]
-            sample_top_n.append([0, 0, no_answer_score.item()])
-        return sample_top_n
-
-
     def has_no_answer_idxs(self, sample_top_n):
         for start, end, score in sample_top_n:
             if start == 0 and end == 0:
                 return True
         return False
-
-    def valid_answer_idxs(self, start_idx, end_idx, n_non_padding, max_answer_length):
-        # Continue if start or end label points to a padding token
-        if start_idx >= n_non_padding:
-            return False
-        if end_idx >= n_non_padding:
-            return False
-        # Check if start comes after end
-        if end_idx < start_idx:
-            return False
-        # if start_idx not in feature.token_to_orig_map:
-        #     continue
-        # if end_idx not in feature.token_to_orig_map:
-        #     continue
-        # if not feature.token_is_max_context.get(start_index, False):
-        #     continue
-
-        length = end_idx - start_idx + 1
-        if length > max_answer_length:
-            return False
-        return True
-
-    def prepare_labels(self, labels, start_of_word, **kwargs):
-        """
-        We want to pack labels into a tuple, to be compliant with later functions
-
-        :param start_position: indices of answer start positions (in token space)
-        :type start_position: torch.tensor
-        :param end_position: indices of answer end positions (in token space)
-        :type end_position: torch.tensor
-        :param kwargs: placeholder for passing generic parameters
-        :type kwargs: object
-        :return: tuplefied positions
-        :rtype: tuple(torch.tensor,torch.tensor)
-        """
-        # DURING DEV EVAL, WE ARE PERFORMING DOCUMENT-LEVEL + TOKEN-LEVEL EVALUATION
-        # THIS IS IN CONTRAST TO SQUAD STYLE EVAL WHICH IS ONE WORD-LEVEL
-        # # Convert the token level label indices to word level
-        # labels_w = torch.zeros_like(labels)
-        # n_samples = labels.size(0)
-        # n_answers = labels.size(1)
-        # for i in range(n_samples):
-        #     for j in range(n_answers):
-        #         start = labels[i, j, 0]
-        #         end = labels[i, j, 1]
-        #         labels_w[i, j, 0] = self.token_to_word_idx(start, start_of_word[i])
-        #         labels_w[i, j, 1] = self.token_to_word_idx(end, start_of_word[i])
-        return labels
 
     def aggregate_preds(self, preds, passage_start_t, ids, seq_2_start_t=None, labels=None, n_best=5):
         # adjust offsets
@@ -998,13 +1004,15 @@ class QuestionAnsweringHead(PredictionHead):
         else:
             return preds
 
-    def reduce_labels(self, labels):
+    @staticmethod
+    def reduce_labels(labels):
         positive_answers = [(start, end) for x in labels for start, end in x if not (start == 0 and end == 0)]
         if not positive_answers:
             return [(0, 0)]
         else:
             return list(set(positive_answers))
 
+    @staticmethod
     def reduce_preds(self, preds, n_best=5):
         # todo write with start, end unpacking instead of indices
         # todo since there is overlap between passages, its currently possible that they return the same prediction
@@ -1027,18 +1035,23 @@ class QuestionAnsweringHead(PredictionHead):
         else:
             return pos_answers_filtered + [no_answers_min]
 
-    def pred_to_doc_idxs(self, pred, passage_start_t):
+    @staticmethod
+    def pred_to_doc_idxs(pred, passage_start_t):
         new_pred = []
         for start, end, score in pred:
-            if start == 0 and end == 0:
-                pass
-            else:
+            if start != 0:
                 start += passage_start_t
+                assert start >= 0
+            if end != 0:
                 end += passage_start_t
+                if end < 0:
+                    print()
+                assert start >= 0
             new_pred.append([start, end, score])
         return new_pred
 
-    def label_to_doc_idxs(self, label, passage_start_t):
+    @staticmethod
+    def label_to_doc_idxs(label, passage_start_t):
         # Todo Write note about why we see -1 and how this will filter them out
         new_label = []
         for start, end in label:
@@ -1050,29 +1063,9 @@ class QuestionAnsweringHead(PredictionHead):
                 new_label.append((start, end))
         return new_label
 
-    ### NOTE: Currently the model operates on document-level + token-level at dev evaluation.
-        # def convert_preds_to_word_idx(self, sample_top_n, start_of_word):
-        #     # todo say t and w for token word
-        #     preds_w = []
-        #     for start_t, end_t, score in sample_top_n:
-        #         pred_w = [self.token_to_word_idx(start_t, start_of_word),
-        #                   self.token_to_word_idx(end_t, start_of_word),
-        #                   score]
-        #         preds_w.append(pred_w)
-        #     return preds_w
+    def prepare_labels(self, labels, start_of_word, **kwargs):
+        return labels
 
-        # def token_to_word_idx(self, token_idx, start_of_word):
-        #     # TODO: note: only counts as word if fully overlaps word
-        #     # TODO this could result in -1 as an index - is this a problem? is it likely to come up?
-        #     # TODO: This almost certainly does not work as it should
-        #     if token_idx <= 0:
-        #         return token_idx
-        #     start_of_word[0] = 0
-        #     word_idx = sum(start_of_word[:token_idx]).item()
-        #     if token_idx + 1 < len(start_of_word):
-        #         if start_of_word[token_idx+1] == 0:
-        #             word_idx -= 1
-        #     return word_idx
 
 class QuestionAnsweringHeadOLD(PredictionHead):
     """
