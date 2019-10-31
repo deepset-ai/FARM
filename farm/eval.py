@@ -99,7 +99,7 @@ class Evaluator:
                 preds_all[head_num] = mlb.fit_transform(preds_all[head_num])
                 label_all[head_num] = mlb.transform(label_all[head_num])
             elif head.model_type == "span_classification":
-                temp = head._aggregate_predictions(preds_all[head_num])
+                temp = head._aggregate_preds(preds_all[head_num])
                 preds_all[head_num] = temp
 
             result = {"loss": loss_all[head_num] / len(self.data_loader.dataset),
