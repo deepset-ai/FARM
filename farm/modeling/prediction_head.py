@@ -237,15 +237,12 @@ class TextClassificationHead(PredictionHead):
 
         if class_weights:
             logger.info(f"Using class weights for task '{self.task_name}': {self.class_weights}")
-            #TODO must balanced weight really be an instance attribute?
-            self.balanced_weights = nn.Parameter(
-                torch.tensor(class_weights), requires_grad=False
-            )
+            balanced_weights = nn.Parameter(torch.tensor(class_weights), requires_grad=False)
         else:
-            self.balanced_weights = None
+            balanced_weights = None
 
         self.loss_fct = CrossEntropyLoss(
-            weight=self.balanced_weights,
+            weight=balanced_weights,
             reduction=loss_reduction,
             ignore_index=loss_ignore_index,
         )
@@ -751,6 +748,38 @@ class QuestionAnsweringHead(PredictionHead):
         self.max_ans_len = 1000 # disabling max ans len. Impact on squad performance seems minor
         # each answer is returned with surrounding context. In # characters surrounding the answer
         self.generate_config()
+
+
+    @classmethod
+    def load(cls, pretrained_model_name_or_path):
+        """
+        Almost identical to a QuestionAnsweringHead. Only difference: we can load the weights from
+         a pretrained language model that was saved in the pytorch-transformers style (all in one model).
+        """
+
+        if os.path.exists(pretrained_model_name_or_path) \
+                and "config.json" in pretrained_model_name_or_path \
+                and "prediction_head" in pretrained_model_name_or_path:
+            config_file = os.path.exists(pretrained_model_name_or_path)
+            # a) FARM style
+            model_file = cls._get_model_file(config_file)
+            config = json.load(open(config_file))
+            prediction_head = cls(**config)
+            logger.info("Loading prediction head from {}".format(model_file))
+            prediction_head.load_state_dict(torch.load(model_file, map_location=torch.device("cpu")))
+        else:
+            # b) pytorch-transformers style
+            # load weights from bert model
+            # (we might change this later to load directly from a state_dict to generalize for other language models)
+            bert_qa = BertForQuestionAnswering.from_pretrained(pretrained_model_name_or_path)
+
+            # init empty head
+            head = cls(layer_dims=[bert_qa.config.hidden_size, 2], loss_ignore_index=-1, task_name="question_answering")
+            # load weights
+            head.feed_forward.feed_forward[0].load_state_dict(bert_qa.qa_outputs.state_dict())
+            del bert_qa
+
+        return head
 
     def forward(self, X):
         """

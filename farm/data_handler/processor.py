@@ -674,7 +674,7 @@ class SquadProcessor(Processor):
         max_seq_len,
         data_dir,
         label_list=None,
-        metric=None,
+        metric="squad",
         train_filename="train-v2.0.json",
         dev_filename="dev-v2.0.json",
         test_filename=None,
@@ -691,7 +691,7 @@ class SquadProcessor(Processor):
         :type data_dir: str
         :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
         :type label_list: list
-        :param metric: name of metric that shall be used for evaluation, e.g. "squad".
+        :param metric: name of metric that shall be used for evaluation, can be "squad" or "squad_top_recall"
         :type metric: str
         :param train_filename: The name of the file containing training data.
         :type train_filename: str

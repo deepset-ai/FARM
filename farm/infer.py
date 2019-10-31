@@ -171,17 +171,14 @@ class Inferencer:
                 log_ascii_workers(num_cpus_used, logger)
 
                 results = p.imap(
-                    partial(self._multiproc, processor=self.processor, rest_api_schema=rest_api_schema),
+                    partial(self._create_datasets_chunkwise, processor=self.processor, rest_api_schema=rest_api_schema),
                     grouper(dicts, multiprocessing_chunk_size),
                     1,
                 )
 
                 preds_all = []
                 with tqdm(total=len(dicts), unit=" Dicts") as pbar:
-                    for dataset, tensor_names, baskets in results:
-                        samples= []
-                        for b in baskets:  # number of baskets in _multiproc() related to chunksize
-                            samples.extend(b.samples)
+                    for dataset, tensor_names, samples in results:
                         if self.prediction_type == "span_classification":
                             preds_all.append(self._run_inference_qa(dataset, tensor_names, samples))
                         else:
@@ -190,10 +187,7 @@ class Inferencer:
 
         else:
             chunk = next(grouper(dicts, len(dicts)))
-            dataset, tensor_names, baskets = self._multiproc(chunk, processor=self.processor, rest_api_schema=rest_api_schema)
-            samples = []
-            for b in baskets:  # number of baskets in _multiproc() related to chunksize
-                samples.extend(b.samples)
+            dataset, tensor_names, samples = self._create_datasets_chunkwise(chunk, processor=self.processor, rest_api_schema=rest_api_schema)
             if self.prediction_type == "span_classification":
                 preds_all = self._run_inference_qa(dataset, tensor_names, samples)
             else:
@@ -202,11 +196,14 @@ class Inferencer:
         return preds_all
 
     @classmethod
-    def _multiproc(cls, chunk, processor, rest_api_schema):
+    def _create_datasets_chunkwise(cls, chunk, processor, rest_api_schema):
         dicts = [d[1] for d in chunk]
         index = chunk[0][0]
         dataset, tensor_names, baskets = processor.dataset_from_dicts(dicts, index, rest_api_schema, return_baskets=True)
-        return dataset, tensor_names, baskets
+        samples = []
+        for b in baskets:  # number of baskets in _multiproc() related to chunksize
+            samples.extend(b.samples)
+        return dataset, tensor_names, samples
 
     def _run_inference(self, dataset, tensor_names, samples):
         data_loader = NamedDataLoader(

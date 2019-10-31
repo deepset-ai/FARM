@@ -61,14 +61,15 @@ class DataSilo:
             if not self.processor.dev_filename:
                 if self.processor.dev_split > 0.0:
                     random.shuffle(dicts)
-
-        multiprocessing_chunk_size, num_cpus_used = calc_chunksize(len(dicts))
+        num_dicts = len(dicts)
+        multiprocessing_chunk_size, num_cpus_used = calc_chunksize(num_dicts)
 
         with ExitStack() as stack:
             p = stack.enter_context(mp.Pool(processes=num_cpus_used))
 
             logger.info(
-                f"Got ya {num_cpus_used} parallel workers to convert dict chunks to datasets (chunksize = {multiprocessing_chunk_size})..."
+                f"Got ya {num_cpus_used} parallel workers to convert {num_dicts} dictionaries "
+                f"to pytorch datasets (chunksize = {multiprocessing_chunk_size})..."
             )
             log_ascii_workers(num_cpus_used, logger)
 
