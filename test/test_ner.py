@@ -82,7 +82,7 @@ def test_ner(caplog):
         {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei"},
     ]
     model = Inferencer.load(save_dir)
-    result = model.inference_from_dicts(dicts=basic_texts)
+    result = model.inference_from_dicts(dicts=basic_texts,use_multiprocessing=False)
     assert result[0]["predictions"][0]["context"] == "sagte"
     assert isinstance(result[0]["predictions"][0]["probability"], np.float32)
 

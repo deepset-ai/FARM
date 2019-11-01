@@ -1,11 +1,13 @@
+import itertools
 import json
 import logging
 import os
 import numpy as np
-from scipy.special import expit
+import pandas as pd
+from scipy.special import expit, softmax
 
 import torch
-from transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN
+from transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN, BertForQuestionAnswering
 
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
@@ -161,17 +163,13 @@ class RegressionHead(PredictionHead):
     def __init__(
         self,
         layer_dims,
-        loss_ignore_index=-100,
-        loss_reduction="none",
         task_name="regression",
         **kwargs,
     ):
         super(RegressionHead, self).__init__()
         # num_labels could in most cases also be automatically retrieved from the data processor
         self.layer_dims = layer_dims
-        # TODO is this still needed?
         self.feed_forward = FeedForwardBlock(self.layer_dims)
-
         self.num_labels = 2
         self.ph_output_type = "per_sequence_continuous"
         self.model_type = "regression"
@@ -239,15 +237,12 @@ class TextClassificationHead(PredictionHead):
 
         if class_weights:
             logger.info(f"Using class weights for task '{self.task_name}': {self.class_weights}")
-            #TODO must balanced weight really be an instance attribute?
-            self.balanced_weights = nn.Parameter(
-                torch.tensor(class_weights), requires_grad=False
-            )
+            balanced_weights = nn.Parameter(torch.tensor(class_weights), requires_grad=False)
         else:
-            self.balanced_weights = None
+            balanced_weights = None
 
         self.loss_fct = CrossEntropyLoss(
-            weight=self.balanced_weights,
+            weight=balanced_weights,
             reduction=loss_reduction,
             ignore_index=loss_ignore_index,
         )
@@ -714,10 +709,27 @@ class QuestionAnsweringHead(PredictionHead):
     A question answering head predicts the start and end of the answer on token level.
     """
 
-    def __init__(self, layer_dims, task_name="question_answering", **kwargs):
+    def __init__(self,
+                 layer_dims,
+                 task_name="question_answering",
+                 no_answer_shift=0,
+                 top_n_predictions=3,
+                 context_size=100,
+                 **kwargs):
         """
         :param layer_dims: dimensions of Feed Forward block, e.g. [768,2], for adjusting to BERT embedding. Output should be always 2
         :type layer_dims: List[Int]
+        :param task_name: Name of task
+        :type task_name: str
+        :param no_answer_shift: How much we want to weight giving no answer compared to text answer
+                                We actually compare in logit space (sum of both start and end logit), so negative
+                                values result in less no answer predictions and vice versa. normal range = [-5,+5]
+        :type no_answer_shift: int
+        :param top_n_predictions: When we split a document into multiple passages we can return top n passage answers
+        :type top_n_predictions: int
+        :param context_size: When we format predictions back to string space we also return surrounding context
+                             of size context_size
+        :type context_size: int
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
         """
@@ -730,7 +742,44 @@ class QuestionAnsweringHead(PredictionHead):
             "span_classification"
         )  # predicts start and end token of answer
         self.task_name = task_name
+        self.no_answer_shift = no_answer_shift # how much we want to upweight no answer logit scores compared to text answer ones
+        self.top_n_predictions = top_n_predictions #for how many passages we want to get predictions
+        self.context_size = context_size
+        self.max_ans_len = 1000 # disabling max ans len. Impact on squad performance seems minor
+        # each answer is returned with surrounding context. In # characters surrounding the answer
         self.generate_config()
+
+
+    @classmethod
+    def load(cls, pretrained_model_name_or_path):
+        """
+        Almost identical to a QuestionAnsweringHead. Only difference: we can load the weights from
+         a pretrained language model that was saved in the pytorch-transformers style (all in one model).
+        """
+
+        if os.path.exists(pretrained_model_name_or_path) \
+                and "config.json" in pretrained_model_name_or_path \
+                and "prediction_head" in pretrained_model_name_or_path:
+            config_file = os.path.exists(pretrained_model_name_or_path)
+            # a) FARM style
+            model_file = cls._get_model_file(config_file)
+            config = json.load(open(config_file))
+            prediction_head = cls(**config)
+            logger.info("Loading prediction head from {}".format(model_file))
+            prediction_head.load_state_dict(torch.load(model_file, map_location=torch.device("cpu")))
+        else:
+            # b) pytorch-transformers style
+            # load weights from bert model
+            # (we might change this later to load directly from a state_dict to generalize for other language models)
+            bert_qa = BertForQuestionAnswering.from_pretrained(pretrained_model_name_or_path)
+
+            # init empty head
+            head = cls(layer_dims=[bert_qa.config.hidden_size, 2], loss_ignore_index=-1, task_name="question_answering")
+            # load weights
+            head.feed_forward.feed_forward[0].load_state_dict(bert_qa.qa_outputs.state_dict())
+            del bert_qa
+
+        return head
 
     def forward(self, X):
         """
@@ -769,6 +818,7 @@ class QuestionAnsweringHead(PredictionHead):
         if len(end_position.size()) > 1:
             end_position = end_position.squeeze(-1)
         # sometimes the start/end positions (the labels read from file) are outside our model predictions, we ignore these terms
+        # TODO check if ignored_index is needed. We are checking for start + end validity during construction of samples
         ignored_index = start_logits.size(1)
         start_position.clamp_(0, ignored_index)
         end_position.clamp_(0, ignored_index)
@@ -790,21 +840,28 @@ class QuestionAnsweringHead(PredictionHead):
         :return: (start_idx, end_idx), start and end indices for all samples in batch
         :rtype: (torch.tensor,torch.tensor)
         """
+
+        # cast data into useful types/shapes
         (start_logits, end_logits) = logits
         start_logits = start_logits.cpu().numpy()
         end_logits = end_logits.cpu().numpy()
-        num_batches = start_logits.shape[0]
+        num_per_batch = start_logits.shape[0]
+        segment_ids = kwargs['segment_ids'].data.cpu().numpy()
+        sample_ids = kwargs["sample_id"].cpu().numpy()
+        passage_shifts = kwargs["passage_shift"].cpu().numpy()
+
+        question_shifts = np.argmax(segment_ids > 0,axis=1)
+
 
         no_answer_sum = start_logits[:,0] + end_logits[:,0]
-        best_answer_sum = np.zeros(num_batches)
+        best_answer_sum = np.zeros(num_per_batch)
         # check if start or end point to the context. Context starts at segment id == 1  (question comes before at segment ids == 0)
-
-        segment_ids = kwargs['segment_ids'].data.cpu().numpy()
         context_start = np.argmax(segment_ids,axis=1)
-        start_proposals = self._get_best_indexes(start_logits, 3)
-        end_proposals = self._get_best_indexes(end_logits, 3)
-        best_indices = np.zeros((num_batches,2),dtype=int) # dimension [:,0] is start, [:,1] is end
-        for i_batch in range(num_batches):
+        context_end = segment_ids.shape[1] - np.argmax(segment_ids[::-1],axis=1)
+        start_proposals = self._get_best_textanswer_indices(start_logits, 3)
+        end_proposals = self._get_best_textanswer_indices(end_logits, 3)
+        best_indices = np.zeros((num_per_batch,2),dtype=int)
+        for i_batch in range(num_per_batch):
             # for each sample create mesh of possible start + end combinations and their score as sum of logits
             mesh_idx = np.meshgrid(start_proposals[i_batch,:],end_proposals[i_batch])
             start_comb = mesh_idx[0].flatten()
@@ -814,30 +871,35 @@ class QuestionAnsweringHead(PredictionHead):
             for idx in np.argsort(scores)[::-1]:
                 start = start_comb[idx]
                 end = end_comb[idx]
-                if(start < context_start[i_batch]): #TODO check for context end as well
+                if start < context_start[i_batch]:
                     continue
-                if(end < context_start[i_batch]):
+                if end > context_end[i_batch]:
                     continue
-                if(start > end):
+                if start > end:
                     continue
-                # maybe need check: end - start > max answer len. How to set max answer len?
+                if(end - start > self.max_ans_len):
+                    continue
                 # maybe need check weather start/end idx refers to start of word and not to a ##... continuation
+
                 best_indices[i_batch,0] = start
                 best_indices[i_batch,1] = end
                 best_answer_sum[i_batch] = scores[idx]
-                break
+                break # since we take most likely predictions first, we stop when finding a valid prediction
 
-
-        # TODO upweight no answers here?
-        idx_no_answer = no_answer_sum >= best_answer_sum
+        # For each predicted text answer, we want to check weather this question could also be unanswerable with
+        # the given passage
+        # we need to compare the text answer logits with no-answer logits (at position 0)
+        idx_no_answer = no_answer_sum + self.no_answer_shift >= best_answer_sum
         best_indices[idx_no_answer,:] = 0
-        probabilities = np.zeros(num_batches)
-        for i_batch in range(num_batches):
-            # huggingface takes the softmax of sum of both logits for their n best predictions.
-            # Since we have only one prediction for now, it makes sense to take the mean of both start + end probs
-            probabilities[i_batch] = (expit(start_logits[i_batch, best_indices[i_batch, 0]]) +
-                                      expit(end_logits[i_batch, best_indices[i_batch, 1]])) / 2
-        return (best_indices[:,0], best_indices[:,1], probabilities)
+        best_answer_sum[idx_no_answer] = no_answer_sum[idx_no_answer]
+
+        # #probabilities computed through softmaxing logits. Currently unused in downstream code.
+        # start_probs = softmax(start_logits, axis=1)
+        # end_probs = softmax(end_logits, axis=1)
+        # probabilities = (start_probs[range(best_indices.shape[0]), np.squeeze(best_indices[:, 0])] +
+        #                  end_probs[range(best_indices.shape[0]), np.squeeze(best_indices[:, 1])]) / 2
+
+        return (best_indices[:, 0], best_indices[:, 1], best_answer_sum, sample_ids, question_shifts, passage_shifts)
 
     def prepare_labels(self, start_position, end_position, **kwargs):
         """
@@ -849,66 +911,147 @@ class QuestionAnsweringHead(PredictionHead):
         :type end_position: torch.tensor
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
-        :return: tuplefied positions
-        :rtype: tuple(torch.tensor,torch.tensor)
+        :return: tuplefied sample_id with corresponding positions
+        :rtype: tuple(torch.tensor, torch.tensor,torch.tensor)
         """
-        return (start_position, end_position)
+        return (kwargs["sample_id"], start_position, end_position)
 
-    def formatted_preds(self, logits, samples, segment_ids, **kwargs) -> [str]:
+    def formatted_preds(self, logits, preds, samples):
         """
         Format predictions into actual answer strings (substrings of context). Used for Inference!
 
-        :param logits: (start_logits, end_logits), logits for the start and end of answer
-        :type logits: tuple[torch.tensor,torch.tensor]
+        :param logits: palceholder to comply with LanguageModel.formatted_preds
+        :type logits: None
+        :param preds: predictions for each passage, coming from logits_to_preds()
+                      contains start_idxs, end_idxs, logit_sums, sample_ids, question_shifts, passage_shifts, probabilities
+        :type preds: tuple( 7 numpy arrays )
         :param samples: converted samples, to get a hook onto the actual text
-        :type samples: FARM.data_handler.samples.Sample
-        :param segment_ids: used to separate question and context tokens
-        :type segment_ids: torch.tensor
+        :type samples: List[FARM.data_handler.samples.Sample]
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
         :return: Answers to the (ultimate) questions
         :rtype: list(str)
         """
-        all_preds = []
-        # TODO fix inference bug, model.forward is somehow packing logits into list
-        # logits = logits[0]
-        start_idx, end_idx, probs = self.logits_to_preds(logits=logits, segment_ids=segment_ids)
-        # we have char offsets for the context passage in samples.tokenized
-        # we have start and end idx for the selected answer, but with the question tokens in front
-        # lets shift this by the index of first segment ID corresponding to context
-        segment_ids = segment_ids.cpu().numpy()
 
-        shifts = np.argmax(segment_ids > 0, axis=1)
-        start_idx = start_idx - shifts
-        start_idx[start_idx < 0] = 0
-        end_idx = end_idx - shifts
-        end_idx[end_idx < 0] = 0
-        end_idx = end_idx + 1  # slicing up to and including end
+        all_preds_passage_aggregated = self._aggregate_preds(preds=preds)
+
         result = {}
         result["task"] = "qa"
-
-        # TODO features and samples might not be aligned. We still sometimes split a sample into multiple features
-        for i, sample in enumerate(samples):
-            pred = {}
-            pred["context"] = sample.clear_text["question_text"]
-            pred["probability"] = probs[i]
-            try: #char offsets or indices might be out of range, then we just return no answer
-                start = sample.tokenized["offsets"][start_idx[i]]
-                end = sample.tokenized["offsets"][end_idx[i]]
-                pred["start"] = start
-                pred["end"] = end
-                answer = " ".join(sample.clear_text["doc_tokens"])[start:end]
-                answer = answer.strip()
+        all_preds = []
+        sample_id_to_index = dict([(sample.id,i) for i,sample in enumerate(samples)])
+        for current_pred in all_preds_passage_aggregated:
+            sampleid_i = current_pred[0, 3]
+            try:
+                current_sample = samples[sample_id_to_index[sampleid_i]]
             except Exception as e:
-                answer = ""
-                logger.info(e)
-            pred["label"] = answer
-            all_preds.append(pred)
+                current_sample = None
+                logger.warning(f"Sample id: {sampleid_i} could not be loaded. Error: {e} ")
+            if current_sample is not None:
+                passage_predictions = []
+                for i in range(current_pred.shape[0]):
+                    passage_pred = {}
+                    if self.top_n_predictions > 1:
+                        passage_pred["prediction_rank"] = i
+                    s_i = current_pred[i,0]
+                    e_i = current_pred[i,1]
+                    logit_sum_i = current_pred[i,2]
+                    question_shift_i = current_pred[i,4]
+                    passage_shift_i = current_pred[i,5]
+                    passage_pred["score"] = logit_sum_i
+                    passage_pred["probability"] = -1 # TODO add probabilities that make sense : )
+                    try:
+                        #default to returning no answer
+                        start = 0
+                        end = 0
+                        context_start = 0
+                        answer = ""
+                        context = ""
+                        if(s_i + e_i > 0):
+                            current_start = int(s_i + passage_shift_i - question_shift_i)
+                            current_end = int(e_i + passage_shift_i - question_shift_i) + 1
+                            start = current_sample.tokenized["offsets"][current_start]
+                            end = current_sample.tokenized["offsets"][current_end]
+                            # we want the answer in original string space (containing newline, tab or multiple
+                            # whitespace. So we need to join doc tokens and work with character offsets
+                            temptext = " ".join(current_sample.clear_text["doc_tokens"])
+                            answer = temptext[start:end]
+                            answer = answer.strip()
+                            # sometimes we strip trailing whitespaces, so we need to adjust end
+                            end = start + len(answer)
+                            context_start = int(np.clip((start-self.context_size),a_min=0,a_max=None))
+                            context_end = int(np.clip(end +self.context_size,a_max=len(temptext),a_min=None))
+                            context = temptext[context_start:context_end]
+                    except IndexError as e:
+                        logger.info(e)
+                    passage_pred["answer"] = answer
+                    passage_pred["offset_start"] = start
+                    passage_pred["offset_end"] = end
+                    passage_pred["context"] = context
+                    passage_pred["offset_context_start"] = start - context_start
+                    passage_pred["offset_context_end"] = end - context_start
+                    passage_pred["document_id"] = current_sample.clear_text.get("document_id", None)
+                    passage_predictions.append(passage_pred)
+
+                pred = {}
+                pred["question"] = current_sample.clear_text.question_text
+                pred["question_id"] = current_sample.clear_text.get("qas_id", None)
+                pred["ground_truth"] = current_sample.clear_text.get("orig_answer_text", None)
+                pred["answers"] = passage_predictions
+                all_preds.append(pred)
 
         result["predictions"] = all_preds
         return result
 
-    def _get_best_indexes(self, logits, n_best_size):
-        """Get the n-best logits from a numpy array."""
-        idx = np.argsort(logits,axis=1)[:,-n_best_size:]
+    def _aggregate_preds(self, preds):
+        def create_answeridx_string(r):
+            start = r["pred_start"] + r["passage_shift"]
+            end = r["pred_end"] + r["passage_shift"]
+            return f"{start}-{end}"
+
+        data = {}
+        data["pred_start"] = np.concatenate([x[0] for x in preds])
+        data["pred_end"] = np.concatenate([x[1] for x in preds])
+        data["logit_sum"] = np.concatenate([x[2] for x in preds])
+        data["sample_id"] = np.concatenate([x[3] for x in preds])
+        data["question_shift"] = np.concatenate([x[4] for x in preds])
+        data["passage_shift"] = np.concatenate([x[5] for x in preds])
+        df = pd.DataFrame(data=data)
+        df.loc[:,"answer_indices"] = df.apply(lambda row: create_answeridx_string(row), axis=1)
+
+        # we sometimes have multiple predictions for one sample (= paragraph question pair)
+        # because we split the paragraph into smaller passages
+        # we group all predictions by sample_id
+        unique_sample_ids = df.sample_id.unique()
+        max_per_sample = []
+        for uid in unique_sample_ids:
+            group = df.loc[df.sample_id == uid, :]
+            idx_text_answers = (group.pred_start + group.pred_end) > 0
+            # if we have a text answer in the group we want to discard all no text passages
+            # Reasoning: consider how data is constructed from labels: If we split a document into 5 passages and
+            # only passage no.3 has the text answer, all remaining passages are labeled as no answer.
+            # We want the answer for passage no.3 without regarding the models output for the other passages.
+            if np.sum(idx_text_answers) > 0:
+                group = group.loc[idx_text_answers,:]
+            else:
+                logger.info(f"No textual prediction found in doc: {uid}")
+            if self.top_n_predictions == 1:
+                max_pred = group.loc[group.logit_sum == np.max(group.logit_sum),:]
+                if (max_pred.shape[0] > 1):
+                    max_pred = max_pred.iloc[0, :]
+                    logger.info(f"Multiple predictions have the exact same probability of occuring: \n{max_pred.head()}")
+            else:
+                assert isinstance(self.top_n_predictions, int)
+                sorted_group = group.sort_values(by="logit_sum",ascending=False)
+                filtered_group = sorted_group.drop_duplicates(keep="first", subset="answer_indices")
+                max_pred = filtered_group.iloc[:self.top_n_predictions,:]
+            max_per_sample.append(max_pred.values)
+        return max_per_sample
+
+
+    def _get_best_textanswer_indices(self, logits, n_best_size):
+        """Get the n-best logits from a numpy array without considering the zero index.
+        zero index corresponds to no answer, which we deal with separately"""
+        logits_without_zero = logits[:,1:]
+        idx_without_zero = np.argsort(logits_without_zero,axis=1)[:,-n_best_size:]
+        idx = idx_without_zero + 1
         return idx

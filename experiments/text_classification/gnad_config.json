@@ -27,9 +27,9 @@
     "dev_filename":     {"value": null, "default": null,                         "desc": "Filename for development. Missing in case of GermEval2018."},
     "test_filename":    {"value": null, "default": "test.csv",                   "desc": "Filename for testing. It is the submission file from competition."},
     "delimiter":        {"value": null, "default": ";",                          "desc": "Filename for testing. It is the submission file from competition."},
-    "label_list":           {"value": null, "default": ["Web","Sport","International","Panorama","Wissenschaft","Wirtschaft","Kultur","Etat","Inland"],        "desc": "List of possible labels."},
+    "label_list":       {"value": null, "default": ["Web","Sport","International","Panorama","Wissenschaft","Wirtschaft","Kultur","Etat","Inland"],        "desc": "List of possible labels."},
     "metric":           {"value": null, "default": "acc",                        "desc": "Metric used. Multiclass accuracy - metric used in fast.ai forum results for this dataset."},
-    "label_column_name":     {"value": null, "default": "label",                      "desc": "Name of field that the label comes from in datasource"},
+    "label_column_name":{"value": null, "default": "label",                      "desc": "Name of field that the label comes from in datasource"},
     "skiprows":         {"value": null, "default": null,                         "desc": ""}
   },
 

@@ -1,13 +1,15 @@
 # fmt: off
 import logging
+import os
 import pprint
 
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import SquadProcessor
-from farm.modeling.optimization import initialize_optimizer
+from farm.data_handler.utils import write_squad_predictions
 from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import LanguageModel
+from farm.modeling.optimization import initialize_optimizer
 from farm.modeling.prediction_head import QuestionAnsweringHead
 from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer
@@ -103,8 +105,19 @@ QA_input = [
             "text":  "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
         }]
 
-model = Inferencer.load(save_dir)
+model = Inferencer.load(save_dir, batch_size=40, gpu=True)
 result = model.inference_from_dicts(dicts=QA_input)
 
 for x in result:
     pprint.pprint(x)
+
+# 10. Do Inference on whole SQuAD Dataset & write the predictions file to disk
+filename = os.path.join(processor.data_dir,processor.dev_filename)
+result = model.inference_from_file(file=filename)
+write_squad_predictions(
+    predictions=result,
+    predictions_filename=filename,
+    out_filename="predictions.json"
+)
+
+

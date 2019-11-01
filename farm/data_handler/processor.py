@@ -273,25 +273,34 @@ class Processor(ABC):
         dataset, tensor_names = convert_features_to_dataset(features=features_flat)
         return dataset, tensor_names
 
-    #TODO remove useless rest_api_schema flag after refactoring squad processing
-    def dataset_from_dicts(self, dicts, index=None, rest_api_schema=False):
+    def dataset_from_dicts(self, dicts, index=0, rest_api_schema=False, return_baskets = False):
         """
         Contains all the functionality to turn a list of dict objects into a PyTorch Dataset and a
         list of tensor names. This can be used for inference mode.
+
         :param dicts: List of dictionaries where each contains the data of one input sample.
         :type dicts: list of dicts
         :return: a Pytorch dataset and a list of tensor names.
         """
+        if rest_api_schema:
+            id_prefix = "infer"
+        else:
+            id_prefix = "train"
+            # We need to add the index (coming from multiprocessing chunks) to have a unique basket ID
         self.baskets = [
-            SampleBasket(raw=tr, id="infer - {}".format(i))
+            SampleBasket(raw=tr, id=f"{id_prefix}-{i + index}")
             for i, tr in enumerate(dicts)
         ]
         self._init_samples_in_baskets()
         self._featurize_samples()
         if index == 0:
             self._log_samples(3)
-        dataset, tensor_names = self._create_dataset()
-        return dataset, tensor_names
+        if return_baskets:
+            dataset, tensor_names = self._create_dataset(keep_baskets=True)
+            return dataset, tensor_names, self.baskets
+        else:
+            dataset, tensor_names = self._create_dataset()
+            return dataset, tensor_names
 
     def _log_samples(self, n_samples):
         logger.info("*** Show {} random examples ***".format(n_samples))
@@ -665,7 +674,7 @@ class SquadProcessor(Processor):
         max_seq_len,
         data_dir,
         label_list=None,
-        metric=None,
+        metric="squad",
         train_filename="train-v2.0.json",
         dev_filename="dev-v2.0.json",
         test_filename=None,
@@ -682,7 +691,7 @@ class SquadProcessor(Processor):
         :type data_dir: str
         :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
         :type label_list: list
-        :param metric: name of metric that shall be used for evaluation, e.g. "squad".
+        :param metric: name of metric that shall be used for evaluation, can be "squad" or "squad_top_recall"
         :type metric: str
         :param train_filename: The name of the file containing training data.
         :type train_filename: str
@@ -724,23 +733,33 @@ class SquadProcessor(Processor):
             logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
                         "using the default task or add a custom task later via processor.add_task()")
 
-    def dataset_from_dicts(self, dicts, index=None, rest_api_schema=False):
+    def dataset_from_dicts(self, dicts, index=0, rest_api_schema=False, return_baskets = False):
         if rest_api_schema:
             dicts = [self._convert_rest_api_dict(x) for x in dicts]
-        if rest_api_schema:
-            id_prefix = "infer"
-        else:
-            id_prefix = "train"
+        #We need to add the index (coming from multiprocessing chunks) to have a unique numerical basket ID
         self.baskets = [
-            SampleBasket(raw=tr, id=f"{id_prefix}-{i}")
+            SampleBasket(raw=tr, id=(i+index)*10000)
             for i, tr in enumerate(dicts)
         ]
-        self._init_samples_in_baskets()
+        self._init_samples_in_baskets_squad()
         self._featurize_samples()
         if index == 0:
             self._log_samples(3)
-        dataset, tensor_names = self._create_dataset()
-        return dataset, tensor_names
+
+        if return_baskets:
+            dataset, tensor_names = self._create_dataset(keep_baskets=True)
+            return dataset, tensor_names, self.baskets
+        else:
+            dataset, tensor_names = self._create_dataset(keep_baskets=False)
+            return dataset, tensor_names
+
+    def _init_samples_in_baskets_squad(self):
+        #this function is only needed to work with integer IDs instead of strings
+        for basket in self.baskets:
+            all_dicts = [b.raw for b in self.baskets]
+            basket.samples = self._dict_to_samples(dictionary=basket.raw, all_dicts=all_dicts)
+            for num, sample in enumerate(basket.samples):
+                 sample.id = basket.id + num
 
     def _convert_rest_api_dict(self, infer_dict):
         # convert input coming from inferencer to SQuAD format
@@ -749,11 +768,12 @@ class SquadProcessor(Processor):
             {
                 "qas": [
                     {
-                        "question": infer_dict.get("questions", ["Missing?"])[0],
+                        "question": infer_dict.get("questions", None)[0],
                         "id": "unusedID",
                     }
                 ],
-                "context": infer_dict.get("text", "Missing!"),
+                "context": infer_dict.get("text", None),
+                "document_id": infer_dict.get("document_id", None),
             }
         ]
         return converted
