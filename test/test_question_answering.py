@@ -73,12 +73,12 @@ def test_qa(caplog):
     QA_input = [
         {
             "questions": ["In what country is Normandy located?"],
-            "text": 'The Normans (Norman: Nourmands; French: Normands; Latin: Normanni) were the people who in the 10th and 11th centuries gave their name to Normandy, a region in France. They were descended from Norse ("Norman" comes from "Norseman") raiders and pirates from Denmark, Iceland and Norway who, under their leader Rollo, agreed to swear fealty to King Charles III of West Francia. Through generations of assimilation and mixing with the native Frankish and Roman-Gaulish populations, their descendants would gradually merge with the Carolingian-based cultures of West Francia. The distinct cultural and ethnic identity of the Normans emerged initially in the first half of the 10th century, and it continued to evolve over the succeeding centuries.',
+            "text": 'The Normans (Norman: Nourmands; French: Normands; Latin: Normanni) were the people who in the 10th and 11th centuries gave their name to Normandy, a region in France. They were descended from Norse.',
         }
     ]
 
     model = Inferencer.load(save_dir)
-    result = model.inference_from_dicts(dicts=QA_input)
+    result = model.inference_from_dicts(dicts=QA_input,use_multiprocessing=False)
     assert isinstance(result[0]["predictions"][0]["answers"][0]["offset_start"],int)
 
 if(__name__=="__main__"):
