@@ -180,7 +180,7 @@ class Inferencer:
                 with tqdm(total=len(dicts), unit=" Dicts") as pbar:
                     for dataset, tensor_names, samples in results:
                         if self.prediction_type == "span_classification":
-                            preds_all.append(self._run_inference_qa(dataset, tensor_names, samples))
+                            preds_all.extend(self._run_inference_qa(dataset, tensor_names, samples))
                         else:
                             preds_all.extend(self._run_inference(dataset, tensor_names, samples))
                         pbar.update(multiprocessing_chunk_size)
@@ -245,7 +245,7 @@ class Inferencer:
                                                                    preds=all_preds,
                                                                    samples=samples)
 
-        return preds_all
+        return [preds_all]
 
     def extract_vectors(self, dicts, extraction_strategy="cls_token", extraction_layer=-1):
         """
