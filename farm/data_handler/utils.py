@@ -100,6 +100,33 @@ def read_squad_file(filename):
         input_data = json.load(reader)["data"]
     return input_data
 
+def write_squad_predictions(predictions, out_filename, predictions_filename=None):
+    predictions_json = {}
+    for p in predictions:
+        for x in p["predictions"]:
+            predictions_json[x["question_id"]] = x["answers"][0]["answer"]
+
+    if predictions_filename:
+        dev_labels = {}
+        temp = json.load(open(predictions_filename, "r"))
+        for d in temp["data"]:
+            for p in d["paragraphs"]:
+                for q in p["qas"]:
+                    if q["is_impossible"]:
+                        dev_labels[q["id"]] = "is_impossible"
+                    else:
+                        dev_labels[q["id"]] = q["answers"][0]["text"]
+        not_included = set(list(dev_labels.keys())) - set(list(predictions_json.keys()))
+        if len(not_included) > 0:
+            logger.info(f"There were missing predicitons for question ids: {str(set(list(dev_labels.keys())))}")
+        for x in not_included:
+            predictions_json[x] = ""
+
+    os.makedirs("model_output", exist_ok=True)
+    filepath = os.path.join("model_output",out_filename)
+    json.dump(predictions_json, open(filepath, "w"))
+    logger.info(f"Written Squad predictions to: {filepath}")
+
 
 def _download_extract_downstream_data(input_file):
     # download archive to temp dir and extract to correct position
@@ -349,8 +376,8 @@ def is_json(x):
 
 def grouper(iterable, n):
     """
-    >>> list(grouper('ABCDEFG'), 3)
-    [['A', 'B', 'C'], ['D', 'E', 'F'], ['G']]
+    >>> list(grouper('ABCDEFG', 3))
+    [[(0, 'A'), (1, 'B'), (2, 'C')], [(3, 'D'), (4, 'E'), (5, 'F')], [(6, 'G')]]
     """
     iterable = iter(enumerate(iterable))
     return iter(lambda: list(islice(iterable, n)), [])

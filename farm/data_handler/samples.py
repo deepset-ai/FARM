@@ -47,12 +47,17 @@ class Sample(object):
         self.tokenized = tokenized
 
     def __str__(self):
+
         if self.clear_text:
             clear_text_str = "\n \t".join(
                 [k + ": " + str(v) for k, v in self.clear_text.items()]
             )
+            if len(clear_text_str) > 10000:
+                clear_text_str = clear_text_str[:10_000] + f"\nTHE REST IS TOO LONG TO DISPLAY. " \
+                                                           f"Remaining chars :{len(clear_text_str)-10_000}"
         else:
             clear_text_str = "None"
+
         if self.features:
             if isinstance(self.features, list):
                 features = self.features[0]
@@ -66,6 +71,9 @@ class Sample(object):
             tokenized_str = "\n \t".join(
                 [k + ": " + str(v) for k, v in self.tokenized.items()]
             )
+            if len(tokenized_str) > 10000:
+                tokenized_str = tokenized_str[:10_000] + f"\nTHE REST IS TOO LONG TO DISPLAY. " \
+                                                         f"Remaining chars: {len(tokenized_str)-10_000}"
         else:
             tokenized_str = "None"
         s = (
@@ -140,7 +148,6 @@ def create_samples_squad(entry):
         doc_tokens = paragraph_text.split(" ")
         for i, t in enumerate(doc_tokens):
             char_to_word_offset.extend([i] * (len(t) + 1))
-        char_to_word_offset = char_to_word_offset[:-1]  # cut off last added whitespace
 
         for qa in paragraph["qas"]:
             qas_id = qa["id"]
@@ -152,38 +159,36 @@ def create_samples_squad(entry):
             if is_training:
                 is_impossible = qa["is_impossible"]
                 # TODO check how to transform dev set with multiple possible answers, for now take only 1 answer
-                # if (len(qa["answers"]) != 1) and (not is_impossible):
-                #     raise ValueError(
-                #         "For training, each question should have exactly 1 answer."
-                #     )
                 if not is_impossible:
                     answer = qa["answers"][0]
                     orig_answer_text = answer["text"]
                     answer_offset = answer["answer_start"]
                     answer_length = len(orig_answer_text)
-                    start_position = char_to_word_offset[answer_offset]
-                    end_position = char_to_word_offset[
-                        answer_offset + answer_length - 1
-                    ]
-                    # Only add answers where the text can be exactly recovered from the
-                    # document. If this CAN'T happen it's likely due to weird Unicode
-                    # stuff so we will just skip the example.
-                    #
-                    # Note that this means for training mode, every example is NOT
-                    # guaranteed to be preserved.
-                    actual_text = " ".join(
-                        doc_tokens[start_position : (end_position + 1)]
-                    )
-                    cleaned_answer_text = " ".join(
-                        whitespace_tokenize(orig_answer_text)
-                    )
-                    if actual_text.find(cleaned_answer_text) == -1:
-                        logger.warning(
-                            "Could not find answer: '%s' vs. '%s'",
-                            actual_text,
-                            cleaned_answer_text,
-                        )
-                        continue
+                    try:
+                        start_position = char_to_word_offset[answer_offset]
+                        end_position = char_to_word_offset[answer_offset + answer_length - 1]
+                    except IndexError as e:
+                        logger.warning(f"{e} \n Might be some question {qas_id} has wrong start offset")
+
+
+                    # TODO Possibly remove: there seems to be no reason why we should exclude these answers
+                    # # Only add answers where the text can be exactly recovered from the
+                    # # document.
+                    # # This can happen when there are newline or tab symbols or multiple whitespace inside the answer
+                    # # Or if the answer continues over the edge of the current passage
+                    # actual_text = " ".join(
+                    #     doc_tokens[start_position : (end_position + 1)]
+                    # )
+                    # cleaned_answer_text = " ".join(
+                    #     whitespace_tokenize(orig_answer_text)
+                    # )
+                    # if actual_text.find(cleaned_answer_text) == -1:
+                    #     logger.warning(
+                    #         "Could not find answer: '%s' vs. '%s'",
+                    #         actual_text,
+                    #         cleaned_answer_text,
+                    #     )
+                    #     continue
                 else:
                     start_position = -1
                     end_position = -1
@@ -198,6 +203,7 @@ def create_samples_squad(entry):
             clear_text["end_position"] = end_position
             clear_text["is_impossible"] = is_impossible
             clear_text["is_training"] = is_training
+            clear_text["document_id"] = paragraph.get("document_id", None)
             example = Sample(
                 id=None, clear_text=clear_text, features=None, tokenized=None
             )

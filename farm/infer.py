@@ -1,23 +1,19 @@
-import os
-import torch
 import logging
 import multiprocessing as mp
-import numpy as np
+import os
 from contextlib import ExitStack
 from functools import partial
 
+import torch
 from torch.utils.data.sampler import SequentialSampler
 from tqdm import tqdm
 
 from farm.data_handler.dataloader import NamedDataLoader
-from farm.modeling.adaptive_model import AdaptiveModel
-
-from farm.utils import initialize_device_settings
 from farm.data_handler.processor import Processor, InferenceProcessor
-from farm.utils import set_all_seeds
-from farm.utils import log_ascii_workers
 from farm.data_handler.utils import grouper
-
+from farm.modeling.adaptive_model import AdaptiveModel
+from farm.utils import initialize_device_settings
+from farm.utils import set_all_seeds, calc_chunksize, log_ascii_workers
 
 logger = logging.getLogger(__name__)
 
@@ -161,16 +157,9 @@ class Inferencer:
                 f"b) ... run inference on a downstream task: make sure your model path {self.name} contains a saved prediction head"
             )
 
-        num_cpus = mp.cpu_count() or 1
-        dicts_per_cpu = np.ceil(len(dicts) / num_cpus)
-        # automatic adjustment of multiprocessing chunksize
-        # for small files (containing few dicts) we want small chunksize to ulitize all available cores but never less
-        # than 2, because we need it to sample another random sentence in LM finetuning
-        # for large files we want to minimize processor spawning without giving too much data to one process, so we
-        # clip it at 5k
-        multiprocessing_chunk_size = int(np.clip((np.ceil(dicts_per_cpu / 5)), a_min=2, a_max=5000))
-        dict_batches_to_process = int(len(dicts) / multiprocessing_chunk_size)
-        num_cpus_used = min(mp.cpu_count(), dict_batches_to_process) or 1
+        multiprocessing_chunk_size, num_cpus_used = calc_chunksize(len(dicts))
+        if num_cpus_used == mp.cpu_count():
+            num_cpus_used -= 1 # We reserve one processor to do model inference CPU calculations (besides GPU computations)
 
         if use_multiprocessing:
             with ExitStack() as stack:
@@ -182,33 +171,38 @@ class Inferencer:
                 log_ascii_workers(num_cpus_used, logger)
 
                 results = p.imap(
-                    partial(self._multiproc, processor=self.processor, rest_api_schema=rest_api_schema),
+                    partial(self._create_datasets_chunkwise, processor=self.processor, rest_api_schema=rest_api_schema),
                     grouper(dicts, multiprocessing_chunk_size),
                     1,
                 )
 
                 preds_all = []
                 with tqdm(total=len(dicts), unit=" Dicts") as pbar:
-                    for dataset, tensor_names, sample in results:
-                        preds_all.extend(self._run_inference(dataset, tensor_names, sample))
+                    for dataset, tensor_names, samples in results:
+                        if self.prediction_type == "span_classification":
+                            preds_all.extend(self._run_inference_qa(dataset, tensor_names, samples))
+                        else:
+                            preds_all.extend(self._run_inference(dataset, tensor_names, samples))
                         pbar.update(multiprocessing_chunk_size)
 
         else:
             chunk = next(grouper(dicts, len(dicts)))
-            dataset, tensor_names, sample = self._multiproc(chunk, processor=self.processor, rest_api_schema=rest_api_schema)
-            preds_all = self._run_inference(dataset, tensor_names, sample)
+            dataset, tensor_names, samples = self._create_datasets_chunkwise(chunk, processor=self.processor, rest_api_schema=rest_api_schema)
+            if self.prediction_type == "span_classification":
+                preds_all = self._run_inference_qa(dataset, tensor_names, samples)
+            else:
+                preds_all = self._run_inference(dataset, tensor_names, samples)
 
         return preds_all
 
     @classmethod
-    def _multiproc(cls, chunk, processor, rest_api_schema):
+    def _create_datasets_chunkwise(cls, chunk, processor, rest_api_schema):
         dicts = [d[1] for d in chunk]
         index = chunk[0][0]
-        dataset, tensor_names = processor.dataset_from_dicts(dicts, index, rest_api_schema)
+        dataset, tensor_names, baskets = processor.dataset_from_dicts(dicts, index, rest_api_schema, return_baskets=True)
         samples = []
-        for d in dicts:
-            samples.extend(processor._dict_to_samples(d))
-
+        for b in baskets:  # number of baskets in _multiproc() related to chunksize
+            samples.extend(b.samples)
         return dataset, tensor_names, samples
 
     def _run_inference(self, dataset, tensor_names, samples):
@@ -217,14 +211,14 @@ class Inferencer:
         )
 
         preds_all = []
-        for i, batch in enumerate(data_loader):
+        for i, batch in enumerate(tqdm(data_loader, desc=f"Inferencing")):
             batch = {key: batch[key].to(self.device) for key in batch}
             batch_samples = samples[i * self.batch_size : (i + 1) * self.batch_size]
             with torch.no_grad():
                 logits = self.model.forward(**batch)
                 preds = self.model.formatted_preds(
                     logits=logits,
-                    samples=batch_samples,  # TODO batch_samples and logits are not aligned
+                    samples=batch_samples,
                     tokenizer=self.processor.tokenizer,
                     return_class_probs=self.return_class_probs,
                     **batch,
@@ -232,6 +226,26 @@ class Inferencer:
                 preds_all += preds
 
         return preds_all
+
+    def _run_inference_qa(self, concatdataset, tensor_names, samples):
+        data_loader = NamedDataLoader(
+            dataset=concatdataset, sampler=SequentialSampler(concatdataset), batch_size=self.batch_size, tensor_names=tensor_names
+        )
+
+        all_preds = []
+        for batch in tqdm(data_loader, desc=f"Inferencing"):
+            batch = {key: batch[key].to(self.device) for key in batch}
+            with torch.no_grad():
+                logits = self.model.forward(**batch)
+                preds = self.model.logits_to_preds(logits=logits, **batch)
+                all_preds += preds
+
+
+        preds_all = self.model.prediction_heads[0].formatted_preds(logits=None,
+                                                                   preds=all_preds,
+                                                                   samples=samples)
+
+        return [preds_all]
 
     def extract_vectors(self, dicts, extraction_strategy="cls_token", extraction_layer=-1):
         """

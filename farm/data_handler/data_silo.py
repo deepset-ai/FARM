@@ -17,7 +17,7 @@ from farm.data_handler.dataloader import NamedDataLoader
 from farm.data_handler.processor import Processor
 from farm.data_handler.utils import grouper
 from farm.utils import MLFlowLogger as MlLogger
-from farm.utils import log_ascii_workers
+from farm.utils import log_ascii_workers, calc_chunksize
 from farm.visual.ascii.images import TRACTOR_SMALL
 
 logger = logging.getLogger(__name__)
@@ -61,23 +61,15 @@ class DataSilo:
             if not self.processor.dev_filename:
                 if self.processor.dev_split > 0.0:
                     random.shuffle(dicts)
-
-        num_cpus = min(mp.cpu_count(), self.max_processes) or 1
-        dicts_per_cpu = np.ceil(len(dicts) / num_cpus)
-        # automatic adjustment of multiprocessing chunksize
-        # for small files (containing few dicts) we want small chunksize to ulitize all available cores but never less
-        # than 2, because we need it to sample another random sentence in LM finetuning
-        # for large files we want to minimize processor spawning without giving too much data to one process, so we
-        # clip it at 5k
-        multiprocessing_chunk_size = int(np.clip((np.ceil(dicts_per_cpu/5)),a_min=2,a_max=5000))
-        dict_batches_to_process = int(len(dicts) / multiprocessing_chunk_size)
-        num_cpus_used = min(mp.cpu_count(), self.max_processes,  dict_batches_to_process) or 1
+        num_dicts = len(dicts)
+        multiprocessing_chunk_size, num_cpus_used = calc_chunksize(num_dicts)
 
         with ExitStack() as stack:
             p = stack.enter_context(mp.Pool(processes=num_cpus_used))
 
             logger.info(
-                f"Got ya {num_cpus_used} parallel workers to convert dict chunks to datasets (chunksize = {multiprocessing_chunk_size})..."
+                f"Got ya {num_cpus_used} parallel workers to convert {num_dicts} dictionaries "
+                f"to pytorch datasets (chunksize = {multiprocessing_chunk_size})..."
             )
             log_ascii_workers(num_cpus_used, logger)
 
