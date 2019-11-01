@@ -956,7 +956,8 @@ class QuestionAnsweringHead(PredictionHead):
                     logit_sum_i = current_pred[i,2]
                     question_shift_i = current_pred[i,4]
                     passage_shift_i = current_pred[i,5]
-                    passage_pred["logit_sum"] = logit_sum_i
+                    passage_pred["score"] = logit_sum_i
+                    passage_pred["probability"] = -1 # TODO add probabilities that make sense : )
                     try:
                         #default to returning no answer
                         start = 0
@@ -973,16 +974,20 @@ class QuestionAnsweringHead(PredictionHead):
                             # whitespace. So we need to join doc tokens and work with character offsets
                             temptext = " ".join(current_sample.clear_text["doc_tokens"])
                             answer = temptext[start:end]
+                            answer = answer.strip()
+                            # sometimes we strip trailing whitespaces, so we need to adjust end
+                            end = start + len(answer)
                             context_start = int(np.clip((start-self.context_size),a_min=0,a_max=None))
                             context_end = int(np.clip(end +self.context_size,a_max=len(temptext),a_min=None))
                             context = temptext[context_start:context_end]
-                            answer = answer.strip()
                     except IndexError as e:
                         logger.info(e)
                     passage_pred["answer"] = answer
+                    passage_pred["offset_start"] = start
+                    passage_pred["offset_end"] = end
                     passage_pred["context"] = context
-                    passage_pred["offset_start"] = start - context_start
-                    passage_pred["offset_end"] = end - context_start
+                    passage_pred["offset_context_start"] = start - context_start
+                    passage_pred["offset_context_end"] = end - context_start
                     passage_pred["document_id"] = current_sample.clear_text.get("document_id", None)
                     passage_predictions.append(passage_pred)
 
