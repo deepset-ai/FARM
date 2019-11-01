@@ -164,11 +164,14 @@ def create_samples_squad(entry):
                     orig_answer_text = answer["text"]
                     answer_offset = answer["answer_start"]
                     answer_length = len(orig_answer_text)
-                    start_position = char_to_word_offset[answer_offset]
-                    end_position = char_to_word_offset[answer_offset + answer_length - 1]
+                    try:
+                        start_position = char_to_word_offset[answer_offset]
+                        end_position = char_to_word_offset[answer_offset + answer_length - 1]
+                    except IndexError as e:
+                        logger.warning(f"{e} \n Might be some question {qas_id} has wrong start offset")
 
 
-                    # TODO Possibly deprectate: there seems to be no reason why we should exclude these answers
+                    # TODO Possibly remove: there seems to be no reason why we should exclude these answers
                     # # Only add answers where the text can be exactly recovered from the
                     # # document.
                     # # This can happen when there are newline or tab symbols or multiple whitespace inside the answer

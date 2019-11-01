@@ -12,8 +12,9 @@ from farm.train import Trainer
 from farm.utils import set_all_seeds, initialize_device_settings
 
 
-def test_qa(caplog):
-    caplog.set_level(logging.CRITICAL)
+def test_qa():
+    # caplog):
+    # caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=False)
@@ -28,8 +29,9 @@ def test_qa(caplog):
     label_list = ["start_token", "end_token"]
     processor = SquadProcessor(
         tokenizer=tokenizer,
-        max_seq_len=16,
-        max_query_length=4,
+        max_seq_len=20,
+        doc_stride=10,
+        max_query_length=6,
         train_filename="train-sample.json",
         dev_filename="dev-sample.json",
         test_filename=None,
@@ -72,8 +74,8 @@ def test_qa(caplog):
 
     QA_input = [
         {
-            "questions": ["In what country is Normandy located?"],
-            "text": 'The Normans (Norman: Nourmands; French: Normands; Latin: Normanni) were the people who in the 10th and 11th centuries gave their name to Normandy, a region in France. They were descended from Norse.',
+            "questions": ["In what country is Normandy"],
+            "text": 'The Normans gave their name to Normandy, a region in France.',
         }
     ]
 
