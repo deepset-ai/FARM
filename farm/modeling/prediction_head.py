@@ -818,6 +818,7 @@ class QuestionAnsweringHead(PredictionHead):
         if len(end_position.size()) > 1:
             end_position = end_position.squeeze(-1)
         # sometimes the start/end positions (the labels read from file) are outside our model predictions, we ignore these terms
+        # TODO check if ignored_index is needed. We are checking for start + end validity during construction of samples
         ignored_index = start_logits.size(1)
         start_position.clamp_(0, ignored_index)
         end_position.clamp_(0, ignored_index)
