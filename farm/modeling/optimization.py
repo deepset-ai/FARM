@@ -378,8 +378,8 @@ def initialize_optimizer(
     n_epochs,
     warmup_proportion=0.1,
     learning_rate=2e-5,
-    fp16=False,
-    loss_scale=0,
+    use_amp=None,
+    loss_scale=None,
     grad_acc_steps=1,
     local_rank=-1,
     log_learning_rate=False
@@ -393,7 +393,7 @@ def initialize_optimizer(
         {
             "learning_rate": learning_rate,
             "warmup_proportion": warmup_proportion,
-            "fp16": fp16,
+            "use_amp": use_amp,
             "num_train_optimization_steps": num_train_optimization_steps,
         }
     )
@@ -414,15 +414,17 @@ def initialize_optimizer(
             "weight_decay": 0.0,
         },
     ]
-    if fp16:
+
+    warmup_linear = None
+    if use_amp is not None:
         if log_learning_rate:
-            logger.warning("Logging of learning rate is currently not supported for fp16!")
+            logger.warning("Logging of learning rate is currently not supported for amp!")
         try:
-            from apex.optimizers import FP16_Optimizer
+            from apex import amp
             from apex.optimizers import FusedAdam
         except ImportError:
             raise ImportError(
-                "Please install apex from https://www.github.com/nvidia/apex to use distributed and fp16 training."
+                "Please install apex from https://www.github.com/nvidia/apex to use AMP."
             )
 
         optimizer = FusedAdam(
@@ -431,14 +433,12 @@ def initialize_optimizer(
             bias_correction=False,
             max_grad_norm=1.0,
         )
-        if loss_scale == 0:
-            optimizer = FP16_Optimizer(optimizer, dynamic_loss_scale=True)
-        else:
-            optimizer = FP16_Optimizer(optimizer, static_loss_scale=loss_scale)
+
+        model, optimizer = amp.initialize(model, optimizer, opt_level=use_amp, loss_scale=loss_scale)
+
         warmup_linear = WarmupLinearSchedule(
             warmup=warmup_proportion, t_total=num_train_optimization_steps
         )
-        return optimizer, warmup_linear
 
     else:
         optimizer = BertAdam(
@@ -448,7 +448,8 @@ def initialize_optimizer(
             t_total=num_train_optimization_steps,
             log_learning_rate=log_learning_rate
         )
-        return optimizer, None
+
+    return model, optimizer, warmup_linear
 
 
 def calculate_optimization_steps(

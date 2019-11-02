@@ -41,9 +41,9 @@ b) and a prediction head on top that is suited for our task => Text classificati
         lm_output_types=["per_sequence"],
         device=device)
 
-5. Create an optimizer::
+5. Create an optimizer and optionally optimize model and optimizer with AMP::
 
-    optimizer, warmup_linear = initialize_optimizer(
+    model, optimizer, warmup_linear = initialize_optimizer(
         model=model,
         learning_rate=2e-5,
         warmup_proportion=0.1,

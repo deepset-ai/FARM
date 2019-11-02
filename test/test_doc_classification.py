@@ -16,7 +16,7 @@ def test_doc_classification(caplog):
     caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
-    device, n_gpu = initialize_device_settings(use_cuda=False)
+    device, n_gpu = initialize_device_settings(use_cuda=True)
     n_epochs = 1
     batch_size = 1
     evaluate_every = 2
@@ -50,12 +50,13 @@ def test_doc_classification(caplog):
         lm_output_types=["per_sequence"],
         device=device)
 
-    optimizer, warmup_linear = initialize_optimizer(
+    model, optimizer, warmup_linear = initialize_optimizer(
         model=model,
         learning_rate=2e-5,
         warmup_proportion=0.1,
         n_batches=len(data_silo.loaders["train"]),
-        n_epochs=1)
+        n_epochs=1,
+        use_amp="O1")
 
     trainer = Trainer(
         optimizer=optimizer,

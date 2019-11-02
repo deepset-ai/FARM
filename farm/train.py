@@ -10,6 +10,12 @@ from farm.eval import Evaluator
 from farm.data_handler.data_silo import DataSilo
 from farm.visual.ascii.images import GROWING_TREE, BUSH_SEP
 
+try:
+    from apex import amp
+    AMP_AVAILABLE = True
+except ImportError:
+    AMP_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -65,7 +71,7 @@ class Trainer:
         evaluate_every=100,
         evaluator_dev=None,
         evaluator_test=None,
-        fp16=False,
+        use_amp=None,
         grad_acc_steps=1,
         local_rank=-1
     ):
@@ -85,8 +91,9 @@ class Trainer:
         :type evaluator_dev: Evaluator
         :param evaluator_test: The test set Evaluator object.
         :type evaluator_test: Evaluator
-        :param fp16: Whether to use floating point 16 mode.
-        :type fp16: bool
+        :param use_amp: Whether to use automatic mixed precision with Apex. One of the optimization levels must be chosen.
+                        "O1" is recommended in almost all cases.
+        :type use_amp: str
         :param grad_acc_steps: TODO
         """
         self.data_silo = data_silo
@@ -95,7 +102,7 @@ class Trainer:
         self.evaluate_every = evaluate_every
         self.n_gpu = n_gpu
         self.grad_acc_steps = grad_acc_steps
-        self.fp16 = fp16
+        self.use_amp = use_amp
         self.learning_rate = self.optimizer.get_lr()
         self.warmup_linear = warmup_linear
         self.global_step = 0
@@ -133,9 +140,6 @@ class Trainer:
 
         logger.info(f"\n {GROWING_TREE}")
         model.train()
-        # multi GPU + distributed settings
-        if self.fp16:
-            model.half()
         if self.local_rank > -1:
             model = WrappedDDP(model)
         elif self.n_gpu > 1:
@@ -177,15 +181,16 @@ class Trainer:
                 {"Train_loss_total": float(loss.detach().cpu().numpy())},
                 step=self.global_step,
             )
-        if self.fp16:
-            self.optimizer.backward(loss)
+        if self.use_amp:
+            with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                scaled_loss.backward()
         else:
             loss.backward()
 
         if (step + 1) % self.grad_acc_steps == 0:
-            if self.fp16:
+            if self.use_amp:
                 # modify learning rate with special warm up BERT uses
-                # if args.fp16 is False, BertAdam is used that handles this automatically
+                # if args.use_amp is None, BertAdam is used that handles this automatically
                 lr_this_step = self.learning_rate * self.warmup_linear.get_lr(
                     self.global_step, self.warmup_proportion
                 )

@@ -50,7 +50,7 @@ def test_qa(caplog):
         device=device,
     )
 
-    optimizer, warmup_linear = initialize_optimizer(
+    model, optimizer, warmup_linear = initialize_optimizer(
         model=model,
         learning_rate=1e-5,
         warmup_proportion=0.2,

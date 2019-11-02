@@ -37,7 +37,7 @@ def calc_chunksize(num_dicts):
     return multiprocessing_chunk_size,num_cpus_used
 
 
-def initialize_device_settings(use_cuda, local_rank=-1, fp16=False):
+def initialize_device_settings(use_cuda, local_rank=-1, use_amp=None):
     if not use_cuda:
         device = torch.device("cpu")
         n_gpu = 0
@@ -54,8 +54,8 @@ def initialize_device_settings(use_cuda, local_rank=-1, fp16=False):
         # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
         torch.distributed.init_process_group(backend="nccl")
     logger.info(
-        "device: {} n_gpu: {}, distributed training: {}, 16-bits training: {}".format(
-            device, n_gpu, bool(local_rank != -1), fp16
+        "device: {} n_gpu: {}, distributed training: {}, automatic mixed precision training: {}".format(
+            device, n_gpu, bool(local_rank != -1), use_amp
         )
     )
     return device, n_gpu

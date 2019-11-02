@@ -36,7 +36,6 @@ def load_experiments(file):
 
 
 def run_experiment(args):
-
     logger.info(
         "\n***********************************************"
         f"\n************* Experiment: {args.task.name} ************"
@@ -56,7 +55,7 @@ def run_experiment(args):
     device, n_gpu = initialize_device_settings(
         use_cuda=args.general.cuda,
         local_rank=args.general.local_rank,
-        fp16=args.general.fp16,
+        use_amp=args.general.use_amp,
     )
 
     args.parameter.batch_size = int(
@@ -104,12 +103,12 @@ def run_experiment(args):
     # Init optimizer
 
     # TODO: warmup linear is sometimes NONE depending on fp16 - is there a neater way to handle this?
-    optimizer, warmup_linear = initialize_optimizer(
+    model, optimizer, warmup_linear = initialize_optimizer(
         model=model,
         learning_rate=args.parameter.learning_rate,
         warmup_proportion=args.parameter.warmup_proportion,
         loss_scale=args.general.loss_scale,
-        fp16=args.general.fp16,
+        use_amp=args.general.use_amp,
         n_batches=len(data_silo.loaders["train"]),
         grad_acc_steps=args.parameter.gradient_accumulation_steps,
         n_epochs=args.parameter.epochs,
@@ -121,7 +120,7 @@ def run_experiment(args):
         epochs=args.parameter.epochs,
         n_gpu=n_gpu,
         grad_acc_steps=args.parameter.gradient_accumulation_steps,
-        fp16=args.general.fp16,
+        use_amp=args.general.use_amp,
         local_rank=args.general.local_rank,
         warmup_linear=warmup_linear,
         evaluate_every=args.logging.eval_every,

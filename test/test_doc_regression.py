@@ -47,7 +47,7 @@ def test_doc_regression(caplog):
         lm_output_types=["per_sequence_continuous"],
         device=device)
 
-    optimizer, warmup_linear = initialize_optimizer(
+    model, optimizer, warmup_linear = initialize_optimizer(
         model=model,
         learning_rate=2e-5,
         warmup_proportion=0.1,
