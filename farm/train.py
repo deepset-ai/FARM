@@ -34,7 +34,7 @@ class WrappedDataParallel(torch.nn.DataParallel):
 
 
 try:
-    from apex.parallel import DistributedDataParallel as DDP
+    from torch.distributed import DistributedDataParallel as DDP
 
     class WrappedDDP(DDP):
         """
