@@ -430,8 +430,7 @@ def initialize_optimizer(
         optimizer = FusedAdam(
             optimizer_grouped_parameters,
             lr=learning_rate,
-            bias_correction=False,
-            max_grad_norm=1.0,
+            bias_correction=False
         )
 
         model, optimizer = amp.initialize(model, optimizer, opt_level=use_amp, loss_scale=loss_scale)
@@ -444,7 +443,7 @@ def initialize_optimizer(
         optimizer = BertAdam(
             optimizer_grouped_parameters,
             lr=learning_rate,
-            warmup=warmup_proportion,
+            warmup=int(warmup_proportion),
             t_total=num_train_optimization_steps,
             log_learning_rate=log_learning_rate
         )
