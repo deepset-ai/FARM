@@ -7,7 +7,6 @@ install:
   - "pip install -e ."
   - "pip install sphinx==2.1.2"
   - "pip install sphinx-rtd-theme==0.4.3"
-before_script: cd test
 script:
-  - "pytest"
-  - "sphinx-build -nW -b html -d _build/doctrees . _build/html"
+  - "cd test && pytest"
+  - "cd ../docs && sphinx-build -W -b html -d _build/doctrees . _build/html"
