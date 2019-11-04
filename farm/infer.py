@@ -146,7 +146,7 @@ class Inferencer:
         :type rest_api_schema: bool
         :return: dict of predictions
         :param use_multiprocessing: time incurred in spawning processes could outweigh performance boost for very small
-        number of dicts, eg, HTTP APIs for inference. This flags allows to disable multiprocessing for such cases.
+            number of dicts, eg, HTTP APIs for inference. This flags allows to disable multiprocessing for such cases.
 
         """
         if self.prediction_type == "embedder":
