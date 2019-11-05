@@ -67,7 +67,7 @@ class Trainer:
         epochs,
         n_gpu,
         device,
-        warmup_linear=None,
+        lr_schedule,
         evaluate_every=100,
         evaluator_dev=None,
         evaluator_test=None,
@@ -84,7 +84,7 @@ class Trainer:
         :param n_gpu: The number of gpus available for training and evaluation.
         :type n_gpu: int
         :param device: The device on which the train, dev and test tensors should be hosted. Choose from "cpu" and "cuda".
-        :param warmup_linear: TODO
+        :param lr_schedule: TODO
         :param evaluate_every: Perform dev set evaluation after this many steps of training.
         :type evaluate_every: int
         :param evaluator_dev: The dev set Evaluator object.
@@ -103,8 +103,7 @@ class Trainer:
         self.n_gpu = n_gpu
         self.grad_acc_steps = grad_acc_steps
         self.use_amp = use_amp
-        self.learning_rate = self.optimizer.defaults["lr"]
-        self.warmup_linear = warmup_linear
+        self.lr_schedule = lr_schedule
         self.global_step = 0
         self.data_loader_train = data_silo.get_data_loader("train")
         self.device = device
@@ -188,14 +187,9 @@ class Trainer:
             loss.backward()
 
         if (step + 1) % self.grad_acc_steps == 0:
-            if self.use_amp:
-                # modify learning rate with linear warmup
-                # If amp is not used, BertAdam Optimizer handles this automatically
-                # However, if amp is used, we use a different optimizer (FusedAdam) and need to update the LR manually
-                lr_this_step = self.learning_rate * self.warmup_linear.get_lr(self.global_step)
-                for param_group in self.optimizer.param_groups:
-                    param_group["lr"] = lr_this_step
-                # MlLogger.log_metrics({"learning_rate": lr_this_step}, step=self.global_step)
+            #TODO We might wanna add gradient clipping here
+            self.lr_schedule.step()  # Update learning rate schedule
+            MlLogger.log_metrics({"learning_rate":  self.lr_schedule.get_lr()[0]}, step=self.global_step)
             self.optimizer.step()
             self.optimizer.zero_grad()
 

@@ -24,11 +24,13 @@ ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_doc_class
 ########## Settings
 ##########################
 set_all_seeds(seed=42)
-device, n_gpu = initialize_device_settings(use_cuda=True)
 n_epochs = 1
 batch_size = 32
 evaluate_every = 100
 lang_model = "bert-base-german-cased"
+use_amp = None
+
+device, n_gpu = initialize_device_settings(use_cuda=True, use_amp=use_amp)
 
 # 1.Create a tokenizer
 tokenizer = Tokenizer.load(
@@ -71,12 +73,13 @@ model = AdaptiveModel(
     device=device)
 
 # 5. Create an optimizer
-model, optimizer, warmup_linear = initialize_optimizer(
+model, optimizer, lr_schedule = initialize_optimizer(
     model=model,
     learning_rate=2e-5,
     warmup_proportion=0.1,
     n_batches=len(data_silo.loaders["train"]),
-    n_epochs=n_epochs)
+    n_epochs=n_epochs,
+    use_amp=use_amp)
 
 # 6. Feed everything to the Trainer, which keeps care of growing our model into powerful plant and evaluates it from time to time
 trainer = Trainer(
@@ -84,9 +87,10 @@ trainer = Trainer(
     data_silo=data_silo,
     epochs=n_epochs,
     n_gpu=n_gpu,
-    warmup_linear=warmup_linear,
+    lr_schedule=lr_schedule,
     evaluate_every=evaluate_every,
-    device=device)
+    device=device,
+    use_amp=use_amp)
 
 # 7. Let it grow
 model = trainer.train(model)

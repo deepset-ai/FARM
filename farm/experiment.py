@@ -103,7 +103,7 @@ def run_experiment(args):
     # Init optimizer
 
     # TODO: warmup linear is sometimes NONE depending on fp16 - is there a neater way to handle this?
-    model, optimizer, warmup_linear = initialize_optimizer(
+    model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
         learning_rate=args.parameter.learning_rate,
         warmup_proportion=args.parameter.warmup_proportion,
@@ -122,7 +122,7 @@ def run_experiment(args):
         grad_acc_steps=args.parameter.gradient_accumulation_steps,
         use_amp=args.general.use_amp,
         local_rank=args.general.local_rank,
-        warmup_linear=warmup_linear,
+        lr_schedule=lr_schedule,
         evaluate_every=args.logging.eval_every,
         device=device,
     )
