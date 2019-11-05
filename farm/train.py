@@ -67,7 +67,7 @@ class Trainer:
         epochs,
         n_gpu,
         device,
-        warmup_linear=0.1,
+        warmup_linear=None,
         evaluate_every=100,
         evaluator_dev=None,
         evaluator_test=None,
@@ -103,7 +103,7 @@ class Trainer:
         self.n_gpu = n_gpu
         self.grad_acc_steps = grad_acc_steps
         self.use_amp = use_amp
-        self.learning_rate = self.optimizer.get_lr()
+        self.learning_rate = self.optimizer.defaults["lr"]
         self.warmup_linear = warmup_linear
         self.global_step = 0
         self.data_loader_train = data_silo.get_data_loader("train")
@@ -189,14 +189,13 @@ class Trainer:
 
         if (step + 1) % self.grad_acc_steps == 0:
             if self.use_amp:
-                # modify learning rate with special warm up BERT uses
-                # if args.use_amp is None, BertAdam is used that handles this automatically
-                lr_this_step = self.learning_rate * self.warmup_linear.get_lr(
-                    self.global_step, self.warmup_proportion
-                )
+                # modify learning rate with linear warmup
+                # If amp is not used, BertAdam Optimizer handles this automatically
+                # However, if amp is used, we use a different optimizer (FusedAdam) and need to update the LR manually
+                lr_this_step = self.learning_rate * self.warmup_linear.get_lr(self.global_step)
                 for param_group in self.optimizer.param_groups:
                     param_group["lr"] = lr_this_step
-                # MlLogger.write_metrics({"learning_rate": lr_this_step}, step=self.global_step)
+                # MlLogger.log_metrics({"learning_rate": lr_this_step}, step=self.global_step)
             self.optimizer.step()
             self.optimizer.zero_grad()
 

@@ -226,7 +226,7 @@ class BertAdam(Optimizer):
         self,
         params,
         lr=required,
-        warmup=-1,
+        warmup=-1.0,
         t_total=-1,
         schedule="warmup_linear",
         b1=0.9,
@@ -271,7 +271,7 @@ class BertAdam(Optimizer):
             schedule_type = SCHEDULES[schedule]
             schedule = schedule_type(warmup=warmup, t_total=t_total)
         else:
-            if warmup != -1 or t_total != -1:
+            if warmup != -1.0 or t_total != -1:
                 logger.warning(
                     "warmup and t_total on the optimizer are ineffective when _LRSchedule object is provided as schedule. "
                     "Please specify custom warmup and t_total in _LRSchedule object."
@@ -443,7 +443,7 @@ def initialize_optimizer(
         optimizer = BertAdam(
             optimizer_grouped_parameters,
             lr=learning_rate,
-            warmup=int(warmup_proportion),
+            warmup=warmup_proportion,
             t_total=num_train_optimization_steps,
             log_learning_rate=log_learning_rate
         )
