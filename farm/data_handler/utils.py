@@ -35,7 +35,7 @@ def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=N
     """Reads a tab separated value file. Tries to download the data if filename is not found"""
     if not (os.path.exists(filename)):
         logger.info(f" Couldn't find {filename} locally. Trying to download ...")
-        _download_extract_downstream_data(filename, **kwargs)
+        _download_extract_downstream_data(filename, proxies=None)
 
     df = pd.read_csv(
         filename,
@@ -57,7 +57,7 @@ def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=N
     return raw_dict
 
 
-def read_ner_file(filename, sep="\t", **kwargs):
+def read_ner_file(filename, sep="\t", proxies=None):
     """
     read file
     return format :
@@ -65,7 +65,7 @@ def read_ner_file(filename, sep="\t", **kwargs):
     """
     if not (os.path.exists(filename)):
         logger.info(f" Couldn't find {filename} locally. Trying to download ...")
-        _download_extract_downstream_data(filename, **kwargs)
+        _download_extract_downstream_data(filename, proxies)
 
     f = open(filename, encoding='utf-8')
 
@@ -91,11 +91,11 @@ def read_ner_file(filename, sep="\t", **kwargs):
     return data
 
 
-def read_squad_file(filename, **kwargs):
+def read_squad_file(filename, proxies=None):
     """Read a SQuAD json file"""
     if not (os.path.exists(filename)):
         logger.info(f" Couldn't find {filename} locally. Trying to download ...")
-        _download_extract_downstream_data(filename, **kwargs)
+        _download_extract_downstream_data(filename, proxies)
     with open(filename, "r", encoding="utf-8") as reader:
         input_data = json.load(reader)["data"]
     return input_data
@@ -128,7 +128,7 @@ def write_squad_predictions(predictions, out_filename, predictions_filename=None
     logger.info(f"Written Squad predictions to: {filepath}")
 
 
-def _download_extract_downstream_data(input_file, **kwargs):
+def _download_extract_downstream_data(input_file, proxies=None):
     # download archive to temp dir and extract to correct position
     full_path = os.path.realpath(input_file)
     directory = os.path.dirname(full_path)
@@ -152,7 +152,7 @@ def _download_extract_downstream_data(input_file, **kwargs):
         logger.error("Cannot download {}. Unknown data source.".format(taskname))
     else:
         with tempfile.NamedTemporaryFile() as temp_file:
-            http_get(DOWNSTREAM_TASK_MAP[taskname], temp_file, **kwargs)
+            http_get(DOWNSTREAM_TASK_MAP[taskname], temp_file, proxies=proxies)
             temp_file.flush()
             temp_file.seek(0)  # making tempfile accessible
             tfile = tarfile.open(temp_file.name)
@@ -169,10 +169,10 @@ def _conll03get(dataset, directory, language):
         file.write(response.content)
 
 
-def read_docs_from_txt(filename, delimiter="", encoding="utf-8", max_docs=None, **kwargs):
+def read_docs_from_txt(filename, delimiter="", encoding="utf-8", max_docs=None, proxies=None):
     """Reads a text file with one sentence per line and a delimiter between docs (default: empty lines) ."""
     if not (os.path.exists(filename)):
-        _download_extract_downstream_data(filename, **kwargs)
+        _download_extract_downstream_data(filename, proxies)
     all_docs = []
     doc = []
     corpus_lines = 0
