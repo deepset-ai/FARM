@@ -351,6 +351,7 @@ class TextClassificationProcessor(Processor):
         multilabel=False,
         header=0,
         proxies=None,
+        **kwargs
     ):
         #TODO If an arg is misspelt, e.g. metrics, it will be swallowed silently by kwargs
 
@@ -447,8 +448,6 @@ class InferenceProcessor(Processor):
             dev_split=None,
             data_dir=None,
             tasks={},
-            proxies=None,
-
         )
 
     @classmethod
@@ -518,6 +517,7 @@ class NERProcessor(Processor):
         dev_split=0.0,
         delimiter="\t",
         proxies=None,
+        **kwargs
     ):
 
         # Custom processor attributes
@@ -583,7 +583,8 @@ class BertStyleLMProcessor(Processor):
         dev_split=0.0,
         next_sent_pred=True,
         max_docs=None,
-        proxies=None
+        proxies=None,
+        **kwargs
     ):
 
         self.delimiter = ""
@@ -691,6 +692,7 @@ class SquadProcessor(Processor):
         doc_stride=128,
         max_query_length=64,
         proxies=None,
+        **kwargs
     ):
         """
         :param tokenizer: Used to split a sentence (str) into tokens.
@@ -839,6 +841,7 @@ class RegressionProcessor(Processor):
         scaler_mean=None,
         scaler_scale=None,
         proxies=None,
+        **kwargs
     ):
 
         # Custom processor attributes

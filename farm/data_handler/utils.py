@@ -31,11 +31,11 @@ DOWNSTREAM_TASK_MAP = {
 }
 
 
-def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=None, header=0, **kwargs):
+def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=None, header=0, proxies=None):
     """Reads a tab separated value file. Tries to download the data if filename is not found"""
     if not (os.path.exists(filename)):
         logger.info(f" Couldn't find {filename} locally. Trying to download ...")
-        _download_extract_downstream_data(filename, proxies=None)
+        _download_extract_downstream_data(filename, proxies=proxies)
 
     df = pd.read_csv(
         filename,
