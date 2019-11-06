@@ -942,7 +942,16 @@ class QuestionAnsweringHead(PredictionHead):
         # Need to investigate problem
         n_tokens = len(token_offsets)
         start_t = start_t
-        end_t = min(end_t + 1, n_tokens)
+
+        # We do this to point to the beginning of the first token after the span instead of
+        # the beginning of the last token in the span
+        end_t += 1
+
+        # Predictions sometimes land on the very final special token of the passage. But there are no
+        # special tokens on the document level. We will just interpret this as a span that stretches
+        # to the end of the document
+        end_t = min(end_t, n_tokens)
+
         start_ch = token_offsets[start_t]
         # i.e. pointing at the END of the last token
         if end_t == n_tokens:
@@ -1051,9 +1060,6 @@ class QuestionAnsweringHead(PredictionHead):
     #         return pos_answers_filtered + [no_answers_min]
 
     def reduce_preds(self, preds, n_best=5):
-        """TODO This isn't quite right I don't think.,.."""
-        if len(preds) > 1:
-            print()
         pos_answers = [(score, start, end, passage_idx)
                        for passage_idx, passage_preds in enumerate(preds)
                        for start, end, score in passage_preds

@@ -149,7 +149,7 @@ def create_samples_squad(dictionary, max_query_len, max_seq_len, doc_stride, n_s
     """
 
     # Initialize some basic variables
-    is_training = check_if_training(dictionary)
+    # is_training = check_if_training(dictionary)
     question_tokens = dictionary["question_tokens"][:max_query_len]
     question_len_t = len(question_tokens)
     question_offsets = dictionary["question_offsets"]
@@ -171,7 +171,6 @@ def create_samples_squad(dictionary, max_query_len, max_seq_len, doc_stride, n_s
                                         doc_stride,
                                         passage_len_t,
                                         doc_text)
-
     for passage_span in passage_spans:
         # Unpack each variable in the dictionary. The "_t" and "_c" indicate
         # whether the index is on the token or character level
@@ -199,8 +198,7 @@ def create_samples_squad(dictionary, max_query_len, max_seq_len, doc_stride, n_s
                       "question_text": dictionary["question_text"],
                       "passage_id": passage_id,
                       "answers": answers_clear,
-                      "is_impossible": dictionary["is_impossible"],
-                      "is_training": is_training}
+                      "is_impossible": dictionary["is_impossible"]}
         tokenized = {"passage_start_t": passage_start_t,
                      "passage_tokens": passage_tokens,
                      "passage_offsets": passage_offsets,
@@ -210,9 +208,8 @@ def create_samples_squad(dictionary, max_query_len, max_seq_len, doc_stride, n_s
                      "question_start_of_word": dictionary["question_start_of_word"],
                      "answers": answers_tokenized}
         samples.append(Sample(id=passage_id,
-                               clear_text=clear_text,
-                               tokenized=tokenized,
-                               features=None))
+                              clear_text=clear_text,
+                              tokenized=tokenized))
     return samples
 
 
@@ -268,25 +265,18 @@ def chunk_into_passages(doc_offsets,
     while True:
         passage_start_t = passage_id * doc_stride
         passage_end_t = passage_start_t + passage_len_t
-
         passage_start_c = doc_offsets[passage_start_t]
 
-        # try:
-        #     end_ch_idx = doc_offsets[passage_end_t + 1]
-        #     raw_passage_text = doc_text[passage_start_c : end_ch_idx]
-        #     passage_text = len(raw_passage_text.strip())
-        # # If the calculated end_idx is past the end of the passage, set end_idx to be the last token in the passage
-        # except IndexError:
-        #     passage_end_c = len(doc_text)
-
-
-        if passage_end_t >= doc_len_t:
+        # If passage_end_t points to the last token in the passage, define passage_end_c as the length of the document
+        if passage_end_t >= doc_len_t - 1:
             passage_end_c = len(doc_text)
+
+        # Get document text up to the first token that is outside the passage. Strip of whitespace.
+        # Use the length of this text as the passage_end_c
         else:
             end_ch_idx = doc_offsets[passage_end_t + 1]
-            raw_passage_text = doc_text[passage_start_c:end_ch_idx]
+            raw_passage_text = doc_text[:end_ch_idx]
             passage_end_c = len(raw_passage_text.strip())
-
 
         passage_span = {"passage_start_t": passage_start_t,
                         "passage_end_t": passage_end_t,
@@ -305,12 +295,8 @@ def offset_to_token_idx(token_offsets, ch_idx):
     """ Returns the idx of the token at the given character idx"""
     n_tokens = len(token_offsets)
     for i in range(n_tokens):
-        if i + 1 == n_tokens:
+        if (i + 1 == n_tokens) or (token_offsets[i] <= ch_idx < token_offsets[i + 1]):
             return i
-        else:
-            if token_offsets[i] <= ch_idx < token_offsets[i + 1]:
-                return i
-
 
 
 def check_if_training(dictionary):

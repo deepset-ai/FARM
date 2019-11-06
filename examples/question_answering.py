@@ -32,11 +32,11 @@ set_all_seeds(seed=42)
 device, n_gpu = initialize_device_settings(use_cuda=True)
 batch_size = 18
 n_epochs = 2
-evaluate_every = 1000
+evaluate_every = 5
 base_LM_model = "bert-base-uncased"
 train_filename="subsets/train_medium-v2.0.json"
 dev_filename="subsets/dev_medium-v2.0.json"
-save_dir = "../saved_models/full_model_tuesday"
+save_dir = "../saved_models/timo_medium"
 inference_file = "../data/squad20/subsets/dev_medium-v2.0.json"
 predictions_file = save_dir + "/predictions.json"
 full_predictions_file = save_dir + "/full_predictions.json"
@@ -116,6 +116,12 @@ if inference:
 
     result = {k: v[0][0] for k, v in full_result.items()}
 
-    json.dump(result, open(predictions_file, "w"), indent=4)
-    json.dump(full_result, open(full_predictions_file, "w"), indent=4)
+    json.dump(result,
+              open(predictions_file, "w"),
+              indent=4,
+              ensure_ascii=False)
+    json.dump(full_result,
+              open(full_predictions_file, "w"),
+              indent=4,
+              ensure_ascii=False)
 

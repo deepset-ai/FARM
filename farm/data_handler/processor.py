@@ -169,7 +169,7 @@ class Processor(ABC):
         # init tokenizer
         tokenizer = TOKENIZER_MAP[config["tokenizer"]].from_pretrained(
             load_dir,
-            do_lower_case=config["lower_case"],
+            # do_lower_case=config["lower_case"],
             never_split_chars=config.get("never_split_chars", None),
         )
         # add custom vocab to tokenizer if available

@@ -338,12 +338,10 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
     is_impossible = sample.clear_text["is_impossible"]
     question_tokens = sample.tokenized["question_tokens"]
     question_start_of_word = sample.tokenized["question_start_of_word"]
-    question_offsets = sample.tokenized["question_offsets"]
     question_len_t = len(question_tokens)
     passage_start_t = sample.tokenized["passage_start_t"]
     passage_tokens = sample.tokenized["passage_tokens"]
     passage_start_of_word = sample.tokenized["passage_start_of_word"]
-    passage_offsets = sample.tokenized["passage_offsets"]
     passage_len_t = len(passage_tokens)
     answers = sample.tokenized["answers"]
 
@@ -351,9 +349,9 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
     # and passage_id respectively
     sample_id = [int(x) for x in sample.id.split("-")]
 
-    # TODO rewrite comment
     # Generates a numpy array of shape (max_answers, 2) where (i, 2) indexes into the start and end indixes
     # of the ith answer. The array is filled with -1 since the number of answers is often less than max_answers
+    # no answer labels are represented by (0,0)
     labels = generate_labels(answers,
                              passage_len_t,
                              question_len_t,
@@ -364,11 +362,6 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
     # This will allow us to perform evaluation during training without clear text.
     # Note that in the current implementation, special tokens do not count as start of word.
     start_of_word = combine_vecs(question_start_of_word, passage_start_of_word, tokenizer, spec_tok_val=0)
-    offsets = combine_vecs(question_offsets, passage_offsets, tokenizer, spec_tok_val=-1)
-
-    # TODO seq_2_start_t is the index of the first token in the second text sequence (e.g. passage)
-    # TODO currently hard coded and hacky - needs to change
-    seq_2_start_t = question_len_t + 2
 
     # Combines question_tokens and passage_tokens (str) into a single encoded vector of token indices (int)
     # called input_ids. This encoded vector also contains special tokens (e.g. [CLS]). It will have length =
@@ -384,6 +377,9 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
     input_ids = encoded["input_ids"]
     segment_ids = encoded["token_type_ids"]
 
+    # seq_2_start_t is the index of the first token in the second text sequence (e.g. passage)
+    seq_2_start_t = segment_ids.index(1)
+
     # The mask has 1 for real tokens and 0 for padding tokens. Only real
     # tokens are attended to.
     padding_mask = [1] * len(input_ids)
@@ -394,12 +390,11 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
     padding_mask += padding
     segment_ids += padding
     start_of_word += padding
-    offsets += padding
 
     # Todo: explain how only the first of labels will be used in train, and the full array will be used in eval
     # TODO Offset, start of word and spec_tok_mask are not actually needed by model.forward() but are needed for model.formatted_preds()
     # TODO passage_start_t is index of passage's first token  relative to document
-    # I don't think we actually need offsets or start of word anymore
+    # I don't think we actually need offsets anymore
     feature_dict = {"input_ids": input_ids,
                     "padding_mask": padding_mask,
                     "segment_ids": segment_ids,
@@ -407,7 +402,6 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
                     "id": sample_id,
                     "passage_start_t": passage_start_t,
                     "start_of_word": start_of_word,
-                    "offsets": offsets,
                     "labels": labels,
                     "seq_2_start_t": seq_2_start_t}
     return [feature_dict]
@@ -415,26 +409,15 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
 
 def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answers):
     """
-    TODO rewrite this comment
     Creates QA label for each answer in answers. The labels are the index of the start and end token
     relative to the passage. They are contained in an array of size (max_answers, 2).
     -1 used to fill array since there the number of answers is often less than max_answers.
-    Takes in to consideration the question tokens,
-    and also special tokens such as [CLS]. When the answer is not fully contained in the passage, or the question
+    The index values take in to consideration the question tokens, and also special tokens such as [CLS].
+    When the answer is not fully contained in the passage, or the question
     is impossible to answer, the start_idx and end_idx are 0 i.e. start and end are on the very first token
     (in most models, this is the [CLS] token). """
 
     label_idxs = np.full((max_answers, 2), fill_value=-1)
-
-    # We are going to operate on one-hot label vectors which will later be converted back to label indices.
-    # This is to take advantage of tokenizer.encode_plus() which applies model dependent special token conventions.
-    # The two label vectors (start and end) are composed of sections that correspond to the question and
-    # passage tokens. These are initialized here. The section corresponding to the question
-    # will always be composed of 0s.
-    start_vec_question = [0] * question_len_t
-    end_vec_question = [0] * question_len_t
-    start_vec_passage = [0] * passage_len_t
-    end_vec_passage = [0] * passage_len_t
 
     # If there are no answers
     if len(answers) == 0:
@@ -444,6 +427,16 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
     for i, answer in enumerate(answers):
         start_idx = answer["start_t"]
         end_idx = answer["end_t"]
+
+        # We are going to operate on one-hot label vectors which will later be converted back to label indices.
+        # This is to take advantage of tokenizer.encode_plus() which applies model dependent special token conventions.
+        # The two label vectors (start and end) are composed of sections that correspond to the question and
+        # passage tokens. These are initialized here. The section corresponding to the question
+        # will always be composed of 0s.
+        start_vec_question = [0] * question_len_t
+        end_vec_question = [0] * question_len_t
+        start_vec_passage = [0] * passage_len_t
+        end_vec_passage = [0] * passage_len_t
 
         # If the answer is in the current passage, populate the label vector with 1s for start and end
         if answer_in_passage(start_idx, end_idx, passage_len_t):
@@ -471,6 +464,11 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
         elif start_label_present is False or end_label_present is False:
             raise Exception("The label vectors are lacking either a start or end label")
 
+        # Ensure label vectors are one-hot
+        assert sum(start_vec) == 1
+        assert sum(end_vec) == 1
+
+
         start_idx = start_vec.index(1)
         end_idx = end_vec.index(1)
 
@@ -496,6 +494,7 @@ def combine_vecs(question_vec, passage_vec, tokenizer, spec_tok_val=-1):
     combined = [v if not special_token else spec_tok_val for v, special_token in zip(vec, spec_toks_mask)]
 
     return combined
+
 
 def answer_in_passage(start_idx, end_idx, passage_len):
     if passage_len > start_idx > 0 and passage_len > end_idx > 0:
