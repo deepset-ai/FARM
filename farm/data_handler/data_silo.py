@@ -199,7 +199,7 @@ class DataSilo:
         test = ConcatDataset(ds.datasets[idx_dataset:])
         return train, test
 
-    def _calculate_statistics(self,):
+    def _calculate_statistics(self):
         self.counts = {
             "train": len(self.data["train"])
         }

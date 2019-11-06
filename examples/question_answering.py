@@ -1,6 +1,7 @@
 # fmt: off
 import logging
 import pprint
+import json
 
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import SquadProcessor
@@ -23,20 +24,22 @@ logging.basicConfig(
 ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
 ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_question_answering")
 
+
 #########################
 ######## Settings
 ########################
 set_all_seeds(seed=42)
 device, n_gpu = initialize_device_settings(use_cuda=True)
-batch_size = 32
+batch_size = 18
 n_epochs = 2
 evaluate_every = 1000
 base_LM_model = "bert-base-uncased"
-train_filename="train-v2.0.json"
-dev_filename="dev-v2.0.json"
-save_dir = "../saved_models/full_train"
-inference_file = "../data/squad20/dev-v2.0.json"
+train_filename="subsets/train_medium-v2.0.json"
+dev_filename="subsets/dev_medium-v2.0.json"
+save_dir = "../saved_models/full_model_tuesday"
+inference_file = "../data/squad20/subsets/dev_medium-v2.0.json"
 predictions_file = save_dir + "/predictions.json"
+full_predictions_file = save_dir + "/full_predictions.json"
 train = False
 inference = True
 
@@ -59,7 +62,6 @@ if train:
         test_filename=None,
         data_dir="../data/squad20",
     )
-
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
     data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=False)
@@ -99,28 +101,21 @@ if train:
     # 7. Let it grow! Watch the tracked metrics live on the public mlflow server: https://public-mlflow.deepset.ai
     model = trainer.train(model)
 
-
-
     # 8. Hooray! You have a model. Store it:
     model.save(save_dir)
     processor.save(save_dir)
 
-    # 9. Load it & harvest your fruits (Inference)
-    # QA_input = [
-    #         {
-    #             "questions": ["Who counted the game among the best ever made?"],
-    #             "text":  "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
-    #         }]
 
 if inference:
     model = Inferencer.load(save_dir, batch_size=32, gpu=True)
-    # result = model.inference_from_dicts(dicts=QA_input["data"])
-    result = model.inference_from_file(file=inference_file)
+    full_result = model.inference_from_file(file=inference_file)
 
-
-    for x, y in result.items():
+    for x, y in full_result.items():
         pprint.pprint(x)
         pprint.pprint(y)
 
-    import json
+    result = {k: v[0][0] for k, v in full_result.items()}
+
     json.dump(result, open(predictions_file, "w"), indent=4)
+    json.dump(full_result, open(full_predictions_file, "w"), indent=4)
+

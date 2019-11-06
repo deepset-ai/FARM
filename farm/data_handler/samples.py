@@ -269,15 +269,25 @@ def chunk_into_passages(doc_offsets,
         passage_start_t = passage_id * doc_stride
         passage_end_t = passage_start_t + passage_len_t
 
-        # If the start idx is greater than the length of the passage
-        if passage_start_t >= doc_len_t:
-            break
         passage_start_c = doc_offsets[passage_start_t]
-        try:
-            passage_end_c = doc_offsets[passage_end_t + 1] - 1
-        # If the calculated end_idx is past the end of the passage, set end_idx to be the last token in the passage
-        except IndexError:
+
+        # try:
+        #     end_ch_idx = doc_offsets[passage_end_t + 1]
+        #     raw_passage_text = doc_text[passage_start_c : end_ch_idx]
+        #     passage_text = len(raw_passage_text.strip())
+        # # If the calculated end_idx is past the end of the passage, set end_idx to be the last token in the passage
+        # except IndexError:
+        #     passage_end_c = len(doc_text)
+
+
+        if passage_end_t >= doc_len_t:
             passage_end_c = len(doc_text)
+        else:
+            end_ch_idx = doc_offsets[passage_end_t + 1]
+            raw_passage_text = doc_text[passage_start_c:end_ch_idx]
+            passage_end_c = len(raw_passage_text.strip())
+
+
         passage_span = {"passage_start_t": passage_start_t,
                         "passage_end_t": passage_end_t,
                         "passage_start_c": passage_start_c,
@@ -285,6 +295,9 @@ def chunk_into_passages(doc_offsets,
                         "passage_id": passage_id}
         passage_spans.append(passage_span)
         passage_id += 1
+        # If the end idx is greater than or equal to the length of the passage
+        if passage_end_t >= doc_len_t:
+            break
     return passage_spans
 
 

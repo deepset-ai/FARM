@@ -854,7 +854,6 @@ class QuestionAnsweringHead(PredictionHead):
     @staticmethod
     def valid_answer_idxs(start_idx, end_idx, n_non_padding, max_answer_length, seq_2_start_t):
         #TODO rethink this method - remember that these indexes are on sample level (special tokens + queestion tokens + passage+tokens)
-        # Also method should be static
 
         # This function can seriously slow down inferencing and eval
         # Continue if start or end label points to a padding token
@@ -869,11 +868,11 @@ class QuestionAnsweringHead(PredictionHead):
         # Check if start comes after end
         if end_idx < start_idx:
             return False
-        # # If one of the two indices is 0, the other must also be 0
-        # if start_idx == 0 and end_idx != 0:
-        #     return False
-        # if start_idx != 0 and end_idx == 0:
-        #     return False
+        # If one of the two indices is 0, the other must also be 0
+        if start_idx == 0 and end_idx != 0:
+            return False
+        if start_idx != 0 and end_idx == 0:
+            return False
 
         # if start_idx not in feature.token_to_orig_map:
         #     continue
@@ -922,28 +921,27 @@ class QuestionAnsweringHead(PredictionHead):
         return formatted
 
     def stringify(self, preds_d, baskets):
+        """ Turn prediction spans into strings """
         ret = {}
         for doc_idx, doc_preds in enumerate(preds_d):
             token_offsets = baskets[doc_idx].raw["document_offsets"]
             clear_text = baskets[doc_idx].raw["document_text"]
             squad_id = baskets[doc_idx].raw["squad_id"]
-            doc_preds_str = []
             full_preds = []
             for start_t, end_t, score in doc_preds:
                 pred_str = self.span_to_string(start_t, end_t, token_offsets, clear_text)
-                doc_preds_str.append(pred_str)
-                full_preds.append([start_t, end_t, score])
-            ret[squad_id] = {"texts": doc_preds_str,
-                             "other": full_preds}
+                full_preds.append([pred_str, start_t, end_t, score])
+            ret[squad_id] = full_preds
         return ret
 
     @staticmethod
     def span_to_string(start_t, end_t, token_offsets, clear_text):
-        if start_t == 0 and end_t == 0:
+        if start_t == -1 and end_t == -1:
             return ""
-        #TODO there was a buy where start_t and end_t were 164 but len(token_offsets) was 163. This min is a very hacky quick fix. Need to investigate problem
+        #TODO there was a bug where start_t and end_t were 164 but len(token_offsets) was 163.
+        # Need to investigate problem
         n_tokens = len(token_offsets)
-        start_t = min(start_t, n_tokens-1)
+        start_t = start_t
         end_t = min(end_t + 1, n_tokens)
         start_ch = token_offsets[start_t]
         # i.e. pointing at the END of the last token
@@ -951,7 +949,7 @@ class QuestionAnsweringHead(PredictionHead):
             end_ch = len(clear_text)
         else:
             end_ch = token_offsets[end_t]
-        return clear_text[start_ch: end_ch]
+        return clear_text[start_ch: end_ch].strip()
 
     def has_no_answer_idxs(self, sample_top_n):
         for start, end, score in sample_top_n:
@@ -959,31 +957,46 @@ class QuestionAnsweringHead(PredictionHead):
                 return True
         return False
 
-    def aggregate_preds(self, preds, passage_start_t, ids, seq_2_start_t=None, labels=None, n_best=5):
+    def aggregate_preds(self, preds, passage_start_t, ids, seq_2_start_t=None, labels=None):
+        """ Aggregate passage level predictions to create document level predictions.
+        This method assumes that all passages of each document are contained in preds
+        i.e. that there are no incomplete documents. The output of this step
+        are prediction spans. No answer is represented by a (-1, -1) span on the document level """
+        # TODO reduce number of label checks
         # adjust offsets
         # group by id
-        # identify top 5 per group
+        # identify top n per group
 
-        # TODO this is likely to be wrong since id assignment is being reset with each chunk
-        # TODO i.e. different docs might share the same doc id
-        # TODO reduce number of label checks
-
+        # Initialize some variables
         n_samples = len(preds)
         all_basket_preds = {}
         all_basket_labels = {}
+
+        # Iterate over the preds of each sample
         for sample_idx in range(n_samples):
+            # Aggregation of sample predictions is done using these ids
             document_id, question_id, _ = ids[sample_idx]
-            # TODO this should change to squad id
             basket_id = f"{document_id}-{question_id}"
+
+            # curr_passage_start_t is the token offset of the current passage
+            # It will always be a multiple of doc_stride
             curr_passage_start_t = passage_start_t[sample_idx]
-            # TODO this is to account for the fact that all model input sequences start with some special tokens
-            # TODO and also the question tokens before passage tokens
+
+            # This is to account for the fact that all model input sequences start with some special tokens
+            # and also the question tokens before passage tokens.
+            # TODO why is this optional? Should it be implemented at dev?
             if seq_2_start_t:
                 cur_seq_2_start_t = seq_2_start_t[sample_idx]
                 curr_passage_start_t -= cur_seq_2_start_t
+
+            # Converts the passage level predictions+labels to document level predictions+labels. Note
+            # that on the passage level a no answer is (0,0) but at document level it is (-1,-1) since (0,0)
+            # would refer to the first token of the document
             pred_d = self.pred_to_doc_idxs(preds[sample_idx], curr_passage_start_t)
             if labels:
                 label_d = self.label_to_doc_idxs(labels[sample_idx], curr_passage_start_t)
+
+            # Add predictions and labels to dictionary grouped by their basket_ids
             if basket_id not in all_basket_preds:
                 all_basket_preds[basket_id] = []
                 all_basket_labels[basket_id] = []
@@ -991,11 +1004,12 @@ class QuestionAnsweringHead(PredictionHead):
             if labels:
                 all_basket_labels[basket_id].append(label_d)
 
+        # Pick n-best predictions and remove repeated labels
         all_basket_preds = {k: self.reduce_preds(v) for k, v in all_basket_preds.items()}
         if labels:
             all_basket_labels = {k: self.reduce_labels(v) for k, v in all_basket_labels.items()}
 
-        # TODO check if this approach does not preserve order
+        # Return aggregated predictions in order as a list of lists
         keys = sorted([k for k in all_basket_preds])
         preds = [all_basket_preds[k] for k in keys]
         if labels:
@@ -1006,46 +1020,79 @@ class QuestionAnsweringHead(PredictionHead):
 
     @staticmethod
     def reduce_labels(labels):
-        positive_answers = [(start, end) for x in labels for start, end in x if not (start == 0 and end == 0)]
+        """ Removes repeat answers. Represents a no answer label as (-1,-1)"""
+        positive_answers = [(start, end) for x in labels for start, end in x if not (start == -1 and end == -1)]
         if not positive_answers:
-            return [(0, 0)]
+            return [(-1, -1)]
         else:
             return list(set(positive_answers))
 
-    @staticmethod
+    # @staticmethod
+    # def reduce_preds_old(preds, n_best=5):
+    #     # todo write with start, end unpacking instead of indices
+    #     # todo since there is overlap between passages, its currently possible that they return the same prediction
+    #     pos_answers = [[(start, end, score) for start, end, score in x if not (start == 0 and end == 0)] for x in preds]
+    #     pos_answer_flat = [x for y in pos_answers for x in y]
+    #     pos_answers_sorted = sorted(pos_answer_flat, key=lambda z: z[2], reverse=True)
+    #     pos_answers_filtered = pos_answers_sorted[:n_best]
+    #     top_pos_answer_score = pos_answers_filtered[0][2]
+    #
+    #     no_answer = [(start, end, score) for x in preds for start, end, score in x if (start == 0 and end == 0)]
+    #     no_answer_sorted = sorted(no_answer, key=lambda z: z[2], reverse=True)
+    #     no_answers_min = no_answer_sorted[-1]
+    #     _, _, no_answer_min_score = no_answers_min
+    #
+    #     # todo this is a very basic and probably not very performant way to pick no_answer
+    #     # no answer logic
+    #     threshold = 0.
+    #     if no_answer_min_score + threshold > top_pos_answer_score:
+    #         return [no_answers_min] + pos_answers_filtered
+    #     else:
+    #         return pos_answers_filtered + [no_answers_min]
+
     def reduce_preds(self, preds, n_best=5):
-        # todo write with start, end unpacking instead of indices
-        # todo since there is overlap between passages, its currently possible that they return the same prediction
-        pos_answers = [[(start, end, score) for start, end, score in x if not (start == 0 and end == 0)] for x in preds]
-        pos_answer_flat = [x for y in pos_answers for x in y]
-        pos_answers_sorted = sorted(pos_answer_flat, key=lambda z: z[2], reverse=True)
-        pos_answers_filtered = pos_answers_sorted[:n_best]
-        top_pos_answer_score = pos_answers_filtered[0][2]
+        """TODO This isn't quite right I don't think.,.."""
+        if len(preds) > 1:
+            print()
+        pos_answers = [(score, start, end, passage_idx)
+                       for passage_idx, passage_preds in enumerate(preds)
+                       for start, end, score in passage_preds
+                       if not (start == -1 and end == -1)]
+        pos_answers_sorted = sorted(pos_answers, key=lambda x:x[0], reverse=True)
+        pos_answers_reduced = pos_answers_sorted[:n_best]
 
-        no_answer = [(start, end, score) for x in preds for start, end, score in x if (start == 0 and end == 0)]
-        no_answer_sorted = sorted(no_answer, key=lambda z: z[2], reverse=True)
-        no_answers_min = no_answer_sorted[-1]
-        _, _, no_answer_min_score = no_answers_min
+        ret = []
+        for pos_score, start, end, passage_idx in pos_answers_reduced:
+            no_answer_score = self.get_no_answer_score(preds[passage_idx])
+            if pos_score > no_answer_score:
+                ret.append([start, end, pos_score])
+            else:
+                ret.append([-1, -1, no_answer_score])
+        return ret
 
-        # todo this is a very basic and probably not very performant way to pick no_answer
-        # no answer logic
-        threshold = 0.
-        if no_answer_min_score + threshold > top_pos_answer_score:
-            return [no_answers_min] + pos_answers_filtered
-        else:
-            return pos_answers_filtered + [no_answers_min]
+    @staticmethod
+    def get_no_answer_score(preds):
+        for start, end, score in preds:
+            if start == -1 and end == -1:
+                return score
+        raise Exception
 
     @staticmethod
     def pred_to_doc_idxs(pred, passage_start_t):
+        """ Converts the passage level predictions to document level predictions. Note that on the doc level we
+        don't have special tokens or question tokens. This means that a no answer
+        cannot be prepresented by a (0,0) span but will instead be represented by (-1, -1)"""
         new_pred = []
         for start, end, score in pred:
-            if start != 0:
+            if start == 0:
+                start = -1
+            else:
                 start += passage_start_t
                 assert start >= 0
-            if end != 0:
+            if end == 0:
+                end = -1
+            else:
                 end += passage_start_t
-                if end < 0:
-                    print()
                 assert start >= 0
             new_pred.append([start, end, score])
         return new_pred
@@ -1053,14 +1100,16 @@ class QuestionAnsweringHead(PredictionHead):
     @staticmethod
     def label_to_doc_idxs(label, passage_start_t):
         # Todo Write note about why we see -1 and how this will filter them out
+        # TODO make more sense of this method
         new_label = []
         for start, end in label:
             # If there is a valid label
             if start > 0 or end > 0:
                 new_label.append((start + passage_start_t, end + passage_start_t))
-            # If the label is a no answer
+            # If the label is a no answer, we represent this as a (-1, -1) span
+            # since there is no CLS token on the document level
             if start == 0 and end == 0:
-                new_label.append((start, end))
+                new_label.append((-1, -1))
         return new_label
 
     def prepare_labels(self, labels, start_of_word, **kwargs):
