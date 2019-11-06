@@ -51,10 +51,10 @@ def test_lm_finetuning(caplog):
 
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
-        learning_rate=2e-5,
+        optim_opts={'name': 'AdamW', 'lr': 2E-05},
         warmup_proportion=0.1,
         n_batches=len(data_silo.loaders["train"]),
-        n_epochs=n_epochs,
+        n_epochs=1
     )
 
     trainer = Trainer(
@@ -62,7 +62,6 @@ def test_lm_finetuning(caplog):
         data_silo=data_silo,
         epochs=n_epochs,
         n_gpu=n_gpu,
-        lr_schedule=lr_schedule,
         evaluate_every=evaluate_every,
         device=device,
     )
@@ -123,10 +122,10 @@ def test_lm_finetuning_no_next_sentence(caplog):
 
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
-        learning_rate=2e-5,
+        optim_opts={'name': 'AdamW', 'lr': 2E-05},
         warmup_proportion=0.1,
         n_batches=len(data_silo.loaders["train"]),
-        n_epochs=n_epochs,
+        n_epochs=n_epochs
     )
 
     trainer = Trainer(

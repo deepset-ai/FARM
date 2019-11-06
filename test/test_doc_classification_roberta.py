@@ -51,10 +51,11 @@ def test_doc_classification():
 
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
-        learning_rate=2e-5,
+        optim_opts={'name': 'AdamW', 'lr': 2E-05},
         warmup_proportion=0.1,
         n_batches=len(data_silo.loaders["train"]),
-        n_epochs=1)
+        n_epochs=1,
+        sched_opts={'name': 'WarmupCosineSchedule'})
 
     trainer = Trainer(
         optimizer=optimizer,

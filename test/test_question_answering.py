@@ -52,11 +52,13 @@ def test_qa(caplog):
 
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
-        learning_rate=1e-5,
-        warmup_proportion=0.2,
+        optim_opts={'name': 'AdamW', 'lr': 2E-05},
+        warmup_proportion=0.1,
         n_batches=len(data_silo.loaders["train"]),
-        n_epochs=n_epochs,
+        n_epochs=1,
+        sched_opts={'name': 'WarmupCosineSchedule'}
     )
+
     trainer = Trainer(
         optimizer=optimizer,
         data_silo=data_silo,
@@ -64,7 +66,7 @@ def test_qa(caplog):
         n_gpu=n_gpu,
         lr_schedule=lr_schedule,
         evaluate_every=evaluate_every,
-        device=device,
+        device=device
     )
     model = trainer.train(model)
     save_dir = "testsave/qa"
@@ -82,5 +84,5 @@ def test_qa(caplog):
     result = model.inference_from_dicts(dicts=QA_input,use_multiprocessing=False)
     assert isinstance(result[0]["predictions"][0]["answers"][0]["offset_start"],int)
 
-if(__name__=="__main__"):
+if __name__ == "__main__":
     test_qa()

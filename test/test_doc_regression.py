@@ -45,14 +45,17 @@ def test_doc_regression(caplog):
         prediction_heads=[prediction_head],
         embeds_dropout_prob=0.1,
         lm_output_types=["per_sequence_continuous"],
-        device=device)
+        device=device
+    )
 
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
-        learning_rate=2e-5,
+        optim_opts={'name': 'AdamW', 'lr': 2E-05},
         warmup_proportion=0.1,
         n_batches=len(data_silo.loaders["train"]),
-        n_epochs=1)
+        n_epochs=1,
+        sched_opts={'name': 'WarmupCosineSchedule'}
+    )
 
     trainer = Trainer(
         optimizer=optimizer,
@@ -61,7 +64,8 @@ def test_doc_regression(caplog):
         n_gpu=n_gpu,
         lr_schedule=lr_schedule,
         evaluate_every=evaluate_every,
-        device=device)
+        device=device
+    )
 
     model = trainer.train(model)
 

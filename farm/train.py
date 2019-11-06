@@ -2,10 +2,10 @@ from __future__ import absolute_import, division, print_function
 
 import logging
 import torch
+from torch.nn.parallel import DistributedDataParallel as DDP
 from tqdm import tqdm
 
 from farm.utils import MLFlowLogger as MlLogger
-from farm.utils import format_log
 from farm.eval import Evaluator
 from farm.data_handler.data_silo import DataSilo
 from farm.visual.ascii.images import GROWING_TREE, BUSH_SEP
@@ -33,27 +33,18 @@ class WrappedDataParallel(torch.nn.DataParallel):
             return getattr(self.module, name)
 
 
-try:
-    from torch.distributed import DistributedDataParallel as DDP
+class WrappedDDP(DDP):
+    """
+    A way of adapting attributes of underlying class to distributed mode. Same as in WrappedDataParallel above.
+    Even when using distributed on a single machine with multiple GPUs, apex can speed up training significantly.
+    Distributed code must be launched with "python -m torch.distributed.launch --nproc_per_node=1 run_script.py"
+    """
 
-    class WrappedDDP(DDP):
-        """
-        A way of adapting attributes of underlying class to distributed mode. Same as in WrappedDataParallel above.
-        Even when using distributed on a single machine with multiple GPUs, apex can speed up training significantly.
-        Distributed code must be launched with "python -m torch.distributed.launch --nproc_per_node=1 run_script.py"
-        """
-
-        def __getattr__(self, name):
-            try:
-                return super().__getattr__(name)
-            except AttributeError:
-                return getattr(self.module, name)
-
-
-except ImportError:
-    logger.warning(
-        "Apex not installed. If you use distributed training with local rank != -1 apex must be installed."
-    )
+    def __getattr__(self, name):
+        try:
+            return super().__getattr__(name)
+        except AttributeError:
+            return getattr(self.module, name)
 
 
 class Trainer:
@@ -67,7 +58,7 @@ class Trainer:
         epochs,
         n_gpu,
         device,
-        lr_schedule,
+        lr_schedule=None,
         evaluate_every=100,
         evaluator_dev=None,
         evaluator_test=None,
@@ -84,7 +75,7 @@ class Trainer:
         :param n_gpu: The number of gpus available for training and evaluation.
         :type n_gpu: int
         :param device: The device on which the train, dev and test tensors should be hosted. Choose from "cpu" and "cuda".
-        :param lr_schedule: TODO
+        :param lr_schedule: An optional scheduler object that can regulate the learning rate of the optimizer
         :param evaluate_every: Perform dev set evaluation after this many steps of training.
         :type evaluate_every: int
         :param evaluator_dev: The dev set Evaluator object.
@@ -109,6 +100,10 @@ class Trainer:
         self.device = device
         self.local_rank = local_rank
         self.log_params()
+
+        if use_amp and not AMP_AVAILABLE:
+            raise ImportError('Please install Apex if you want to make use of automatic mixec precision.'
+                              ' https://github.com/NVIDIA/apex')
 
         # evaluator on dev set
         if evaluator_dev is None and self.data_silo.get_data_loader("dev"):
@@ -187,11 +182,12 @@ class Trainer:
             loss.backward()
 
         if (step + 1) % self.grad_acc_steps == 0:
-            #TODO We might wanna add gradient clipping here
-            self.lr_schedule.step()  # Update learning rate schedule
-            MlLogger.log_metrics({"learning_rate":  self.lr_schedule.get_lr()[0]}, step=self.global_step)
+            # TODO We might wanna add gradient clipping here
             self.optimizer.step()
             self.optimizer.zero_grad()
+            if self.lr_schedule:
+                MlLogger.log_metrics({"learning_rate": self.lr_schedule.get_lr()[0]}, step=self.global_step)
+                self.lr_schedule.step()
 
     def adjust_loss(self, loss):
         loss = loss.mean()
@@ -201,7 +197,7 @@ class Trainer:
 
     def check_tokenizer_lm(self, tokenizer, lm):
         tok_vocab_len = len(tokenizer)
-        #TODO make this generic for other models
+        # TODO make this generic for other models
         model_vocab_len = lm.model.resize_token_embeddings(new_num_tokens=None).num_embeddings
         #model_vocab_len = lm.model.embeddings.word_embeddings.num_embeddings
         if tok_vocab_len != model_vocab_len:

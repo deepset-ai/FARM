@@ -52,11 +52,11 @@ def test_doc_classification(caplog):
 
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
-        learning_rate=2e-5,
+        optim_opts={'name': 'AdamW', 'lr': 2E-05},
         warmup_proportion=0.1,
         n_batches=len(data_silo.loaders["train"]),
         n_epochs=1,
-        use_amp="O1")
+        sched_opts={'name': 'WarmupCosineSchedule'})
 
     trainer = Trainer(
         optimizer=optimizer,
@@ -79,10 +79,10 @@ def test_doc_classification(caplog):
     ]
 
 
-    inf = Inferencer.load(save_dir,batch_size=2)
+    inf = Inferencer.load(save_dir, batch_size=2)
     result = inf.inference_from_dicts(dicts=basic_texts)
-    assert isinstance(result[0]["predictions"][0]["probability"],np.float32)
+    assert isinstance(result[0]["predictions"][0]["probability"], np.float32)
 
 
-if(__name__=="__main__"):
+if __name__ == "__main__":
     test_doc_classification()

@@ -18,7 +18,7 @@ def test_ner(caplog):
     caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
-    device, n_gpu = initialize_device_settings(use_cuda=False)
+    device, n_gpu = initialize_device_settings(use_cuda=True)
     n_epochs = 1
     batch_size = 2
     evaluate_every = 1
@@ -52,7 +52,7 @@ def test_ner(caplog):
         prediction_heads=[prediction_head],
         embeds_dropout_prob=0.1,
         lm_output_types=["per_token"],
-        device=device,
+        device=device
     )
 
     model, optimizer, lr_schedule = initialize_optimizer(
@@ -61,7 +61,8 @@ def test_ner(caplog):
         warmup_proportion=0.1,
         n_batches=len(data_silo.loaders["train"]),
         n_epochs=1,
-        sched_opts={'name': 'WarmupCosineSchedule'}
+        sched_opts={'name': 'WarmupCosineSchedule'},
+        use_amp='O1'
     )
 
     trainer = Trainer(
