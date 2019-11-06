@@ -55,7 +55,8 @@ class Processor(ABC):
         test_filename,
         dev_split,
         data_dir,
-        tasks={}
+        tasks={},
+        proxies=None
     ):
         """
         :param tokenizer: Used to split a sentence (str) into tokens.
@@ -77,6 +78,7 @@ class Processor(ABC):
         self.tokenizer = tokenizer
         self.max_seq_len = max_seq_len
         self.tasks = tasks
+        self.proxies = proxies
 
         # data sets
         self.train_filename = train_filename
@@ -348,7 +350,8 @@ class TextClassificationProcessor(Processor):
         label_column_name="label",
         multilabel=False,
         header=0,
-        **kwargs,
+        proxies=None,
+        **kwargs
     ):
         #TODO If an arg is misspelt, e.g. metrics, it will be swallowed silently by kwargs
 
@@ -367,6 +370,8 @@ class TextClassificationProcessor(Processor):
             dev_split=dev_split,
             data_dir=data_dir,
             tasks={},
+            proxies=proxies,
+
         )
         if metric and label_list:
             if multilabel:
@@ -390,7 +395,8 @@ class TextClassificationProcessor(Processor):
             skiprows=self.skiprows,
             quotechar=self.quote_char,
             rename_columns=column_mapping,
-            header=self.header
+            header=self.header,
+            proxies=self.proxies
             )
 
         return dicts
@@ -441,7 +447,7 @@ class InferenceProcessor(Processor):
             test_filename=None,
             dev_split=None,
             data_dir=None,
-            tasks={}
+            tasks={},
         )
 
     @classmethod
@@ -510,7 +516,8 @@ class NERProcessor(Processor):
         test_filename="test.txt",
         dev_split=0.0,
         delimiter="\t",
-        **kwargs,
+        proxies=None,
+        **kwargs
     ):
 
         # Custom processor attributes
@@ -524,7 +531,8 @@ class NERProcessor(Processor):
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
-            tasks={}
+            tasks={},
+            proxies=proxies
         )
 
         if metric and label_list:
@@ -534,7 +542,7 @@ class NERProcessor(Processor):
                         "using the default task or add a custom task later via processor.add_task()")
 
     def file_to_dicts(self, file: str) -> [dict]:
-        dicts = read_ner_file(filename=file, sep=self.delimiter)
+        dicts = read_ner_file(filename=file, sep=self.delimiter,  proxies=self.proxies)
         return dicts
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
@@ -575,7 +583,8 @@ class BertStyleLMProcessor(Processor):
         dev_split=0.0,
         next_sent_pred=True,
         max_docs=None,
-        **kwargs,
+        proxies=None,
+        **kwargs
     ):
 
         self.delimiter = ""
@@ -589,7 +598,8 @@ class BertStyleLMProcessor(Processor):
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
-            tasks={}
+            tasks={},
+            proxies=proxies
         )
 
         self.next_sent_pred = next_sent_pred
@@ -599,7 +609,7 @@ class BertStyleLMProcessor(Processor):
             self.add_task("nextsentence", "acc", ["False", "True"])
 
     def file_to_dicts(self, file: str) -> list:
-        dicts = read_docs_from_txt(filename=file, delimiter=self.delimiter, max_docs=self.max_docs)
+        dicts = read_docs_from_txt(filename=file, delimiter=self.delimiter, max_docs=self.max_docs, proxies=self.proxies)
         return dicts
 
     def _dict_to_samples(self, dictionary, all_dicts=None):
@@ -681,7 +691,8 @@ class SquadProcessor(Processor):
         dev_split=0,
         doc_stride=128,
         max_query_length=64,
-        **kwargs,
+        proxies=None,
+        **kwargs
     ):
         """
         :param tokenizer: Used to split a sentence (str) into tokens.
@@ -725,6 +736,7 @@ class SquadProcessor(Processor):
             dev_split=dev_split,
             data_dir=data_dir,
             tasks={},
+            proxies=proxies
         )
 
         if metric and label_list:
@@ -779,7 +791,7 @@ class SquadProcessor(Processor):
         return converted
 
     def file_to_dicts(self, file: str) -> [dict]:
-        dict = read_squad_file(filename=file)
+        dict = read_squad_file(filename=file, proxies=self.proxies)
         return dict
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
@@ -828,7 +840,8 @@ class RegressionProcessor(Processor):
         label_name="regression_label",
         scaler_mean=None,
         scaler_scale=None,
-        **kwargs,
+        proxies=None,
+        **kwargs
     ):
 
         # Custom processor attributes
@@ -844,6 +857,7 @@ class RegressionProcessor(Processor):
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
+            proxies=proxies
         )
 
         self.add_task(name="regression", metric="mse", label_list= [scaler_mean, scaler_scale], label_column_name=label_column_name, task_type="regression", label_name=label_name)
@@ -855,7 +869,8 @@ class RegressionProcessor(Processor):
             filename=file,
             delimiter=self.delimiter,
             skiprows=self.skiprows,
-            quotechar=self.quote_char,
+            quotechar=self.quote_char, 
+            proxies=self.proxies
         )
 
         # collect all labels and compute scaling stats
