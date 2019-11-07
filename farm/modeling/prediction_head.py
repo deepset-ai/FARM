@@ -967,11 +967,15 @@ class QuestionAnsweringHead(PredictionHead):
                         if(s_i + e_i > 0):
                             current_start = int(s_i + passage_shift_i - question_shift_i)
                             current_end = int(e_i + passage_shift_i - question_shift_i) + 1
+                            temptext = " ".join(current_sample.clear_text["doc_tokens"])
                             start = current_sample.tokenized["offsets"][current_start]
-                            end = current_sample.tokenized["offsets"][current_end]
+                            # if the last end token is predicted we cannot take the char offset of the following word
+                            if current_end >= len(current_sample.tokenized["offsets"]):
+                                end = len(temptext)
+                            else:
+                                end = current_sample.tokenized["offsets"][current_end]
                             # we want the answer in original string space (containing newline, tab or multiple
                             # whitespace. So we need to join doc tokens and work with character offsets
-                            temptext = " ".join(current_sample.clear_text["doc_tokens"])
                             answer = temptext[start:end]
                             answer = answer.strip()
                             # sometimes we strip trailing whitespaces, so we need to adjust end
