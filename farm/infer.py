@@ -131,9 +131,9 @@ class Inferencer:
             return_class_probs=return_class_probs,
         )
 
-    def inference_from_file(self, file):
+    def inference_from_file(self, file, use_multiprocessing=True):
         dicts = self.processor.file_to_dicts(file)
-        preds_all = self.inference_from_dicts(dicts, rest_api_schema=False)
+        preds_all = self.inference_from_dicts(dicts, rest_api_schema=False, use_multiprocessing=use_multiprocessing)
         return preds_all
 
     def inference_from_dicts(self, dicts, rest_api_schema=False, use_multiprocessing=True):
