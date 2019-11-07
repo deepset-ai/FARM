@@ -1038,16 +1038,16 @@ class QuestionAnsweringHead(PredictionHead):
             return list(set(positive_answers))
 
     # @staticmethod
-    # def reduce_preds_old(preds, n_best=5):
+    # def reduce_preds(preds, n_best=5):
     #     # todo write with start, end unpacking instead of indices
     #     # todo since there is overlap between passages, its currently possible that they return the same prediction
-    #     pos_answers = [[(start, end, score) for start, end, score in x if not (start == 0 and end == 0)] for x in preds]
+    #     pos_answers = [[(start, end, score) for start, end, score in x if not (start == -1 and end == -1)] for x in preds]
     #     pos_answer_flat = [x for y in pos_answers for x in y]
     #     pos_answers_sorted = sorted(pos_answer_flat, key=lambda z: z[2], reverse=True)
     #     pos_answers_filtered = pos_answers_sorted[:n_best]
     #     top_pos_answer_score = pos_answers_filtered[0][2]
     #
-    #     no_answer = [(start, end, score) for x in preds for start, end, score in x if (start == 0 and end == 0)]
+    #     no_answer = [(start, end, score) for x in preds for start, end, score in x if (start == -1 and end == -1)]
     #     no_answer_sorted = sorted(no_answer, key=lambda z: z[2], reverse=True)
     #     no_answers_min = no_answer_sorted[-1]
     #     _, _, no_answer_min_score = no_answers_min
