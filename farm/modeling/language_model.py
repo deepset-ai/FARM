@@ -92,8 +92,15 @@ class LanguageModel(nn.Module):
                 language_model = cls.subclasses["Bert"].load(pretrained_model_name_or_path, **kwargs)
             elif 'xlnet' in pretrained_model_name_or_path:
                 language_model = cls.subclasses["XLNet"].load(pretrained_model_name_or_path, **kwargs)
+            else:
+                language_model = None
 
-        assert language_model is not None
+        if not language_model:
+            raise Exception(
+                f"Model not found for {pretrained_model_name_or_path}. Either supply the local path for a saved model "
+                f"or one of bert/roberta/xlnet models that can be downloaded from remote. Here's the list of available "
+                f"models: https://farm.deepset.ai/api/modeling.html#farm.modeling.language_model.LanguageModel.load"
+            )
 
         return language_model
 
