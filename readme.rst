@@ -63,6 +63,9 @@ Core features
 | Multilabel Text classif.     | x                 |  x                |  x                |
 +------------------------------+-------------------+-------------------+-------------------+
 
+Demo
+##############
+**NEW**: Checkout https://demos.deepset.ai to play around with some models 
 
 Resources
 ##############
