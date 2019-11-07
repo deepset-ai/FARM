@@ -52,10 +52,10 @@ def test_lm_finetuning(caplog):
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
         optim_opts={'name': 'AdamW', 'lr': 2E-05},
-        warmup_proportion=0.1,
         n_batches=len(data_silo.loaders["train"]),
-        n_epochs=1
-    )
+        n_epochs=1,
+        device=device,
+        sched_opts={'name': 'WarmupCosineSchedule'})
 
     trainer = Trainer(
         optimizer=optimizer,
@@ -123,10 +123,10 @@ def test_lm_finetuning_no_next_sentence(caplog):
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
         optim_opts={'name': 'AdamW', 'lr': 2E-05},
-        warmup_proportion=0.1,
         n_batches=len(data_silo.loaders["train"]),
-        n_epochs=n_epochs
-    )
+        n_epochs=1,
+        device=device,
+        sched_opts={'name': 'WarmupCosineSchedule'})
 
     trainer = Trainer(
         optimizer=optimizer,
@@ -155,5 +155,6 @@ def test_lm_finetuning_no_next_sentence(caplog):
     # TODO check why results vary accross runs with same seed
     assert isinstance(result[0]["vec"][0], np.float32)
 
-if(__name__=="__main__"):
+
+if __name__ == "__main__":
     test_lm_finetuning()

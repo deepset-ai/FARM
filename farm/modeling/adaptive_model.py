@@ -20,7 +20,7 @@ class AdaptiveModel(nn.Module):
         prediction_heads,
         embeds_dropout_prob,
         lm_output_types,
-        device,
+        device
     ):
         """
         :param language_model: Any model that turns token ids into vector representations

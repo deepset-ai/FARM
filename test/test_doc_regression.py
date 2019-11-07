@@ -51,9 +51,9 @@ def test_doc_regression(caplog):
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
         optim_opts={'name': 'AdamW', 'lr': 2E-05},
-        warmup_proportion=0.1,
         n_batches=len(data_silo.loaders["train"]),
         n_epochs=1,
+        device=device,
         sched_opts={'name': 'WarmupCosineSchedule'}
     )
 
@@ -82,5 +82,6 @@ def test_doc_regression(caplog):
     result = model.inference_from_dicts(dicts=basic_texts)
     assert isinstance(result[0]["predictions"][0]["pred"], np.float32)
 
-if(__name__=="__main__"):
+
+if __name__ == "__main__":
     test_doc_regression()

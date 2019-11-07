@@ -53,11 +53,10 @@ def test_qa(caplog):
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
         optim_opts={'name': 'AdamW', 'lr': 2E-05},
-        warmup_proportion=0.1,
         n_batches=len(data_silo.loaders["train"]),
         n_epochs=1,
-        sched_opts={'name': 'WarmupCosineSchedule'}
-    )
+        device=device,
+        sched_opts={'name': 'WarmupCosineSchedule'})
 
     trainer = Trainer(
         optimizer=optimizer,
@@ -81,8 +80,9 @@ def test_qa(caplog):
     ]
 
     model = Inferencer.load(save_dir)
-    result = model.inference_from_dicts(dicts=QA_input,use_multiprocessing=False)
-    assert isinstance(result[0]["predictions"][0]["answers"][0]["offset_start"],int)
+    result = model.inference_from_dicts(dicts=QA_input, use_multiprocessing=False)
+    assert isinstance(result[0]["predictions"][0]["answers"][0]["offset_start"], int)
+
 
 if __name__ == "__main__":
     test_qa()
