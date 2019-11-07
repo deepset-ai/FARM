@@ -950,8 +950,6 @@ class QuestionAnsweringHead(PredictionHead):
                 passage_predictions = []
                 for i in range(current_pred.shape[0]):
                     passage_pred = {}
-                    if self.top_n_predictions > 1:
-                        passage_pred["prediction_rank"] = i
                     s_i = current_pred[i,0]
                     e_i = current_pred[i,1]
                     logit_sum_i = current_pred[i,2]
@@ -1032,13 +1030,11 @@ class QuestionAnsweringHead(PredictionHead):
             # We want the answer for passage no.3 without regarding the models output for the other passages.
             if np.sum(idx_text_answers) > 0:
                 group = group.loc[idx_text_answers,:]
-            else:
-                logger.info(f"No textual prediction found in doc: {uid}")
             if self.top_n_predictions == 1:
                 max_pred = group.loc[group.logit_sum == np.max(group.logit_sum),:]
                 if (max_pred.shape[0] > 1):
+                    logger.info(f"Multiple predictions have the exact same probability of occuring: \n{max_pred.head(5)}")
                     max_pred = max_pred.iloc[0, :]
-                    logger.info(f"Multiple predictions have the exact same probability of occuring: \n{max_pred.head()}")
             else:
                 assert isinstance(self.top_n_predictions, int)
                 sorted_group = group.sort_values(by="logit_sum",ascending=False)
