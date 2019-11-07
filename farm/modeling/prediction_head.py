@@ -771,7 +771,7 @@ class QuestionAnsweringHead(PredictionHead):
         per_sample_loss = (start_loss + end_loss) / 2
         return per_sample_loss
 
-    def logits_to_preds(self, logits, padding_mask, start_of_word, seq_2_start_t, max_answer_length=30, **kwargs):
+    def logits_to_preds(self, logits, padding_mask, start_of_word, seq_2_start_t, max_answer_length=1000, **kwargs):
         """
         Get the predicted index of start and end token of the answer. Note that the output is at token level
         and not word level. Note also that these logits correspond to the tokens of a sample
@@ -840,8 +840,9 @@ class QuestionAnsweringHead(PredictionHead):
                 start_idx = sorted_candidates[candidate_idx, 0].item()
                 end_idx = sorted_candidates[candidate_idx, 1].item()
                 # Check that the candidate's indices are valid and save them if they are
+                score = start_end_matrix[start_idx, end_idx].item()
                 if self.valid_answer_idxs(start_idx, end_idx, n_non_padding, max_answer_length, seq_2_start_t):
-                    score = start_end_matrix[start_idx, end_idx].item()
+                    # score = start_end_matrix[start_idx, end_idx].item()
                     top_candidates.append([start_idx, end_idx, score])
 
         # We always want the score for no_answer to be included in the candidates
