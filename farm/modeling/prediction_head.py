@@ -1020,12 +1020,12 @@ class QuestionAnsweringHead(PredictionHead):
 
         # Return aggregated predictions in order as a list of lists
         keys = sorted([k for k in all_basket_preds])
-        preds = [all_basket_preds[k] for k in keys]
+        aggregated_preds = [all_basket_preds[k] for k in keys]
         if labels:
             labels = [all_basket_labels[k] for k in keys]
-            return preds, labels
+            return aggregated_preds, labels
         else:
-            return preds
+            return aggregated_preds
 
     @staticmethod
     def reduce_labels(labels):
@@ -1064,7 +1064,7 @@ class QuestionAnsweringHead(PredictionHead):
                        for passage_idx, passage_preds in enumerate(preds)
                        for start, end, score in passage_preds
                        if not (start == -1 and end == -1)]
-        pos_answers_sorted = sorted(pos_answers, key=lambda x:x[0], reverse=True)
+        pos_answers_sorted = sorted(pos_answers, key=lambda x: x[0], reverse=True)
         pos_answers_reduced = pos_answers_sorted[:n_best]
 
         ret = []
