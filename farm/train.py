@@ -134,10 +134,6 @@ class Trainer:
 
         logger.info(f"\n {GROWING_TREE}")
         model.train()
-        if self.local_rank > -1:
-            model = WrappedDDP(model)
-        elif self.n_gpu > 1:
-            model = WrappedDataParallel(model)
 
         for epoch in range(1, self.epochs + 1):
             for step, batch in enumerate(

@@ -2,15 +2,21 @@ from importlib import import_module
 import logging
 
 import torch
-
-from farm.utils import MLFlowLogger as MlLogger
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel
 
 try:
     from apex import amp
-
+    try:
+        from apex.parallel import convert_syncbn_model
+        APEX_PARALLEL_AVAILABLE = True
+    except AttributeError:
+        APEX_PARALLEL_AVAILABLE = False
     AMP_AVAILABLE = True
 except ImportError:
     AMP_AVAILABLE = False
+
+from farm.utils import MLFlowLogger as MlLogger
 
 logger = logging.getLogger(__name__)
 
@@ -19,12 +25,13 @@ def initialize_optimizer(model,
                          optim_opts,
                          n_batches,
                          n_epochs,
-                         sched_opts=None,
-                         warmup_proportion=0.1,
-                         use_amp=None,
+                         device,
+                         distributed=False,
                          grad_acc_steps=1,
                          local_rank=-1,
-                         log_learning_rate=False):
+                         sched_opts=None,
+                         use_amp=None,
+                         warmup_proportion=0.1):
 
     num_train_optimization_steps = calculate_optimization_steps(
         n_batches, grad_acc_steps, n_epochs, local_rank
@@ -50,14 +57,7 @@ def initialize_optimizer(model,
             sched_opts['t_total'] = num_train_optimization_steps
         scheduler = _get_scheduler(optimizer, sched_opts)
 
-    if use_amp:
-        if not AMP_AVAILABLE:
-            raise ImportError('Please install Apex if you want to make use of automatic mixed precision.'
-                              ' https://github.com/NVIDIA/apex')
-        if log_learning_rate:
-            logger.warning('Logging of learning rate is currently not supported for AMP!')
-
-        model, optimizer = amp.initialize(model, optimizer, opt_level=use_amp)
+    model, optimizer = _optimize_model(model, device, local_rank, optimizer, distributed, use_amp)
 
     return model, optimizer, scheduler
 
@@ -132,5 +132,32 @@ def calculate_optimization_steps(n_batches, grad_acc_steps, n_epochs, local_rank
     optimization_steps = int(n_batches / grad_acc_steps) * n_epochs
     if local_rank != -1:
         optimization_steps = optimization_steps // torch.distributed.get_world_size()
-    logger.info(f"Number of optimization steps: {optimization_steps}")
+    logger.info(f"Number of optimization steps: {optimization_steps:,}")
     return optimization_steps
+
+
+def _optimize_model(model, device, local_rank, optimizer=None, distributed=False, use_amp=None):
+    model, optimizer = _init_amp(model, device, optimizer, use_amp)
+
+    if distributed:
+        if APEX_PARALLEL_AVAILABLE:
+            model = convert_syncbn_model(model)
+
+        n = torch.cuda.device_count() // dist.get_world_size()
+        device_ids = list(range(local_rank * n, (local_rank + 1) * n))
+        # for some models DistributedDataParallel might complain about parameters
+        # not contributing to loss. find_used_parameters remedies that.
+        model = DistributedDataParallel(model,
+                                        device_ids=device_ids,
+                                        output_device=device_ids[0],
+                                        find_unused_parameters=True)
+
+    return model, optimizer
+
+
+def _init_amp(model, device, optimizer=None, use_amp=None):
+    model = model.to(device)
+    if use_amp and optimizer:
+        model, optimizer = amp.initialize(model, optimizer, opt_level=use_amp)
+
+    return model, optimizer
