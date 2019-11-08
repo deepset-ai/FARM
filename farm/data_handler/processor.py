@@ -787,13 +787,13 @@ class SquadProcessor(Processor):
 
         raw_baskets = []
         document_text = dictionary["context"]
-        document_tokenized = tokenize_with_metadata(document_text, self.tokenizer, max_seq_len=None)
+        document_tokenized = tokenize_with_metadata(document_text, self.tokenizer)
         document_start_of_word = [int(x) for x in document_tokenized["start_of_word"]]
         questions = dictionary["qas"]
         for question in questions:
             squad_id = question["id"]
             question_text = question["question"]
-            question_tokenized = tokenize_with_metadata(question_text, self.tokenizer, max_seq_len=None)
+            question_tokenized = tokenize_with_metadata(question_text, self.tokenizer)
             question_start_of_word = [int(x) for x in question_tokenized["start_of_word"]]
             answers = []
             for answer in question["answers"]:

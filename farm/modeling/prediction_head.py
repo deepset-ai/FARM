@@ -953,17 +953,19 @@ class QuestionAnsweringHead(PredictionHead):
 
     def stringify(self, preds_d, baskets):
         """ Turn prediction spans into strings """
-        ret = {}
+        ret = []
         for doc_idx, doc_preds in enumerate(preds_d):
+            curr_dict = {}
             token_offsets = baskets[doc_idx].raw["document_offsets"]
             clear_text = baskets[doc_idx].raw["document_text"]
             squad_id = baskets[doc_idx].raw["squad_id"]
-            # assert squad_id ==
             full_preds = []
             for start_t, end_t, score in doc_preds:
                 pred_str = self.span_to_string(start_t, end_t, token_offsets, clear_text)
                 full_preds.append([pred_str, start_t, end_t, score])
-            ret[squad_id] = full_preds
+            curr_dict["id"] = squad_id
+            curr_dict["preds"] = full_preds
+            ret.append(curr_dict)
         return ret
 
     @staticmethod

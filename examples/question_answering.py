@@ -114,6 +114,7 @@ for x in result:
 # 10. Do Inference on whole SQuAD Dataset & write the predictions file to disk
 filename = os.path.join(processor.data_dir,processor.dev_filename)
 result = model.inference_from_file(file=filename)
+
 write_squad_predictions(
     predictions=result,
     predictions_filename=filename,
