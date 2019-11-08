@@ -206,3 +206,19 @@ def format_log(ascii, logger):
     for l in ascii_lines:
         logger.info(l)
 
+
+def encode_squad_id(squad_id):
+    """ Convert 24 digit hexadecimal squad_id to 2 ints. Each is the base equivalent of a half of the hexadecimal.
+    This is needed since PyTorch tensors cannot be created for ints bigger than 64 bit"""
+    assert len(squad_id) == 24
+    hexa_1 = squad_id[:12]
+    hexa_2 = squad_id[12:]
+    int_1 = int(hexa_1, 16)
+    int_2 = int(hexa_2, 16)
+    return int_1, int_2
+
+def decode_squad_id(part_1, part_2):
+    hexa = hex(part_1) + hex(part_2)
+    assert len(hexa) == 24
+    return hexa
+

@@ -11,7 +11,7 @@ from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
 
 from farm.data_handler.utils import is_json
-from farm.utils import convert_iob_to_simple_tags
+from farm.utils import convert_iob_to_simple_tags, decode_squad_id
 
 logger = logging.getLogger(__name__)
 
@@ -928,6 +928,7 @@ class QuestionAnsweringHead(PredictionHead):
             token_offsets = baskets[doc_idx].raw["document_offsets"]
             clear_text = baskets[doc_idx].raw["document_text"]
             squad_id = baskets[doc_idx].raw["squad_id"]
+            # assert squad_id ==
             full_preds = []
             for start_t, end_t, score in doc_preds:
                 pred_str = self.span_to_string(start_t, end_t, token_offsets, clear_text)
@@ -985,8 +986,9 @@ class QuestionAnsweringHead(PredictionHead):
         # Iterate over the preds of each sample
         for sample_idx in range(n_samples):
             # Aggregation of sample predictions is done using these ids
-            document_id, question_id, _ = ids[sample_idx]
-            basket_id = f"{document_id}-{question_id}"
+            # See SquadProcessor.convert_squad_id for why there are two parts
+            squad_id_1, squad_id_2, _ = ids[sample_idx]
+            basket_id = f"{squad_id_1}-{squad_id_2}"
 
             # curr_passage_start_t is the token offset of the current passage
             # It will always be a multiple of doc_stride

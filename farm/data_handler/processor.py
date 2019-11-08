@@ -31,7 +31,7 @@ from farm.data_handler.utils import (
     is_json,
 )
 from farm.modeling.tokenization import BertTokenizer, tokenize_with_metadata
-from farm.utils import MLFlowLogger as MlLogger
+from farm.utils import MLFlowLogger as MlLogger, encode_squad_id
 from farm.data_handler.samples import get_sentence_pair
 
 logger = logging.getLogger(__name__)
@@ -747,9 +747,12 @@ class SquadProcessor(Processor):
         baskets = []
         for d_idx, document in enumerate(dicts_tokenized):
             for q_idx, raw in enumerate(document):
-                basket = SampleBasket(raw=raw, id=f"{d_idx}-{q_idx}")
+                squad_id_hex = dicts[d_idx]["qas"][q_idx]["id"]
+                id_1, id_2 = encode_squad_id(squad_id_hex)
+                basket = SampleBasket(raw=raw, id=f"{id_1}-{id_2}")
                 baskets.append(basket)
         return baskets
+
 
     def apply_tokenization(self, dictionary):
         """ This performs tokenization on all documents and questions. The result is a list (unnested)

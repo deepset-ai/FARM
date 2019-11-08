@@ -23,7 +23,6 @@ def convert_features_to_dataset(features):
                 [sample[t_name] for sample in features], dtype=torch.float32
             )
 
-
         all_tensors.append(cur_tensor)
 
     dataset = TensorDataset(*all_tensors)

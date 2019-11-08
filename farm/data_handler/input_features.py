@@ -345,8 +345,8 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
     passage_len_t = len(passage_tokens)
     answers = sample.tokenized["answers"]
 
-    # Turn sample_id from string into a list of ints (len 3) where each int represents the document_id, question_id
-    # and passage_id respectively
+    # Turn sample_id into a list of ints (len 3) where the ints are the two halves of the squad_id
+    # converted to base 10 (see utils.encode_squad_id) and the passage_id
     sample_id = [int(x) for x in sample.id.split("-")]
 
     # Generates a numpy array of shape (max_answers, 2) where (i, 2) indexes into the start and end indixes
