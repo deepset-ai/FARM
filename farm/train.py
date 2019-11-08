@@ -202,9 +202,15 @@ class Trainer:
         return loss
 
     def check_tokenizer_lm(self, tokenizer, lm):
-        tok_vocab_len = len(tokenizer.vocab)
-        model_vocab_len = lm.model.embeddings.word_embeddings.num_embeddings
-        assert tok_vocab_len == model_vocab_len, f"Tokenizer vocabulary (len: {tok_vocab_len}) does not match language model vocabulary (len: {model_vocab_len}). Please check that they are compatible"
+        tok_vocab_len = len(tokenizer)
+        #TODO make this generic for other models
+        model_vocab_len = lm.model.resize_token_embeddings(new_num_tokens=None).num_embeddings
+        #model_vocab_len = lm.model.embeddings.word_embeddings.num_embeddings
+        if tok_vocab_len != model_vocab_len:
+            f"Tokenizer vocabulary (len: {tok_vocab_len}) does not match original language model vocabulary (len: {model_vocab_len}). Resizing embedding layer of LM accordingly"
+            lm.model.resize_token_embeddings(len(tokenizer))
+            model_vocab_len = lm.model.embeddings.word_embeddings.num_embeddings
+        assert tok_vocab_len == model_vocab_len
 
     def log_params(self):
         params = {"epochs": self.epochs, "n_gpu": self.n_gpu, "device": self.device}

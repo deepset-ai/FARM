@@ -79,8 +79,9 @@ class Evaluator:
                 loss_all[head_num] += np.sum(to_numpy(losses_per_head[head_num]))
                 preds_all[head_num] += list(to_numpy(preds[head_num]))
                 label_all[head_num] += list(to_numpy(labels[head_num]))
-                ids_all[head_num] += list(to_numpy(batch["id"]))
-                passage_start_t_all[head_num] += list(to_numpy(batch["passage_start_t"]))
+                if head.model_type == "span_classification":
+                    ids_all[head_num] += list(to_numpy(batch["id"]))
+                    passage_start_t_all[head_num] += list(to_numpy(batch["passage_start_t"]))
 
         # Evaluate per prediction head
         all_results = []
@@ -89,6 +90,7 @@ class Evaluator:
                 # converting from string preds back to multi-hot encoding
                 from sklearn.preprocessing import MultiLabelBinarizer
                 mlb = MultiLabelBinarizer(classes=head.label_list)
+                # TODO check why .fit() should be called on predictions, rather than on labels
                 preds_all[head_num] = mlb.fit_transform(preds_all[head_num])
                 label_all[head_num] = mlb.transform(label_all[head_num])
             if hasattr(head, 'aggregate_preds'):
@@ -118,11 +120,7 @@ class Evaluator:
                     raise NotImplementedError
 
                 # CHANGE PARAMETERS, not all report_fn accept digits
-                if head.ph_output_type == "per_sequence_continuous":
-                    result["report"] = report_fn(
-                        label_all[head_num], preds_all[head_num]
-                    )
-                elif head.ph_output_type == "per_token":
+                if head.ph_output_type in ["per_sequence_continuous","per_token"]:
                     result["report"] = report_fn(
                         label_all[head_num], preds_all[head_num]
                     )

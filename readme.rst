@@ -46,15 +46,34 @@ Core features
 - **Smooth upgrading** to new language models
 - Powerful **experiment tracking** & execution
 - Simple **deployment** and **visualization** to showcase your model
-- Tasks: Question Answering, LM Domain Adaptation, NER, (Multilabel) Doc Classification
+
++------------------------------+-------------------+-------------------+-------------------+
+| Task                         |      BERT         |  RoBERTa          |  XLNet            |
++==============================+===================+===================+===================+
+| Text classification          | x                 |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+
+| NER                          | x                 |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+
+| Question Answering           | x                 |                   |                   |
++------------------------------+-------------------+-------------------+-------------------+
+| Language Model Fine-tuning   | x                 |                   |                   |
++------------------------------+-------------------+-------------------+-------------------+
+| Text Regression              | x                 |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+
+| Multilabel Text classif.     | x                 |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+
+
+Demo
+##############
+**NEW**: Checkout https://demos.deepset.ai to play around with some models 
 
 Resources
 ##############
 - `Full Documentation <https://farm.deepset.ai>`_
 - `Intro to Transfer Learning (Blog) <https://medium.com/voice-tech-podcast/https-medium-com-deepset-ai-transfer-learning-entering-a-new-era-in-nlp-db523d9e667b>`_
 - `Intro to Transfer Learning & FARM (Video) <https://www.youtube.com/watch?v=hoDgtvE-u9E&feature=youtu.be>`_
-- Tutorial 1 (Overview of building blocks): `Jupyter notebook <https://github.com/deepset-ai/FARM/blob/master/tutorials/1_farm_building_blocks.ipynb>`_  or `Colab <https://colab.research.google.com/drive/130_7dgVC3VdLBPhiEkGULHmqSlflhmVM>`_
-- Tutorial 2 (How to use custom datasets): `Colab notebook <https://colab.research.google.com/drive/1Ce_wWu-fsy_g16jaGioe8M5mAFdLN1Yx>`_
+- Tutorial 1 (Overview of building blocks): `Jupyter notebook 1 <https://github.com/deepset-ai/FARM/blob/master/tutorials/1_farm_building_blocks.ipynb>`_  or `Colab 1 <https://colab.research.google.com/drive/130_7dgVC3VdLBPhiEkGULHmqSlflhmVM>`_
+- Tutorial 2 (How to use custom datasets): `Jupyter notebook 2 <https://github.com/deepset-ai/FARM/blob/master/tutorials/2_Build_a_processor_for_your_own_dataset.ipynb>`_  or `Colab 2 <https://colab.research.google.com/drive/1Ce_wWu-fsy_g16jaGioe8M5mAFdLN1Yx>`_
 
 
 Installation
@@ -111,7 +130,7 @@ Model
 ************
 AdaptiveModel = Language Model + Prediction Head(s)
 With this modular approach you can easily add prediction heads (multitask learning) and re-use them for different types of language model.
-`(Learn more) <https://farm.deepset.ai/modeling.html>`_
+`(Learn more) <https://farm.deepset.ai/modeling.html>`__
 
 
 .. image:: https://raw.githubusercontent.com/deepset-ai/FARM/master/docs/img/adaptive_model_no_bg_small.jpg
@@ -121,16 +140,15 @@ Data Processing
 ********************
 Custom Datasets can be loaded by customizing the Processor. It converts "raw data" into PyTorch Datasets.
 Much of the heavy lifting is then handled behind the scenes to make it fast & simple to debug.
-`(Learn more) <https://farm.deepset.ai/data_handling.html>`_
+`(Learn more) <https://farm.deepset.ai/data_handling.html>`__
 
 .. image:: https://raw.githubusercontent.com/deepset-ai/FARM/master/docs/img/data_silo_no_bg_small.jpg
 
 Upcoming features
 ###################
-- More pretrained models roBERTa, XLNet  ...
 - Improved functionality for Question Answering Task
 - Additional visualizations and statistics to explore and debug your model
-- SOTA adaptation strategies (Adapter Modules, Discriminative Fine-tuning ...)
+- More pretrained models ALBERT, XLM  ...
 - Enabling large scale deployment for production
 
 Acknowledgements

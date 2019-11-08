@@ -1,11 +1,14 @@
+import itertools
 import json
 import logging
 import os
 import numpy as np
+import pandas as pd
+from scipy.special import expit, softmax
 import tqdm
 
 import torch
-from transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN
+from transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN, BertForQuestionAnswering
 
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
@@ -161,17 +164,13 @@ class RegressionHead(PredictionHead):
     def __init__(
         self,
         layer_dims,
-        loss_ignore_index=-100,
-        loss_reduction="none",
         task_name="regression",
         **kwargs,
     ):
         super(RegressionHead, self).__init__()
         # num_labels could in most cases also be automatically retrieved from the data processor
         self.layer_dims = layer_dims
-        # TODO is this still needed?
         self.feed_forward = FeedForwardBlock(self.layer_dims)
-
         self.num_labels = 2
         self.ph_output_type = "per_sequence_continuous"
         self.model_type = "regression"
@@ -239,15 +238,12 @@ class TextClassificationHead(PredictionHead):
 
         if class_weights:
             logger.info(f"Using class weights for task '{self.task_name}': {self.class_weights}")
-            #TODO must balanced weight really be an instance attribute?
-            self.balanced_weights = nn.Parameter(
-                torch.tensor(class_weights), requires_grad=False
-            )
+            balanced_weights = nn.Parameter(torch.tensor(class_weights), requires_grad=False)
         else:
-            self.balanced_weights = None
+            balanced_weights = None
 
         self.loss_fct = CrossEntropyLoss(
-            weight=self.balanced_weights,
+            weight=balanced_weights,
             reduction=loss_reduction,
             ignore_index=loss_ignore_index,
         )
@@ -708,6 +704,7 @@ class FeedForwardBlock(nn.Module):
         logits = self.feed_forward(X)
         return logits
 
+
 class QuestionAnsweringHead(PredictionHead):
     """
     A question answering head predicts the start and end of the answer on token level.
@@ -730,6 +727,39 @@ class QuestionAnsweringHead(PredictionHead):
         )  # predicts start and end token of answer
         self.task_name = task_name
         self.generate_config()
+
+
+    @classmethod
+    def load(cls, pretrained_model_name_or_path):
+        """
+        Almost identical to a QuestionAnsweringHead. Only difference: we can load the weights from
+         a pretrained language model that was saved in the pytorch-transformers style (all in one model).
+        """
+
+        if os.path.exists(pretrained_model_name_or_path) \
+                and "config.json" in pretrained_model_name_or_path \
+                and "prediction_head" in pretrained_model_name_or_path:
+            config_file = os.path.exists(pretrained_model_name_or_path)
+            # a) FARM style
+            model_file = cls._get_model_file(config_file)
+            config = json.load(open(config_file))
+            prediction_head = cls(**config)
+            logger.info("Loading prediction head from {}".format(model_file))
+            prediction_head.load_state_dict(torch.load(model_file, map_location=torch.device("cpu")))
+        else:
+            # b) pytorch-transformers style
+            # load weights from bert model
+            # (we might change this later to load directly from a state_dict to generalize for other language models)
+            bert_qa = BertForQuestionAnswering.from_pretrained(pretrained_model_name_or_path)
+
+            # init empty head
+            head = cls(layer_dims=[bert_qa.config.hidden_size, 2], loss_ignore_index=-1, task_name="question_answering")
+            # load weights
+            head.feed_forward.feed_forward[0].load_state_dict(bert_qa.qa_outputs.state_dict())
+            del bert_qa
+
+        return head
+
 
     def forward(self, X):
         """
@@ -1123,168 +1153,3 @@ class QuestionAnsweringHead(PredictionHead):
 
     def prepare_labels(self, labels, start_of_word, **kwargs):
         return labels
-
-
-class QuestionAnsweringHeadOLD(PredictionHead):
-    """
-    A question answering head predicts the start and end of the answer on token level.
-    """
-
-    def __init__(self, layer_dims, task_name="question_answering", **kwargs):
-        """
-        :param layer_dims: dimensions of Feed Forward block, e.g. [768,2], for adjusting to BERT embedding. Output should be always 2
-        :type layer_dims: List[Int]
-        :param kwargs: placeholder for passing generic parameters
-        :type kwargs: object
-        """
-        super(QuestionAnsweringHeadOLD, self).__init__()
-        self.layer_dims = layer_dims
-        self.feed_forward = FeedForwardBlock(self.layer_dims)
-        self.num_labels = self.layer_dims[-1]
-        self.ph_output_type = "per_token_squad"
-        self.model_type = (
-            "span_classification"
-        )  # predicts start and end token of answer
-        self.task_name = task_name
-        self.generate_config()
-
-    def forward(self, X):
-        """
-        One forward pass through the prediction head model, starting with language model output on token level
-
-        :param X: Output of language model, of shape [batch_size, seq_length, LM_embedding_dim]
-        :type X: torch.tensor
-        :return: (start_logits, end_logits), logits for the start and end of answer
-        :rtype: tuple[torch.tensor,torch.tensor]
-        """
-        logits = self.feed_forward(X)
-        start_logits, end_logits = logits.split(1, dim=-1)
-        start_logits = start_logits.squeeze(-1)
-        end_logits = end_logits.squeeze(-1)
-        return (start_logits, end_logits)
-
-    def logits_to_loss(self, logits, start_position, end_position, **kwargs):
-        """
-        Combine predictions and labels to a per sample loss.
-
-        :param logits: (start_logits, end_logits), logits for the start and end of answer
-        :type logits: tuple[torch.tensor,torch.tensor]
-        :param start_position: tensor with indices of START positions per sample
-        :type start_position: torch.tensor
-        :param end_position: tensor with indices of END positions per sample
-        :type end_position: torch.tensor
-        :param kwargs: placeholder for passing generic parameters
-        :type kwargs: object
-        :return: per_sample_loss: Per sample loss : )
-        :rtype: torch.tensor
-        """
-        (start_logits, end_logits) = logits
-
-        if len(start_position.size()) > 1:
-            start_position = start_position.squeeze(-1)
-        if len(end_position.size()) > 1:
-            end_position = end_position.squeeze(-1)
-        # sometimes the start/end positions (the labels read from file) are outside our model predictions, we ignore these terms
-        ignored_index = start_logits.size(1)
-        start_position.clamp_(0, ignored_index)
-        end_position.clamp_(0, ignored_index)
-
-        loss_fct = CrossEntropyLoss(ignore_index=ignored_index, reduction="none")
-        start_loss = loss_fct(start_logits, start_position)
-        end_loss = loss_fct(end_logits, end_position)
-        per_sample_loss = (start_loss + end_loss) / 2
-        return per_sample_loss
-
-    def logits_to_preds(self, logits, **kwargs):
-        """
-        Get the predicted index of start and end token of the answer.
-
-        :param logits: (start_logits, end_logits), logits for the start and end of answer
-        :type logits: tuple[torch.tensor,torch.tensor]
-        :param kwargs: placeholder for passing generic parameters
-        :type kwargs: object
-        :return: (start_idx, end_idx), start and end indices for all samples in batch
-        :rtype: (torch.tensor,torch.tensor)
-        """
-        (start_logits, end_logits) = logits
-        # TODO add checking for validity, e.g. end_idx coming after start_idx
-        # TODO preserve top N predictions
-        start_idx = torch.argmax(start_logits, dim=1)
-        end_idx = torch.argmax(end_logits, dim=1)
-        return (start_idx, end_idx)
-
-    def prepare_labels(self, start_position, end_position, **kwargs):
-        """
-        We want to pack labels into a tuple, to be compliant with later functions
-
-        :param start_position: indices of answer start positions (in token space)
-        :type start_position: torch.tensor
-        :param end_position: indices of answer end positions (in token space)
-        :type end_position: torch.tensor
-        :param kwargs: placeholder for passing generic parameters
-        :type kwargs: object
-        :return: tuplefied positions
-        :rtype: tuple(torch.tensor,torch.tensor)
-        """
-        return (start_position, end_position)
-
-    def formatted_preds(self, logits, samples, segment_ids, **kwargs) -> [str]:
-        """
-        Format predictions into actual answer strings (substrings of context). Used for Inference!
-
-        :param logits: (start_logits, end_logits), logits for the start and end of answer
-        :type logits: tuple[torch.tensor,torch.tensor]
-        :param samples: converted samples, to get a hook onto the actual text
-        :type samples: FARM.data_handler.samples.Sample
-        :param segment_ids: used to separate question and context tokens
-        :type segment_ids: torch.tensor
-        :param kwargs: placeholder for passing generic parameters
-        :type kwargs: object
-        :return: Answers to the (ultimate) questions
-        :rtype: list(str)
-        """
-        all_preds = []
-        # TODO fix inference bug, model.forward is somehow packing logits into list
-        # logits = logits[0]
-        (start_idx, end_idx) = self.logits_to_preds(logits=logits)
-        # we have char offsets for the questions context in samples.tokenized
-        # we have start and end idx, but with the question tokens in front
-        # lets shift this by the index of first segment ID corresponding to context
-        start_idx = start_idx.cpu().numpy()
-        end_idx = end_idx.cpu().numpy()
-        segment_ids = segment_ids.cpu().numpy()
-
-        shifts = np.argmax(segment_ids > 0, axis=1)
-        start_idx = start_idx - shifts
-        start_idx[start_idx < 0] = 0
-        end_idx = end_idx - shifts
-        end_idx[end_idx < 0] = 0
-        end_idx = end_idx + 1  # slicing up to and including end
-        result = {}
-        result["task"] = "qa"
-
-        # TODO features and samples might not be aligned. We still sometimes split a sample into multiple features
-        for i, sample in enumerate(samples):
-            pred = {}
-            pred["context"] = sample.clear_text["question_text"]
-            pred["probability"] = None # TODO add prob from logits. Dunno how though
-            try: #char offsets or indices might be out of range, then we just return no answer
-                start = sample.tokenized["offsets"][start_idx[i]]
-                end = sample.tokenized["offsets"][end_idx[i]]
-                # Todo, remove this once the predictions are corrected
-                if(start > end):
-                    start = 0
-                    end = 0
-                pred["start"] = start
-                pred["end"] = end
-                answer = " ".join(sample.clear_text["doc_tokens"])[start:end]
-                answer = answer.strip()
-            except Exception as e:
-                answer = ""
-                logger.info(e)
-            pred["label"] = answer
-            all_preds.append(pred)
-
-        result["predictions"] = all_preds
-        return result
-

@@ -1,23 +1,19 @@
-import os
-import torch
 import logging
 import multiprocessing as mp
-import numpy as np
+import os
 from contextlib import ExitStack
 from functools import partial
 
+import torch
 from torch.utils.data.sampler import SequentialSampler
 from tqdm import tqdm
 
 from farm.data_handler.dataloader import NamedDataLoader
-from farm.modeling.adaptive_model import AdaptiveModel
-
-from farm.utils import initialize_device_settings
 from farm.data_handler.processor import Processor, InferenceProcessor
-from farm.utils import set_all_seeds
-from farm.utils import log_ascii_workers
 from farm.data_handler.utils import grouper
-
+from farm.modeling.adaptive_model import AdaptiveModel
+from farm.utils import initialize_device_settings
+from farm.utils import set_all_seeds, calc_chunksize, log_ascii_workers
 
 logger = logging.getLogger(__name__)
 
@@ -110,10 +106,10 @@ class Inferencer:
         :type batch_size: int
         :param gpu: If GPU shall be used
         :type gpu: bool
-        :param embedder_only: If true, a faster processor (InferenceProcessor) is loaded. This should only be used
-        for extracting embeddings (no downstream predictions).
+        :param embedder_only: If true, a faster processor (InferenceProcessor) is loaded. This should only be used for extracting embeddings (no downstream predictions).
         :type embedder_only: bool
         :return: An instance of the Inferencer.
+
         """
 
         device, n_gpu = initialize_device_settings(use_cuda=gpu, local_rank=-1, fp16=False)
@@ -135,12 +131,12 @@ class Inferencer:
             return_class_probs=return_class_probs,
         )
 
-    def inference_from_file(self, file):
+    def inference_from_file(self, file, use_multiprocessing=True):
         dicts = self.processor.file_to_dicts(file)
-        preds_all = self.inference_from_dicts(dicts, rest_api_schema=False)
+        preds_all = self.inference_from_dicts(dicts, rest_api_schema=False, use_multiprocessing=use_multiprocessing)
         return preds_all
 
-    def inference_from_dicts(self, dicts, rest_api_schema=False):
+    def inference_from_dicts(self, dicts, rest_api_schema=False, use_multiprocessing=True):
         """
         Runs down-stream inference using the prediction head.
 
@@ -149,6 +145,8 @@ class Inferencer:
         :param rest_api_schema: whether conform to the schema used for dicts in the HTTP API for Inference.
         :type rest_api_schema: bool
         :return: dict of predictions
+        :param use_multiprocessing: time incurred in spawning processes could outweigh performance boost for very small
+            number of dicts, eg, HTTP APIs for inference. This flags allows to disable multiprocessing for such cases.
 
         """
         if self.prediction_type == "embedder":
@@ -159,67 +157,60 @@ class Inferencer:
                 f"b) ... run inference on a downstream task: make sure your model path {self.name} contains a saved prediction head"
             )
 
-        num_cpus = mp.cpu_count() or 1
-        dicts_per_cpu = np.ceil(len(dicts) / num_cpus)
-        # automatic adjustment of multiprocessing chunksize
-        # for small files (containing few dicts) we want small chunksize to ulitize all available cores but never less
-        # than 2, because we need it to sample another random sentence in LM finetuning
-        # for large files we want to minimize processor spawning without giving too much data to one process, so we
-        # clip it at 5k
-        multiprocessing_chunk_size = int(np.clip((np.ceil(dicts_per_cpu / 5)), a_min=2, a_max=5000))
-        dict_batches_to_process = int(len(dicts) / multiprocessing_chunk_size)
-        num_cpus_used = min(mp.cpu_count(), dict_batches_to_process) or 1
+        multiprocessing_chunk_size, num_cpus_used = calc_chunksize(len(dicts))
+        if num_cpus_used == mp.cpu_count():
+            num_cpus_used -= 1 # We reserve one processor to do model inference CPU calculations (besides GPU computations)
 
-        with ExitStack() as stack:
-            p = stack.enter_context(mp.Pool(processes=num_cpus_used))
+        if use_multiprocessing:
+            with ExitStack() as stack:
+                p = stack.enter_context(mp.Pool(processes=num_cpus_used))
 
-            logger.info(
-                f"Got ya {num_cpus_used} parallel workers to do inference on {len(dicts)}dicts (chunksize = {multiprocessing_chunk_size})..."
-            )
-            log_ascii_workers(num_cpus_used, logger)
+                logger.info(
+                    f"Got ya {num_cpus_used} parallel workers to do inference on {len(dicts)}dicts (chunksize = {multiprocessing_chunk_size})..."
+                )
+                log_ascii_workers(num_cpus_used, logger)
 
-            results = p.imap(
-                partial(self._multiproc, processor=self.processor, rest_api_schema=rest_api_schema),
-                grouper(dicts, multiprocessing_chunk_size),
-                1,
-            )
+                results = p.imap(
+                    partial(self._create_datasets_chunkwise, processor=self.processor, rest_api_schema=rest_api_schema),
+                    grouper(dicts, multiprocessing_chunk_size),
+                    1,
+                )
 
-            preds_all = []
-            with tqdm(total=len(dicts), unit=" Dicts") as pbar:
-                for dataset, tensor_names, baskets in results:
-                    formatted_preds = self._run_inference(dataset, tensor_names, baskets)
-                    if type(formatted_preds) == dict:
-                        if type(preds_all) != dict:
-                            preds_all = {}
-                        preds_all.update(formatted_preds)
-                    else:
-                        preds_all.extend(formatted_preds)
-                    pbar.update(multiprocessing_chunk_size)
+                preds_all = []
+                with tqdm(total=len(dicts), unit=" Dicts") as pbar:
+                    for dataset, tensor_names, samples in results:
+                        # TODO change formot of formatted_preds in QA (list of dicts)
+                        preds_all.extend(self._run_inference(dataset, tensor_names, samples))
+                        pbar.update(multiprocessing_chunk_size)
+
+        else:
+            chunk = next(grouper(dicts, len(dicts)))
+            dataset, tensor_names, samples = self._create_datasets_chunkwise(chunk, processor=self.processor, rest_api_schema=rest_api_schema)
+            # TODO change formot of formatted_preds in QA (list of dicts)
+            preds_all = self._run_inference(dataset, tensor_names, samples)
 
         return preds_all
 
     @classmethod
-    def _multiproc(cls, chunk, processor, rest_api_schema):
+    def _create_datasets_chunkwise(cls, chunk, processor, rest_api_schema):
         dicts = [d[1] for d in chunk]
         index = chunk[0][0]
         dataset, tensor_names, baskets = processor.dataset_from_dicts(dicts, index, rest_api_schema, return_baskets=True)
-        return dataset, tensor_names, baskets
+        samples = []
+        for b in baskets:  # number of baskets in _multiproc() related to chunksize
+            samples.extend(b.samples)
+        return dataset, tensor_names, samples
 
-    def _run_inference(self, dataset, tensor_names, baskets):
-        # For QA can assume that the dataset and samples coming in are derived from the one chunk i.e. full docs, no incomplete docs
-        # I think that its not samples being passed in but baskets so this needs to be unpacked
-        # TODO we can afford to gather logits_all because this is only logits of one chunk
-        aggregate_preds = hasattr(self.model.prediction_heads[0], "aggregate_preds")
-        samples = [s for b in baskets for s in b.samples]
+    def _run_inference(self, dataset, tensor_names, samples):
         data_loader = NamedDataLoader(
             dataset=dataset, sampler=SequentialSampler(dataset), batch_size=self.batch_size, tensor_names=tensor_names
         )
-        preds_all = []
         logits_all = []
-        for i, batch in enumerate(data_loader):
+        preds_all = []
+        aggregate_preds = hasattr(self.model.prediction_heads[0], "aggregate_preds")
+        for i, batch in enumerate(tqdm(data_loader, desc=f"Inferencing")):
             batch = {key: batch[key].to(self.device) for key in batch}
             batch_samples = samples[i * self.batch_size : (i + 1) * self.batch_size]
-            # TODO do we actually pass in baskets or samples? c.f. QueestionAnsweringHead.formatted_preds()
             with torch.no_grad():
                 logits = self.model.forward(**batch)[0]
                 if not aggregate_preds:
@@ -232,13 +223,16 @@ class Inferencer:
                     preds_all += preds
                 else:
                     logits_all += [l for l in logits]
-        if aggregate_preds:
-            # can assume that we have only complete docs i.e. all the samples of one doc are in the current chunk
-            # TODO is there a better way than having to wrap logits all in list?
-            preds_all = self.model.formatted_preds(logits=[logits_all], baskets=baskets)[0]
-        return preds_all
+            if aggregate_preds:
+                # can assume that we have only complete docs i.e. all the samples of one doc are in the current chunk
+                # TODO is there a better way than having to wrap logits all in list?
+                # TODO can QA formatted preds deal with samples?
+                preds_all = self.model.formatted_preds(logits=[logits_all], baskets=baskets)[0]
+            return preds_all
 
-    def extract_vectors(self, dicts, extraction_strategy="cls_token", extraction_layer=-1):
+    def extract_vectors(
+        self, dicts, extraction_strategy="cls_token", extraction_layer=-1
+    ):
         """
         Converts a text into vector(s) using the language model only (no prediction head involved).
 

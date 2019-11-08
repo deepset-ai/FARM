@@ -4,10 +4,10 @@ from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import SquadProcessor
 from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
-from farm.modeling.language_model import Bert
+from farm.modeling.language_model import LanguageModel
 from farm.modeling.optimization import initialize_optimizer
 from farm.modeling.prediction_head import QuestionAnsweringHead
-from farm.modeling.tokenization import BertTokenizer
+from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer
 from farm.utils import set_all_seeds, initialize_device_settings
 
@@ -22,24 +22,25 @@ def test_qa(caplog):
     evaluate_every = 4
     base_LM_model = "bert-base-cased"
 
-    tokenizer = BertTokenizer.from_pretrained(
+    tokenizer = Tokenizer.load(
         pretrained_model_name_or_path=base_LM_model, do_lower_case=False
     )
     label_list = ["start_token", "end_token"]
     processor = SquadProcessor(
         tokenizer=tokenizer,
-        max_seq_len=16,
-        max_query_length=4,
+        max_seq_len=20,
+        doc_stride=10,
+        max_query_length=6,
         train_filename="train-sample.json",
         dev_filename="dev-sample.json",
         test_filename=None,
         data_dir="samples/qa",
-        labels=label_list,
+        label_list=label_list,
         metric="squad"
     )
 
     data_silo = DataSilo(processor=processor, batch_size=batch_size)
-    language_model = Bert.load(base_LM_model)
+    language_model = LanguageModel.load(base_LM_model)
     prediction_head = QuestionAnsweringHead(layer_dims=[768, len(label_list)])
     model = AdaptiveModel(
         language_model=language_model,
@@ -72,14 +73,14 @@ def test_qa(caplog):
 
     QA_input = [
         {
-            "questions": ["In what country is Normandy located?"],
-            "text": 'The Normans (Norman: Nourmands; French: Normands; Latin: Normanni) were the people who in the 10th and 11th centuries gave their name to Normandy, a region in France. They were descended from Norse ("Norman" comes from "Norseman") raiders and pirates from Denmark, Iceland and Norway who, under their leader Rollo, agreed to swear fealty to King Charles III of West Francia. Through generations of assimilation and mixing with the native Frankish and Roman-Gaulish populations, their descendants would gradually merge with the Carolingian-based cultures of West Francia. The distinct cultural and ethnic identity of the Normans emerged initially in the first half of the 10th century, and it continued to evolve over the succeeding centuries.',
+            "questions": ["In what country is Normandy"],
+            "text": 'The Normans gave their name to Normandy, a region in France.',
         }
     ]
 
     model = Inferencer.load(save_dir)
-    result = model.run_inference(dicts=QA_input)
-    assert isinstance(result[0]["predictions"][0]["end"],int)
+    result = model.inference_from_dicts(dicts=QA_input,use_multiprocessing=False)
+    assert isinstance(result[0]["predictions"][0]["answers"][0]["offset_start"],int)
 
 if(__name__=="__main__"):
     test_qa()
