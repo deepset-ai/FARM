@@ -852,11 +852,8 @@ class QuestionAnsweringHead(PredictionHead):
     def get_top_candidates(self, sorted_candidates, start_end_matrix,
                            n_non_padding, max_answer_length, seq_2_start_t, n_best=5):
         """ Returns top candidate answers. Operates on a matrix of summed start and end logits. This matrix corresponds
-        to a single sample (includes special tokens, question tokens, passage tokens). If no_answer is not within
-        the n_best candidates, it will also be appended to top_candidates. Hence this method can return n or n+1
-        candidates. """
-
-        # TODO rewrite so it always returns n_best + 1 candidates (including no answer)
+        to a single sample (includes special tokens, question tokens, passage tokens). This method always returns a
+        list of len n_best + 1 (it is comprised of the n_best positive answers along with the one no_answer)"""
 
         # Initialize some variables
         top_candidates = []
@@ -870,17 +867,17 @@ class QuestionAnsweringHead(PredictionHead):
                 # Retrieve candidate's indices
                 start_idx = sorted_candidates[candidate_idx, 0].item()
                 end_idx = sorted_candidates[candidate_idx, 1].item()
+                # Ignore no_answer scores which will be extracted later in this method
+                if start_idx == 0 and end_idx == 0:
+                    continue
                 # Check that the candidate's indices are valid and save them if they are
                 score = start_end_matrix[start_idx, end_idx].item()
                 if self.valid_answer_idxs(start_idx, end_idx, n_non_padding, max_answer_length, seq_2_start_t):
                     # score = start_end_matrix[start_idx, end_idx].item()
                     top_candidates.append([start_idx, end_idx, score])
 
-        # We always want the score for no_answer to be included in the candidates
-        # since we need it later in aggregate_preds()
-        if not self.has_no_answer_idxs(top_candidates):
-            no_answer_score = start_end_matrix[0, 0].item()
-            top_candidates.append([0, 0, no_answer_score])
+        no_answer_score = start_end_matrix[0, 0].item()
+        top_candidates.append([0, 0, no_answer_score])
 
         return top_candidates
 
@@ -933,7 +930,7 @@ class QuestionAnsweringHead(PredictionHead):
         padding_mask = torch.tensor([s.features[0]["padding_mask"] for s in samples], dtype=torch.long)
         start_of_word = torch.tensor([s.features[0]["start_of_word"] for s in samples], dtype=torch.long)
 
-        # Return one prediction per passage / sample
+        # Return n +  1 predictions per passage / sample
         preds_p = self.logits_to_preds(logits, padding_mask, start_of_word, seq_2_start_t)
 
         # Aggregate passage level predictions to create document level predictions.
@@ -943,7 +940,7 @@ class QuestionAnsweringHead(PredictionHead):
         preds_d = self.aggregate_preds(preds_p, passage_start_t, ids, seq_2_start_t)
         assert len(preds_d) == len(baskets)
 
-        # Takes document level prediction spans and..... TODO
+        # Takes document level prediction spans and returns string predictions
         formatted = self.stringify(preds_d, baskets)
 
         return formatted
@@ -1006,10 +1003,6 @@ class QuestionAnsweringHead(PredictionHead):
         This method assumes that all passages of each document are contained in preds
         i.e. that there are no incomplete documents. The output of this step
         are prediction spans. No answer is represented by a (-1, -1) span on the document level """
-        # TODO reduce number of label checks
-        # adjust offsets
-        # group by id
-        # identify top n per group
 
         # Initialize some variables
         n_samples = len(preds)
@@ -1029,7 +1022,6 @@ class QuestionAnsweringHead(PredictionHead):
 
             # This is to account for the fact that all model input sequences start with some special tokens
             # and also the question tokens before passage tokens.
-            # TODO why is this optional? Should it be implemented at dev?
             if seq_2_start_t:
                 cur_seq_2_start_t = seq_2_start_t[sample_idx]
                 curr_passage_start_t -= cur_seq_2_start_t
@@ -1041,10 +1033,12 @@ class QuestionAnsweringHead(PredictionHead):
             if labels:
                 label_d = self.label_to_doc_idxs(labels[sample_idx], curr_passage_start_t)
 
-            # Add predictions and labels to dictionary grouped by their basket_ids
+            # Initialize the basket_id as a key in the all_basket_preds and all_basket_labels dictionaries
             if basket_id not in all_basket_preds:
                 all_basket_preds[basket_id] = []
                 all_basket_labels[basket_id] = []
+
+            # Add predictions and labels to dictionary grouped by their basket_ids
             all_basket_preds[basket_id].append(pred_d)
             if labels:
                 all_basket_labels[basket_id].append(label_d)
@@ -1072,10 +1066,53 @@ class QuestionAnsweringHead(PredictionHead):
         else:
             return list(set(positive_answers))
 
+    def reduce_preds(self, preds, n_best=5):
+        """ This function contains the logic for choosing the best answers from each passage. In the end, it
+        returns the n_best predictions on the document level. """
+
+        # Initialize some variables
+        document_no_answer = True
+        passage_no_answer = []
+        passage_best_score = []
+        no_answer_scores = []
+
+        # Iterate over the top predictions for each sample
+        for sample_idx, sample_preds in enumerate(preds):
+            best_pred = sample_preds[0]
+            best_pred_score = best_pred[2]
+            no_answer_score = self.get_no_answer_score(sample_preds)
+            no_answer = no_answer_score > best_pred_score
+            passage_no_answer.append(no_answer)
+            no_answer_scores.append(no_answer_score)
+            passage_best_score.append(best_pred_score)
+
+        # If a positive prediction is higher than the no_answer score in one of the passages then the top
+        # document prediction should be a positive answer
+        if False in passage_no_answer:
+            document_no_answer = False
+
+        # Get all predictions in flattened list and sort by score
+        pos_answers_flat = [(start, end, score)
+                            for passage_preds in preds
+                            for start, end, score in passage_preds
+                            if not (start == -1 and end == -1)]
+        pos_answers_sorted = sorted(pos_answers_flat, key=lambda x: x[2], reverse=True)
+        pos_answers_reduced = pos_answers_sorted[:n_best]
+        no_answer_pred = [-1, -1, max(no_answer_scores)]
+
+        # TODO this is how big the no_answer threshold needs to be to change a no_answer to a pos answer
+        #  (or vice versa). This can in future be used to train the threshold value
+        pos_vs_no_ans_gap = max([nas - pbs for nas, pbs in zip(no_answer_scores, passage_best_score)])
+
+        if document_no_answer:
+            ret = [no_answer_pred] + pos_answers_reduced[:-1]
+        else:
+            ret = pos_answers_reduced[:-1] + [no_answer_pred]
+        return ret
+
+    ## THIS IS A SIMPLER IMPLEMENTATION OF PICKING BEST ANSWERS FOR A DOCUMENT. MATCHES THE HUGGINGFACE METHOD
     # @staticmethod
     # def reduce_preds(preds, n_best=5):
-    #     # todo write with start, end unpacking instead of indices
-    #     # todo since there is overlap between passages, its currently possible that they return the same prediction
     #     pos_answers = [[(start, end, score) for start, end, score in x if not (start == -1 and end == -1)] for x in preds]
     #     pos_answer_flat = [x for y in pos_answers for x in y]
     #     pos_answers_sorted = sorted(pos_answer_flat, key=lambda z: z[2], reverse=True)
@@ -1087,30 +1124,12 @@ class QuestionAnsweringHead(PredictionHead):
     #     no_answers_min = no_answer_sorted[-1]
     #     _, _, no_answer_min_score = no_answers_min
     #
-    #     # todo this is a very basic and probably not very performant way to pick no_answer
     #     # no answer logic
     #     threshold = 0.
     #     if no_answer_min_score + threshold > top_pos_answer_score:
     #         return [no_answers_min] + pos_answers_filtered
     #     else:
     #         return pos_answers_filtered + [no_answers_min]
-
-    def reduce_preds(self, preds, n_best=5):
-        pos_answers = [(score, start, end, passage_idx)
-                       for passage_idx, passage_preds in enumerate(preds)
-                       for start, end, score in passage_preds
-                       if not (start == -1 and end == -1)]
-        pos_answers_sorted = sorted(pos_answers, key=lambda x: x[0], reverse=True)
-        pos_answers_reduced = pos_answers_sorted[:n_best]
-
-        ret = []
-        for pos_score, start, end, passage_idx in pos_answers_reduced:
-            no_answer_score = self.get_no_answer_score(preds[passage_idx])
-            if pos_score > no_answer_score:
-                ret.append([start, end, pos_score])
-            else:
-                ret.append([-1, -1, no_answer_score])
-        return ret
 
     @staticmethod
     def get_no_answer_score(preds):

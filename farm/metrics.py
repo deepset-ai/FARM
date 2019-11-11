@@ -70,7 +70,6 @@ def squad_EM(preds, labels):
     n_docs = len(preds)
     n_correct = 0
     for doc_idx in range(n_docs):
-        # TODO currently the order of a smaples preds means that no answer is never predicted
         pred_start, pred_end, _ = preds[doc_idx][0]
         curr_labels = labels[doc_idx]
         if (pred_start, pred_end) in curr_labels:
