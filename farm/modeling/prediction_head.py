@@ -790,7 +790,6 @@ class QuestionAnsweringHead(PredictionHead):
         if len(end_position.size()) > 1:
             end_position = end_position.squeeze(-1)
 
-        # TODO don't understand ignored_index - this currently not used but was used in older QA head - need to investigate
         ignored_index = start_logits.size(1)
         start_position.clamp_(0, ignored_index)
         end_position.clamp_(0, ignored_index)
@@ -857,6 +856,8 @@ class QuestionAnsweringHead(PredictionHead):
         the n_best candidates, it will also be appended to top_candidates. Hence this method can return n or n+1
         candidates. """
 
+        # TODO rewrite so it always returns n_best + 1 candidates (including no answer)
+
         # Initialize some variables
         top_candidates = []
         n_candidates = sorted_candidates.shape[0]
@@ -880,11 +881,14 @@ class QuestionAnsweringHead(PredictionHead):
         if not self.has_no_answer_idxs(top_candidates):
             no_answer_score = start_end_matrix[0, 0].item()
             top_candidates.append([0, 0, no_answer_score])
+
         return top_candidates
 
     @staticmethod
     def valid_answer_idxs(start_idx, end_idx, n_non_padding, max_answer_length, seq_2_start_t):
-        #TODO rethink this method - remember that these indexes are on sample level (special tokens + queestion tokens + passage+tokens)
+        """ Returns True if the supplied index span is a valid prediction. The indices being provided
+        should be on sample/passage level (special tokens + question_tokens + passag_tokens)
+        and not document level"""
 
         # This function can seriously slow down inferencing and eval
         # Continue if start or end label points to a padding token
@@ -905,13 +909,6 @@ class QuestionAnsweringHead(PredictionHead):
         if start_idx != 0 and end_idx == 0:
             return False
 
-        # if start_idx not in feature.token_to_orig_map:
-        #     continue
-        # if end_idx not in feature.token_to_orig_map:
-        #     continue
-        # if not feature.token_is_max_context.get(start_index, False):
-        #     continue
-
         length = end_idx - start_idx + 1
         if length > max_answer_length:
             return False
@@ -931,7 +928,7 @@ class QuestionAnsweringHead(PredictionHead):
         passage_start_t = [s.features[0]["passage_start_t"] for s in samples]
         seq_2_start_t = [s.features[0]["seq_2_start_t"] for s in samples]
 
-        # TODO would challenge why they are being wrapped here in tensor - Aren't they in the batch?
+        # Prepare tensors
         logits = torch.stack(logits)
         padding_mask = torch.tensor([s.features[0]["padding_mask"] for s in samples], dtype=torch.long)
         start_of_word = torch.tensor([s.features[0]["start_of_word"] for s in samples], dtype=torch.long)
@@ -954,11 +951,15 @@ class QuestionAnsweringHead(PredictionHead):
     def stringify(self, preds_d, baskets):
         """ Turn prediction spans into strings """
         ret = []
+        # Iterate over each set of document level prediction
         for doc_idx, doc_preds in enumerate(preds_d):
             curr_dict = {}
+            # Unpack document offsets, clear text and squad_id
             token_offsets = baskets[doc_idx].raw["document_offsets"]
             clear_text = baskets[doc_idx].raw["document_text"]
             squad_id = baskets[doc_idx].raw["squad_id"]
+
+            # Iterate over each prediction on the one document
             full_preds = []
             for start_t, end_t, score in doc_preds:
                 pred_str = self.span_to_string(start_t, end_t, token_offsets, clear_text)
@@ -970,12 +971,12 @@ class QuestionAnsweringHead(PredictionHead):
 
     @staticmethod
     def span_to_string(start_t, end_t, token_offsets, clear_text):
+
+        # If it is a no_answer prediction
         if start_t == -1 and end_t == -1:
             return ""
-        #TODO there was a bug where start_t and end_t were 164 but len(token_offsets) was 163.
-        # Need to investigate problem
+
         n_tokens = len(token_offsets)
-        start_t = start_t
 
         # We do this to point to the beginning of the first token after the span instead of
         # the beginning of the last token in the span

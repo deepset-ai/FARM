@@ -73,14 +73,29 @@ def test_qa(caplog):
 
     QA_input = [
         {
-            "questions": ["In what country is Normandy"],
-            "text": 'The Normans gave their name to Normandy, a region in France.',
+            "context": "The Normans gave their name to Normandy, a region in France.",
+            "qas": [
+                {
+                    "question": "In what country is Normandy",
+                    "id": "5a6395e668151a001a9223a3",
+                    "answers": [],
+                    "is_impossible": False
+                }
+            ]
         }
     ]
 
     model = Inferencer.load(save_dir)
-    result = model.inference_from_dicts(dicts=QA_input,use_multiprocessing=False)
-    assert isinstance(result[0]["predictions"][0]["answers"][0]["offset_start"],int)
+    result = model.inference_from_dicts(dicts=QA_input, use_multiprocessing=False)
+
+    # Assert the model returns a string prediction
+    assert isinstance(result[0]["preds"][0][0], str)
+
+    # Assert the model returns the start index of the span as int
+    assert isinstance(result[0]["preds"][0][1],int)
+
+    # Assert the model returns the logit value of the prediction span as float
+    assert isinstance(result[0]["preds"][0][3],float)
 
 if(__name__=="__main__"):
     test_qa()

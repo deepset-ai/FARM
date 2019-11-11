@@ -126,12 +126,12 @@ class Evaluator:
                     )
                 else:
                     # supply labels as all possible combination because if ground truth labels do not cover
-                    # all values in label_list (maybe dev set is small), the report will break
+                    # all values in label_list (maybe dev set is small), the report will break.
                     result["report"] = report_fn(
                         label_all[head_num],
                         preds_all[head_num],
                         digits=4,
-                        labels=list(range(len(head.label_list))),
+                        labels=head.label_list,
                         target_names=head.label_list)
 
             all_results.append(result)

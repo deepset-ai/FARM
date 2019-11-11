@@ -215,7 +215,7 @@ class Inferencer:
                 logits = self.model.forward(**batch)[0]
                 if not aggregate_preds:
                     preds = self.model.formatted_preds(
-                        logits=logits,
+                        logits=[logits],
                         samples=batch_samples,
                         tokenizer=self.processor.tokenizer,
                         return_class_probs=self.return_class_probs,
