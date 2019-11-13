@@ -32,7 +32,7 @@ evaluate_every = 100
 lang_model = "bert-base-german-cased"
 
 # 1.Create a tokenizer
-tokenizer = Tokenizer.from_pretrained(
+tokenizer = Tokenizer.load(
     pretrained_model_name_or_path=lang_model, do_lower_case=False
 )
 
