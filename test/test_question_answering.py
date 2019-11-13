@@ -80,7 +80,7 @@ def test_qa(caplog):
 
     model = Inferencer.load(save_dir)
     result = model.inference_from_dicts(dicts=QA_input,use_multiprocessing=False)
-    assert isinstance(result[0]["predictions"][0]["answers"][0]["offset_start"],int)
+    assert isinstance(result[0]["predictions"][0]["answers"][0]["offset_answer_start"],int)
 
 if(__name__=="__main__"):
     test_qa()
