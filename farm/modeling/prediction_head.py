@@ -1001,8 +1001,8 @@ class QuestionAnsweringHead(PredictionHead):
                     except IndexError as e:
                         logger.info(e)
                     passage_pred["answer"] = answer
-                    passage_pred["offset_start"] = start_char
-                    passage_pred["offset_end"] = end_char
+                    passage_pred["offset_answer_start"] = start_char
+                    passage_pred["offset_answer_end"] = end_char
                     passage_pred["context"] = context
                     passage_pred["offset_context_start"] = context_start_char
                     passage_pred["offset_context_end"] = context_end_char
