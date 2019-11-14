@@ -16,7 +16,7 @@ FARM offers two modes for model training:
 **Option 2: Stick together your own building blocks**::
 
     # Basic building blocks for data handling
-    tokenizer = Tokenizer.from_pretrained(pretrained_model_name_or_path=lang_model)
+    tokenizer = Tokenizer.load(pretrained_model_name_or_path=lang_model)
     processor = NERProcessor(tokenizer=tokenizer, data_dir="../data/conll03-de", max_seq_len=128)
     ...
 
