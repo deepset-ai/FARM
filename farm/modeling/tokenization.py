@@ -22,6 +22,7 @@ import numpy as np
 from transformers.tokenization_bert import BertTokenizer
 from transformers.tokenization_roberta import RobertaTokenizer
 from transformers.tokenization_xlnet import XLNetTokenizer
+# from transformers.tokenization_albert import AlbertTokenizer
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,9 @@ class Tokenizer:
         """
         # guess tokenizer type from name
         if tokenizer_class is None:
-            if "roberta" in pretrained_model_name_or_path.lower():
+            if "albert" in pretrained_model_name_or_path.lower():
+                tokenizer_class = "AlbertTokenizer"
+            elif "roberta" in pretrained_model_name_or_path.lower():
                 tokenizer_class = "RobertaTokenizer"
             elif "bert" in pretrained_model_name_or_path.lower():
                 tokenizer_class = "BertTokenizer"
@@ -59,6 +62,8 @@ class Tokenizer:
                 raise ValueError(f"Could not infer tokenizer_type from name '{pretrained_model_name_or_path}'. Set arg `tokenizer_type` in Tokenizer.load() to one of: 'bert', 'roberta', 'xlnet' ")
             logger.info(f"Loading tokenizer of type '{tokenizer_class}'")
         # return appropriate tokenizer object
+        # if tokenizer_class == "AlbertTokenizer":
+        #     return AlbertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         if tokenizer_class == "RobertaTokenizer":
             return RobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "BertTokenizer":
