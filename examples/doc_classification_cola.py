@@ -104,7 +104,7 @@ basic_texts = [
     {"text": "I'll fix you a drink."},
 ]
 model = Inferencer.load(save_dir)
-result = model.run_inference(dicts=basic_texts)
+result = model.inference_from_dicts(dicts=basic_texts)
 print(result)
 
 # fmt: on
