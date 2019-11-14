@@ -358,12 +358,22 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
     # tokens are attended to.
     padding_mask = [1] * len(input_ids)
 
-    # Zero-pad up to the sequence length.
-    padding = [0] * (max_seq_len - len(input_ids))
+    # Pad up to the sequence length. For certain models, the pad token id is not 0 (e.g. Roberta where it is 1)
+    pad_idx = tokenizer.pad_token_id
+    padding = [pad_idx] * (max_seq_len - len(input_ids))
+    zero_padding = [0] * (max_seq_len - len(input_ids))
+
     input_ids += padding
-    padding_mask += padding
-    segment_ids += padding
-    start_of_word += padding
+    padding_mask += zero_padding
+    segment_ids += zero_padding
+    start_of_word += zero_padding
+
+    # The Roberta tokenizer generates a segment_ids vector that separates the first sequence from the second.
+    # However, when this is passed in to the forward fn of the Roberta model, it throws an error since
+    # Roberta has only a single token embedding (!!!). To get around this, we want to have a segment_ids
+    # vec that is only 0s
+    if tokenizer.__class__.__name__ == "RobertaTokenizer":
+        segment_ids = np.zeros_like(segment_ids)
 
     # Todo: explain how only the first of labels will be used in train, and the full array will be used in eval
     # TODO Offset, start of word and spec_tok_mask are not actually needed by model.forward() but are needed for model.formatted_preds()

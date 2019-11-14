@@ -1160,8 +1160,9 @@ class QuestionAnsweringHead(PredictionHead):
 
     @staticmethod
     def label_to_doc_idxs(label, passage_start_t):
-        # Todo Write note about why we see -1 and how this will filter them out
-        # TODO make more sense of this method
+        """ Converts the passage level labels to document level labels. Note that on the doc level we
+        don't have special tokens or question tokens. This means that a no answer
+        cannot be prepresented by a (0,0) span but will instead be represented by (-1, -1)"""
         new_label = []
         for start, end in label:
             # If there is a valid label
