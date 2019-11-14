@@ -71,16 +71,66 @@ def test_qa(caplog):
     model.save(save_dir)
     processor.save(save_dir)
 
+    question = "In what country is Normandy"
     QA_input = [
         {
-            "questions": ["In what country is Normandy"],
-            "text": 'The Normans gave their name to Normandy, a region in France.',
+            "questions": [question],
+            "text": "The Normans gave their name to Normandy, a region in France.",
         }
     ]
 
     model = Inferencer.load(save_dir)
-    result = model.inference_from_dicts(dicts=QA_input,use_multiprocessing=False)
-    assert isinstance(result[0]["predictions"][0]["answers"][0]["offset_answer_start"],int)
+    results = model.inference_from_dicts(dicts=QA_input, use_multiprocessing=False)
 
-if(__name__=="__main__"):
+    # sample results
+    # [
+    #     {
+    #         "task": "qa",
+    #         "predictions": [
+    #             {
+    #                 "question": "In what country is Normandy",
+    #                 "question_id": "None",
+    #                 "ground_truth": None,
+    #                 "answers": [
+    #                     {
+    #                         "score": 1.1272038221359253,
+    #                         "probability": -1,
+    #                         "answer": "France",
+    #                         "offset_answer_start": 54,
+    #                         "offset_answer_end": 60,
+    #                         "context": "The Normans gave their name to Normandy, a region in France.",
+    #                         "offset_context_start": 0,
+    #                         "offset_context_end": 60,
+    #                         "document_id": None,
+    #                     }
+    #                 ]
+    #             }
+    #         ],
+    #     }
+    # ]
+
+    for result in results:
+        for prediction in result["predictions"]:
+            assert prediction["question"] == question
+            for answer in prediction["answers"]:
+                assert answer["answer"] in answer["context"]
+                assert (
+                    set(
+                        (
+                            "answer",
+                            "score",
+                            "probability",
+                            "offset_answer_start",
+                            "offset_answer_end",
+                            "context",
+                            "offset_context_start",
+                            "offset_context_end",
+                            "document_id",
+                        )
+                    )
+                    == answer.keys()
+                )
+
+
+if __name__ == "__main__":
     test_qa()
