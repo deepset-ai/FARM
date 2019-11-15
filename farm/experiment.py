@@ -14,14 +14,6 @@ from farm.file_utils import read_config, unnestConfig
 
 logger = logging.getLogger(__name__)
 
-try:
-    from farm.train import WrappedDDP
-except ImportError:
-    logger.info(
-        "Importing Data Loader for Distributed Training failed. Apex not installed?"
-    )
-
-
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
     datefmt="%m/%d/%Y %H:%M:%S",
@@ -61,8 +53,8 @@ def run_experiment(args):
     args.parameter.batch_size = int(
         args.parameter.batch_size // args.parameter.gradient_accumulation_steps
     )
-    if n_gpu > 1:
-        args.parameter.batch_size = args.parameter.batch_size * n_gpu
+    # if n_gpu > 1:
+    #     args.parameter.batch_size = args.parameter.batch_size * n_gpu
     set_all_seeds(args.general.seed)
 
     # Prepare Data
@@ -101,17 +93,16 @@ def run_experiment(args):
     )
 
     # Init optimizer
-
-    # TODO: warmup linear is sometimes NONE depending on fp16 - is there a neater way to handle this?
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
-        learning_rate=args.parameter.learning_rate,
+        optim_opts={'name': 'AdamW', 'lr': args.parameter.learning_rate, 'correct_bias': False},
+        sched_opts={'name': 'WarmupLinearSchedule'},
         warmup_proportion=args.parameter.warmup_proportion,
-        loss_scale=args.general.loss_scale,
         use_amp=args.general.use_amp,
         n_batches=len(data_silo.loaders["train"]),
         grad_acc_steps=args.parameter.gradient_accumulation_steps,
         n_epochs=args.parameter.epochs,
+        device=device
     )
 
     trainer = Trainer(

@@ -19,34 +19,6 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-class WrappedDataParallel(torch.nn.DataParallel):
-    """
-    A way of adapting attributes of underlying class to parallel mode. See: https://pytorch.org/tutorials/beginner/former_torchies/parallelism_tutorial.html#dataparallel
-
-    Gets into recursion errors. Workaround see: https://discuss.pytorch.org/t/access-att-of-model-wrapped-within-torch-nn-dataparallel-maximum-recursion-depth-exceeded/46975
-    """
-
-    def __getattr__(self, name):
-        try:
-            return super().__getattr__(name)
-        except AttributeError:
-            return getattr(self.module, name)
-
-
-class WrappedDDP(DDP):
-    """
-    A way of adapting attributes of underlying class to distributed mode. Same as in WrappedDataParallel above.
-    Even when using distributed on a single machine with multiple GPUs, apex can speed up training significantly.
-    Distributed code must be launched with "python -m torch.distributed.launch --nproc_per_node=1 run_script.py"
-    """
-
-    def __getattr__(self, name):
-        try:
-            return super().__getattr__(name)
-        except AttributeError:
-            return getattr(self.module, name)
-
-
 class Trainer:
     """Handles the main model training procedure. This includes performing evaluation on the dev set at regular
     intervals during training as well as evaluation on the test set at the end of training."""

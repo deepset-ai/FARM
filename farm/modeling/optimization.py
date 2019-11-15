@@ -1,9 +1,13 @@
 from importlib import import_module
 import logging
+import sys
 
 import torch
-import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel
+from torch.nn import DataParallel
+
+# Used indirectly in _get_optim() to avoid name collision with torch's AdamW
+from transformers.optimization import AdamW as TransformersAdamW
 
 try:
     from apex import amp
@@ -19,6 +23,34 @@ except ImportError:
 from farm.utils import MLFlowLogger as MlLogger
 
 logger = logging.getLogger(__name__)
+
+
+class WrappedDataParallel(DataParallel):
+    """
+    A way of adapting attributes of underlying class to parallel mode. See: https://pytorch.org/tutorials/beginner/former_torchies/parallelism_tutorial.html#dataparallel
+
+    Gets into recursion errors. Workaround see: https://discuss.pytorch.org/t/access-att-of-model-wrapped-within-torch-nn-dataparallel-maximum-recursion-depth-exceeded/46975
+    """
+
+    def __getattr__(self, name):
+        try:
+            return super().__getattr__(name)
+        except AttributeError:
+            return getattr(self.module, name)
+
+
+class WrappedDDP(DistributedDataParallel):
+    """
+    A way of adapting attributes of underlying class to distributed mode. Same as in WrappedDataParallel above.
+    Even when using distributed on a single machine with multiple GPUs, apex can speed up training significantly.
+    Distributed code must be launched with "python -m torch.distributed.launch --nproc_per_node=1 run_script.py"
+    """
+
+    def __getattr__(self, name):
+        try:
+            return super().__getattr__(name)
+        except AttributeError:
+            return getattr(self.module, name)
 
 
 def initialize_optimizer(model,
@@ -47,8 +79,10 @@ def initialize_optimizer(model,
         }
     )
 
+    # Get optimizer from pytorch, transformers or apex
     optimizer = _get_optim(model, optim_opts)
 
+    # Get learning rate schedule
     scheduler = None
     if sched_opts:
         if 'warmup_steps' not in sched_opts:
@@ -57,6 +91,7 @@ def initialize_optimizer(model,
             sched_opts['t_total'] = num_train_optimization_steps
         scheduler = _get_scheduler(optimizer, sched_opts)
 
+    # Adjust for parallel training + amp
     model, optimizer = _optimize_model(model, device, local_rank, optimizer, distributed, use_amp)
 
     return model, optimizer, scheduler
@@ -91,6 +126,7 @@ def _get_optim(model, opts):
     if weight_decay is not None:
         optimizable_parameters[0]['weight_decay'] = weight_decay
 
+    # Import optimizer by checking in order: torch, transformers, apex and local imports
     try:
         optim_constructor = getattr(import_module('torch.optim'), optim_name)
     except AttributeError:
@@ -100,7 +136,11 @@ def _get_optim(model, opts):
             try:
                 optim_constructor = getattr(import_module('apex.optimizers'), optim_name)
             except (AttributeError, ImportError):
-                raise AttributeError(f"Optimizer '{optim_name}' not found in 'torch', 'transformers', or 'apex'")
+                try:
+                    # Workaround to allow loading AdamW from transformers even though pytorch > 1.2 has now also a AdamW
+                    optim_constructor = getattr(sys.modules[__name__], optim_name)
+                except (AttributeError, ImportError):
+                    raise AttributeError(f"Optimizer '{optim_name}' not found in 'torch', 'transformers', 'apex' or 'local imports")
 
     logger.info(f"Using optimizer '{optim_name}'")
     return optim_constructor(optimizable_parameters)
@@ -120,6 +160,7 @@ def _get_scheduler(optimizer, opts):
         sched_constructor = getattr(import_module('torch.optim.lr_scheduler'), sched_name)
     except AttributeError:
         try:
+            # TODO this will switch soon in transformers: https://github.com/huggingface/transformers/pull/1832
             sched_constructor = getattr(import_module('transformers.optimization'), sched_name)
         except AttributeError:
             raise AttributeError(f"Scheduler '{sched_name}' not found in 'torch' or 'transformers'")
@@ -143,14 +184,18 @@ def _optimize_model(model, device, local_rank, optimizer=None, distributed=False
         if APEX_PARALLEL_AVAILABLE:
             model = convert_syncbn_model(model)
 
-        n = torch.cuda.device_count() // dist.get_world_size()
-        device_ids = list(range(local_rank * n, (local_rank + 1) * n))
+        n_gpu = torch.cuda.device_count() // torch.distributed.get_world_size()
+        device_ids = list(range(local_rank * n_gpu, (local_rank + 1) * n_gpu))
         # for some models DistributedDataParallel might complain about parameters
         # not contributing to loss. find_used_parameters remedies that.
+        #TODO check if Wrapped DDP still needed?
         model = DistributedDataParallel(model,
                                         device_ids=device_ids,
                                         output_device=device_ids[0],
                                         find_unused_parameters=True)
+
+    elif torch.cuda.device_count() > 1:
+        model = WrappedDataParallel(model)
 
     return model, optimizer
 
