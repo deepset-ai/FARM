@@ -126,12 +126,19 @@ class Evaluator:
                     )
                 else:
                     # supply labels as all possible combination because if ground truth labels do not cover
-                    # all values in label_list (maybe dev set is small), the report will break.
+                    # all values in label_list (maybe dev set is small), the report will break
+                    if head.model_type == "multilabel_text_classification":
+                        # For multilabel classification, we don't eval with string labels here, but with multihot vectors.
+                        # Therefore we need to supply all possible label ids instead of label values.
+                        all_possible_labels = list(range(len(head.label_list)))
+                    else:
+                        all_possible_labels = head.label_list
+
                     result["report"] = report_fn(
                         label_all[head_num],
                         preds_all[head_num],
                         digits=4,
-                        labels=head.label_list,
+                        labels=all_possible_labels,
                         target_names=head.label_list)
 
             all_results.append(result)
