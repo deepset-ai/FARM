@@ -74,8 +74,6 @@ def squad_EM(preds, labels):
         curr_labels = labels[doc_idx]
         if (pred_start, pred_end) in curr_labels:
             n_correct += 1
-    print(n_correct)
-    print(n_docs)
     return n_correct/n_docs
 
 def squad_f1(preds, labels):
@@ -85,7 +83,6 @@ def squad_f1(preds, labels):
         best_pred = preds[i][0]
         best_f1 = max([squad_f1_single(best_pred, label) for label in labels[i]])
         f1_scores.append(best_f1)
-    print(f1_scores)
     return np.mean(f1_scores)
 
 

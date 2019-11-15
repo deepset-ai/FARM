@@ -8,8 +8,8 @@ from farm.data_handler.processor import SquadProcessor
 from farm.modeling.optimization import initialize_optimizer
 from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
-from farm.modeling.language_model import Bert
 from farm.modeling.prediction_head import QuestionAnsweringHead
+from farm.modeling.language_model import LanguageModel
 from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer
 from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
@@ -21,23 +21,24 @@ logging.basicConfig(
 )
 
 ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
-ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_question_answering")
+ml_logger.init_experiment(experiment_name="SQuAD", run_name="qa_albert")
 
 #########################
 ######## Settings
 ########################
 set_all_seeds(seed=42)
-device, n_gpu = initialize_device_settings(use_cuda=True)
+device, n_gpu = initialize_device_settings(use_cuda=False)
 batch_size = 32
 n_epochs = 2
-evaluate_every = 1000
-base_LM_model = "bert-base-uncased"
-train_filename="subsets/train_medium-v2.0.json"
-dev_filename="subsets/dev_medium-v2.0.json"
-save_dir = "../saved_models/qa_model_medium"
-inference_file = "../data/squad20/subsets/dev_medium-v2.0.json"
+evaluate_every = 1
+base_LM_model = "albert"
+train_filename="train-v2.0.json"
+dev_filename="dev-v2.0.json"
+save_dir = "../saved_models/qa_medium_albert"
+inference_file = "../data/squad20/subsets/5ad3ff1b604f3c001a3ffc74.json"
 predictions_file = save_dir + "/predictions.json"
 full_predictions_file = save_dir + "/full_predictions.json"
+inference_multiprocessing = False
 train = False
 inference = True
 
@@ -63,7 +64,7 @@ if train:
 
     # 4. Create an AdaptiveModel
     # a) which consists of a pretrained language model as a basis
-    language_model = Bert.load(base_LM_model)
+    language_model = LanguageModel.load(base_LM_model)
     # b) and a prediction head on top that is suited for our task => Question Answering
     prediction_head = QuestionAnsweringHead(layer_dims=[768, len(label_list)])
 
@@ -103,7 +104,8 @@ if train:
 
 if inference:
     model = Inferencer.load(save_dir, batch_size=32, gpu=True)
-    full_result = model.inference_from_file(file=inference_file)
+    full_result = model.inference_from_file(file=inference_file,
+                                            use_multiprocessing=inference_multiprocessing)
 
     for x in full_result:
         print(x)
