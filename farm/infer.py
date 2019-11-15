@@ -219,7 +219,7 @@ class Inferencer:
                         samples=batch_samples,
                         tokenizer=self.processor.tokenizer,
                         return_class_probs=self.return_class_probs,
-                        rest_api_schema=rest_api_schema
+                        rest_api_schema=rest_api_schema,
                         **batch)
                     preds_all += preds
                 else:
