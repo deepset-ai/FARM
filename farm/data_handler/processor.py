@@ -816,19 +816,19 @@ class SquadProcessor(Processor):
 
     def _convert_rest_api_dict(self, infer_dict):
         # convert input coming from inferencer to SQuAD format
-        converted = {}
-        converted["paragraphs"] = [
-            {
-                "qas": [
-                    {
-                        "question": infer_dict.get("questions", ["Missing?"])[0],
-                        "id": "unusedID",
-                    }
-                ],
-                "context": infer_dict.get("text", "Missing!"),
-                "document_id": infer_dict.get("document_id", None),
-            }
-        ]
+        converted = {
+            "qas": [
+                {
+                    "question": infer_dict.get("questions", ["Missing?"])[0],
+                    "id": None,
+                    "answers": [],
+                    "is_impossible": False
+                }
+            ],
+            "context": infer_dict.get("text", "Missing!"),
+            "document_id": infer_dict.get("document_id", None),
+        }
+
         return converted
 
     def file_to_dicts(self, file: str) -> [dict]:

@@ -911,7 +911,7 @@ class QuestionAnsweringHead(PredictionHead):
             return False
         return True
 
-    def formatted_preds(self, logits, baskets):
+    def formatted_preds(self, logits, baskets, rest_api_schema=False):
         """ Takes a list of logits, each corresponding to one sample, and converts them into document level predictions.
         Leverages information in the SampleBaskets. Assumes that we are being passed logits from ALL samples in the one
         SampleBasket i.e. all passages of a document. """
@@ -940,38 +940,110 @@ class QuestionAnsweringHead(PredictionHead):
         preds_d = self.aggregate_preds(preds_p, passage_start_t, ids, seq_2_start_t)
         assert len(preds_d) == len(baskets)
 
+        # Separate top_preds list from the no_ans_gap float
+        top_preds, no_ans_gaps = zip(*preds_d)
+
         # Takes document level prediction spans and returns string predictions
-        formatted = self.stringify(preds_d, baskets)
+        formatted = self.stringify(top_preds, baskets)
+
+        if rest_api_schema:
+            formatted = self.to_rest_api_schema(formatted, no_ans_gaps, baskets)
 
         return formatted
 
-    def stringify(self, preds_d, baskets):
+    def stringify(self, top_preds, baskets):
         """ Turn prediction spans into strings """
         ret = []
+
         # Iterate over each set of document level prediction
-        for doc_idx, doc_preds in enumerate(preds_d):
+        for pred_d, basket in zip(top_preds, baskets):
             curr_dict = {}
             # Unpack document offsets, clear text and squad_id
-            token_offsets = baskets[doc_idx].raw["document_offsets"]
-            clear_text = baskets[doc_idx].raw["document_text"]
-            squad_id = baskets[doc_idx].raw["squad_id"]
+            token_offsets = basket.raw["document_offsets"]
+            clear_text = basket.raw["document_text"]
+            squad_id = basket.raw["squad_id"]
 
             # Iterate over each prediction on the one document
             full_preds = []
-            for start_t, end_t, score in doc_preds:
-                pred_str = self.span_to_string(start_t, end_t, token_offsets, clear_text)
+            for start_t, end_t, score in pred_d:
+                pred_str, _, _ = self.span_to_string(start_t, end_t, token_offsets, clear_text)
                 full_preds.append([pred_str, start_t, end_t, score])
             curr_dict["id"] = squad_id
             curr_dict["preds"] = full_preds
             ret.append(curr_dict)
         return ret
 
+
+    def to_rest_api_schema(self, formatted_preds, no_ans_gaps, baskets):
+        ret = []
+        ids = [fp["id"] for fp in formatted_preds]
+        preds = [fp["preds"] for fp in formatted_preds]
+
+        for preds, id, no_ans_gap, basket in zip(preds, ids, no_ans_gaps, baskets):
+            question = basket.raw["question_text"]
+            answers = self.answer_for_api(preds, basket)
+            curr = {
+                "task": "qa",
+                "predictions": [
+                    {
+                        "question": question,
+                        "question_id": id,
+                        "ground_truth": None,
+                        "answers": answers,
+                        "no_ans_gap": no_ans_gap
+                    }
+                ],
+            }
+            ret.append(curr)
+        return ret
+
+    def answer_for_api(self, top_preds, basket):
+        ret = []
+        token_offsets = basket.raw["document_offsets"]
+        clear_text = basket.raw["document_text"]
+
+        # iterate over the top_n predictions of the one document
+        for string, start_t, end_t, score in top_preds:
+
+            _, ans_start_ch, ans_end_ch = self.span_to_string(start_t, end_t, token_offsets, clear_text)
+            context_string, context_start_ch, context_end_ch = self.create_context(ans_start_ch, ans_end_ch, clear_text)
+            curr = {"score": score,
+                    "probability": -1,
+                    "answer": string,
+                    "offset_answer_start": ans_start_ch,
+                    "offset_answer_end": ans_end_ch,
+                    "context": context_string,
+                    "offset_context_start": context_start_ch,
+                    "offset_context_end": context_end_ch,
+                    "document_id": None}
+            ret.append(curr)
+        return ret
+
+    def create_context(self, ans_start_ch, ans_end_ch, clear_text, window_size_ch=100):
+        if ans_start_ch == 0 and ans_end_ch == 0:
+            context_start_ch = 0
+            context_end_ch = 0
+        else:
+            len_text = len(clear_text)
+            midpoint = int((ans_end_ch - ans_start_ch) / 2)
+            half_window = int(window_size_ch / 2)
+            context_start_ch = midpoint - half_window
+            context_end_ch = midpoint + half_window
+            overhang_start = -context_start_ch
+            overhang_end = len_text - context_end_ch
+            context_start_ch -= overhang_end
+            context_start_ch = max(0, context_start_ch)
+            context_end_ch += overhang_start
+            context_end_ch = min(len_text, context_end_ch)
+        context_string = clear_text[context_start_ch: context_end_ch]
+        return context_string, context_start_ch, context_end_ch
+
     @staticmethod
     def span_to_string(start_t, end_t, token_offsets, clear_text):
 
         # If it is a no_answer prediction
         if start_t == -1 and end_t == -1:
-            return ""
+            return "", 0, 0
 
         n_tokens = len(token_offsets)
 
@@ -990,7 +1062,7 @@ class QuestionAnsweringHead(PredictionHead):
             end_ch = len(clear_text)
         else:
             end_ch = token_offsets[end_t]
-        return clear_text[start_ch: end_ch].strip()
+        return clear_text[start_ch: end_ch].strip(), start_ch, end_ch
 
     def has_no_answer_idxs(self, sample_top_n):
         for start, end, score in sample_top_n:
@@ -1102,13 +1174,13 @@ class QuestionAnsweringHead(PredictionHead):
 
         # TODO this is how big the no_answer threshold needs to be to change a no_answer to a pos answer
         #  (or vice versa). This can in future be used to train the threshold value
-        pos_vs_no_ans_gap = max([nas - pbs for nas, pbs in zip(no_answer_scores, passage_best_score)])
+        no_ans_gap = max([nas - pbs for nas, pbs in zip(no_answer_scores, passage_best_score)])
 
         if document_no_answer:
-            ret = [no_answer_pred] + pos_answers_reduced[:-1]
+            n_preds = [no_answer_pred] + pos_answers_reduced[:-1]
         else:
-            ret = pos_answers_reduced[:-1] + [no_answer_pred]
-        return ret
+            n_preds = pos_answers_reduced
+        return n_preds, no_ans_gap
 
     ## THIS IS A SIMPLER IMPLEMENTATION OF PICKING BEST ANSWERS FOR A DOCUMENT. MATCHES THE HUGGINGFACE METHOD
     # @staticmethod
