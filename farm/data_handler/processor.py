@@ -753,7 +753,7 @@ class SquadProcessor(Processor):
 
         if rest_api_schema:
             dicts = [self._convert_rest_api_dict(x) for x in dicts]
-        self.baskets = self._dicts_to_baskets(dicts)
+        self.baskets = self._dicts_to_baskets(dicts, index)
         self._init_samples_in_baskets()
         self._featurize_samples()
         if index == 0:
@@ -767,7 +767,7 @@ class SquadProcessor(Processor):
             dataset, tensor_names = self._create_dataset(keep_baskets=False)
             return dataset, tensor_names
 
-    def _dicts_to_baskets(self, dicts):
+    def _dicts_to_baskets(self, dicts, index=None):
         # Perform tokenization on documents and questions resulting in a nested list of doc-question pairs
         dicts_tokenized = [self.apply_tokenization(d) for d in dicts]
 
@@ -775,7 +775,11 @@ class SquadProcessor(Processor):
         for d_idx, document in enumerate(dicts_tokenized):
             for q_idx, raw in enumerate(document):
                 squad_id_hex = dicts[d_idx]["qas"][q_idx]["id"]
-                id_1, id_2 = encode_squad_id(squad_id_hex)
+                if squad_id_hex is None:
+                    id_1 = d_idx + index
+                    id_2 = q_idx
+                else:
+                    id_1, id_2 = encode_squad_id(squad_id_hex)
                 basket = SampleBasket(raw=raw, id=f"{id_1}-{id_2}")
                 baskets.append(basket)
         return baskets

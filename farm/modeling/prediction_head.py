@@ -930,7 +930,7 @@ class QuestionAnsweringHead(PredictionHead):
         padding_mask = torch.tensor([s.features[0]["padding_mask"] for s in samples], dtype=torch.long)
         start_of_word = torch.tensor([s.features[0]["start_of_word"] for s in samples], dtype=torch.long)
 
-        # Return n +  1 predictions per passage / sample
+        # Return n + 1 predictions per passage / sample
         preds_p = self.logits_to_preds(logits, padding_mask, start_of_word, seq_2_start_t)
 
         # Aggregate passage level predictions to create document level predictions.

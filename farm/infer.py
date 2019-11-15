@@ -180,14 +180,14 @@ class Inferencer:
                 with tqdm(total=len(dicts), unit=" Dicts") as pbar:
                     for dataset, tensor_names, baskets in results:
                         # TODO change formot of formatted_preds in QA (list of dicts)
-                        preds_all.extend(self._run_inference(dataset, tensor_names, baskets))
+                        preds_all.extend(self._run_inference(dataset, tensor_names, baskets, rest_api_schema))
                         pbar.update(multiprocessing_chunk_size)
 
         else:
             chunk = next(grouper(dicts, len(dicts)))
             dataset, tensor_names, baskets = self._create_datasets_chunkwise(chunk, processor=self.processor, rest_api_schema=rest_api_schema)
             # TODO change formot of formatted_preds in QA (list of dicts)
-            preds_all = self._run_inference(dataset, tensor_names, baskets)
+            preds_all = self._run_inference(dataset, tensor_names, baskets, rest_api_schema)
 
         return preds_all
 
@@ -198,7 +198,7 @@ class Inferencer:
         dataset, tensor_names, baskets = processor.dataset_from_dicts(dicts, index, rest_api_schema, return_baskets=True)
         return dataset, tensor_names, baskets
 
-    def _run_inference(self, dataset, tensor_names, baskets):
+    def _run_inference(self, dataset, tensor_names, baskets, rest_api_schema=False):
         samples = [s for b in baskets for s in b.samples]
 
         data_loader = NamedDataLoader(
@@ -219,6 +219,7 @@ class Inferencer:
                         samples=batch_samples,
                         tokenizer=self.processor.tokenizer,
                         return_class_probs=self.return_class_probs,
+                        rest_api_schema=rest_api_schema
                         **batch)
                     preds_all += preds
                 else:
@@ -227,7 +228,9 @@ class Inferencer:
             # can assume that we have only complete docs i.e. all the samples of one doc are in the current chunk
             # TODO is there a better way than having to wrap logits all in list?
             # TODO can QA formatted preds deal with samples?
-            preds_all = self.model.formatted_preds(logits=[logits_all], baskets=baskets)[0]
+            preds_all = self.model.formatted_preds(logits=[logits_all],
+                                                   baskets=baskets,
+                                                   rest_api_schema=rest_api_schema)[0]
         return preds_all
 
     def extract_vectors(
