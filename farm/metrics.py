@@ -70,7 +70,7 @@ def squad_EM(preds, labels):
     n_docs = len(preds)
     n_correct = 0
     for doc_idx in range(n_docs):
-        pred_start, pred_end, _ = preds[doc_idx][0]
+        pred_start, pred_end, _ = preds[doc_idx][0][0]
         curr_labels = labels[doc_idx]
         if (pred_start, pred_end) in curr_labels:
             n_correct += 1
@@ -88,7 +88,7 @@ def squad_f1(preds, labels):
 
 def squad_f1_single(pred, label):
     label_start, label_end = label
-    pred_start, pred_end, _ = pred
+    pred_start, pred_end, _ = pred[0]
     if (pred_start + pred_end == 0) or (label_start + label_end == 0):
         if pred_start == label_start:
             return 1.0
