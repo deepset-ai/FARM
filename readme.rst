@@ -54,7 +54,7 @@ Core features
 +------------------------------+-------------------+-------------------+-------------------+
 | NER                          | x                 |  x                |  x                |
 +------------------------------+-------------------+-------------------+-------------------+
-| Question Answering           | x                 |                   |                   |
+| Question Answering           | x                 |  x                |  x                |
 +------------------------------+-------------------+-------------------+-------------------+
 | Language Model Fine-tuning   | x                 |                   |                   |
 +------------------------------+-------------------+-------------------+-------------------+
@@ -74,6 +74,7 @@ Resources
 - `Intro to Transfer Learning & FARM (Video) <https://www.youtube.com/watch?v=hoDgtvE-u9E&feature=youtu.be>`_
 - Tutorial 1 (Overview of building blocks): `Jupyter notebook 1 <https://github.com/deepset-ai/FARM/blob/master/tutorials/1_farm_building_blocks.ipynb>`_  or `Colab 1 <https://colab.research.google.com/drive/130_7dgVC3VdLBPhiEkGULHmqSlflhmVM>`_
 - Tutorial 2 (How to use custom datasets): `Jupyter notebook 2 <https://github.com/deepset-ai/FARM/blob/master/tutorials/2_Build_a_processor_for_your_own_dataset.ipynb>`_  or `Colab 2 <https://colab.research.google.com/drive/1Ce_wWu-fsy_g16jaGioe8M5mAFdLN1Yx>`_
+- Tutorial 3 (How to train and showcase your own QA model): `Colab 3 <https://colab.research.google.com/drive/1tqOJyMw3L5I3eXHLO846eq1fA7O9U2s8>`_
 
 
 Installation
