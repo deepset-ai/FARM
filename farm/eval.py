@@ -59,6 +59,8 @@ class Evaluator:
         loss_all = [0 for _ in model.prediction_heads]
         preds_all = [[] for _ in model.prediction_heads]
         label_all = [[] for _ in model.prediction_heads]
+        ids_all = [[] for _ in model.prediction_heads]
+        passage_start_t_all = [[] for _ in model.prediction_heads]
 
         for step, batch in enumerate(
             tqdm(self.data_loader, desc="Evaluating", mininterval=10)
@@ -68,25 +70,18 @@ class Evaluator:
             with torch.no_grad():
 
                 logits = model.forward(**batch)
-                # TODO logits_to_loss should be a single, overloaded function
                 losses_per_head = model.logits_to_loss_per_head(logits=logits, **batch)
-                preds = model.logits_to_preds(
-                    logits=logits, **batch
-                )
-
+                preds = model.logits_to_preds(logits=logits, **batch)
                 labels = model.prepare_labels(**batch)
 
             # stack results of all batches per prediction head
             for head_num, head in enumerate(model.prediction_heads):
                 loss_all[head_num] += np.sum(to_numpy(losses_per_head[head_num]))
+                preds_all[head_num] += list(to_numpy(preds[head_num]))
+                label_all[head_num] += list(to_numpy(labels[head_num]))
                 if head.model_type == "span_classification":
-                    # TODO check why adaptive model doesnt pack preds into list of list of tuples
-                    preds_all[head_num] += preds
-                    label_all[head_num] += labels
-                else:
-                    preds_all[head_num] += list(to_numpy(preds[head_num]))
-                    label_all[head_num] += list(to_numpy(labels[head_num]))
-
+                    ids_all[head_num] += list(to_numpy(batch["id"]))
+                    passage_start_t_all[head_num] += list(to_numpy(batch["passage_start_t"]))
 
         # Evaluate per prediction head
         all_results = []
@@ -98,9 +93,11 @@ class Evaluator:
                 # TODO check why .fit() should be called on predictions, rather than on labels
                 preds_all[head_num] = mlb.fit_transform(preds_all[head_num])
                 label_all[head_num] = mlb.transform(label_all[head_num])
-            elif head.model_type == "span_classification":
-                temp = head._aggregate_preds(preds_all[head_num])
-                preds_all[head_num] = temp
+            if hasattr(head, 'aggregate_preds'):
+                preds_all[head_num], label_all[head_num] = head.aggregate_preds(preds=preds_all[head_num],
+                                                                          labels=label_all[head_num],
+                                                                          passage_start_t=passage_start_t_all[head_num],
+                                                                          ids=ids_all[head_num])
 
             result = {"loss": loss_all[head_num] / len(self.data_loader.dataset),
                       "task_name": head.task_name}

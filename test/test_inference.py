@@ -60,10 +60,10 @@ def test_qa_format_and_results(adaptive_model_qa, use_multiprocessing, rest_api_
         predictions, ground_truths, qa_inputs_dicts
     ):
         assert prediction["question"] == qa_input_dict["questions"][0]
-        for ans in prediction["answers"]:
-            assert ans["answer"] in ans["context"]
-            assert ans["answer"] == ground_truth
-            assert (
+        answer = prediction["answers"][0]
+        assert answer["answer"] in answer["context"]
+        assert answer["answer"] == ground_truth
+        assert (
                 set(
                     (
                         "answer",
@@ -77,5 +77,5 @@ def test_qa_format_and_results(adaptive_model_qa, use_multiprocessing, rest_api_
                         "document_id",
                     )
                 )
-                == ans.keys()
-            )
+                == answer.keys()
+        )
