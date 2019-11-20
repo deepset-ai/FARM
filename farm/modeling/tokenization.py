@@ -95,7 +95,11 @@ def tokenize_with_metadata(text, tokenizer):
 
     """
 
-    # split text into "words" (here: simple whitespace tokenizer)
+    # normalize all other whitespace characters to " "
+    # Note: using text.split() directly would destroy the offset,
+    # since \n\n\n would be treated similarly as a single \n
+    text = re.sub(r"\s", " ", text)
+    # split text into "words" (here: simple whitespace tokenizer).
     words = text.split(" ")
     word_offsets = []
     cumulated = 0
