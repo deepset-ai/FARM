@@ -107,7 +107,7 @@ class PredictionHead(nn.Module):
         prediction_head = cls.subclasses[config["name"]](**config)
         model_file = cls._get_model_file(config_file=config_file)
         logger.info("Loading prediction head from {}".format(model_file))
-        prediction_head.load_state_dict(torch.load(model_file, map_location=torch.device("cpu")), strict=False)
+        prediction_head.load_state_dict(torch.load(model_file, map_location=torch.device("cpu")))
         return prediction_head
 
     def logits_to_loss(self, logits, labels):
