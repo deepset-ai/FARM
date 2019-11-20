@@ -54,7 +54,7 @@ class LanguageModel(nn.Module):
         raise NotImplementedError
 
     @classmethod
-    def load(cls, pretrained_model_name_or_path, **kwargs):
+    def load(cls, pretrained_model_name_or_path, n_added_tokens=0, **kwargs):
         """
         Load a pretrained language model either by
 
@@ -102,6 +102,18 @@ class LanguageModel(nn.Module):
                 f"or one of bert/roberta/xlnet models that can be downloaded from remote. Here's the list of available "
                 f"models: https://farm.deepset.ai/api/modeling.html#farm.modeling.language_model.LanguageModel.load"
             )
+
+        # resize embeddings in case of custom vocab
+        if n_added_tokens != 0:
+            # TODO verify for other models than BERT
+            model_emb_size = language_model.model.resize_token_embeddings(new_num_tokens=None).num_embeddings
+            vocab_size = model_emb_size + n_added_tokens
+            logger.info(
+                f"Resizing embedding layer of LM from {model_emb_size} to {vocab_size} to cope for custom vocab.")
+            language_model.model.resize_token_embeddings(vocab_size)
+            # verify
+            model_emb_size = language_model.model.resize_token_embeddings(new_num_tokens=None).num_embeddings
+            assert vocab_size == model_emb_size
 
         return language_model
 

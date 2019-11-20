@@ -349,6 +349,7 @@ def mask_random_words(tokens, vocab, token_groups=None, max_predictions_per_seq=
                 tokens[index] = "[MASK]"
 
             # 10% randomly change token to random token
+            #TODO currently custom vocab is not included here
             elif prob < 0.9:
                 tokens[index] = random.choice(list(vocab.items()))[0]
 
