@@ -233,8 +233,8 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
         tokens_b, t2_label = mask_random_words(tokens_b, tokenizer.vocab,
                                                token_groups=sample.tokenized["text_b"]["start_of_word"])
         # convert lm labels to ids
-        t1_label_ids = [-1 if tok == '' else tokenizer.vocab[tok] for tok in t1_label]
-        t2_label_ids = [-1 if tok == '' else tokenizer.vocab[tok] for tok in t2_label]
+        t1_label_ids = [-1 if tok == '' else tokenizer.convert_tokens_to_ids(tok) for tok in t1_label]
+        t2_label_ids = [-1 if tok == '' else tokenizer.convert_tokens_to_ids(tok) for tok in t2_label]
         lm_label_ids = t1_label_ids + t2_label_ids
 
         # Convert is_next_label: Note that in Bert, is_next_labelid = 0 is used for next_sentence=true!
@@ -248,7 +248,7 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
         tokens_a, t1_label = mask_random_words(tokens_a, tokenizer.vocab,
                                                token_groups=sample.tokenized["text_a"]["start_of_word"])
         # convert lm labels to ids
-        lm_label_ids = [-1 if tok == '' else tokenizer.vocab[tok] for tok in t1_label]
+        lm_label_ids = [-1 if tok == '' else tokenizer.convert_tokens_to_ids(tok) for tok in t1_label]
 
     # encode string tokens to input_ids and add special tokens
     inputs = tokenizer.encode_plus(text=tokens_a,

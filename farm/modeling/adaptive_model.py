@@ -284,3 +284,19 @@ class AdaptiveModel(nn.Module):
             MlLogger.log_params(params)
         except Exception as e:
             logger.warning(f"ML logging didn't work: {e}")
+
+    def verify_vocab_size(self, vocab_size):
+        """ Verifies that the model fits to the tokenizer vocabulary.
+        They could diverge in case of custom vocabulary added via tokenizer.add_tokens()"""
+
+        model_vocab_len = self.language_model.model.resize_token_embeddings(new_num_tokens=None).num_embeddings
+
+        msg = "Vocab size of tokenizer doesn't match with model. " \
+              "If you added a custom vocabulary to the tokenizer, " \
+              "make sure to supply 'n_added_tokens' to LanguageModel.load() and BertStyleLM.load()"
+        assert vocab_size == model_vocab_len, msg
+
+        for head in self.prediction_heads:
+            if head.model_type == "language_modelling":
+                ph_decoder_len = head.decoder.weight.shape[0]
+                assert vocab_size == ph_decoder_len, msg

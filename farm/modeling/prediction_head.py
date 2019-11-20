@@ -107,7 +107,7 @@ class PredictionHead(nn.Module):
         prediction_head = cls.subclasses[config["name"]](**config)
         model_file = cls._get_model_file(config_file=config_file)
         logger.info("Loading prediction head from {}".format(model_file))
-        prediction_head.load_state_dict(torch.load(model_file, map_location=torch.device("cpu")))
+        prediction_head.load_state_dict(torch.load(model_file, map_location=torch.device("cpu")), strict=False)
         return prediction_head
 
     def logits_to_loss(self, logits, labels):
@@ -568,13 +568,17 @@ class BertLMHead(PredictionHead):
         self.bias = nn.Parameter(torch.zeros(vocab_size))
 
     @classmethod
-    def load(cls, pretrained_model_name_or_path):
+    def load(cls, pretrained_model_name_or_path, n_added_tokens=0):
 
         if os.path.exists(pretrained_model_name_or_path) \
                 and "config.json" in pretrained_model_name_or_path \
                 and "prediction_head" in pretrained_model_name_or_path:
-            config_file = os.path.exists(pretrained_model_name_or_path)
             # a) FARM style
+            if n_added_tokens != 0:
+                #TODO resize prediction head decoder for custom vocab
+                raise NotImplementedError("Custom vocab not yet supported for model loading from FARM files")
+
+            config_file = os.path.exists(pretrained_model_name_or_path)
             model_file = cls._get_model_file(config_file)
             config = json.load(open(config_file))
             prediction_head = cls(**config)
@@ -587,17 +591,28 @@ class BertLMHead(PredictionHead):
             bert_with_lm = BertForPreTraining.from_pretrained(pretrained_model_name_or_path)
 
             # init empty head
+            vocab_size = bert_with_lm.config.vocab_size + n_added_tokens
+
             head = cls(hidden_size=bert_with_lm.config.hidden_size,
-                       vocab_size=bert_with_lm.config.vocab_size,
+                       vocab_size=vocab_size,
                        hidden_act=bert_with_lm.config.hidden_act)
 
             # load weights
             head.dense.load_state_dict(bert_with_lm.cls.predictions.transform.dense.state_dict())
             head.LayerNorm.load_state_dict(bert_with_lm.cls.predictions.transform.LayerNorm.state_dict())
 
-            head.decoder.load_state_dict(bert_with_lm.cls.predictions.decoder.state_dict())
-            head.bias.data.copy_(bert_with_lm.cls.predictions.bias)
+            # Not loading weights of decoder here, since we later share weights with the embedding layer of LM
+            #head.decoder.load_state_dict(bert_with_lm.cls.predictions.decoder.state_dict())
+
+            if n_added_tokens == 0:
+                bias_params = bert_with_lm.cls.predictions.bias
+            else:
+                # Custom vocab => larger vocab => larger dims of output layer in the LM head
+                bias_params = torch.nn.Parameter(torch.cat([bert_with_lm.cls.predictions.bias,
+                                                            torch.zeros(n_added_tokens)]))
+            head.bias.data.copy_(bias_params)
             del bert_with_lm
+            del bias_params
 
         return head
 
