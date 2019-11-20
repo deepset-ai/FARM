@@ -109,7 +109,7 @@ class LanguageModel(nn.Module):
             model_emb_size = language_model.model.resize_token_embeddings(new_num_tokens=None).num_embeddings
             vocab_size = model_emb_size + n_added_tokens
             logger.info(
-                f"Tokenizer vocabulary (len: {vocab_size}) does not match original language model vocabulary (len: {model_emb_size}). Resizing embedding layer of LM accordingly")
+                f"Resizing embedding layer of LM from {model_emb_size} to {vocab_size} to cope for custom vocab.")
             language_model.model.resize_token_embeddings(vocab_size)
             # verify
             model_emb_size = language_model.model.resize_token_embeddings(new_num_tokens=None).num_embeddings
