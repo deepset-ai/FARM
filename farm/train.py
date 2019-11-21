@@ -50,6 +50,8 @@ except ImportError:
     )
 
 
+# TODO: store a pointer to the processor, not the model, since the processor contains the model
+# but we also need to save the processor if we want to use the Inferencer later!
 class EarlyStopping:
 
     def __init__(
@@ -111,7 +113,6 @@ class EarlyStopping:
         else:
             self.n_since_best += 1
         if self.n_since_best > self.patience:
-            logger.info("Early stopping criterion reached")
             return True
         return False
 
@@ -218,9 +219,12 @@ class Trainer:
         evalnr = 0
         for epoch in range(1, self.epochs + 1):
             for step, batch in enumerate(
-                tqdm(self.data_loader_train, desc=f"Train epoch {epoch}/{self.epochs}")
+                # NOTE: temporarily disabling tqdm here, for some reason this gets error
+                # "cannot join current thread" looks like tqdm issue 613
+                self.data_loader_train
+                # tqdm(self.data_loader_train, desc=f"Train epoch {epoch}/{self.epochs}")
             ):
-
+                logger.info("TRAINING EPOCH {} STEP {}".format(epoch, step))
                 # Move batch of samples to device
                 batch = {key: batch[key].to(self.device) for key in batch}
 
@@ -242,12 +246,17 @@ class Trainer:
                             # for now, we always use the loss of the first head
                             eval_value = result[0]["loss"]
                             do_stopping = self.early_stopping.check_stopping(eval_value)
+                            if do_stopping:
+                                # log the stopping
+                                logger.info("STOPPING EARLY AT EPOCH {}, STEP {}, EVALUATION {}".format(epoch, step, evalnr))
+                            else:
+                                logger.info("NOT STOPPING EARLY, {} EVALS SINCE BEST".format(
+                                    self.early_stopping.n_since_best))
                 if do_stopping:
-                    # log the stopping
-                    logger.info("STOPPING EARLY AT EPOCH {}, STEP {}, EVALUATION {}".format(epoch, step, evalnr))
                     break
                 self.global_step += 1
-
+            if do_stopping:
+                break
         if self.evaluator_test is not None:
             result = self.evaluator_test.eval(model)
             self.evaluator_test.log_results(result, "Test", self.global_step)

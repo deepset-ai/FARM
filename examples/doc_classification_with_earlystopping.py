@@ -18,14 +18,14 @@ logging.basicConfig(
     level=logging.INFO)
 
 ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
-ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_doc_classification")
+ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_doc_classification_with_early_stopping")
 
 ##########################
 ########## Settings
 ##########################
 set_all_seeds(seed=42)
 device, n_gpu = initialize_device_settings(use_cuda=True)
-n_epochs = 1
+n_epochs = 20
 batch_size = 32
 evaluate_every = 100
 lang_model = "bert-base-german-cased"
@@ -42,7 +42,7 @@ label_list = ["OTHER", "OFFENSE"]
 metric = "f1_macro"
 
 processor = TextClassificationProcessor(tokenizer=tokenizer,
-                                        max_seq_len=128,
+                                        max_seq_len=64,
                                         data_dir="../data/germeval18",
                                         label_list=label_list,
                                         metric=metric,
@@ -66,14 +66,14 @@ prediction_head = TextClassificationHead(layer_dims=[768, len(processor.tasks["t
 model = AdaptiveModel(
     language_model=language_model,
     prediction_heads=[prediction_head],
-    embeds_dropout_prob=0.1,
+    embeds_dropout_prob=0.2,
     lm_output_types=["per_sequence"],
     device=device)
 
 # 5. Create an optimizer
 optimizer, warmup_linear = initialize_optimizer(
     model=model,
-    learning_rate=2e-5,
+    learning_rate=0.5e-5,
     warmup_proportion=0.1,
     n_batches=len(data_silo.loaders["train"]),
     n_epochs=n_epochs)
@@ -83,7 +83,7 @@ optimizer, warmup_linear = initialize_optimizer(
 earlystopping = EarlyStopping(
     model,
     save_dir="saved_models/bert-german-doc-tutorial-es",
-    patience=10)
+    patience=4)
 
 trainer = Trainer(
     optimizer=optimizer,
@@ -108,8 +108,17 @@ basic_texts = [
     {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei"},
     {"text": "Martin Müller spielt Handball in Berlin"},
 ]
+
+# Load from the final epoch directory and apply
 model = Inferencer.load(save_dir)
 result = model.inference_from_dicts(dicts=basic_texts)
+print("EVALUATION ON FINAL MODEL")
+print(result)
+
+# Load from saved best model
+model = Inferencer.load(earlystopping.save_dir)
+result = model.inference_from_dicts(dicts=basic_texts)
+print("EVALUATION ON BEST MODEL")
 print(result)
 
 # fmt: on
