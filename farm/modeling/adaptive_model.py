@@ -68,7 +68,7 @@ class AdaptiveModel(nn.Module):
             # Need to save config and pipeline
 
     @classmethod
-    def load(cls, load_dir, device):
+    def load(cls, load_dir, device, strict=True):
         """
         Loads an AdaptiveModel from a directory. The directory must contain:
 
@@ -83,6 +83,10 @@ class AdaptiveModel(nn.Module):
         :type load_dir: str
         :param device: to which device we want to sent the model, either cpu or cuda
         :type device: torch.device
+        :param strict: whether to strictly enforce that the keys loaded from saved model match the ones in
+                       the PredictionHead (see torch.nn.module.load_state_dict()).
+                       Set to `False` for backwards compatibility with PHs saved with older version of FARM.
+        :type strict: bool
         """
 
         # Language Model
@@ -93,7 +97,7 @@ class AdaptiveModel(nn.Module):
         prediction_heads = []
         ph_output_type = []
         for config_file in ph_config_files:
-            head = PredictionHead.load(config_file)
+            head = PredictionHead.load(config_file, strict=strict)
             # # set shared weights between LM and PH
             # if type(head) == BertLMHead:
             #     head.set_shared_weights(language_model)
