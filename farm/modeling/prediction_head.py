@@ -94,12 +94,16 @@ class PredictionHead(nn.Module):
         self.config = config
 
     @classmethod
-    def load(cls, config_file):
+    def load(cls, config_file, strict=True):
         """
         Loads a Prediction Head. Infers the class of prediction head from config_file.
 
         :param config_file: location where corresponding config is stored
         :type config_file: str
+        :param strict: whether to strictly enforce that the keys loaded from saved model match the ones in
+                       the PredictionHead (see torch.nn.module.load_state_dict()).
+                       Set to `False` for backwards compatibility with PHs saved with older version of FARM.
+        :type strict: bool
         :return: PredictionHead
         :rtype: PredictionHead[T]
         """
@@ -107,7 +111,7 @@ class PredictionHead(nn.Module):
         prediction_head = cls.subclasses[config["name"]](**config)
         model_file = cls._get_model_file(config_file=config_file)
         logger.info("Loading prediction head from {}".format(model_file))
-        prediction_head.load_state_dict(torch.load(model_file, map_location=torch.device("cpu")))
+        prediction_head.load_state_dict(torch.load(model_file, map_location=torch.device("cpu")), strict=strict)
         return prediction_head
 
     def logits_to_loss(self, logits, labels):
