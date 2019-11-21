@@ -96,6 +96,7 @@ class Inferencer:
         gpu=False,
         embedder_only=False,
         return_class_probs=False,
+        strict=True
     ):
         """
         Initializes Inferencer from directory with saved model.
@@ -108,13 +109,17 @@ class Inferencer:
         :type gpu: bool
         :param embedder_only: If true, a faster processor (InferenceProcessor) is loaded. This should only be used for extracting embeddings (no downstream predictions).
         :type embedder_only: bool
+        :param strict: whether to strictly enforce that the keys loaded from saved model match the ones in
+                       the PredictionHead (see torch.nn.module.load_state_dict()).
+                       Set to `False` for backwards compatibility with PHs saved with older version of FARM.
+        :type strict: bool
         :return: An instance of the Inferencer.
 
         """
 
         device, n_gpu = initialize_device_settings(use_cuda=gpu, local_rank=-1, fp16=False)
 
-        model = AdaptiveModel.load(load_dir, device)
+        model = AdaptiveModel.load(load_dir, device, strict=strict)
         if embedder_only:
             # model.prediction_heads = []
             processor = InferenceProcessor.load_from_dir(load_dir)
