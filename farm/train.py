@@ -56,29 +56,29 @@ class EarlyStopping:
 
             self,
             model,
-            save_pathprefix=None,
-            save_all=False,
+            save_dir=None,
             mode="min",
             patience=0,
-            min_delta=0.001
+            min_delta=0.001,
+            min_evals=0,
     ):
         """
         Can be used to control early stopping with a Trainer class.
-        :param save_pathprefix: the path prefix for where to save the best model(s). If None, no saving is done at all.
-        :param save_all: if True, saves all best models, adding the evaluation number to the file names
+        :param save_dir: the directory where to save the final best model, if None, no saving.
         :param monitor: which metric to monitor (this currently always uses validation loss)
         :param mode: "min" or "max"
         :param patience: how many evaluations to wait after the best evaluation to stop
         :param min_delta: minimum difference to a previous best value to count as an improvement.
+        :param min_evals: minimum number of evaluations to wait before using eval value
 
         """
         self.model = model
-        self.save_pathprefix = save_pathprefix
-        self.save_all = save_all
+        self.save_dir = save_dir
         self.mode = mode
         self.patience = patience
         self.min_delta = min_delta
-        self.eval_values = []
+        self.min_evals = min_evals
+        self.eval_values = []  # for more complex modes
         self.n_since_best = None
         if mode == "min":
             self.best_so_far = 1.0E99
@@ -95,6 +95,8 @@ class EarlyStopping:
         :return: True if early stopping should occur, False otherwise
         """
         self.eval_values.append(float(eval_value))
+        if len(self.eval_values) <= self.min_evals:
+            return False
         if self.mode == "min":
             delta = self.best_so_far - eval_value
         else:
@@ -103,20 +105,15 @@ class EarlyStopping:
             # log new best model
             self.best_so_far = eval_value
             self.n_since_best = 0
-            if self.save_pathprefix:
-                # save this model!
-                if self.save_all:
-                    # make sure this model gets a unique name by evaluation number
-                    pass
-                pass
+            if self.save_dir:
+                logger.info("Saving current best model to {}, eval={}".format(self.save_dir, eval_value))
+                self.model.save(self.save_dir)
         else:
             self.n_since_best += 1
         if self.n_since_best > self.patience:
-            # TODO: log early stopping here or in train?
+            logger.info("Early stopping criterion reached")
             return True
         return False
-
-
 
 
 class Trainer:
