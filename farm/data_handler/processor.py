@@ -641,7 +641,7 @@ class BertStyleLMProcessor(Processor):
                         seq_b=tokenized["text_b"][seq_name],
                         tokenizer=self.tokenizer,
                         max_seq_len=self.max_seq_len)
-                    samples.append(Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized))
+                samples.append(Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized))
             # if we don't do next sentence prediction, we should feed in a single sentence
             else:
                 text_a = doc[idx]
@@ -661,7 +661,7 @@ class BertStyleLMProcessor(Processor):
                         seq_b=None,
                         tokenizer=self.tokenizer,
                         max_seq_len=self.max_seq_len)
-                    samples.append(Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized))
+                samples.append(Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized))
         return samples
 
     def _sample_to_features(self, sample) -> dict:
