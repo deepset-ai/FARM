@@ -50,6 +50,75 @@ except ImportError:
     )
 
 
+class EarlyStopping:
+
+    def __init__(
+
+            self,
+            model,
+            save_pathprefix=None,
+            save_all=False,
+            mode="min",
+            patience=0,
+            min_delta=0.001
+    ):
+        """
+        Can be used to control early stopping with a Trainer class.
+        :param save_pathprefix: the path prefix for where to save the best model(s). If None, no saving is done at all.
+        :param save_all: if True, saves all best models, adding the evaluation number to the file names
+        :param monitor: which metric to monitor (this currently always uses validation loss)
+        :param mode: "min" or "max"
+        :param patience: how many evaluations to wait after the best evaluation to stop
+        :param min_delta: minimum difference to a previous best value to count as an improvement.
+
+        """
+        self.model = model
+        self.save_pathprefix = save_pathprefix
+        self.save_all = save_all
+        self.mode = mode
+        self.patience = patience
+        self.min_delta = min_delta
+        self.eval_values = []
+        self.n_since_best = None
+        if mode == "min":
+            self.best_so_far = 1.0E99
+        elif mode == "max":
+            self.best_so_far = -1.0E99
+        else:
+            raise Exception("Mode must be 'min' or 'max'")
+
+    def check_stopping(self, eval_value):
+        """
+        Provide the evaluation value for the current evaluation. Returns true if stopping should occur.
+        This will save the model, if necessary.
+        :param eval: the current evaluation value
+        :return: True if early stopping should occur, False otherwise
+        """
+        self.eval_values.append(float(eval_value))
+        if self.mode == "min":
+            delta = self.best_so_far - eval_value
+        else:
+            delta = eval_value - self.best_so_far
+        if delta > self.min_delta:
+            # log new best model
+            self.best_so_far = eval_value
+            self.n_since_best = 0
+            if self.save_pathprefix:
+                # save this model!
+                if self.save_all:
+                    # make sure this model gets a unique name by evaluation number
+                    pass
+                pass
+        else:
+            self.n_since_best += 1
+        if self.n_since_best > self.patience:
+            # TODO: log early stopping here or in train?
+            return True
+        return False
+
+
+
+
 class Trainer:
     """Handles the main model training procedure. This includes performing evaluation on the dev set at regular
     intervals during training as well as evaluation on the test set at the end of training."""
@@ -67,7 +136,8 @@ class Trainer:
         evaluator_test=None,
         fp16=False,
         grad_acc_steps=1,
-        local_rank=-1
+        local_rank=-1,
+        early_stopping=None,
     ):
         """
         :param optimizer: An optimizer object that determines the learning strategy to be used during training
@@ -88,6 +158,11 @@ class Trainer:
         :param fp16: Whether to use floating point 16 mode.
         :type fp16: bool
         :param grad_acc_steps: TODO
+        :type grad_acc_steps: int
+        :param local_rank: TODO
+        :type local_rank: int
+        :param early_stopping: an initialized EarlyStopping object to control early stopping and saving of best models
+        :type EarlyStopping
         """
         self.data_silo = data_silo
         self.epochs = int(epochs)
@@ -103,6 +178,7 @@ class Trainer:
         self.device = device
         self.local_rank = local_rank
         self.log_params()
+        self.early_stopping = early_stopping
 
         # evaluator on dev set
         if evaluator_dev is None and self.data_silo.get_data_loader("dev"):
@@ -141,6 +217,8 @@ class Trainer:
         elif self.n_gpu > 1:
             model = WrappedDataParallel(model)
 
+        do_stopping = False
+        evalnr = 0
         for epoch in range(1, self.epochs + 1):
             for step, batch in enumerate(
                 tqdm(self.data_loader_train, desc=f"Train epoch {epoch}/{self.epochs}")
@@ -160,9 +238,17 @@ class Trainer:
                     if self.global_step != 0 and (
                         self.global_step % self.evaluate_every == 0
                     ):
+                        evalnr += 1
                         result = self.evaluator_dev.eval(model)
                         self.evaluator_dev.log_results(result, "Dev", self.global_step)
-
+                        if self.early_stopping:
+                            # for now, we always use the loss of the first head
+                            eval_value = result[0]["loss"]
+                            do_stopping = self.early_stopping.check_stopping(eval_value)
+                if do_stopping:
+                    # log the stopping
+                    logger.info("STOPPING EARLY AT EPOCH {}, STEP {}, EVALUATION {}".format(epoch, step, evalnr))
+                    break
                 self.global_step += 1
 
         if self.evaluator_test is not None:
