@@ -188,7 +188,7 @@ def create_samples_squad(dictionary, max_query_len, max_seq_len, doc_stride, n_s
                      "passage_start_of_word": passage_start_of_word,
                      "question_tokens": question_tokens,
                      "question_offsets": question_offsets,
-                     "question_start_of_word": dictionary["question_start_of_word"],
+                     "question_start_of_word": dictionary["question_start_of_word"][:max_query_len],
                      "answers": answers_tokenized}
         samples.append(Sample(id=passage_id,
                               clear_text=clear_text,
