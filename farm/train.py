@@ -50,14 +50,11 @@ except ImportError:
     )
 
 
-# TODO: store a pointer to the processor, not the model, since the processor contains the model
-# but we also need to save the processor if we want to use the Inferencer later!
 class EarlyStopping:
 
     def __init__(
-
             self,
-            model,
+            metric="loss",
             save_dir=None,
             mode="min",
             patience=0,
@@ -67,14 +64,14 @@ class EarlyStopping:
         """
         Can be used to control early stopping with a Trainer class.
         :param save_dir: the directory where to save the final best model, if None, no saving.
-        :param monitor: which metric to monitor (this currently always uses validation loss)
+        :param metric: name of dev set metric to monitor (default: loss)
         :param mode: "min" or "max"
         :param patience: how many evaluations to wait after the best evaluation to stop
         :param min_delta: minimum difference to a previous best value to count as an improvement.
         :param min_evals: minimum number of evaluations to wait before using eval value
 
         """
-        self.model = model
+        self.metric = metric
         self.save_dir = save_dir
         self.mode = mode
         self.patience = patience
@@ -94,11 +91,13 @@ class EarlyStopping:
         Provide the evaluation value for the current evaluation. Returns true if stopping should occur.
         This will save the model, if necessary.
         :param eval: the current evaluation value
-        :return: True if early stopping should occur, False otherwise
+        :return: a tuple (stopprocessing, savemodel) indicating if processing should be stopped
+        and if the current model should get saved.
         """
         self.eval_values.append(float(eval_value))
+        stopprocessing, savemodel = False, False
         if len(self.eval_values) <= self.min_evals:
-            return False
+            return stopprocessing, savemodel
         if self.mode == "min":
             delta = self.best_so_far - eval_value
         else:
@@ -108,13 +107,12 @@ class EarlyStopping:
             self.best_so_far = eval_value
             self.n_since_best = 0
             if self.save_dir:
-                logger.info("Saving current best model to {}, eval={}".format(self.save_dir, eval_value))
-                self.model.save(self.save_dir)
+                savemodel = True
         else:
             self.n_since_best += 1
         if self.n_since_best > self.patience:
-            return True
-        return False
+            stopprocessing = True
+        return stopprocessing, savemodel
 
 
 class Trainer:
@@ -244,8 +242,14 @@ class Trainer:
                         self.evaluator_dev.log_results(result, "Dev", self.global_step)
                         if self.early_stopping:
                             # for now, we always use the loss of the first head
-                            eval_value = result[0]["loss"]
-                            do_stopping = self.early_stopping.check_stopping(eval_value)
+                            eval_value = result[0][self.early_stopping.metric]
+                            do_stopping, save_model = self.early_stopping.check_stopping(eval_value)
+                            if save_model:
+                                logger.info(
+                                    "Saving current best model to {}, eval={}".format(
+                                        self.early_stopping.save_dir, eval_value))
+                                model.save(self.early_stopping.save_dir)
+                                self.data_silo.processor.save(self.early_stopping.save_dir)
                             if do_stopping:
                                 # log the stopping
                                 logger.info("STOPPING EARLY AT EPOCH {}, STEP {}, EVALUATION {}".format(epoch, step, evalnr))
@@ -258,6 +262,11 @@ class Trainer:
             if do_stopping:
                 break
         if self.evaluator_test is not None:
+            if self.early_stopping and self.early_stopping.save_dir:
+                logger.info("Restoring best model so far from {}".format(self.early_stopping.save_dir))
+                # if we have early stopping and saved a model, re-store it now to the same device
+                model_device_type = next(iter(model.parameters())).device.type
+                model = model.__class__.load(self.early_stopping.save_dir, model_device_type)
             result = self.evaluator_test.eval(model)
             self.evaluator_test.log_results(result, "Test", self.global_step)
         return model

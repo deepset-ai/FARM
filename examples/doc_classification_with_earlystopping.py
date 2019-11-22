@@ -17,7 +17,8 @@ logging.basicConfig(
     datefmt="%m/%d/%Y %H:%M:%S",
     level=logging.INFO)
 
-ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
+#ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
+ml_logger = MLFlowLogger(tracking_uri="logs")
 ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_doc_classification_with_early_stopping")
 
 ##########################
@@ -81,9 +82,10 @@ optimizer, warmup_linear = initialize_optimizer(
 # 6. Feed everything to the Trainer, which keeps care of growing our model into powerful plant and evaluates it from time to time
 # Also create an EarlyStopping instance and pass it on to the trainer
 earlystopping = EarlyStopping(
-    model,
+    metric="f1_macro", mode="max",
+    # metric="loss", mode="min",
     save_dir="saved_models/bert-german-doc-tutorial-es",
-    patience=4)
+    patience=3)
 
 trainer = Trainer(
     optimizer=optimizer,
@@ -112,13 +114,13 @@ basic_texts = [
 # Load from the final epoch directory and apply
 model = Inferencer.load(save_dir)
 result = model.inference_from_dicts(dicts=basic_texts)
-print("EVALUATION ON FINAL MODEL")
+print("APPLICATION ON FINAL MODEL")
 print(result)
 
 # Load from saved best model
 model = Inferencer.load(earlystopping.save_dir)
 result = model.inference_from_dicts(dicts=basic_texts)
-print("EVALUATION ON BEST MODEL")
+print("APPLICATION ON BEST MODEL")
 print(result)
 
 # fmt: on
