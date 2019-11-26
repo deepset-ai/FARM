@@ -262,6 +262,7 @@ class Trainer:
             if do_stopping:
                 break
         if self.evaluator_test is not None:
+            # TODO: saving best model may actually be useful even without early stopping!!!
             if self.early_stopping and self.early_stopping.save_dir:
                 logger.info("Restoring best model so far from {}".format(self.early_stopping.save_dir))
                 # if we have early stopping and saved a model, re-store it now to the same device
