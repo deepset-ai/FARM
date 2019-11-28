@@ -21,7 +21,7 @@ class Evaluator:
     """Handles evaluation of a given model over a specified dataset."""
 
     def __init__(
-        self, data_loader, tasks, device, classification_report=True
+        self, data_loader, tasks, device, report=True
     ):
         """
         :param data_loader: The PyTorch DataLoader that will return batches of data from the evaluation dataset
@@ -30,18 +30,14 @@ class Evaluator:
         :param device: The device on which the tensors should be processed. Choose from "cpu" and "cuda".
         :param metrics: The list of metrics which need to be computed, one for each prediction head.
         :param metrics: list
-        :param classification_report: Whether a report on the classification performance should be generated.
-        :type classification_report: bool
+        :param report: Whether an eval report should be generated (e.g. classification report per class).
+        :type report: bool
         """
 
         self.data_loader = data_loader
-        #self.label_maps = label_maps
         self.tasks = tasks
         self.device = device
-
-        # Where should metric be defined? When dataset loaded? In config?
-        #self.metrics = metrics
-        self.classification_report = classification_report
+        self.report = report
 
     def eval(self, model):
         """
@@ -101,13 +97,22 @@ class Evaluator:
 
             result = {"loss": loss_all[head_num] / len(self.data_loader.dataset),
                       "task_name": head.task_name}
-            result.update(
-                compute_metrics(metric=head.metric, preds=preds_all[head_num], labels=label_all[head_num]
+
+            # Calcualte eval metric(s)
+            if type(head.metric) == list:
+                for cur_metric in head.metric:
+                    result.update(
+                        compute_metrics(metric=cur_metric, preds=preds_all[head_num], labels=label_all[head_num]
+                        )
+                    )
+            else:
+                result.update(
+                    compute_metrics(metric=head.metric, preds=preds_all[head_num], labels=label_all[head_num]
+                                    )
                 )
-            )
 
             # Select type of report depending on prediction head output type
-            if self.classification_report:
+            if self.report:
                 if head.ph_output_type == "per_token":
                     report_fn = token_classification_report
                 elif head.ph_output_type == "per_sequence":

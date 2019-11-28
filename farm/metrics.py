@@ -39,31 +39,44 @@ def pearson_and_spearman(preds, labels):
         "corr": (pearson_corr + spearman_corr) / 2,
     }
 
+
 def compute_metrics(metric, preds, labels):
     assert len(preds) == len(labels)
-    if metric == "mcc":
-        return {"mcc": matthews_corrcoef(labels, preds)}
-    elif metric == "acc":
-        return simple_accuracy(preds, labels)
-    elif metric == "acc_f1":
-        return acc_and_f1(preds, labels)
-    elif metric == "pear_spear":
-        return pearson_and_spearman(preds, labels)
-    # TODO this metric seems very specific for NER and doesnt work for
-    elif metric == "seq_f1":
-        return {"seq_f1": ner_f1_score(labels, preds)}
-    elif metric == "f1_macro":
-        return f1_macro(preds, labels)
-    elif metric == "squad":
-        return squad(preds, labels)
-    elif metric == "mse":
-        return {"mse": mean_squared_error(preds, labels)}
-    elif metric == "r2":
-        return {"r2": r2_score(preds, labels)}
-    # elif metric == "masked_accuracy":
-    #     return simple_accuracy(preds, labels, ignore=-1)
+    # metric can be a custom function
+    if callable(metric):
+        try:
+            name = metric.__name__
+        except:
+            name = "custom_metric"
+        return {name: metric(preds, labels)}
+    # .. or the name (string) of a predefined one
     else:
-        raise KeyError(metric)
+        if metric == "mcc":
+            return {"mcc": matthews_corrcoef(labels, preds)}
+        elif metric == "acc":
+            return simple_accuracy(preds, labels)
+        elif metric == "acc_f1":
+            return acc_and_f1(preds, labels)
+        elif metric == "pear_spear":
+            return pearson_and_spearman(preds, labels)
+        # TODO this metric seems very specific for NER and doesnt work for
+        elif metric == "seq_f1":
+            return {"seq_f1": ner_f1_score(labels, preds)}
+        elif metric == "f1_macro":
+            return f1_macro(preds, labels)
+        elif metric == "squad":
+            return squad(preds, labels)
+        elif metric == "mse":
+            return {"mse": mean_squared_error(preds, labels)}
+        elif metric == "r2":
+            return {"r2": r2_score(preds, labels)}
+        elif metric == "custom_metric_fn":
+            return NotImplementedError("Did you load a processor from disk that used a custom function as metric? "
+                                       "This is not yet supported ... Sorry :)")
+        # elif metric == "masked_accuracy":
+        #     return simple_accuracy(preds, labels, ignore=-1)
+        else:
+            raise KeyError(metric)
 
 def squad_EM(preds, labels):
     # TODO write comment describing function

@@ -7,6 +7,7 @@ import json
 import time
 import inspect
 from inspect import signature
+from copy import deepcopy
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 
@@ -212,8 +213,21 @@ class Processor(ABC):
         config = {}
         # self.__dict__ doesn't give parent class attributes
         for key, value in inspect.getmembers(self):
-            if is_json(value) and key[0] != "_":
-                config[key] = value
+            if key[0] != "_":
+                if is_json(value):
+                    config[key] = value
+                else:
+                    # metric can be a custom function which is not serializable as json.
+                    # We replace it with a simple placeholder string for now.
+                    # This will allow loading the processor for inference, but not for eval.
+                    # TODO  pickle the whole processor or the metric function?
+                    if key == "tasks":
+                        converted_values = deepcopy(value)
+                        for task_name, task_values in converted_values.items():
+                            # find the task that is not convertable to json
+                            if not is_json(task_values):
+                                task_values["metric"] = "custom_metric_fn"
+                        config[key] = converted_values
         return config
 
     def add_task(self, name,  metric, label_list, label_column_name=None, label_name=None, task_type=None):
