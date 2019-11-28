@@ -17,9 +17,10 @@ logging.basicConfig(
     datefmt="%m/%d/%Y %H:%M:%S",
     level=logging.INFO)
 
-#ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
-ml_logger = MLFlowLogger(tracking_uri="logs")
-ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_doc_classification_with_early_stopping")
+ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
+# for local logging instead:
+# ml_logger = MLFlowLogger(tracking_uri="logs")
+ml_logger.init_experiment(experiment_name="Public_FARM", run_name="DocClassification_ES_f1_1")
 
 ##########################
 ########## Settings
@@ -82,10 +83,11 @@ optimizer, warmup_linear = initialize_optimizer(
 # 6. Feed everything to the Trainer, which keeps care of growing our model into powerful plant and evaluates it from time to time
 # Also create an EarlyStopping instance and pass it on to the trainer
 earlystopping = EarlyStopping(
+    processor,
     metric="f1_macro", mode="max",
     # metric="loss", mode="min",
     save_dir="saved_models/bert-german-doc-tutorial-es",
-    patience=3)
+    patience=5)
 
 trainer = Trainer(
     optimizer=optimizer,

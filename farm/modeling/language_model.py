@@ -246,7 +246,10 @@ class Bert(LanguageModel):
         """
 
         bert = cls()
-        bert.name = pretrained_model_name_or_path
+        if "farm_lm_name" in kwargs:
+            bert.name = kwargs["farm_lm_name"]
+        else:
+            bert.name = pretrained_model_name_or_path
         # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
         farm_lm_config = os.path.join(pretrained_model_name_or_path, "language_model_config.json")
         if os.path.exists(farm_lm_config):
@@ -338,7 +341,10 @@ class Roberta(LanguageModel):
 
         """
         roberta = cls()
-        roberta.name = pretrained_model_name_or_path
+        if "farm_lm_name" in kwargs:
+            roberta.name = kwargs["farm_lm_name"]
+        else:
+            roberta.name = pretrained_model_name_or_path
         # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
         farm_lm_config = os.path.join(pretrained_model_name_or_path, "language_model_config.json")
         if os.path.exists(farm_lm_config):
@@ -430,7 +436,10 @@ class XLNet(LanguageModel):
 
         """
         xlnet = cls()
-        xlnet.name = pretrained_model_name_or_path
+        if "farm_lm_name" in kwargs:
+            xlnet.name = kwargs["farm_lm_name"]
+        else:
+            xlnet.name = pretrained_model_name_or_path
         # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
         farm_lm_config = os.path.join(pretrained_model_name_or_path, "language_model_config.json")
         if os.path.exists(farm_lm_config):

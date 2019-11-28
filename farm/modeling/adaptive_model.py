@@ -68,7 +68,7 @@ class AdaptiveModel(nn.Module):
             # Need to save config and pipeline
 
     @classmethod
-    def load(cls, load_dir, device):
+    def load(cls, load_dir, device, lm_name=None):
         """
         Loads an AdaptiveModel from a directory. The directory must contain:
 
@@ -83,10 +83,12 @@ class AdaptiveModel(nn.Module):
         :type load_dir: str
         :param device: to which device we want to sent the model, either cpu or cuda
         :type device: torch.device
+        :param lm_name: the name to assign to the loaded language model
+        :type lm_name: str
         """
 
         # Language Model
-        language_model = LanguageModel.load(load_dir)
+        language_model = LanguageModel.load(load_dir, farm_lm_name=lm_name)
 
         # Prediction heads
         _, ph_config_files = cls._get_prediction_head_files(load_dir)

@@ -54,7 +54,9 @@ class EarlyStopping:
 
     def __init__(
             self,
+            processor,
             metric="loss",
+            evaluator=None,
             save_dir=None,
             mode="min",
             patience=0,
@@ -62,16 +64,24 @@ class EarlyStopping:
             min_evals=0,
     ):
         """
-        Can be used to control early stopping with a Trainer class.
+        Can be used to control early stopping with a Trainer class. Any object the implements the
+        methods check_stopping and get_eval_value and provides the attribute save_dir can be used instead
+        :param processor: the processor instance used for training
         :param save_dir: the directory where to save the final best model, if None, no saving.
-        :param metric: name of dev set metric to monitor (default: loss)
+        :param metric: name of dev set metric to monitor (default: loss, ignored if evaluator given)
+        :param evaluator: an initialised evaluator, if specified will be used instead of the evaluator
+        provided for the trainer
         :param mode: "min" or "max"
         :param patience: how many evaluations to wait after the best evaluation to stop
         :param min_delta: minimum difference to a previous best value to count as an improvement.
         :param min_evals: minimum number of evaluations to wait before using eval value
 
         """
+        # NOTE: we cannot avoid storing the processor somewhere, so we can reconnect the heads
+        # after restoring the best model.
+        self.processor = processor
         self.metric = metric
+        self.evaluator = evaluator
         self.save_dir = save_dir
         self.mode = mode
         self.patience = patience
@@ -103,7 +113,6 @@ class EarlyStopping:
         else:
             delta = eval_value - self.best_so_far
         if delta > self.min_delta:
-            # log new best model
             self.best_so_far = eval_value
             self.n_since_best = 0
             if self.save_dir:
@@ -114,6 +123,19 @@ class EarlyStopping:
             stopprocessing = True
         return stopprocessing, savemodel
 
+    def get_eval_value(self, model, result):
+        """
+        This method either extracts the evaluation value for the desired metric from the
+        given evaluation result, or ignores the result and uses its own evaluator to
+        retrieve the value of the metric.
+        :param model: the current model, only used if early stopping uses its own evaluator
+        :param result: the evaluation result from the trainer
+        :return: the value of the metric
+        """
+        if self.evaluator is not None:
+            result = self.evaluator.eval(model)
+        eval_value = result[0][self.metric]
+        return eval_value
 
 class Trainer:
     """Handles the main model training procedure. This includes performing evaluation on the dev set at regular
@@ -157,7 +179,8 @@ class Trainer:
         :type grad_acc_steps: int
         :param local_rank: TODO
         :type local_rank: int
-        :param early_stopping: an initialized EarlyStopping object to control early stopping and saving of best models
+        :param early_stopping: an initialized EarlyStopping object to control early stopping and
+        saving of best models.
         :type EarlyStopping
         """
         self.data_silo = data_silo
@@ -219,10 +242,10 @@ class Trainer:
             for step, batch in enumerate(
                 # NOTE: temporarily disabling tqdm here, for some reason this gets error
                 # "cannot join current thread" looks like tqdm issue 613
-                self.data_loader_train
-                # tqdm(self.data_loader_train, desc=f"Train epoch {epoch}/{self.epochs}")
+                # self.data_loader_train
+                tqdm(self.data_loader_train, desc=f"Train epoch {epoch}/{self.epochs}")
             ):
-                logger.info("TRAINING EPOCH {} STEP {}".format(epoch, step))
+                # logger.info("TRAINING EPOCH {} STEP {}".format(epoch, step))
                 # Move batch of samples to device
                 batch = {key: batch[key].to(self.device) for key in batch}
 
@@ -242,32 +265,33 @@ class Trainer:
                         self.evaluator_dev.log_results(result, "Dev", self.global_step)
                         if self.early_stopping:
                             # for now, we always use the loss of the first head
-                            eval_value = result[0][self.early_stopping.metric]
+                            eval_value = self.early_stopping.get_eval_value(model, result)
                             do_stopping, save_model = self.early_stopping.check_stopping(eval_value)
                             if save_model:
                                 logger.info(
                                     "Saving current best model to {}, eval={}".format(
                                         self.early_stopping.save_dir, eval_value))
                                 model.save(self.early_stopping.save_dir)
-                                self.data_silo.processor.save(self.early_stopping.save_dir)
+                                self.early_stopping.processor.save(self.early_stopping.save_dir)
                             if do_stopping:
                                 # log the stopping
                                 logger.info("STOPPING EARLY AT EPOCH {}, STEP {}, EVALUATION {}".format(epoch, step, evalnr))
-                            else:
-                                logger.info("NOT STOPPING EARLY, {} EVALS SINCE BEST".format(
-                                    self.early_stopping.n_since_best))
                 if do_stopping:
                     break
                 self.global_step += 1
             if do_stopping:
                 break
         if self.evaluator_test is not None:
-            # TODO: saving best model may actually be useful even without early stopping!!!
             if self.early_stopping and self.early_stopping.save_dir:
                 logger.info("Restoring best model so far from {}".format(self.early_stopping.save_dir))
                 # if we have early stopping and saved a model, re-store it now to the same device
+                # We are getting an exception when doing this
                 model_device_type = next(iter(model.parameters())).device.type
-                model = model.__class__.load(self.early_stopping.save_dir, model_device_type)
+                lm_name = model.language_model.name
+                logger.info("DEBUG: loading for class {}".format(model.__class__))
+                model = model.__class__.load(
+                    self.early_stopping.save_dir, model_device_type, lm_name=lm_name)
+                model.connect_heads_with_processor(self.early_stopping.processor.tasks, require_labels=True)
             result = self.evaluator_test.eval(model)
             self.evaluator_test.log_results(result, "Test", self.global_step)
         return model
