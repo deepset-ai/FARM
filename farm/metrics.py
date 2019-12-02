@@ -3,11 +3,16 @@ import numpy as np
 import pandas as pd
 from scipy.stats import pearsonr, spearmanr
 from seqeval.metrics import f1_score as ner_f1_score
-from sklearn.metrics import matthews_corrcoef, f1_score, mean_squared_error, r2_score
+from sklearn.metrics import matthews_corrcoef, recall_score, precision_score, f1_score, mean_squared_error, r2_score
 from farm.utils import flatten_list
 import logging
 
 logger = logging.getLogger(__name__)
+
+registered_metrics = {}
+
+def register_metrics(name, implementation):
+    registered_metrics[name] = implementation
 
 def simple_accuracy(preds, labels):
     # works also with nested lists of different lengths (needed for masked LM task)
@@ -17,7 +22,6 @@ def simple_accuracy(preds, labels):
     assert type(preds) == type(labels) == np.ndarray
     correct = preds == labels
     return {"acc": correct.mean()}
-
 
 
 def acc_and_f1(preds, labels):
@@ -65,6 +69,9 @@ def compute_metrics(metric, preds, labels):
         return {"r2": r2_score(preds, labels)}
     # elif metric == "masked_accuracy":
     #     return simple_accuracy(preds, labels, ignore=-1)
+    elif metric in registered_metrics:
+        metric_func = registered_metrics[metric]
+        return metric_func(preds, labels)
     else:
         raise KeyError(metric)
 

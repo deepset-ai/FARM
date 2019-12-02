@@ -54,9 +54,7 @@ class EarlyStopping:
 
     def __init__(
             self,
-            processor,
             metric="loss",
-            evaluator=None,
             save_dir=None,
             mode="min",
             patience=0,
@@ -64,24 +62,22 @@ class EarlyStopping:
             min_evals=0,
     ):
         """
-        Can be used to control early stopping with a Trainer class. Any object the implements the
-        methods check_stopping and get_eval_value and provides the attribute save_dir can be used instead
-        :param processor: the processor instance used for training
+        Can be used to control early stopping with a Trainer class. Any object can be used instead which
+        implements the method check_stopping and and provides the attribute save_dir
         :param save_dir: the directory where to save the final best model, if None, no saving.
-        :param metric: name of dev set metric to monitor (default: loss, ignored if evaluator given)
-        :param evaluator: an initialised evaluator, if specified will be used instead of the evaluator
-        provided for the trainer
+        :param metric: name of dev set metric to monitor (default: loss) to get extracted from the 0th head or
+        a function that extracts a value from the trainer dev evaluation result.
+        NOTE: this is different from the metric to get specified for the processor which defines how
+        to calculate one or more evaluation matric values from prediction/target sets, while this
+        specifies the name of one particular such metric value or a method to calculate that value
+        from the result returned from a processor metric.
         :param mode: "min" or "max"
         :param patience: how many evaluations to wait after the best evaluation to stop
         :param min_delta: minimum difference to a previous best value to count as an improvement.
         :param min_evals: minimum number of evaluations to wait before using eval value
 
         """
-        # NOTE: we cannot avoid storing the processor somewhere, so we can reconnect the heads
-        # after restoring the best model.
-        self.processor = processor
         self.metric = metric
-        self.evaluator = evaluator
         self.save_dir = save_dir
         self.mode = mode
         self.patience = patience
@@ -96,14 +92,18 @@ class EarlyStopping:
         else:
             raise Exception("Mode must be 'min' or 'max'")
 
-    def check_stopping(self, eval_value):
+    def check_stopping(self, eval_result):
         """
         Provide the evaluation value for the current evaluation. Returns true if stopping should occur.
         This will save the model, if necessary.
-        :param eval: the current evaluation value
-        :return: a tuple (stopprocessing, savemodel) indicating if processing should be stopped
-        and if the current model should get saved.
+        :param eval: the current evaluation result
+        :return: a tuple (stopprocessing, savemodel, evalvalue) indicating if processing should be stopped
+        and if the current model should get saved and the evaluation value used.
         """
+        if isinstance(self.metric, str):
+            eval_value = eval_result[0][self.metric]
+        else:
+            eval_value = self.metric(eval_result)
         self.eval_values.append(float(eval_value))
         stopprocessing, savemodel = False, False
         if len(self.eval_values) <= self.min_evals:
@@ -121,21 +121,8 @@ class EarlyStopping:
             self.n_since_best += 1
         if self.n_since_best > self.patience:
             stopprocessing = True
-        return stopprocessing, savemodel
+        return stopprocessing, savemodel, eval_value
 
-    def get_eval_value(self, model, result):
-        """
-        This method either extracts the evaluation value for the desired metric from the
-        given evaluation result, or ignores the result and uses its own evaluator to
-        retrieve the value of the metric.
-        :param model: the current model, only used if early stopping uses its own evaluator
-        :param result: the evaluation result from the trainer
-        :return: the value of the metric
-        """
-        if self.evaluator is not None:
-            result = self.evaluator.eval(model)
-        eval_value = result[0][self.metric]
-        return eval_value
 
 class Trainer:
     """Handles the main model training procedure. This includes performing evaluation on the dev set at regular
@@ -264,15 +251,13 @@ class Trainer:
                         result = self.evaluator_dev.eval(model)
                         self.evaluator_dev.log_results(result, "Dev", self.global_step)
                         if self.early_stopping:
-                            # for now, we always use the loss of the first head
-                            eval_value = self.early_stopping.get_eval_value(model, result)
-                            do_stopping, save_model = self.early_stopping.check_stopping(eval_value)
+                            do_stopping, save_model, eval_value = self.early_stopping.check_stopping(result)
                             if save_model:
                                 logger.info(
                                     "Saving current best model to {}, eval={}".format(
                                         self.early_stopping.save_dir, eval_value))
                                 model.save(self.early_stopping.save_dir)
-                                self.early_stopping.processor.save(self.early_stopping.save_dir)
+                                self.data_silo.processor.save(self.early_stopping.save_dir)
                             if do_stopping:
                                 # log the stopping
                                 logger.info("STOPPING EARLY AT EPOCH {}, STEP {}, EVALUATION {}".format(epoch, step, evalnr))
@@ -291,7 +276,7 @@ class Trainer:
                 logger.info("DEBUG: loading for class {}".format(model.__class__))
                 model = model.__class__.load(
                     self.early_stopping.save_dir, model_device_type, lm_name=lm_name)
-                model.connect_heads_with_processor(self.early_stopping.processor.tasks, require_labels=True)
+                model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
             result = self.evaluator_test.eval(model)
             self.evaluator_test.log_results(result, "Test", self.global_step)
         return model

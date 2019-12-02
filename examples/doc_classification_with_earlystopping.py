@@ -11,6 +11,9 @@ from farm.modeling.prediction_head import TextClassificationHead
 from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer, EarlyStopping
 from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
+from farm.eval import Evaluator
+from sklearn.metrics import matthews_corrcoef, recall_score, precision_score, f1_score, mean_squared_error, r2_score
+from farm.metrics import simple_accuracy, register_metrics
 
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
@@ -40,8 +43,22 @@ tokenizer = Tokenizer.load(
 # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
 # Here we load GermEval 2018 Data.
 
+# The processor wants to know the possible labels ...
 label_list = ["OTHER", "OFFENSE"]
-metric = "f1_macro"
+
+# The evaluation on the dev-set can be done with one of the predefined metrics or with a
+# metric defined as a function from (preds, labels) to a dict that contains all the actual
+# metrics values. The function must get registered under a string name and the string name must
+# be used.
+def mymetrics(preds, labels):
+    acc = simple_accuracy(preds, labels)
+    f1other = f1_score(y_true=labels, y_pred=preds, pos_label="OTHER")
+    f1offense = f1_score(y_true=labels, y_pred=preds, pos_label="OFFENSE")
+    f1macro = f1_score(y_true=labels, y_pred=preds, average="macro")
+    f1micro = f1_score(y_true=labels, y_pred=preds, average="macro")
+    return {"acc": acc, "f1_other": f1other, "f1_offense": f1offense, "f1_macro": f1macro, "f1_micro": f1micro}
+register_metrics('mymetrics', mymetrics)
+metric = 'mymetrics'
 
 processor = TextClassificationProcessor(tokenizer=tokenizer,
                                         max_seq_len=64,
@@ -82,12 +99,16 @@ optimizer, warmup_linear = initialize_optimizer(
 
 # 6. Feed everything to the Trainer, which keeps care of growing our model into powerful plant and evaluates it from time to time
 # Also create an EarlyStopping instance and pass it on to the trainer
+
+# An early stopping instance can be used to save the model that performs best on the dev set
+# according to some metric and stop training when no improvement is happening for some iterations.
 earlystopping = EarlyStopping(
-    processor,
-    metric="f1_macro", mode="max",
-    # metric="loss", mode="min",
-    save_dir="saved_models/bert-german-doc-tutorial-es",
-    patience=5)
+    metric="f1_offense", mode="max",   # use the metric from our own metrics function instead of loss
+    # metric="f1_macro", mode="max",  # use f1_macro from the dev evaluator of the trainer
+    # metric="loss", mode="min",   # use loss from the dev evaluator of the trainer
+    save_dir="saved_models/bert-german-doc-tutorial-es",  # where to save the best model
+    patience=5    # number of evaluations to wait for improvement before terminating the training
+)
 
 trainer = Trainer(
     optimizer=optimizer,
@@ -102,7 +123,11 @@ trainer = Trainer(
 # 7. Let it grow
 model = trainer.train(model)
 
-# 8. Hooray! You have a model. Store it:
+# 8. Hooray! You have a model.
+# NOTE: if early stopping is used, the best model has been stored already in the directory
+# defined with the EarlyStopping instance
+# The model we have at this moment is the model from the last training epoch that was carried
+# out before early stopping terminated the training
 save_dir = "saved_models/bert-german-doc-tutorial"
 model.save(save_dir)
 processor.save(save_dir)
@@ -114,12 +139,13 @@ basic_texts = [
 ]
 
 # Load from the final epoch directory and apply
+print("LOADING INFERENCER FROM FINAL MODEL DURING TRAINING")
 model = Inferencer.load(save_dir)
 result = model.inference_from_dicts(dicts=basic_texts)
-print("APPLICATION ON FINAL MODEL")
 print(result)
 
 # Load from saved best model
+print("LOADING INFERENCER FROM BEST MODEL DURING TRAINING")
 model = Inferencer.load(earlystopping.save_dir)
 result = model.inference_from_dicts(dicts=basic_texts)
 print("APPLICATION ON BEST MODEL")
