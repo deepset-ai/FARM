@@ -125,88 +125,165 @@ def create_sample_ner(split_text, label, basket_id):
     return [Sample(id=basket_id + "-0", clear_text={"text": text, "label": label})]
 
 
-def create_samples_squad(entry):
-    """Read a SQuAD json file into a list of SquadExample."""
+def create_samples_squad(dictionary, max_query_len, max_seq_len, doc_stride, n_special_tokens):
+    """
+    This method will split question-document pairs from the SampleBasket into question-passage pairs which will
+    each form one sample. The "t" and "c" in variables stand for token and character respectively.
+    """
 
-    def is_whitespace(c):
-        if c == " " or c == "\t" or c == "\r" or c == "\n" or ord(c) == 0x202F:
-            return True
-        return False
+    # Initialize some basic variables
+    # is_training = check_if_training(dictionary)
+    question_tokens = dictionary["question_tokens"][:max_query_len]
+    question_len_t = len(question_tokens)
+    question_offsets = dictionary["question_offsets"]
+    doc_tokens = dictionary["document_tokens"]
+    doc_offsets = dictionary["document_offsets"]
+    doc_text = dictionary["document_text"]
+    doc_start_of_word = dictionary["document_start_of_word"]
+    samples = []
 
-    try:
-        _ = entry["paragraphs"][0]["qas"][0]["is_impossible"]
-        is_training = True
-    except KeyError:
-        is_training = False
+    # Calculate the number of tokens that can be reserved for the passage. This is calculated by considering
+    # the max_seq_len, the number of tokens in the question and the number of special tokens that will be added
+    # when the question and passage are joined (e.g. [CLS] and [SEP])
+    passage_len_t = max_seq_len - question_len_t - n_special_tokens
 
-    examples = []
-    num_examples = 1
-    for paragraph in entry["paragraphs"]:
-        paragraph_text = paragraph["context"]
+    # Perform chunking of document into passages. The sliding window moves in steps of doc_stride.
+    # passage_spans is a list of dictionaries where each defines the start and end of each passage
+    # on both token and character level
+    passage_spans = chunk_into_passages(doc_offsets,
+                                        doc_stride,
+                                        passage_len_t,
+                                        doc_text)
+    for passage_span in passage_spans:
+        # Unpack each variable in the dictionary. The "_t" and "_c" indicate
+        # whether the index is on the token or character level
+        passage_start_t = passage_span["passage_start_t"]
+        passage_end_t = passage_span["passage_end_t"]
+        passage_start_c = passage_span["passage_start_c"]
+        passage_end_c = passage_span["passage_end_c"]
+        passage_id = passage_span["passage_id"]
 
-        char_to_word_offset = []
-        doc_tokens = paragraph_text.split(" ")
-        for i, t in enumerate(doc_tokens):
-            char_to_word_offset.extend([i] * (len(t) + 1))
+        # passage_offsets will be relative to the start of the passage (i.e. they will start at 0)
+        # TODO: Is passage offsets actually needed? At this point, maybe we only care about token level
+        passage_offsets = doc_offsets[passage_start_t: passage_end_t]
+        passage_start_of_word = doc_start_of_word[passage_start_t: passage_end_t]
+        passage_offsets = [x - passage_offsets[0] for x in passage_offsets]
+        passage_tokens = doc_tokens[passage_start_t: passage_end_t]
+        passage_text = dictionary["document_text"][passage_start_c: passage_end_c]
 
-        for qa in paragraph["qas"]:
-            qas_id = qa["id"]
-            question_text = qa["question"]
-            start_position = None
-            end_position = None
-            orig_answer_text = None
-            is_impossible = False
-            if is_training:
-                is_impossible = qa["is_impossible"]
-                # TODO check how to transform dev set with multiple possible answers, for now take only 1 answer
-                if not is_impossible:
-                    answer = qa["answers"][0]
-                    orig_answer_text = answer["text"]
-                    answer_offset = answer["answer_start"]
-                    answer_length = len(orig_answer_text)
-                    try:
-                        start_position = char_to_word_offset[answer_offset]
-                        end_position = char_to_word_offset[answer_offset + answer_length - 1]
-                    except IndexError as e:
-                        logger.warning(f"{e} \n Might be some question {qas_id} has wrong start offset")
+        # Deal with the potentially many answers (e.g. Squad dev set)
+        answers_clear, answers_tokenized = process_answers(dictionary["answers"],
+                                                           doc_offsets,
+                                                           passage_start_c,
+                                                           passage_start_t)
+
+        clear_text = {"passage_text": passage_text,
+                      "question_text": dictionary["question_text"],
+                      "passage_id": passage_id,
+                      "answers": answers_clear,
+                      "is_impossible": dictionary["is_impossible"]}
+        tokenized = {"passage_start_t": passage_start_t,
+                     "passage_tokens": passage_tokens,
+                     "passage_offsets": passage_offsets,
+                     "passage_start_of_word": passage_start_of_word,
+                     "question_tokens": question_tokens,
+                     "question_offsets": question_offsets,
+                     "question_start_of_word": dictionary["question_start_of_word"][:max_query_len],
+                     "answers": answers_tokenized}
+        samples.append(Sample(id=passage_id,
+                              clear_text=clear_text,
+                              tokenized=tokenized))
+    return samples
 
 
-                    # TODO Possibly remove: there seems to be no reason why we should exclude these answers
-                    # # Only add answers where the text can be exactly recovered from the
-                    # # document.
-                    # # This can happen when there are newline or tab symbols or multiple whitespace inside the answer
-                    # # Or if the answer continues over the edge of the current passage
-                    # actual_text = " ".join(
-                    #     doc_tokens[start_position : (end_position + 1)]
-                    # )
-                    # cleaned_answer_text = " ".join(
-                    #     whitespace_tokenize(orig_answer_text)
-                    # )
-                    # if actual_text.find(cleaned_answer_text) == -1:
-                    #     logger.warning(
-                    #         "Could not find answer: '%s' vs. '%s'",
-                    #         actual_text,
-                    #         cleaned_answer_text,
-                    #     )
-                    #     continue
-                else:
-                    start_position = -1
-                    end_position = -1
-                    orig_answer_text = ""
+def process_answers(answers, doc_offsets, passage_start_c, passage_start_t):
+    """ This processes the potentially multiple answers (c.f. Squad dev set) and returns their start and end indices
+    relative to the passage (not the document)
 
-            clear_text = {}
-            clear_text["qas_id"] = qas_id
-            clear_text["question_text"] = question_text
-            clear_text["doc_tokens"] = doc_tokens
-            clear_text["orig_answer_text"] = orig_answer_text
-            clear_text["start_position"] = start_position
-            clear_text["end_position"] = end_position
-            clear_text["is_impossible"] = is_impossible
-            clear_text["is_training"] = is_training
-            clear_text["document_id"] = paragraph.get("document_id", None)
-            example = Sample(
-                id=None, clear_text=clear_text, features=None, tokenized=None
-            )
-            num_examples += 1
-            examples.append(example)
-    return examples
+    :param answers:
+    :param doc_offsets:
+    :param passage_start_c:
+    :param passage_start_t:
+    :return:
+    """
+    answers_clear = []
+    answers_tokenized = []
+    for answer in answers:
+        # This section calculates start and end relative to document
+        answer_text = answer["text"]
+        answer_len_c = len(answer_text)
+        answer_start_c = answer["offset"]
+        answer_end_c = answer_start_c + answer_len_c - 1
+        answer_start_t = offset_to_token_idx(doc_offsets, answer_start_c)
+        answer_end_t = offset_to_token_idx(doc_offsets, answer_end_c)
+
+        # TODO: Perform check that answer can be recovered from document?
+
+        # This section converts start and end so that they are relative to the passage
+        # TODO: Is this actually necessary on character level?
+        answer_start_c -= passage_start_c
+        answer_end_c -= passage_start_c
+        answer_start_t -= passage_start_t
+        answer_end_t -= passage_start_t
+
+        curr_answer_clear = {"text": answer_text,
+                             "start_c": answer_start_c,
+                             "end_c": answer_end_c}
+        curr_answer_tokenized = {"start_t": answer_start_t,
+                                 "end_t": answer_end_t}
+
+        answers_clear.append(curr_answer_clear)
+        answers_tokenized.append(curr_answer_tokenized)
+    return answers_clear, answers_tokenized
+
+def chunk_into_passages(doc_offsets,
+                        doc_stride,
+                        passage_len_t,
+                        doc_text):
+    """ Returns a list of dictionaries which each describe the start, end and id of a passage
+    that is formed when chunking a document using a sliding window approach. """
+    passage_spans = []
+    passage_id = 0
+    doc_len_t = len(doc_offsets)
+    while True:
+        passage_start_t = passage_id * doc_stride
+        passage_end_t = passage_start_t + passage_len_t
+        passage_start_c = doc_offsets[passage_start_t]
+
+        # If passage_end_t points to the last token in the passage, define passage_end_c as the length of the document
+        if passage_end_t >= doc_len_t - 1:
+            passage_end_c = len(doc_text)
+
+        # Get document text up to the first token that is outside the passage. Strip of whitespace.
+        # Use the length of this text as the passage_end_c
+        else:
+            end_ch_idx = doc_offsets[passage_end_t + 1]
+            raw_passage_text = doc_text[:end_ch_idx]
+            passage_end_c = len(raw_passage_text.strip())
+
+        passage_span = {"passage_start_t": passage_start_t,
+                        "passage_end_t": passage_end_t,
+                        "passage_start_c": passage_start_c,
+                        "passage_end_c": passage_end_c,
+                        "passage_id": passage_id}
+        passage_spans.append(passage_span)
+        passage_id += 1
+        # If the end idx is greater than or equal to the length of the passage
+        if passage_end_t >= doc_len_t:
+            break
+    return passage_spans
+
+
+def offset_to_token_idx(token_offsets, ch_idx):
+    """ Returns the idx of the token at the given character idx"""
+    n_tokens = len(token_offsets)
+    for i in range(n_tokens):
+        if (i + 1 == n_tokens) or (token_offsets[i] <= ch_idx < token_offsets[i + 1]):
+            return i
+
+
+def check_if_training(dictionary):
+    if "is_impossible" in dictionary:
+        return True
+    return False
+

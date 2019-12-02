@@ -131,6 +131,7 @@ data/
 models/
 save/
 testsave/
+saved_models/
 
 #mlruns
 mlruns/

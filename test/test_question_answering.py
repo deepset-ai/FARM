@@ -2,7 +2,6 @@ import logging
 
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import SquadProcessor
-from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import LanguageModel
 from farm.modeling.optimization import initialize_optimizer
@@ -71,16 +70,6 @@ def test_qa(caplog):
     model.save(save_dir)
     processor.save(save_dir)
 
-    QA_input = [
-        {
-            "questions": ["In what country is Normandy"],
-            "text": 'The Normans gave their name to Normandy, a region in France.',
-        }
-    ]
 
-    model = Inferencer.load(save_dir)
-    result = model.inference_from_dicts(dicts=QA_input,use_multiprocessing=False)
-    assert isinstance(result[0]["predictions"][0]["answers"][0]["offset_answer_start"],int)
-
-if(__name__=="__main__"):
+if __name__ == "__main__":
     test_qa()

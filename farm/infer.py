@@ -96,6 +96,7 @@ class Inferencer:
         gpu=False,
         embedder_only=False,
         return_class_probs=False,
+        strict=True
     ):
         """
         Initializes Inferencer from directory with saved model.
@@ -108,13 +109,17 @@ class Inferencer:
         :type gpu: bool
         :param embedder_only: If true, a faster processor (InferenceProcessor) is loaded. This should only be used for extracting embeddings (no downstream predictions).
         :type embedder_only: bool
+        :param strict: whether to strictly enforce that the keys loaded from saved model match the ones in
+                       the PredictionHead (see torch.nn.module.load_state_dict()).
+                       Set to `False` for backwards compatibility with PHs saved with older version of FARM.
+        :type strict: bool
         :return: An instance of the Inferencer.
 
         """
 
         device, n_gpu = initialize_device_settings(use_cuda=gpu, local_rank=-1, fp16=False)
 
-        model = AdaptiveModel.load(load_dir, device)
+        model = AdaptiveModel.load(load_dir, device, strict=strict)
         if embedder_only:
             # model.prediction_heads = []
             processor = InferenceProcessor.load_from_dir(load_dir)
@@ -178,20 +183,16 @@ class Inferencer:
 
                 preds_all = []
                 with tqdm(total=len(dicts), unit=" Dicts") as pbar:
-                    for dataset, tensor_names, samples in results:
-                        if self.prediction_type == "span_classification":
-                            preds_all.extend(self._run_inference_qa(dataset, tensor_names, samples))
-                        else:
-                            preds_all.extend(self._run_inference(dataset, tensor_names, samples))
+                    for dataset, tensor_names, baskets in results:
+                        # TODO change formot of formatted_preds in QA (list of dicts)
+                        preds_all.extend(self._run_inference(dataset, tensor_names, baskets, rest_api_schema))
                         pbar.update(multiprocessing_chunk_size)
 
         else:
             chunk = next(grouper(dicts, len(dicts)))
-            dataset, tensor_names, samples = self._create_datasets_chunkwise(chunk, processor=self.processor, rest_api_schema=rest_api_schema)
-            if self.prediction_type == "span_classification":
-                preds_all = self._run_inference_qa(dataset, tensor_names, samples)
-            else:
-                preds_all = self._run_inference(dataset, tensor_names, samples)
+            dataset, tensor_names, baskets = self._create_datasets_chunkwise(chunk, processor=self.processor, rest_api_schema=rest_api_schema)
+            # TODO change formot of formatted_preds in QA (list of dicts)
+            preds_all = self._run_inference(dataset, tensor_names, baskets, rest_api_schema)
 
         return preds_all
 
@@ -200,54 +201,46 @@ class Inferencer:
         dicts = [d[1] for d in chunk]
         index = chunk[0][0]
         dataset, tensor_names, baskets = processor.dataset_from_dicts(dicts, index, rest_api_schema, return_baskets=True)
-        samples = []
-        for b in baskets:  # number of baskets in _multiproc() related to chunksize
-            samples.extend(b.samples)
-        return dataset, tensor_names, samples
+        return dataset, tensor_names, baskets
 
-    def _run_inference(self, dataset, tensor_names, samples):
+    def _run_inference(self, dataset, tensor_names, baskets, rest_api_schema=False):
+        samples = [s for b in baskets for s in b.samples]
+
         data_loader = NamedDataLoader(
             dataset=dataset, sampler=SequentialSampler(dataset), batch_size=self.batch_size, tensor_names=tensor_names
         )
-
+        logits_all = []
         preds_all = []
+        aggregate_preds = hasattr(self.model.prediction_heads[0], "aggregate_preds")
         for i, batch in enumerate(tqdm(data_loader, desc=f"Inferencing")):
             batch = {key: batch[key].to(self.device) for key in batch}
-            batch_samples = samples[i * self.batch_size : (i + 1) * self.batch_size]
+            if not aggregate_preds:
+                batch_samples = samples[i * self.batch_size : (i + 1) * self.batch_size]
             with torch.no_grad():
-                logits = self.model.forward(**batch)
-                preds = self.model.formatted_preds(
-                    logits=logits,
-                    samples=batch_samples,
-                    tokenizer=self.processor.tokenizer,
-                    return_class_probs=self.return_class_probs,
-                    **batch,
-                )
-                preds_all += preds
-
+                logits = self.model.forward(**batch)[0]
+                if not aggregate_preds:
+                    preds = self.model.formatted_preds(
+                        logits=[logits],
+                        samples=batch_samples,
+                        tokenizer=self.processor.tokenizer,
+                        return_class_probs=self.return_class_probs,
+                        rest_api_schema=rest_api_schema,
+                        **batch)
+                    preds_all += preds
+                else:
+                    logits_all += [l for l in logits]
+        if aggregate_preds:
+            # can assume that we have only complete docs i.e. all the samples of one doc are in the current chunk
+            # TODO is there a better way than having to wrap logits all in list?
+            # TODO can QA formatted preds deal with samples?
+            preds_all = self.model.formatted_preds(logits=[logits_all],
+                                                   baskets=baskets,
+                                                   rest_api_schema=rest_api_schema)[0]
         return preds_all
 
-    def _run_inference_qa(self, concatdataset, tensor_names, samples):
-        data_loader = NamedDataLoader(
-            dataset=concatdataset, sampler=SequentialSampler(concatdataset), batch_size=self.batch_size, tensor_names=tensor_names
-        )
-
-        all_preds = []
-        for batch in tqdm(data_loader, desc=f"Inferencing"):
-            batch = {key: batch[key].to(self.device) for key in batch}
-            with torch.no_grad():
-                logits = self.model.forward(**batch)
-                preds = self.model.logits_to_preds(logits=logits, **batch)
-                all_preds += preds
-
-
-        preds_all = self.model.prediction_heads[0].formatted_preds(logits=None,
-                                                                   preds=all_preds,
-                                                                   samples=samples)
-
-        return [preds_all]
-
-    def extract_vectors(self, dicts, extraction_strategy="cls_token", extraction_layer=-1):
+    def extract_vectors(
+        self, dicts, extraction_strategy="cls_token", extraction_layer=-1
+    ):
         """
         Converts a text into vector(s) using the language model only (no prediction head involved).
 

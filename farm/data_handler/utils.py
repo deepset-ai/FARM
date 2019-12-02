@@ -330,6 +330,7 @@ def mask_random_words(tokens, vocab, token_groups=None, max_predictions_per_seq=
     random.shuffle(cand_indices)
     output_label = [''] * len(tokens)
     num_masked = 0
+    assert "[MASK]" not in tokens
 
     # 2. Mask the first groups until we reach the number of tokens we wanted to mask (num_to_mask)
     for index_set in cand_indices:
@@ -349,6 +350,7 @@ def mask_random_words(tokens, vocab, token_groups=None, max_predictions_per_seq=
                 tokens[index] = "[MASK]"
 
             # 10% randomly change token to random token
+            #TODO currently custom vocab is not included here
             elif prob < 0.9:
                 tokens[index] = random.choice(list(vocab.items()))[0]
 

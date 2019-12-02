@@ -109,7 +109,15 @@ def test_all_tokenizer_on_special_cases(caplog):
    "Let's see all on this text and. !23# neverseenwordspossible",
     """This is a sentence.
     With linebreak""",
-    "This is a sentence with    tab"]
+    """Sentence with multiple
+
+
+    newlines
+    """,
+    "and another one\n\n\nwithout space",
+    "This is a sentence	with tab",
+    "This is a sentence			with multiple tabs",
+    ]
 
     for tokenizer in tokenizers:
         for text in texts:
@@ -119,22 +127,9 @@ def test_all_tokenizer_on_special_cases(caplog):
 
             # 1. original tokenize function from transformer repo on full sentence
             standardized_whitespace_text = ' '.join(text.split()) # remove multiple whitespaces
-
             tokenized = tokenizer.tokenize(standardized_whitespace_text)
-            tokenized_by_word = []
-            # 2. original tokenize function from transformer repo on "whitespace tokenized words"
-            for i, tok in enumerate(text.split(" ")):
-                if i == 0:
-                    tokenized_tok = tokenizer.tokenize(tok)
-                else:
-                    try:
-                        tokenized_tok = tokenizer.tokenize(tok, add_prefix_space=True)
-                    except TypeError:
-                        tokenized_tok = tokenizer.tokenize(tok)
-                tokenized_by_word.extend(tokenized_tok)
-            assert tokenized == tokenized_by_word
 
-            # 3. our tokenizer with metadata on "whitespace tokenized words"
+            # 2. our tokenizer with metadata on "whitespace tokenized words"
             tokenized_meta = tokenize_with_metadata(text=text, tokenizer=tokenizer)
 
             # verify that tokenization on full sequence is the same as the one on "whitespace tokenized words"

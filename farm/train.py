@@ -211,7 +211,7 @@ class Trainer:
         model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
 
         # Check that the tokenizer fits the language model
-        self.check_tokenizer_lm(self.data_silo.processor.tokenizer, model.language_model)
+        model.verify_vocab_size(vocab_size=len(self.data_silo.processor.tokenizer))
 
         logger.info(f"\n {GROWING_TREE}")
         model.train()
@@ -311,17 +311,6 @@ class Trainer:
         if self.grad_acc_steps > 1:
             loss = loss / self.grad_acc_steps
         return loss
-
-    def check_tokenizer_lm(self, tokenizer, lm):
-        tok_vocab_len = len(tokenizer)
-        #TODO make this generic for other models
-        model_vocab_len = lm.model.resize_token_embeddings(new_num_tokens=None).num_embeddings
-        #model_vocab_len = lm.model.embeddings.word_embeddings.num_embeddings
-        if tok_vocab_len != model_vocab_len:
-            f"Tokenizer vocabulary (len: {tok_vocab_len}) does not match original language model vocabulary (len: {model_vocab_len}). Resizing embedding layer of LM accordingly"
-            lm.model.resize_token_embeddings(len(tokenizer))
-            model_vocab_len = lm.model.embeddings.word_embeddings.num_embeddings
-        assert tok_vocab_len == model_vocab_len
 
     def log_params(self):
         params = {"epochs": self.epochs, "n_gpu": self.n_gpu, "device": self.device}

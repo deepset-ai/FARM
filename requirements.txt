@@ -10,7 +10,7 @@ boto3
 # Used for downloading models over HTTP
 requests
 # Scipy & sklearn for stats in run_classifier
-scipy
+scipy>=1.2.0
 sklearn
 # Metrics or logging related
 seqeval
