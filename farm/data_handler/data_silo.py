@@ -301,7 +301,7 @@ class DataSilo:
             }
         )
 
-    def calculate_class_weights(self, task_name):
+    def calculate_class_weights(self, task_name, source="train"):
         """ For imbalanced datasets, we can calculate class weights that can be used later in the
         loss function of the prediction head to upweight the loss of minorities.
 
@@ -314,7 +314,13 @@ class DataSilo:
         tensor_idx = list(self.tensor_names).index(tensor_name)
         # we need at least ONE observation for each label to avoid division by zero in compute_class_weights.
         observed_labels = copy.deepcopy(label_list)
-        for dataset in self.data.values():
+        if source == "all":
+            datasets = self.data.values()
+        elif source == "train":
+            datasets = [self.data["train"]]
+        else:
+            raise Exception("source argument expects one of [\"train\", \"all\"]")
+        for dataset in datasets:
             if dataset is not None:
                 observed_labels += [label_list[x[tensor_idx].item()] for x in dataset]
         #TODO scale e.g. via logarithm to avoid crazy spikes for rare classes
