@@ -1044,12 +1044,14 @@ class QuestionAnsweringHead(PredictionHead):
             context_end_ch = 0
         else:
             len_text = len(clear_text)
-            midpoint = int((ans_end_ch - ans_start_ch) / 2)
+            midpoint = int((ans_end_ch - ans_start_ch) / 2) + ans_start_ch
             half_window = int(window_size_ch / 2)
             context_start_ch = midpoint - half_window
             context_end_ch = midpoint + half_window
-            overhang_start = -context_start_ch
-            overhang_end = len_text - context_end_ch
+            # if we have part of the context window overlapping start or end of the passage,
+            # we'll trim it and use the additional chars on the other side of the answer
+            overhang_start = max(0, -context_start_ch)
+            overhang_end = max(0, context_end_ch - len_text)
             context_start_ch -= overhang_end
             context_start_ch = max(0, context_start_ch)
             context_end_ch += overhang_start
