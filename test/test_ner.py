@@ -14,11 +14,12 @@ from farm.utils import set_all_seeds, initialize_device_settings
 import logging
 
 
-def test_ner(caplog):
-    caplog.set_level(logging.CRITICAL)
+def test_ner(caplog=None):
+    if caplog:
+        caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
-    device, n_gpu = initialize_device_settings(use_cuda=False)
+    device, n_gpu = initialize_device_settings(use_cuda=True)
     n_epochs = 1
     batch_size = 2
     evaluate_every = 1
@@ -57,11 +58,12 @@ def test_ner(caplog):
 
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
-        optim_opts={'name': 'AdamW', 'lr': 2E-05},
+        learning_rate=2e-5,
+        #optimizer_opts={'name': 'AdamW', 'lr': 2E-05},
         n_batches=len(data_silo.loaders["train"]),
         n_epochs=1,
         device=device,
-        sched_opts={'name': 'WarmupCosineSchedule'})
+        schedule_opts={'name': 'WarmupCosineSchedule'})
 
     trainer = Trainer(
         optimizer=optimizer,

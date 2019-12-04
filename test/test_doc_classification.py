@@ -12,8 +12,10 @@ from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer
 from farm.utils import set_all_seeds, initialize_device_settings
 
-def test_doc_classification(caplog):
-    caplog.set_level(logging.CRITICAL)
+
+def test_doc_classification(caplog=None):
+    if caplog:
+        caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)
@@ -52,11 +54,12 @@ def test_doc_classification(caplog):
 
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
-        optim_opts={'name': 'AdamW', 'lr': 2E-05},
+        learning_rate=2e-5,
+        #optimizer_opts={'name': 'AdamW', 'lr': 2E-05},
         n_batches=len(data_silo.loaders["train"]),
         n_epochs=1,
         device=device,
-        sched_opts={'name': 'WarmupCosineSchedule'})
+        schedule_opts=None)
 
     trainer = Trainer(
         optimizer=optimizer,

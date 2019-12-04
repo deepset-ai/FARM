@@ -74,8 +74,9 @@ class Trainer:
         self.log_params()
 
         if use_amp and not AMP_AVAILABLE:
-            raise ImportError('Please install Apex if you want to make use of automatic mixec precision.'
-                              ' https://github.com/NVIDIA/apex')
+            raise ImportError(f'Got use_amp = {use_amp}, but cannot find apex. '
+                              'Please install Apex if you want to make use of automatic mixed precision. '
+                              'https://github.com/NVIDIA/apex')
 
         # evaluator on dev set
         if evaluator_dev is None and self.data_silo.get_data_loader("dev"):

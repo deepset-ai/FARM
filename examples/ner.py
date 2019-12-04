@@ -32,7 +32,7 @@ evaluate_every = 100
 lang_model = "bert-base-german-cased"
 
 # 1.Create a tokenizer
-tokenizer = Tokenizer.from_pretrained(
+tokenizer = Tokenizer.load(
     pretrained_model_name_or_path=lang_model, do_lower_case=False
 )
 
@@ -65,9 +65,9 @@ model = AdaptiveModel(
 model, optimizer, lr_schedule = initialize_optimizer(
     model=model,
     learning_rate=2e-5,
-    warmup_proportion=0.1,
     n_batches=len(data_silo.loaders["train"]),
     n_epochs=n_epochs,
+    device=device,
 )
 
 # 6. Feed everything to the Trainer, which keeps care of growing our model into powerful plant and evaluates it from time to time

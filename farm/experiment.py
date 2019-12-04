@@ -93,11 +93,13 @@ def run_experiment(args):
     )
 
     # Init optimizer
+    optimizer_opts = dict(args.optimizer.optimizer_opts) if args.optimizer.optimizer_opts else None
+    schedule_opts = dict(args.optimizer.schedule_opts) if args.optimizer.schedule_opts else None
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
-        optim_opts={'name': 'AdamW', 'lr': args.parameter.learning_rate, 'correct_bias': False},
-        sched_opts={'name': 'WarmupLinearSchedule'},
-        warmup_proportion=args.parameter.warmup_proportion,
+        learning_rate=args.optimizer.learning_rate,
+        schedule_opts=schedule_opts,
+        optimizer_opts=optimizer_opts,
         use_amp=args.general.use_amp,
         n_batches=len(data_silo.loaders["train"]),
         grad_acc_steps=args.parameter.gradient_accumulation_steps,
@@ -126,6 +128,7 @@ def run_experiment(args):
     processor.save(f"{args.general.output_dir}/{model_name}")
     model.save(f"{args.general.output_dir}/{model_name}")
 
+    ml_logger.end_run()
 
 def get_adaptive_model(
     lm_output_type,

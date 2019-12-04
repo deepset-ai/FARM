@@ -1,6 +1,7 @@
 from importlib import import_module
 import logging
 import sys
+import inspect
 
 import torch
 from torch.nn.parallel import DistributedDataParallel
@@ -54,42 +55,46 @@ class WrappedDDP(DistributedDataParallel):
 
 
 def initialize_optimizer(model,
-                         optim_opts,
                          n_batches,
                          n_epochs,
                          device,
+                         learning_rate,
+                         optimizer_opts=None,
+                         schedule_opts=None,
                          distributed=False,
                          grad_acc_steps=1,
                          local_rank=-1,
-                         sched_opts=None,
                          use_amp=None,
-                         warmup_proportion=0.1):
+                        ):
+
+    if use_amp and not AMP_AVAILABLE:
+        raise ImportError(f'Got use_amp = {use_amp}, but cannot find apex. '
+                          'Please install Apex if you want to make use of automatic mixed precision. '
+                          'https://github.com/NVIDIA/apex')
 
     num_train_optimization_steps = calculate_optimization_steps(
         n_batches, grad_acc_steps, n_epochs, local_rank
     )
-
     # Log params
-    MlLogger.log_params(
-        {
-            "learning_rate": optim_opts['lr'] if 'lr' in optim_opts else 'optimizer default',
-            "warmup_proportion": warmup_proportion,
-            "use_amp": use_amp,
-            "num_train_optimization_steps": num_train_optimization_steps,
-        }
-    )
+    MlLogger.log_params({
+         "use_amp": use_amp,
+         "num_train_optimization_steps": num_train_optimization_steps,
+        })
+
+    # Use some defaults to simplify life of inexperienced users
+    if optimizer_opts is None:
+        optimizer_opts = {"name": "TransformersAdamW", "correct_bias": False, "weight_decay": 0.01}
+    optimizer_opts["lr"] = learning_rate
+
+    if schedule_opts is None:
+        schedule_opts = {"name": "WarmupLinearSchedule", "warmup_proportion": 0.1}
+    schedule_opts["t_total"] = num_train_optimization_steps
 
     # Get optimizer from pytorch, transformers or apex
-    optimizer = _get_optim(model, optim_opts)
+    optimizer = _get_optim(model, optimizer_opts)
 
     # Get learning rate schedule
-    scheduler = None
-    if sched_opts:
-        if 'warmup_steps' not in sched_opts:
-            sched_opts['warmup_steps'] = int(warmup_proportion * num_train_optimization_steps)
-        if 't_total' not in sched_opts:
-            sched_opts['t_total'] = num_train_optimization_steps
-        scheduler = _get_scheduler(optimizer, sched_opts)
+    scheduler = _get_scheduler(optimizer, schedule_opts)
 
     # Adjust for parallel training + amp
     model, optimizer = _optimize_model(model, device, local_rank, optimizer, distributed, use_amp)
@@ -100,13 +105,21 @@ def initialize_optimizer(model,
 def _get_optim(model, opts):
     """ Get the optimizer based on dictionary with options. Options are passed to the optimizer constructor.
 
+    TODO
     :param model: model to optimize
-    :param opts: config dictionary. MUST contain the 'name' key, which will be looked up in torch.optim.lr_scheduler,
-    transformers.optimization, or apex.optimizers. 'no_decay' can be given. Parameters containing any of those strings
+    :param opts: config dictionary that will be passed to optimizer together with the params
+    (e.g. lr, weight_decay, correct_bias ...). no_decay' can be given - parameters containing any of those strings
     will have weight_decay set to 0.
     :return: created optimizer
     """
-    optim_name = opts.pop('name')
+
+    optimizer_name = opts.pop('name', None)
+
+    # Logging
+    logger.info(f"Loading optimizer `{optimizer_name}`: '{opts}'")
+    MlLogger.log_params(opts)
+    MlLogger.log_params({"optimizer_name": optimizer_name})
+
     weight_decay = opts.pop('weight_decay', None)
     no_decay = opts.pop('no_decay', None)
 
@@ -128,44 +141,58 @@ def _get_optim(model, opts):
 
     # Import optimizer by checking in order: torch, transformers, apex and local imports
     try:
-        optim_constructor = getattr(import_module('torch.optim'), optim_name)
+        optim_constructor = getattr(import_module('torch.optim'), optimizer_name)
     except AttributeError:
         try:
-            optim_constructor = getattr(import_module('transformers.optimization'), optim_name)
+            optim_constructor = getattr(import_module('transformers.optimization'), optimizer_name)
         except AttributeError:
             try:
-                optim_constructor = getattr(import_module('apex.optimizers'), optim_name)
+                optim_constructor = getattr(import_module('apex.optimizers'), optimizer_name)
             except (AttributeError, ImportError):
                 try:
                     # Workaround to allow loading AdamW from transformers even though pytorch > 1.2 has now also a AdamW
-                    optim_constructor = getattr(sys.modules[__name__], optim_name)
+                    optim_constructor = getattr(sys.modules[__name__], optimizer_name)
                 except (AttributeError, ImportError):
-                    raise AttributeError(f"Optimizer '{optim_name}' not found in 'torch', 'transformers', 'apex' or 'local imports")
+                    raise AttributeError(f"Optimizer '{optimizer_name}' not found in 'torch', 'transformers', 'apex' or 'local imports")
 
-    logger.info(f"Using optimizer '{optim_name}'")
     return optim_constructor(optimizable_parameters)
 
 
 def _get_scheduler(optimizer, opts):
     """ Get the scheduler based on dictionary with options. Options are passed to the scheduler constructor.
-
-    :param optimizer: optimizer whose learning rate to control
-    :param opts: config dictionary. MUST contain the 'name' key, which will be looked up in torch.optim.lr_scheduler
+    TODO
+    :param schedule_name: name which will be looked up in torch.optim.lr_scheduler
     or transformers.optimization
+    :param optimizer: optimizer whose learning rate to control
+    :param opts: dictionary of args to be passed to constructor of schedule
     :return: created scheduler
     """
-    sched_name = opts.pop('name')
-
+    schedule_name = opts.pop('name', None)
     try:
-        sched_constructor = getattr(import_module('torch.optim.lr_scheduler'), sched_name)
+        sched_constructor = getattr(import_module('torch.optim.lr_scheduler'), schedule_name)
     except AttributeError:
         try:
             # TODO this will switch soon in transformers: https://github.com/huggingface/transformers/pull/1832
-            sched_constructor = getattr(import_module('transformers.optimization'), sched_name)
+            sched_constructor = getattr(import_module('transformers.optimization'), schedule_name)
         except AttributeError:
-            raise AttributeError(f"Scheduler '{sched_name}' not found in 'torch' or 'transformers'")
+            raise AttributeError(f"Scheduler '{schedule_name}' not found in 'torch' or 'transformers'")
 
-    logger.info(f"Using scheduler '{sched_name}'")
+    logger.info(f"Using scheduler '{schedule_name}'")
+
+    # get supported args of constructor
+    allowed_args = inspect.signature(sched_constructor).parameters.keys()
+
+    # convert from warmup proporation to steps if required
+    if 'warmup_steps' in allowed_args and 'warmup_steps' not in opts:
+        opts['warmup_steps'] = int(opts["warmup_proportion"] * opts["t_total"])
+
+    # only pass args that are supported by the constructor
+    opts = {k: v for k, v in opts.items() if k in allowed_args}
+
+    # Logging
+    logger.info(f"Loading schedule `{schedule_name}`: '{opts}'")
+    MlLogger.log_params(opts)
+    MlLogger.log_params({"schedule_name": schedule_name})
     return sched_constructor(optimizer, **opts)
 
 
@@ -173,7 +200,6 @@ def calculate_optimization_steps(n_batches, grad_acc_steps, n_epochs, local_rank
     optimization_steps = int(n_batches / grad_acc_steps) * n_epochs
     if local_rank != -1:
         optimization_steps = optimization_steps // torch.distributed.get_world_size()
-    logger.info(f"Number of optimization steps: {optimization_steps:,}")
     return optimization_steps
 
 
@@ -203,6 +229,9 @@ def _optimize_model(model, device, local_rank, optimizer=None, distributed=False
 def _init_amp(model, device, optimizer=None, use_amp=None):
     model = model.to(device)
     if use_amp and optimizer:
-        model, optimizer = amp.initialize(model, optimizer, opt_level=use_amp)
+        if AMP_AVAILABLE:
+            model, optimizer = amp.initialize(model, optimizer, opt_level=use_amp)
+        else:
+            logger.warning(f"Can't find AMP although you specificed to use amp with level {use_amp}. Will continue without AMP ...")
 
     return model, optimizer

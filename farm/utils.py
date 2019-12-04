@@ -110,6 +110,10 @@ class MLFlowLogger(BaseMLLogger):
     def log_artifacts(cls, dir_path, artifact_path=None):
         mlflow.log_artifacts(dir_path, artifact_path)
 
+    @classmethod
+    def end_run(cls):
+        mlflow.end_run()
+
 
 class TensorBoardLogger(BaseMLLogger):
     """
