@@ -14,8 +14,8 @@ from farm.utils import set_all_seeds, initialize_device_settings
 import logging
 
 
-def test_ner(caplog):
-    caplog.set_level(logging.CRITICAL)
+def test_ner():
+    #caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)
@@ -23,6 +23,7 @@ def test_ner(caplog):
     batch_size = 2
     evaluate_every = 1
     lang_model = "bert-base-german-cased"
+    use_amp = 'O1'
 
     tokenizer = Tokenizer.load(
         pretrained_model_name_or_path=lang_model, do_lower_case=False
@@ -57,12 +58,12 @@ def test_ner(caplog):
 
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
-        optim_opts={'name': 'AdamW', 'lr': 2E-05},
+        learning_rate=2e-05,
+        schedule_opts=None,
         n_batches=len(data_silo.loaders["train"]),
-        n_epochs=1,
+        n_epochs=n_epochs,
         device=device,
-        sched_opts={'name': 'WarmupCosineSchedule'},
-        use_amp='O1')
+        use_amp=use_amp)
 
     trainer = Trainer(
         optimizer=optimizer,
@@ -80,11 +81,13 @@ def test_ner(caplog):
     processor.save(save_dir)
 
     basic_texts = [
-        {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei"},
+        {"text": "1980 kam der Crown von Toyota"},
     ]
-    model = Inferencer.load(save_dir)
-    result = model.inference_from_dicts(dicts=basic_texts,use_multiprocessing=False)
-    assert result[0]["predictions"][0]["context"] == "sagte"
+    model = Inferencer.load(save_dir, gpu=True)
+    #TODO convert_iob_to_simple_tags seems somehow broken - returns empty list
+    result = model.inference_from_dicts(dicts=basic_texts, use_multiprocessing=False)
+    print(result)
+    assert result[0]["predictions"][0]["context"] == "Crown"
     assert isinstance(result[0]["predictions"][0]["probability"], np.float32)
 
 
