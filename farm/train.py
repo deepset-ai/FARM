@@ -5,10 +5,10 @@ import torch
 from tqdm import tqdm
 
 from farm.utils import MLFlowLogger as MlLogger
-from farm.utils import format_log
 from farm.eval import Evaluator
 from farm.data_handler.data_silo import DataSilo
-from farm.visual.ascii.images import GROWING_TREE, BUSH_SEP
+from farm.visual.ascii.images import GROWING_TREE
+from farm.modeling.adaptive_model import AdaptiveModel
 
 logger = logging.getLogger(__name__)
 
@@ -227,12 +227,8 @@ class Trainer:
         evalnr = 0
         for epoch in range(1, self.epochs + 1):
             for step, batch in enumerate(
-                # NOTE: temporarily disabling tqdm here, for some reason this gets error
-                # "cannot join current thread" looks like tqdm issue 613
-                # self.data_loader_train
                 tqdm(self.data_loader_train, desc=f"Train epoch {epoch}/{self.epochs}")
             ):
-                # logger.info("TRAINING EPOCH {} STEP {}".format(epoch, step))
                 # Move batch of samples to device
                 batch = {key: batch[key].to(self.device) for key in batch}
 
@@ -269,13 +265,8 @@ class Trainer:
         if self.evaluator_test is not None:
             if self.early_stopping and self.early_stopping.save_dir:
                 logger.info("Restoring best model so far from {}".format(self.early_stopping.save_dir))
-                # if we have early stopping and saved a model, re-store it now to the same device
-                # We are getting an exception when doing this
-                model_device_type = next(iter(model.parameters())).device.type
                 lm_name = model.language_model.name
-                logger.info("DEBUG: loading for class {}".format(model.__class__))
-                model = model.__class__.load(
-                    self.early_stopping.save_dir, model_device_type, lm_name=lm_name)
+                model = AdaptiveModel.load(self.early_stopping.save_dir, self.device, lm_name=lm_name)
                 model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
             result = self.evaluator_test.eval(model)
             self.evaluator_test.log_results(result, "Test", self.global_step)
