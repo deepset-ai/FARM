@@ -58,6 +58,12 @@ class LanguageModel(nn.Module):
         raise NotImplementedError
 
     @classmethod
+    def from_scratch(cls, model_type, vocab_size):
+        if model_type.lower() == "bert":
+            model = Bert
+        return model.from_scratch(vocab_size)
+
+    @classmethod
     def load(cls, pretrained_model_name_or_path, n_added_tokens=0, **kwargs):
         """
         Load a pretrained language model either by
@@ -113,6 +119,8 @@ class LanguageModel(nn.Module):
                 language_model = cls.subclasses["Bert"].load(pretrained_model_name_or_path, **kwargs)
             elif 'xlnet' in pretrained_model_name_or_path:
                 language_model = cls.subclasses["XLNet"].load(pretrained_model_name_or_path, **kwargs)
+            elif "albert" in pretrained_model_name_or_path:
+                language_model = cls.subclasses["Albert"].load(pretrained_model_name_or_path, **kwargs)
             else:
                 language_model = None
 
@@ -263,6 +271,15 @@ class Bert(LanguageModel):
         super(Bert, self).__init__()
         self.model = None
         self.name = "bert"
+
+    @classmethod
+    def from_scratch(cls, vocab_size, name="bert", language="en"):
+        bert = cls()
+        bert.name = name
+        bert.language = language
+        config = BertConfig(vocab_size_or_config_json_file=vocab_size)
+        bert.model = BertModel(config)
+        return bert
 
     @classmethod
     def load(cls, pretrained_model_name_or_path, language=None, **kwargs):
