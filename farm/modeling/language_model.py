@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 from transformers.modeling_bert import BertModel, BertConfig
 from transformers.modeling_roberta import RobertaModel, RobertaConfig
 from transformers.modeling_xlnet import XLNetModel, XLNetConfig
-# from transformers.modeling_albert import AlbertModel, AlbertConfig
+from transformers.modeling_albert import AlbertModel, AlbertConfig
 from transformers.modeling_utils import SequenceSummary
 
 
@@ -52,6 +52,12 @@ class LanguageModel(nn.Module):
 
     def forward(self, input_ids, padding_mask, **kwargs):
         raise NotImplementedError
+
+    @classmethod
+    def from_scratch(cls, model_type, vocab_size):
+        if model_type.lower() == "bert":
+            model = Bert
+        return model.from_scratch(vocab_size)
 
     @classmethod
     def load(cls, pretrained_model_name_or_path, n_added_tokens=0, **kwargs):
@@ -93,13 +99,15 @@ class LanguageModel(nn.Module):
                 language_model = cls.subclasses["Bert"].load(pretrained_model_name_or_path, **kwargs)
             elif 'xlnet' in pretrained_model_name_or_path:
                 language_model = cls.subclasses["XLNet"].load(pretrained_model_name_or_path, **kwargs)
+            elif "albert" in pretrained_model_name_or_path:
+                language_model = cls.subclasses["Albert"].load(pretrained_model_name_or_path, **kwargs)
             else:
                 language_model = None
 
         if not language_model:
             raise Exception(
                 f"Model not found for {pretrained_model_name_or_path}. Either supply the local path for a saved model "
-                f"or one of bert/roberta/xlnet models that can be downloaded from remote. Here's the list of available "
+                f"or one of bert/roberta/xlnet/albert models that can be downloaded from remote. Here's the list of available "
                 f"models: https://farm.deepset.ai/api/modeling.html#farm.modeling.language_model.LanguageModel.load"
             )
 
@@ -243,6 +251,15 @@ class Bert(LanguageModel):
         super(Bert, self).__init__()
         self.model = None
         self.name = "bert"
+
+    @classmethod
+    def from_scratch(cls, vocab_size, name="bert", language="en"):
+        bert = cls()
+        bert.name = name
+        bert.language = language
+        config = BertConfig(vocab_size_or_config_json_file=vocab_size)
+        bert.model = BertModel(config)
+        return bert
 
     @classmethod
     def load(cls, pretrained_model_name_or_path, language=None, **kwargs):
