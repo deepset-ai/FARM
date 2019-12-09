@@ -42,7 +42,7 @@ label_list = ["OTHER", "OFFENSE"]
 metric = "f1_macro"
 
 processor = TextClassificationProcessor(tokenizer=tokenizer,
-                                        max_seq_len=64,
+                                        max_seq_len=128,
                                         data_dir="../data/germeval18",
                                         label_list=label_list,
                                         metric=metric,
