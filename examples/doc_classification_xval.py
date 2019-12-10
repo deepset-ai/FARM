@@ -217,11 +217,12 @@ def train_on_split(silo_to_use, foldnr):
     # according to some metric and stop training when no improvement is happening for some iterations.
     # NOTE: if we would use a different save directory for each fold, we could afterwards use a the
     # nfolds best models in an ensemble!
+    save_dir = "saved_models/bert-german-doc-tutorial-es-{}".format(foldnr)
     earlystopping = EarlyStopping(
         metric="f1_offense", mode="max",   # use the metric from our own metrics function instead of loss
         # metric="f1_macro", mode="max",  # use f1_macro from the dev evaluator of the trainer
         # metric="loss", mode="min",   # use loss from the dev evaluator of the trainer
-        save_dir="saved_models/bert-german-doc-tutorial-es",  # where to save the best model
+        save_dir=save_dir,  # where to save the best model
         patience=5    # number of evaluations to wait for improvement before terminating the training
     )
 
@@ -239,10 +240,8 @@ def train_on_split(silo_to_use, foldnr):
     model = trainer.train(model)
 
     # Since we used early stopping, restore the best model from there.
-    model_device_type = next(iter(model.parameters())).device.type
     lm_name = model.language_model.name
-    model = model.__class__.load(
-        earlystopping.save_dir, model_device_type, lm_name=lm_name)
+    model = AdaptiveModel.load(earlystopping.save_dir, trainer.device, lm_name=lm_name)
     model.connect_heads_with_processor(silo_to_use.processor.tasks, require_labels=True)
     return model
 
@@ -251,6 +250,8 @@ def train_on_split(silo_to_use, foldnr):
 # on the test set of each fold
 # Remember all the results for overall metrics over all predictions of all folds and for averaging
 allresults = []
+bestfold = None
+bestf1_offense = -1
 for foldnr, silo in enumerate(silos):
     model = train_on_split(silo, foldnr)
     # make an evaluator for the evaluation on the test set
@@ -261,12 +262,18 @@ for foldnr, silo in enumerate(silos):
     )
     result = evaluator_test.eval(model)
     allresults.append(result)
+    # get the f1_offense metric
+    f1_offense = result[0]["f1_offense"]
+    if f1_offense > bestf1_offense:
+        bestf1_offense = f1_offense
+        bestfold = foldnr
 
-# evaluate the results
+# Save the per-fold results to json for a separate, more detailed analysis
 import json
 with open("doc_classification_xval.results.json", "wt") as fp:
     json.dump(allresults, fp)
 
+# Combine the per-fold labels/predictions so we can calculate overall metrics
 all_preds = []
 all_labels = []
 for result in allresults:
@@ -278,6 +285,7 @@ xval_f1_macro = f1_score(all_labels, all_preds, labels=label_list, average="macr
 xval_f1_offense = f1_score(all_labels, all_preds, labels=label_list, pos_label="OFFENSE")
 xval_f1_other = f1_score(all_labels, all_preds, labels=label_list, pos_label="OTHER")
 xval_mcc = matthews_corrcoef(all_labels, all_preds)
+
 # TODO: use logger
 print("XVAL F1 MICRO:   ", xval_f1_micro)
 print("XVAL F1 MACRO:   ", xval_f1_macro)
@@ -285,14 +293,19 @@ print("XVAL F1 OFFENSE: ", xval_f1_offense)
 print("XVAL F1 OTHER:   ", xval_f1_other)
 print("XVAL MCC:        ", xval_mcc)
 
-# TODO: the following is rubbish, instead, also evaluate each individual model on the
-# testset, save the results but do not combine, list each result separately or get average of values
-# evaluate on the original test set
+# Just for illustration, use the best model from the best xval val for evaluation on
+# the original (still unseen) test set.
 evaluator_origtest = Evaluator(
     data_loader=data_silo.get_data_loader("test"),
     tasks=data_silo.processor.tasks,
     device=device
 )
+# restore model from the best fold
+lm_name = model.language_model.name
+save_dir = "saved_models/bert-german-doc-tutorial-es-{}".format(bestfold)
+model = AdaptiveModel.load(save_dir, device, lm_name=lm_name)
+model.connect_heads_with_processor(data_silo.processor.tasks, require_labels=True)
+
 result = evaluator_origtest.eval(model)
 print("TEST F1 MICRO:   ", result[0]["f1_micro"])
 print("TEST F1 MACRO:   ", result[0]["f1_macro"])
