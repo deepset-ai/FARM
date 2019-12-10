@@ -161,13 +161,14 @@ class Evaluator:
             for metric_name, metric_val in head.items():
                 # log with ML framework (e.g. Mlflow)
                 if logging:
-                    if isinstance(metric_val, numbers.Number):
-                        MlLogger.log_metrics(
-                            metrics={
-                                f"{dataset_name}_{metric_name}_{head['task_name']}": metric_val
-                            },
-                            step=steps,
-                        )
+                    if not metric_name.startswith("_"):
+                        if isinstance(metric_val, numbers.Number):
+                            MlLogger.log_metrics(
+                                metrics={
+                                    f"{dataset_name}_{metric_name}_{head['task_name']}": metric_val
+                                },
+                                step=steps,
+                            )
                 # print via standard python logger
                 if print:
                     if metric_name == "report":
