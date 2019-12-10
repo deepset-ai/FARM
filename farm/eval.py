@@ -175,4 +175,5 @@ class Evaluator:
                             metric_val = metric_val[:7500] + "\n ............................. \n" + metric_val[-500:]
                         logger.info("{}: \n {}".format(metric_name, metric_val))
                     else:
-                        logger.info("{}: {}".format(metric_name, metric_val))
+                        if not metric_name.startswith("_"):
+                            logger.info("{}: {}".format(metric_name, metric_val))
