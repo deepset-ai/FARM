@@ -39,6 +39,10 @@ class DataSilo:
         :type distributed: bool
         :param automatic_loading: Set to False, if you don't want to automatically load data at initialization.
         :type automatic_loading: bool
+        :param max_multiprocessing_chunksize: max possible value for chunksize as calculated by `calc_chunksize()`
+            in `farm.utils`. For certain cases like lm_finetuning, a smaller value can be set, as the default chunksize
+            values are rather large that might cause memory issues.
+        :type max_multiprocessing_chunksize: int
 
         """
         self.distributed = distributed
