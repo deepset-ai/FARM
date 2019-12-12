@@ -29,7 +29,7 @@ class DataSilo:
     calculate and display some statistics.
      """
 
-    def __init__(self, processor, batch_size, distributed=False, automatic_loading=True):
+    def __init__(self, processor, batch_size, distributed=False, automatic_loading=True, max_multiprocessing_chunksize=2000):
         """
         :param processor: A dataset specific Processor object which will turn input (file or dict) into a Pytorch Dataset.
         :type processor: Processor
@@ -39,6 +39,10 @@ class DataSilo:
         :type distributed: bool
         :param automatic_loading: Set to False, if you don't want to automatically load data at initialization.
         :type automatic_loading: bool
+        :param max_multiprocessing_chunksize: max possible value for chunksize as calculated by `calc_chunksize()`
+            in `farm.utils`. For certain cases like lm_finetuning, a smaller value can be set, as the default chunksize
+            values are rather large that might cause memory issues.
+        :type max_multiprocessing_chunksize: int
 
         """
         self.distributed = distributed
@@ -47,6 +51,7 @@ class DataSilo:
         self.batch_size = batch_size
         self.class_weights = None
         self.max_processes = 128
+        self.max_multiprocessing_chunksize = max_multiprocessing_chunksize
         # In most cases we want to load all data automatically, but in some cases we rather want to do this later or
         # load from dicts instead of file (https://github.com/deepset-ai/FARM/issues/85)
         if automatic_loading:
@@ -86,7 +91,7 @@ class DataSilo:
                         random.shuffle(dicts)
 
         num_dicts = len(dicts)
-        multiprocessing_chunk_size, num_cpus_used = calc_chunksize(num_dicts)
+        multiprocessing_chunk_size, num_cpus_used = calc_chunksize(num_dicts, max_chunksize=self.max_multiprocessing_chunksize)
 
         with ExitStack() as stack:
             p = stack.enter_context(mp.Pool(processes=num_cpus_used))
