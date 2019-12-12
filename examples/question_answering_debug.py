@@ -22,7 +22,7 @@ logging.basicConfig(
 
 ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
 # ml_logger = MLFlowLogger(tracking_uri="")
-ml_logger.init_experiment(experiment_name="german_qa", run_name="multi_nq")
+ml_logger.init_experiment(experiment_name="german_qa", run_name="ahmeds_model")
 
 #########################
 ######## Settings
@@ -34,12 +34,12 @@ max_seq_len = 512
 n_epochs = 2
 evaluate_every = 5000
 # base_LM_model = "bert-base-multilingual-uncased"
-base_LM_model = "../saved_models/qa_multi"
-train_filename = ""
-dev_filename=""
+base_LM_model = "../saved_models/multi_squad_en_it_de_farm"
+train_filename = "squad20/train-v2.0.json"
+dev_filename = "squad20/dev-v2.0.json"
 # dev_filename = None
-save_dir = "../saved_models/qa_multi"
-inference_file = "../data/MLQA_V1/test/test-context-en-question-en.json"
+save_dir = "../saved_models/multi_squad_en_it_de_farm"
+inference_file = "../data/MLQA_V1/test/test-context-en-question-ar.json"
 predictions_file = save_dir + "/predictions.json"
 full_predictions_file = save_dir + "/full_predictions.json"
 inference_multiprocessing = True
@@ -47,8 +47,9 @@ train = False
 inference = True
 
 if train:
-    # 1.Create a tokenizeren
-    tokenizer = Tokenizer.load(pretrained_model_name_or_path=base_LM_model)
+    # 1.Create a tokenizer
+    tokenizer = Tokenizer.load(pretrained_model_name_or_path=base_LM_model,
+                               tokenizer_class="bert")
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
     label_list = ["start_token", "end_token"]
     metric = "squad"
