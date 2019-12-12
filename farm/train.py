@@ -262,12 +262,16 @@ class Trainer:
                 self.global_step += 1
             if do_stopping:
                 break
-        if self.evaluator_test is not None:
-            if self.early_stopping and self.early_stopping.save_dir:
-                logger.info("Restoring best model so far from {}".format(self.early_stopping.save_dir))
-                lm_name = model.language_model.name
-                model = AdaptiveModel.load(self.early_stopping.save_dir, self.device, lm_name=lm_name)
-                model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
+
+        # With early stopping we want to restore the best model
+        if self.early_stopping and self.early_stopping.save_dir:
+            logger.info("Restoring best model so far from {}".format(self.early_stopping.save_dir))
+            lm_name = model.language_model.name
+            model = AdaptiveModel.load(self.early_stopping.save_dir, self.device, lm_name=lm_name)
+            model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
+
+        # Eval on test set
+        if self.evaluator_test:
             result = self.evaluator_test.eval(model)
             self.evaluator_test.log_results(result, "Test", self.global_step)
         return model

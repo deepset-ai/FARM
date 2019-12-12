@@ -8,9 +8,11 @@ import random
 
 import numpy as np
 from sklearn.utils.class_weight import compute_class_weight
-from torch.utils.data import ConcatDataset, Dataset
+from torch.utils.data import ConcatDataset, Dataset, Subset
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
+import torch
+from sklearn.model_selection import StratifiedKFold, KFold
 from tqdm import tqdm
 
 from farm.data_handler.dataloader import NamedDataLoader
@@ -337,3 +339,91 @@ class DataSilo:
         :param dataset: Choose from train, dev or test
         """
         return self.counts[dataset]
+
+# For performing cross validation, we really want to combine all the instances from all
+# the sets or just some of the sets, then create a different data silo instance for each fold.
+# Here, we combine the instances from the train and dev sets to perform xcross validation,
+# then create a different data silo instance with train, dev and test sets for each fold
+# We use our own DataSiloTmp class to just represent the subsets for train/dev/test for each fold
+# as we need it
+class DataSilo4Xval:
+    def __init__(self, origsilo, trainset, devset, testset):
+        self.tensor_names = origsilo.tensor_names
+        self.data = {"train":trainset, "dev":devset, "test":testset}
+        self.processor = origsilo.processor
+        self.batch_size = origsilo.batch_size
+        # should not be necessary, xval makes no sense with huge data
+        # sampler_train = DistributedSampler(self.data["train"])
+        sampler_train = RandomSampler(trainset)
+
+        self.data_loader_train = NamedDataLoader(
+            dataset=trainset,
+            sampler=sampler_train,
+            batch_size=self.batch_size,
+            tensor_names=self.tensor_names,
+        )
+        self.data_loader_dev = NamedDataLoader(
+            dataset=devset,
+            sampler=SequentialSampler(devset),
+            batch_size=self.batch_size,
+            tensor_names=self.tensor_names,
+        )
+        self.data_loader_test = NamedDataLoader(
+            dataset=testset,
+            sampler=SequentialSampler(testset),
+            batch_size=self.batch_size,
+            tensor_names=self.tensor_names,
+        )
+        self.loaders = {
+            "train": self.data_loader_train,
+            "dev": self.data_loader_dev,
+            "test": self.data_loader_test,
+        }
+
+    def get_data_loader(self, which):
+        return self.loaders[which]
+
+    @staticmethod
+    def make(datasilo, sets=["train", "dev", "test"], n_splits=5, stratified=True,
+             shuffle=True, random_state=None, dev_split=0.2):
+        """
+        Create number of folds data-silo-like objects which can be used for training from the
+        original data silo passed on.
+
+        :param datasilo: the data silo that contains the original data
+        :param sets: which sets to use to create the xval folds
+        :param n_splits: number of folds to create
+        :param stratified: if class stratificiation should be done
+        :param shuffle: shuffle each class' samples before splitting
+        :param random_state: random state for shuffling
+        :param dev_split: size of the dev set for a fold, held out from the training set
+        """
+        setstoconcat = [datasilo.data[setname] for setname in sets]
+        ds_all = ConcatDataset(setstoconcat)
+        idxs = list(range(len(ds_all)))
+        if stratified:
+            # get all the labels for stratification
+            ytensors = [t[3][0] for t in ds_all]
+            Y = torch.stack(ytensors)
+            xval = StratifiedKFold(n_splits=n_splits, shuffle=shuffle, random_state=random_state)
+            xval_split = xval.split(idxs,Y)
+        else:
+            xval = KFold(n_splits=n_splits, shuffle=shuffle, random_state=random_state)
+            xval_split = xval.split(idxs)
+        # for each fold create a DataSilo4Xval instance, where the training set is further
+        # divided into actual train and dev set
+        silos = []
+        for train_idx, test_idx in xval_split:
+            n_dev = int(dev_split * len(train_idx))
+            n_actual_train = len(train_idx) - n_dev
+            # TODO: this split into actual train and test set could/should also be stratified, for now
+            # we just do this by taking the first/last indices from the train set (which should be
+            # shuffled by default)
+            actual_train_idx = train_idx[:n_actual_train]
+            dev_idx = train_idx[n_actual_train:]
+            # create the actual datasets
+            ds_train = Subset(ds_all, actual_train_idx)
+            ds_dev = Subset(ds_all, dev_idx)
+            ds_test = Subset(ds_all, test_idx)
+            silos.append(DataSilo4Xval(datasilo, ds_train, ds_dev, ds_test))
+        return silos
