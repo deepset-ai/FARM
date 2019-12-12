@@ -274,7 +274,8 @@ def _get_random_sentence(all_baskets, forbidden_doc):
     # Similar to original BERT tf repo: This outer loop should rarely go for more than one iteration for large
     # corpora. However, just to be careful, we try to make sure that
     # the random document is not the same as the document we're processing.
-    for _ in range(10):
+    sentence = None
+    for _ in range(100):
         rand_doc_idx = random.randrange(len(all_baskets))
         rand_doc = all_baskets[rand_doc_idx]["doc"]
 
@@ -283,6 +284,8 @@ def _get_random_sentence(all_baskets, forbidden_doc):
             rand_sent_idx = random.randrange(len(rand_doc))
             sentence = rand_doc[rand_sent_idx]
             break
+    if sentence is None:
+        raise Exception("Failed to pick out a suitable random substitute for next sentence")
     return sentence
 
 
