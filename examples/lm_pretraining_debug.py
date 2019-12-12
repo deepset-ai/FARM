@@ -24,18 +24,19 @@ logging.basicConfig(
 )
 
 ml_logger = MLFlowLogger(tracking_uri="")
-ml_logger.init_experiment(experiment_name="german_qa", run_name="multi_nq")
+ml_logger.init_experiment(experiment_name="from_scratch", run_name="debug")
 
 #########################
 ######## Settings
 ########################
-set_all_seeds(seed=42)
+set_all_seeds(seed=39)
 device, n_gpu = initialize_device_settings(use_cuda=True)
+learning_rate = 1e-5
 batch_size = 45
-max_seq_len = 512
-n_epochs = 2
-evaluate_every = 5000
-vocab_size=30522
+max_seq_len = 128
+n_epochs = 100
+evaluate_every = 50
+vocab_size = 30522
 # dev_filename = None
 save_dir = "../saved_models/from_scratch"
 predictions_file = save_dir + "/predictions.json"
@@ -44,7 +45,6 @@ inference_multiprocessing = True
 train = True
 inference = True
 
-
 if train:
     # 1.Create a tokenizer
     tokenizer = BertTokenizer("../saved_models/qa_model_medium/vocab.txt")
@@ -52,9 +52,9 @@ if train:
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
     processor = BertStyleLMProcessor(
         data_dir="../data/lm_finetune_nips",
-        tokenizer=tokenizer, max_seq_len=128,
-        train_filename="test_small.txt",
-        dev_filename=None,
+        tokenizer=tokenizer, max_seq_len=max_seq_len,
+        train_filename="tiny.txt",
+        dev_filename="tiny.txt",
         test_filename=None
         )
 
@@ -79,7 +79,7 @@ if train:
     # 5. Create an optimizer
     optimizer, warmup_linear = initialize_optimizer(
         model=model,
-        learning_rate=3e-5,
+        learning_rate=learning_rate,
         warmup_proportion=0.1,
         n_batches=len(data_silo.loaders["train"]),
         n_epochs=n_epochs,
