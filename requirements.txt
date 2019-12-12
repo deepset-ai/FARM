@@ -16,8 +16,8 @@ sklearn
 seqeval
 mlflow==1.0.0
 # huggingface repository
-transformers==2.1.1
-# accessing dictionary elements with dot notation
+transformers==2.2.1
+# accessing dictionary elements with dot otation
 dotmap==1.3.0
 # for inference-rest-apis
 flask
