@@ -1,5 +1,6 @@
 # fmt: off
 import logging
+from pathlib import Path
 
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import TextClassificationProcessor
@@ -45,7 +46,7 @@ metric = "f1_macro"
 
 processor = TextClassificationProcessor(tokenizer=tokenizer,
                                         max_seq_len=128,
-                                        data_dir="../data/germeval18",
+                                        data_dir=Path("../data/germeval18"),
                                         label_list=label_list,
                                         metric=metric,
                                         label_column_name="coarse_label"
@@ -95,7 +96,7 @@ trainer = Trainer(
 model = trainer.train(model)
 
 # 8. Hooray! You have a model. Store it:
-save_dir = "saved_models/bert-german-doc-tutorial"
+save_dir = Path("saved_models/bert-german-doc-tutorial")
 model.save(save_dir)
 processor.save(save_dir)
 

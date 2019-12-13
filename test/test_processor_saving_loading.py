@@ -1,4 +1,6 @@
 import logging
+from pathlib import Path
+
 from farm.data_handler.processor import TextClassificationProcessor
 from farm.modeling.tokenization import Tokenizer
 from farm.utils import set_all_seeds
@@ -15,7 +17,7 @@ def test_processor_saving_loading(caplog):
 
     processor = TextClassificationProcessor(tokenizer=tokenizer,
                                             max_seq_len=128,
-                                            data_dir="samples/doc_class",
+                                            data_dir=Path("samples/doc_class"),
                                             train_filename="train-sample.tsv",
                                             dev_filename=None,
                                             test_filename=None,
@@ -24,14 +26,14 @@ def test_processor_saving_loading(caplog):
                                             label_list=["OTHER", "OFFENSE"],
                                             metrics=["f1_macro"]
                                             )
-    dicts = processor.file_to_dicts(file="samples/doc_class/train-sample.tsv")
+    dicts = processor.file_to_dicts(file=Path("samples/doc_class/train-sample.tsv"))
     data, tensor_names = processor.dataset_from_dicts(dicts)
 
-    save_dir = "testsave/processor"
+    save_dir = Path("testsave/processor")
     processor.save(save_dir)
 
     processor = processor.load_from_dir(save_dir)
-    dicts = processor.file_to_dicts(file="samples/doc_class/train-sample.tsv")
+    dicts = processor.file_to_dicts(file=Path("samples/doc_class/train-sample.tsv"))
     data_loaded, tensor_names_loaded = processor.dataset_from_dicts(dicts)
 
     assert tensor_names == tensor_names_loaded

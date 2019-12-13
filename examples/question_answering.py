@@ -2,6 +2,7 @@
 import logging
 import os
 import pprint
+from pathlib import Path
 
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import SquadProcessor
@@ -51,7 +52,7 @@ processor = SquadProcessor(
     train_filename=train_filename,
     dev_filename=dev_filename,
     test_filename=None,
-    data_dir="../data/squad20",
+    data_dir=Path("../data/squad20"),
 )
 
 
@@ -95,7 +96,7 @@ trainer = Trainer(
 model = trainer.train(model)
 
 # 8. Hooray! You have a model. Store it:
-save_dir = "../saved_models/bert-english-qa-tutorial"
+save_dir = Path("../saved_models/bert-english-qa-tutorial")
 model.save(save_dir)
 processor.save(save_dir)
 

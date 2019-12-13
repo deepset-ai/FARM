@@ -5,6 +5,7 @@ import random
 import tarfile
 import tempfile
 from itertools import islice
+from pathlib import Path
 
 import pandas as pd
 from requests import get
@@ -128,17 +129,17 @@ def write_squad_predictions(predictions, out_filename, predictions_filename=None
             predictions_json[x] = ""
 
     os.makedirs("model_output", exist_ok=True)
-    filepath = os.path.join("model_output",out_filename)
+    filepath = "model_output" /out_filename
     json.dump(predictions_json, open(filepath, "w"))
     logger.info(f"Written Squad predictions to: {filepath}")
 
 
 def _download_extract_downstream_data(input_file, proxies=None):
     # download archive to temp dir and extract to correct position
-    full_path = os.path.realpath(input_file)
-    directory = os.path.dirname(full_path)
-    taskname = directory.split("/")[-1]
-    datadir = "/".join(directory.split("/")[:-1])
+    full_path = Path(os.path.realpath(input_file))
+    directory = full_path.parent
+    taskname = directory.stem
+    datadir = directory.parent
     logger.info(
         "downloading and extracting file {} to dir {}".format(taskname, datadir)
     )
@@ -167,7 +168,7 @@ def _download_extract_downstream_data(input_file, proxies=None):
 
 def _conll03get(dataset, directory, language):
     # open in binary mode
-    with open(os.path.join(directory, f"{dataset}.txt"), "wb") as file:
+    with open(directory / f"{dataset}.txt", "wb") as file:
         # get request
         response = get(DOWNSTREAM_TASK_MAP[f"conll03{language}{dataset}"])
         # write to file
@@ -378,6 +379,8 @@ def mask_random_words(tokens, vocab, token_groups=None, max_predictions_per_seq=
 
 
 def is_json(x):
+    if issubclass(type(x), Path):
+        return True
     try:
         json.dumps(x)
         return True
