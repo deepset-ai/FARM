@@ -2,7 +2,7 @@
 import logging
 import json
 
-from farm.data_handler.data_silo import DataSilo, DataSilo4Xval
+from farm.data_handler.data_silo import DataSilo, DataSiloForCrossVal
 from farm.data_handler.processor import TextClassificationProcessor
 from farm.modeling.optimization import initialize_optimizer
 from farm.modeling.adaptive_model import AdaptiveModel
@@ -92,7 +92,7 @@ data_silo = DataSilo(
     batch_size=batch_size)
 
 # Load one silo for each fold in our cross-validation
-silos = DataSilo4Xval.make(data_silo, n_splits=xval_folds)
+silos = DataSiloForCrossVal.make(data_silo, n_splits=xval_folds)
 
 # the following steps should be run for each of the folds of the cross validation, so we put them
 # into a function
@@ -194,13 +194,13 @@ xval_f1_offense = f1_score(all_labels, all_preds, labels=label_list, pos_label="
 xval_f1_other = f1_score(all_labels, all_preds, labels=label_list, pos_label="OTHER")
 xval_mcc = matthews_corrcoef(all_labels, all_preds)
 
-# TODO: use logger
-print("XVAL F1 MICRO:   ", xval_f1_micro)
-print("XVAL F1 MACRO:   ", xval_f1_macro)
-print("XVAL F1 OFFENSE: ", xval_f1_offense)
-print("XVAL F1 OTHER:   ", xval_f1_other)
-print("XVAL MCC:        ", xval_mcc)
+logger.info("XVAL F1 MICRO:   ", xval_f1_micro)
+logger.info("XVAL F1 MACRO:   ", xval_f1_macro)
+logger.info("XVAL F1 OFFENSE: ", xval_f1_offense)
+logger.info("XVAL F1 OTHER:   ", xval_f1_other)
+logger.info("XVAL MCC:        ", xval_mcc)
 
+# -----------------------------------------------------
 # Just for illustration, use the best model from the best xval val for evaluation on
 # the original (still unseen) test set.
 logger.info("###### Final Eval on hold out test set using best model #####")
@@ -216,10 +216,10 @@ model = AdaptiveModel.load(save_dir, device, lm_name=lm_name)
 model.connect_heads_with_processor(data_silo.processor.tasks, require_labels=True)
 
 result = evaluator_origtest.eval(model)
-print("TEST F1 MICRO:   ", result[0]["f1_micro"])
-print("TEST F1 MACRO:   ", result[0]["f1_macro"])
-print("TEST F1 OFFENSE: ", result[0]["f1_offense"])
-print("TEST F1 OTHER:   ", result[0]["f1_other"])
-print("TEST MCC:        ", result[0]["mcc"])
+logger.info("TEST F1 MICRO:   ", result[0]["f1_micro"])
+logger.info("TEST F1 MACRO:   ", result[0]["f1_macro"])
+logger.info("TEST F1 OFFENSE: ", result[0]["f1_offense"])
+logger.info("TEST F1 OTHER:   ", result[0]["f1_other"])
+logger.info("TEST MCC:        ", result[0]["mcc"])
 
 # fmt: on

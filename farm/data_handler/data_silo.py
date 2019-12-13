@@ -340,16 +340,17 @@ class DataSilo:
         """
         return self.counts[dataset]
 
-# For performing cross validation, we really want to combine all the instances from all
-# the sets or just some of the sets, then create a different data silo instance for each fold.
-# Here, we combine the instances from the train and dev sets to perform xcross validation,
-# then create a different data silo instance with train, dev and test sets for each fold
-# We use our own DataSiloTmp class to just represent the subsets for train/dev/test for each fold
-# as we need it
-class DataSilo4Xval:
+
+class DataSiloForCrossVal:
+    """
+    For performing cross validation, we really want to combine all the instances from all
+    the sets or just some of the sets, then create a different data silo instance for each fold.
+    Calling DataSiloForCrossVal.make() creates a list of DataSiloForCrossVal instances - one for each fold.
+    """
+
     def __init__(self, origsilo, trainset, devset, testset):
         self.tensor_names = origsilo.tensor_names
-        self.data = {"train":trainset, "dev":devset, "test":testset}
+        self.data = {"train": trainset, "dev": devset, "test": testset}
         self.processor = origsilo.processor
         self.batch_size = origsilo.batch_size
         # should not be necessary, xval makes no sense with huge data
@@ -425,5 +426,5 @@ class DataSilo4Xval:
             ds_train = Subset(ds_all, actual_train_idx)
             ds_dev = Subset(ds_all, dev_idx)
             ds_test = Subset(ds_all, test_idx)
-            silos.append(DataSilo4Xval(datasilo, ds_train, ds_dev, ds_test))
+            silos.append(DataSiloForCrossVal(datasilo, ds_train, ds_dev, ds_test))
         return silos
