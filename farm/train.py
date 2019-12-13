@@ -166,9 +166,8 @@ class Trainer:
         :type grad_acc_steps: int
         :param local_rank: TODO
         :type local_rank: int
-        :param early_stopping: an initialized EarlyStopping object to control early stopping and
-        saving of best models.
-        :type EarlyStopping
+        :param early_stopping: an initialized EarlyStopping object to control early stopping and saving of best models.
+        :type early_stopping: EarlyStopping
         """
         self.data_silo = data_silo
         self.epochs = int(epochs)
