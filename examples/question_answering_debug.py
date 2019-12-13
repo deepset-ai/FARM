@@ -27,18 +27,18 @@ ml_logger.init_experiment(experiment_name="SQuAD", run_name="qa_albert")
 ######## Settings
 ########################
 set_all_seeds(seed=42)
-device, n_gpu = initialize_device_settings(use_cuda=False)
-batch_size = 32
+device, n_gpu = initialize_device_settings(use_cuda=True)
+batch_size = 60
 n_epochs = 2
-evaluate_every = 1
-base_LM_model = "albert"
-train_filename="train-v2.0.json"
-dev_filename="dev-v2.0.json"
+evaluate_every = 500
+base_LM_model = "albert-base-v1"
+train_filename="subsets/train_medium-v2.0.json"
+dev_filename="subsets/dev_medium-v2.0.json"
 save_dir = "../saved_models/qa_medium_albert"
-inference_file = "../data/squad20/subsets/5ad3ff1b604f3c001a3ffc74.json"
+inference_file = "../data/squad20/subsets/dev_medium-v2.0.json"
 predictions_file = save_dir + "/predictions.json"
 full_predictions_file = save_dir + "/full_predictions.json"
-inference_multiprocessing = False
+inference_multiprocessing = True
 train = False
 inference = True
 

@@ -142,8 +142,9 @@ def samples_to_features_ner(
                                    text_pair=None,
                                    add_special_tokens=True,
                                    max_length=max_seq_len,
-                                   truncation_strategy='do_not_truncate' # We've already truncated our tokens before
-    )
+                                   truncation_strategy='do_not_truncate', # We've already truncated our tokens before
+                                   return_special_tokens_mask=True
+                                   )
 
     input_ids, segment_ids, special_tokens_mask = inputs["input_ids"], inputs["token_type_ids"], inputs["special_tokens_mask"]
 
@@ -255,7 +256,8 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
                                    text_pair=tokens_b,
                                    add_special_tokens=True,
                                    max_length=max_seq_len,
-                                   truncation_strategy='do_not_truncate'
+                                   truncation_strategy='do_not_truncate',
+                                   return_special_tokens_mask=True
                                    # We've already truncated our tokens before
                                    )
 

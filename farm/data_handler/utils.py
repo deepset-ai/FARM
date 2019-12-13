@@ -30,7 +30,6 @@ DOWNSTREAM_TASK_MAP = {
     'cola': "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/cola.tar.gz",
 }
 
-
 def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=None, header=0, proxies=None):
     """Reads a tab separated value file. Tries to download the data if filename is not found"""
     if not (os.path.exists(filename)):
