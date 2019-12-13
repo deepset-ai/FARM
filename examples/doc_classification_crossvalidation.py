@@ -34,12 +34,12 @@ ml_logger = MLFlowLogger(tracking_uri="logs")
 ##########################
 ########## Settings
 ##########################
-xval_folds = 3 #10
+xval_folds = 5
 xval_stratified = True
 
 set_all_seeds(seed=42)
 device, n_gpu = initialize_device_settings(use_cuda=True)
-n_epochs = 1
+n_epochs = 20
 batch_size = 32
 evaluate_every = 100
 lang_model = "bert-base-german-cased"
