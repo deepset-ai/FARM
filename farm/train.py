@@ -156,10 +156,16 @@ class Trainer:
         :param warmup_linear: TODO
         :param evaluate_every: Perform dev set evaluation after this many steps of training.
         :type evaluate_every: int
-        :param evaluator_dev: The dev set Evaluator object.
-        :type evaluator_dev: Evaluator
-        :param evaluator_test: The test set Evaluator object.
-        :type evaluator_test: Evaluator
+        :param evaluator_dev: Evaluator for dev set. Options:
+                              `None` (Default) => will init a new evaluator, if there's a dev set in the DataSilo
+                              `Evaluator Object` => use the manually supplied evaluator
+                              `False` => Don't use any evaluator
+        :type evaluator_dev: Evaluator, None or False
+        :param evaluator_test: Evaluator for test set. Options:
+                              `None` (Default) => will init a new evaluator, if there's a test set in the DataSilo
+                              `Evaluator Object` => use the manually supplied evaluator
+                              `False` => Don't use any evaluator
+        :type evaluator_test: Evaluator, None or False
         :param fp16: Whether to use floating point 16 mode.
         :type fp16: bool
         :param grad_acc_steps: TODO
@@ -239,7 +245,7 @@ class Trainer:
                 self.backward_propagate(per_sample_loss, step)
 
                 # Perform  evaluation
-                if self.evaluator_dev is not None:
+                if self.evaluator_dev:
                     if self.global_step != 0 and (
                         self.global_step % self.evaluate_every == 0
                     ):
