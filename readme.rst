@@ -148,10 +148,13 @@ Much of the heavy lifting is then handled behind the scenes to make it fast & si
 
 Upcoming features
 ###################
-- Improved functionality for Question Answering Task
+- AWS SageMaker support (incl. Spot instances)
+- Training from Scratch
+- Support for more Question Answering styles and datasets
 - Additional visualizations and statistics to explore and debug your model
-- More pretrained models ALBERT, XLM  ...
 - Enabling large scale deployment for production
+- Simpler benchmark models (fasttext, word2vec ...)
+
 
 Acknowledgements
 ###################
