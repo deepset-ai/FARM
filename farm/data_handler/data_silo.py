@@ -111,7 +111,7 @@ class DataSilo:
             )
 
             datasets = []
-            with tqdm(total=len(dicts), unit=' Dicts') as pbar:
+            with tqdm(total=len(dicts), unit=' Dicts', desc="Preprocessing Dataset") as pbar:
                 for dataset, tensor_names in results:
                     datasets.append(dataset)
                     pbar.update(multiprocessing_chunk_size)
