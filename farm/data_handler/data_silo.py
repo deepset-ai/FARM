@@ -101,15 +101,14 @@ class DataSilo:
                         random.shuffle(dicts)
 
         num_dicts = len(dicts)
+        multiprocessing_chunk_size, num_cpus_used = calc_chunksize(
+            num_dicts=num_dicts,
+            max_processes=self.max_processes,
+            max_chunksize=self.max_multiprocessing_chunksize,
+        )
 
         with ExitStack() as stack:
             if self.max_processes > 1:  # use multiprocessing only when max_processes > 1
-                multiprocessing_chunk_size, num_cpus_used = calc_chunksize(
-                    num_dicts=num_dicts,
-                    max_processes=self.max_processes,
-                    max_chunksize=self.max_multiprocessing_chunksize,
-                )
-
                 p = stack.enter_context(mp.Pool(processes=num_cpus_used))
 
                 logger.info(
