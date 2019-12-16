@@ -38,7 +38,7 @@ save_dir = "../saved_models/qa_medium_albert"
 inference_file = "../data/squad20/subsets/dev_medium-v2.0.json"
 predictions_file = save_dir + "/predictions.json"
 full_predictions_file = save_dir + "/full_predictions.json"
-inference_multiprocessing = True
+max_processes_for_inference = 8
 train = False
 inference = True
 
@@ -104,8 +104,10 @@ if train:
 
 if inference:
     model = Inferencer.load(save_dir, batch_size=32, gpu=True)
-    full_result = model.inference_from_file(file=inference_file,
-                                            use_multiprocessing=inference_multiprocessing)
+    full_result = model.inference_from_file(
+        file=inference_file,
+        max_processes=max_processes_for_inference,
+    )
 
     for x in full_result:
         print(x)
