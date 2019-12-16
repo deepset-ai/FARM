@@ -31,7 +31,15 @@ class DataSilo:
     calculate and display some statistics.
      """
 
-    def __init__(self, processor, batch_size, distributed=False, automatic_loading=True, max_multiprocessing_chunksize=2000):
+    def __init__(
+        self,
+        processor,
+        batch_size,
+        distributed=False,
+        automatic_loading=True,
+        max_multiprocessing_chunksize=2000,
+        max_processes=128,
+    ):
         """
         :param processor: A dataset specific Processor object which will turn input (file or dict) into a Pytorch Dataset.
         :type processor: Processor
@@ -52,7 +60,7 @@ class DataSilo:
         self.data = {}
         self.batch_size = batch_size
         self.class_weights = None
-        self.max_processes = 128
+        self.max_processes = max_processes
         self.max_multiprocessing_chunksize = max_multiprocessing_chunksize
         # In most cases we want to load all data automatically, but in some cases we rather want to do this later or
         # load from dicts instead of file (https://github.com/deepset-ai/FARM/issues/85)
@@ -60,7 +68,7 @@ class DataSilo:
             self._load_data()
 
     @classmethod
-    def _multiproc(cls, chunk, processor):
+    def _dataset_from_chunk(cls, chunk, processor):
         """
         Creating a dataset for a chunk (= subset) of dicts. In multiprocessing:
           * we read in all dicts from a file
@@ -93,29 +101,43 @@ class DataSilo:
                         random.shuffle(dicts)
 
         num_dicts = len(dicts)
-        multiprocessing_chunk_size, num_cpus_used = calc_chunksize(num_dicts, max_chunksize=self.max_multiprocessing_chunksize)
 
         with ExitStack() as stack:
-            p = stack.enter_context(mp.Pool(processes=num_cpus_used))
+            if self.max_processes > 1:  # use multiprocessing only when max_processes > 1
+                multiprocessing_chunk_size, num_cpus_used = calc_chunksize(
+                    num_dicts=num_dicts,
+                    max_processes=self.max_processes,
+                    max_chunksize=self.max_multiprocessing_chunksize,
+                )
 
-            logger.info(
-                f"Got ya {num_cpus_used} parallel workers to convert {num_dicts} dictionaries "
-                f"to pytorch datasets (chunksize = {multiprocessing_chunk_size})..."
-            )
-            log_ascii_workers(num_cpus_used, logger)
+                p = stack.enter_context(mp.Pool(processes=num_cpus_used))
 
-            results = p.imap(
-                partial(self._multiproc, processor=self.processor),
-                grouper(dicts, multiprocessing_chunk_size),
-                chunksize=1,
-            )
+                logger.info(
+                    f"Got ya {num_cpus_used} parallel workers to convert {num_dicts} dictionaries "
+                    f"to pytorch datasets (chunksize = {multiprocessing_chunk_size})..."
+                )
+                log_ascii_workers(num_cpus_used, logger)
+
+                results = p.imap(
+                    partial(self._dataset_from_chunk, processor=self.processor),
+                    grouper(dicts, multiprocessing_chunk_size),
+                    chunksize=1,
+                )
+            else:
+                logger.info(
+                    f"Multiprocessing disabled, using a single worker to convert {num_dicts}"
+                    f"dictionaries to pytorch datasets."
+                )
+
+                results = map(partial(self._dataset_from_chunk, processor=self.processor), grouper(dicts, num_dicts))
 
             datasets = []
+
             with tqdm(total=len(dicts), unit=' Dicts', desc="Preprocessing Dataset") as pbar:
                 for dataset, tensor_names in results:
                     datasets.append(dataset)
                     pbar.update(multiprocessing_chunk_size)
-            
+
             concat_datasets = ConcatDataset(datasets)
             return concat_datasets, tensor_names
 

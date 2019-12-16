@@ -1,9 +1,9 @@
 import pytest
 
 
-@pytest.mark.parametrize("use_multiprocessing", [True, False])
+@pytest.mark.parametrize("max_processes", [2, 1])
 @pytest.mark.parametrize("rest_api_schema", [True, False])
-def test_qa_format_and_results(adaptive_model_qa, use_multiprocessing, rest_api_schema):
+def test_qa_format_and_results(adaptive_model_qa, max_processes, rest_api_schema):
 
     qa_inputs_dicts = [
         {
@@ -25,7 +25,7 @@ def test_qa_format_and_results(adaptive_model_qa, use_multiprocessing, rest_api_
 
     results = adaptive_model_qa.inference_from_dicts(
         dicts=qa_inputs_dicts,
-        use_multiprocessing=use_multiprocessing,
+        max_processes=max_processes,
         rest_api_schema=True,
     )
     # sample results
