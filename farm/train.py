@@ -230,10 +230,12 @@ class Trainer:
 
         do_stopping = False
         evalnr = 0
+        loss = 0
         for epoch in range(1, self.epochs + 1):
-            for step, batch in enumerate(
-                tqdm(self.data_loader_train, desc=f"Train epoch {epoch}/{self.epochs}")
-            ):
+            progress_bar = tqdm(self.data_loader_train)
+            for step, batch in enumerate(progress_bar):
+                progress_bar.set_description(f"Train epoch {epoch}/{self.epochs} (Cur. train loss: {loss:.4f})")
+
                 # Move batch of samples to device
                 batch = {key: batch[key].to(self.device) for key in batch}
 
@@ -241,7 +243,7 @@ class Trainer:
                 logits = model.forward(**batch)
                 per_sample_loss = model.logits_to_loss(logits=logits, **batch)
 
-                self.backward_propagate(per_sample_loss, step)
+                loss = self.backward_propagate(per_sample_loss, step)
 
                 # Perform  evaluation
                 if self.evaluator_dev:
@@ -305,6 +307,7 @@ class Trainer:
                 # MlLogger.write_metrics({"learning_rate": lr_this_step}, step=self.global_step)
             self.optimizer.step()
             self.optimizer.zero_grad()
+        return loss
 
     def adjust_loss(self, loss):
         loss = loss.mean()
