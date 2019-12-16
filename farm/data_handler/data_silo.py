@@ -132,7 +132,8 @@ class DataSilo:
                 results = map(partial(self._dataset_from_chunk, processor=self.processor), grouper(dicts, num_dicts))
 
             datasets = []
-            with tqdm(total=len(dicts), unit=" Dicts", desc="Converting Dicts to PyTorch Datasets") as pbar:
+
+            with tqdm(total=len(dicts), unit=' Dicts', desc="Preprocessing Dataset") as pbar:
                 for dataset, tensor_names in results:
                     datasets.append(dataset)
                     pbar.update(multiprocessing_chunk_size)

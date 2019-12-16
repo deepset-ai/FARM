@@ -863,7 +863,7 @@ class SquadProcessor(Processor):
         self._init_samples_in_baskets()
         self._featurize_samples()
         if index == 0:
-            self._log_samples(3)
+            self._log_samples(2)
         # This mode is for inference where we need to keep baskets
         if return_baskets:
             dataset, tensor_names = self._create_dataset(keep_baskets=True)
