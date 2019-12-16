@@ -21,21 +21,24 @@ def set_all_seeds(seed, n_gpu=0):
     if n_gpu > 0:
         torch.cuda.manual_seed_all(seed)
 
-def calc_chunksize(num_dicts, min_chunksize=10, max_chunksize=2000, max_cpus=None):
-    if max_cpus is None:
-        max_cpus = mp.cpu_count() or 1
-    else:
-        max_cpus = min(max_cpus, mp.cpu_count())
-    dicts_per_cpu = np.ceil(num_dicts / max_cpus)
-    # automatic adjustment of multiprocessing chunksize
-    # for small files (containing few dicts) we want small chunksize to ulitize all available cores but never less
-    # than 2, because we need it to sample another random sentence in LM finetuning
-    # for large files we want to minimize processor spawning without giving too much data to one process, so we
-    # clip it at 5k
-    multiprocessing_chunk_size = int(np.clip((np.ceil(dicts_per_cpu / 5)), a_min=min_chunksize, a_max=max_chunksize))
+
+def calc_chunksize(num_dicts, min_chunksize=4, max_chunksize=2000, max_processes=128):
+    num_cpus = min(mp.cpu_count() - 1 or 1, max_processes)  # -1 to keep a CPU core free for the main process
+    dicts_per_cpu = np.ceil(num_dicts / num_cpus)
+
+    # automatic adjustment of multiprocessing chunksize for small files (containing few dicts). We want
+    # small chunksize to utilize all available cores but never less than 2, because we need it to sample
+    # another random sentence in LM finetuning for large files. We want to minimize the overhead of passing
+    # data to processes, but without giving too much data to one process, so we clip it at 5k.
+
+    multiprocessing_chunk_size = int(
+        np.clip((np.ceil(dicts_per_cpu / 5)), a_min=min_chunksize, a_max=max_chunksize)
+    )
+
     dict_batches_to_process = int(num_dicts / multiprocessing_chunk_size)
-    num_cpus_used = min(max_cpus, dict_batches_to_process) or 1
-    return multiprocessing_chunk_size,num_cpus_used
+    num_processes = min(num_cpus, dict_batches_to_process) or 1
+
+    return multiprocessing_chunk_size, num_processes
 
 
 def initialize_device_settings(use_cuda, local_rank=-1, fp16=False):
