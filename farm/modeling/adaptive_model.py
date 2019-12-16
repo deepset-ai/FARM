@@ -68,7 +68,7 @@ class AdaptiveModel(nn.Module):
             # Need to save config and pipeline
 
     @classmethod
-    def load(cls, load_dir, device, strict=True):
+    def load(cls, load_dir, device, strict=True, lm_name=None):
         """
         Loads an AdaptiveModel from a directory. The directory must contain:
 
@@ -83,6 +83,8 @@ class AdaptiveModel(nn.Module):
         :type load_dir: str
         :param device: to which device we want to sent the model, either cpu or cuda
         :type device: torch.device
+        :param lm_name: the name to assign to the loaded language model
+        :type lm_name: str
         :param strict: whether to strictly enforce that the keys loaded from saved model match the ones in
                        the PredictionHead (see torch.nn.module.load_state_dict()).
                        Set to `False` for backwards compatibility with PHs saved with older version of FARM.
@@ -90,7 +92,7 @@ class AdaptiveModel(nn.Module):
         """
 
         # Language Model
-        language_model = LanguageModel.load(load_dir)
+        language_model = LanguageModel.load(load_dir, farm_lm_name=lm_name)
 
         # Prediction heads
         _, ph_config_files = cls._get_prediction_head_files(load_dir)
@@ -295,7 +297,7 @@ class AdaptiveModel(nn.Module):
 
         model_vocab_len = self.language_model.model.resize_token_embeddings(new_num_tokens=None).num_embeddings
 
-        msg = "Vocab size of tokenizer doesn't match with model. " \
+        msg = f"Vocab size of tokenizer {vocab_size} doesn't match with model {model_vocab_len}. " \
               "If you added a custom vocabulary to the tokenizer, " \
               "make sure to supply 'n_added_tokens' to LanguageModel.load() and BertStyleLM.load()"
         assert vocab_size == model_vocab_len, msg

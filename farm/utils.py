@@ -21,9 +21,7 @@ def set_all_seeds(seed, n_gpu=0):
     if n_gpu > 0:
         torch.cuda.manual_seed_all(seed)
 
-def calc_chunksize(num_dicts):
-    MIN_CHUNKSIZE = 4
-    MAX_CHUNKSIZE = 2000
+def calc_chunksize(num_dicts, min_chunksize=4, max_chunksize=2000):
     num_cpus = mp.cpu_count() or 1
     dicts_per_cpu = np.ceil(num_dicts / num_cpus)
     # automatic adjustment of multiprocessing chunksize
@@ -31,7 +29,7 @@ def calc_chunksize(num_dicts):
     # than 2, because we need it to sample another random sentence in LM finetuning
     # for large files we want to minimize processor spawning without giving too much data to one process, so we
     # clip it at 5k
-    multiprocessing_chunk_size = int(np.clip((np.ceil(dicts_per_cpu / 5)), a_min=MIN_CHUNKSIZE, a_max=MAX_CHUNKSIZE))
+    multiprocessing_chunk_size = int(np.clip((np.ceil(dicts_per_cpu / 5)), a_min=min_chunksize, a_max=max_chunksize))
     dict_batches_to_process = int(num_dicts / multiprocessing_chunk_size)
     num_cpus_used = min(mp.cpu_count(), dict_batches_to_process) or 1
     return multiprocessing_chunk_size,num_cpus_used

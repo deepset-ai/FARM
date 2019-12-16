@@ -21,25 +21,21 @@ logging.basicConfig(
 )
 
 ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
-# ml_logger = MLFlowLogger(tracking_uri="")
-ml_logger.init_experiment(experiment_name="german_qa", run_name="ahmeds_model")
+ml_logger.init_experiment(experiment_name="SQuAD", run_name="qa_albert")
 
 #########################
 ######## Settings
 ########################
 set_all_seeds(seed=42)
 device, n_gpu = initialize_device_settings(use_cuda=True)
-batch_size = 32
-max_seq_len = 512
+batch_size = 60
 n_epochs = 2
-evaluate_every = 5000
-# base_LM_model = "bert-base-multilingual-uncased"
-base_LM_model = "../saved_models/multi_squad_en_it_de_farm"
-train_filename = "squad20/train-v2.0.json"
-dev_filename = "squad20/dev-v2.0.json"
-# dev_filename = None
-save_dir = "../saved_models/multi_squad_en_it_de_farm"
-inference_file = "../data/MLQA_V1/test/test-context-en-question-ar.json"
+evaluate_every = 500
+base_LM_model = "albert-base-v1"
+train_filename="subsets/train_medium-v2.0.json"
+dev_filename="subsets/dev_medium-v2.0.json"
+save_dir = "../saved_models/qa_medium_albert"
+inference_file = "../data/squad20/subsets/dev_medium-v2.0.json"
 predictions_file = save_dir + "/predictions.json"
 full_predictions_file = save_dir + "/full_predictions.json"
 inference_multiprocessing = True
@@ -48,19 +44,19 @@ inference = True
 
 if train:
     # 1.Create a tokenizer
-    tokenizer = Tokenizer.load(pretrained_model_name_or_path=base_LM_model,
-                               tokenizer_class="bert")
+    tokenizer = Tokenizer.load(pretrained_model_name_or_path=base_LM_model)
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
     label_list = ["start_token", "end_token"]
     metric = "squad"
     processor = SquadProcessor(
         tokenizer=tokenizer,
-        max_seq_len=max_seq_len,
+        max_seq_len=384,
         label_list=label_list,
         metric=metric,
         train_filename=train_filename,
         dev_filename=dev_filename,
-        data_dir="../data/",
+        test_filename=None,
+        data_dir="../data/squad20",
     )
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
@@ -107,7 +103,7 @@ if train:
 
 
 if inference:
-    model = Inferencer.load(save_dir, batch_size=40, gpu=True)
+    model = Inferencer.load(save_dir, batch_size=32, gpu=True)
     full_result = model.inference_from_file(file=inference_file,
                                             use_multiprocessing=inference_multiprocessing)
 

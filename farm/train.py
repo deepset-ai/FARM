@@ -5,10 +5,10 @@ import torch
 from tqdm import tqdm
 
 from farm.utils import MLFlowLogger as MlLogger
-from farm.utils import format_log
 from farm.eval import Evaluator
 from farm.data_handler.data_silo import DataSilo
-from farm.visual.ascii.images import GROWING_TREE, BUSH_SEP
+from farm.visual.ascii.images import GROWING_TREE
+from farm.modeling.adaptive_model import AdaptiveModel
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +50,80 @@ except ImportError:
     )
 
 
+class EarlyStopping:
+
+    def __init__(
+            self,
+            metric="loss",
+            save_dir=None,
+            mode="min",
+            patience=0,
+            min_delta=0.001,
+            min_evals=0,
+    ):
+        """
+        Can be used to control early stopping with a Trainer class. Any object can be used instead which
+        implements the method check_stopping and and provides the attribute save_dir
+        :param save_dir: the directory where to save the final best model, if None, no saving.
+        :param metric: name of dev set metric to monitor (default: loss) to get extracted from the 0th head or
+        a function that extracts a value from the trainer dev evaluation result.
+        NOTE: this is different from the metric to get specified for the processor which defines how
+        to calculate one or more evaluation matric values from prediction/target sets, while this
+        specifies the name of one particular such metric value or a method to calculate that value
+        from the result returned from a processor metric.
+        :param mode: "min" or "max"
+        :param patience: how many evaluations to wait after the best evaluation to stop
+        :param min_delta: minimum difference to a previous best value to count as an improvement.
+        :param min_evals: minimum number of evaluations to wait before using eval value
+
+        """
+        self.metric = metric
+        self.save_dir = save_dir
+        self.mode = mode
+        self.patience = patience
+        self.min_delta = min_delta
+        self.min_evals = min_evals
+        self.eval_values = []  # for more complex modes
+        self.n_since_best = None
+        if mode == "min":
+            self.best_so_far = 1.0E99
+        elif mode == "max":
+            self.best_so_far = -1.0E99
+        else:
+            raise Exception("Mode must be 'min' or 'max'")
+
+    def check_stopping(self, eval_result):
+        """
+        Provide the evaluation value for the current evaluation. Returns true if stopping should occur.
+        This will save the model, if necessary.
+        :param eval: the current evaluation result
+        :return: a tuple (stopprocessing, savemodel, evalvalue) indicating if processing should be stopped
+        and if the current model should get saved and the evaluation value used.
+        """
+        if isinstance(self.metric, str):
+            eval_value = eval_result[0][self.metric]
+        else:
+            eval_value = self.metric(eval_result)
+        self.eval_values.append(float(eval_value))
+        stopprocessing, savemodel = False, False
+        if len(self.eval_values) <= self.min_evals:
+            return stopprocessing, savemodel
+        if self.mode == "min":
+            delta = self.best_so_far - eval_value
+        else:
+            delta = eval_value - self.best_so_far
+        if delta > self.min_delta:
+            self.best_so_far = eval_value
+            self.n_since_best = 0
+            if self.save_dir:
+                savemodel = True
+        else:
+            self.n_since_best += 1
+        if self.n_since_best > self.patience:
+            stopprocessing = True
+        return stopprocessing, savemodel, eval_value
+
+
 class Trainer:
     """Handles the main model training procedure. This includes performing evaluation on the dev set at regular
     intervals during training as well as evaluation on the test set at the end of training."""
@@ -67,7 +141,8 @@ class Trainer:
         evaluator_test=None,
         fp16=False,
         grad_acc_steps=1,
-        local_rank=-1
+        local_rank=-1,
+        early_stopping=None,
     ):
         """
         :param optimizer: An optimizer object that determines the learning strategy to be used during training
@@ -81,13 +156,24 @@ class Trainer:
         :param warmup_linear: TODO
         :param evaluate_every: Perform dev set evaluation after this many steps of training.
         :type evaluate_every: int
-        :param evaluator_dev: The dev set Evaluator object.
-        :type evaluator_dev: Evaluator
-        :param evaluator_test: The test set Evaluator object.
-        :type evaluator_test: Evaluator
+        :param evaluator_dev: Evaluator for dev set. Options:
+                              `None` (Default) => will init a new evaluator, if there's a dev set in the DataSilo
+                              `Evaluator Object` => use the manually supplied evaluator
+                              `False` => Don't use any evaluator
+        :type evaluator_dev: Evaluator, None or False
+        :param evaluator_test: Evaluator for test set. Options:
+                              `None` (Default) => will init a new evaluator, if there's a test set in the DataSilo
+                              `Evaluator Object` => use the manually supplied evaluator
+                              `False` => Don't use any evaluator
+        :type evaluator_test: Evaluator, None or False
         :param fp16: Whether to use floating point 16 mode.
         :type fp16: bool
         :param grad_acc_steps: TODO
+        :type grad_acc_steps: int
+        :param local_rank: TODO
+        :type local_rank: int
+        :param early_stopping: an initialized EarlyStopping object to control early stopping and saving of best models.
+        :type early_stopping: EarlyStopping
         """
         self.data_silo = data_silo
         self.epochs = int(epochs)
@@ -103,6 +189,7 @@ class Trainer:
         self.device = device
         self.local_rank = local_rank
         self.log_params()
+        self.early_stopping = early_stopping
 
         # evaluator on dev set
         if evaluator_dev is None and self.data_silo.get_data_loader("dev"):
@@ -141,11 +228,12 @@ class Trainer:
         elif self.n_gpu > 1:
             model = WrappedDataParallel(model)
 
+        do_stopping = False
+        evalnr = 0
         for epoch in range(1, self.epochs + 1):
             for step, batch in enumerate(
                 tqdm(self.data_loader_train, desc=f"Train epoch {epoch}/{self.epochs}")
             ):
-
                 # Move batch of samples to device
                 batch = {key: batch[key].to(self.device) for key in batch}
 
@@ -156,16 +244,39 @@ class Trainer:
                 self.backward_propagate(per_sample_loss, step)
 
                 # Perform  evaluation
-                if self.evaluator_dev is not None:
+                if self.evaluator_dev:
                     if self.global_step != 0 and (
                         self.global_step % self.evaluate_every == 0
                     ):
+                        evalnr += 1
                         result = self.evaluator_dev.eval(model)
                         self.evaluator_dev.log_results(result, "Dev", self.global_step)
-
+                        if self.early_stopping:
+                            do_stopping, save_model, eval_value = self.early_stopping.check_stopping(result)
+                            if save_model:
+                                logger.info(
+                                    "Saving current best model to {}, eval={}".format(
+                                        self.early_stopping.save_dir, eval_value))
+                                model.save(self.early_stopping.save_dir)
+                                self.data_silo.processor.save(self.early_stopping.save_dir)
+                            if do_stopping:
+                                # log the stopping
+                                logger.info("STOPPING EARLY AT EPOCH {}, STEP {}, EVALUATION {}".format(epoch, step, evalnr))
+                if do_stopping:
+                    break
                 self.global_step += 1
+            if do_stopping:
+                break
 
-        if self.evaluator_test is not None:
+        # With early stopping we want to restore the best model
+        if self.early_stopping and self.early_stopping.save_dir:
+            logger.info("Restoring best model so far from {}".format(self.early_stopping.save_dir))
+            lm_name = model.language_model.name
+            model = AdaptiveModel.load(self.early_stopping.save_dir, self.device, lm_name=lm_name)
+            model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
+
+        # Eval on test set
+        if self.evaluator_test:
             result = self.evaluator_test.eval(model)
             self.evaluator_test.log_results(result, "Test", self.global_step)
         return model
