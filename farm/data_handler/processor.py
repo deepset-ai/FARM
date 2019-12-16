@@ -30,7 +30,7 @@ from farm.data_handler.utils import (
     is_json,
 )
 from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
-from farm.utils import MLFlowLogger as MlLogger
+from farm.utils import MLFlowLogger as MlLogger, encode_squad_id
 from farm.data_handler.utils import get_sentence_pair
 
 logger = logging.getLogger(__name__)
@@ -55,7 +55,8 @@ class Processor(ABC):
         test_filename,
         dev_split,
         data_dir,
-        tasks={}
+        tasks={},
+        proxies=None
     ):
         """
         :param tokenizer: Used to split a sentence (str) into tokens.
@@ -72,11 +73,20 @@ class Processor(ABC):
         :type dev_split: float
         :param data_dir: The directory in which the train, test and perhaps dev files can be found.
         :type data_dir: str
+        :param tasks: Tasks for which the processor shall extract labels from the input data.
+                      Usually this includes a single, default task, e.g. text classification.
+                      In a multitask setting this includes multiple tasks, e.g. 2x text classification.
+                      The task name will be used to connect with the related PredictionHead.
+        :type tasks: dict
+        :param proxies: proxy configuration to allow downloads of remote datasets.
+                    Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
+        :type proxies: dict
         """
 
         self.tokenizer = tokenizer
         self.max_seq_len = max_seq_len
         self.tasks = tasks
+        self.proxies = proxies
 
         # data sets
         self.train_filename = train_filename
@@ -348,8 +358,48 @@ class TextClassificationProcessor(Processor):
         label_column_name="label",
         multilabel=False,
         header=0,
-        **kwargs,
+        proxies=None,
+        **kwargs
     ):
+        """
+        :param tokenizer: Used to split a sentence (str) into tokens.
+        :param max_seq_len: Samples are truncated after this many tokens.
+        :type max_seq_len: int
+        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
+        :type data_dir: str
+        :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
+        :type label_list: list
+        :param metric: name of metric that shall be used for evaluation, e.g. "acc" or "f1_macro".
+                 Alternatively you can also supply a custom function, that takes preds and labels as args and returns a numerical value.
+                 For using multiple metrics supply them as a list, e.g ["acc", my_custom_metric_fn].
+        :type metric: str, function, or list
+        :param train_filename: The name of the file containing training data.
+        :type train_filename: str
+        :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
+                             will be a slice of the train set.
+        :type dev_filename: str or None
+        :param test_filename: None
+        :type test_filename: str
+        :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
+        :type dev_split: float
+        :param delimiter: Separator used in the input tsv / csv file
+        :type delimiter: str
+        :param quote_char: Character used for quoting strings in the input tsv/ csv file
+        :type quote_char: str
+        :param skiprows: number of rows to skip in the tsvs (e.g. for multirow headers)
+        :type skiprows: int
+        :param label_column_name: name of the column in the input csv/tsv that shall be used as training labels
+        :type label_column_name: str
+        :param multilabel: set to True for multilabel classification
+        :type multilabel: bool
+        :param header: which line to use as a header in the input csv/tsv
+        :type  header: int
+        :param proxies: proxy configuration to allow downloads of remote datasets.
+                        Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
+        :type proxies: dict
+        :param kwargs: placeholder for passing generic parameters
+        :type kwargs: object
+        """
         #TODO If an arg is misspelt, e.g. metrics, it will be swallowed silently by kwargs
 
         # Custom processor attributes
@@ -367,6 +417,8 @@ class TextClassificationProcessor(Processor):
             dev_split=dev_split,
             data_dir=data_dir,
             tasks={},
+            proxies=proxies,
+
         )
         if metric and label_list:
             if multilabel:
@@ -390,7 +442,8 @@ class TextClassificationProcessor(Processor):
             skiprows=self.skiprows,
             quotechar=self.quote_char,
             rename_columns=column_mapping,
-            header=self.header
+            header=self.header,
+            proxies=self.proxies
             )
 
         return dicts
@@ -441,7 +494,7 @@ class InferenceProcessor(Processor):
             test_filename=None,
             dev_split=None,
             data_dir=None,
-            tasks={}
+            tasks={},
         )
 
     @classmethod
@@ -510,9 +563,38 @@ class NERProcessor(Processor):
         test_filename="test.txt",
         dev_split=0.0,
         delimiter="\t",
-        **kwargs,
+        proxies=None,
+        **kwargs
     ):
-
+        """
+        :param tokenizer: Used to split a sentence (str) into tokens.
+        :param max_seq_len: Samples are truncated after this many tokens.
+        :type max_seq_len: int
+        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
+        :type data_dir: str
+        :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
+        :type label_list: list
+        :param metric: name of metric that shall be used for evaluation, e.g. "seq_f1".
+                 Alternatively you can also supply a custom function, that takes preds and labels as args and returns a numerical value.
+                 For using multiple metrics supply them as a list, e.g ["seq_f1", my_custom_metric_fn].
+        :type metric: str, function, or list
+        :param train_filename: The name of the file containing training data.
+        :type train_filename: str
+        :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
+                             will be a slice of the train set.
+        :type dev_filename: str or None
+        :param test_filename: None
+        :type test_filename: str
+        :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
+        :type dev_split: float
+        :param delimiter: Separator used in the input tsv / csv file
+        :type delimiter: str
+        :param proxies: proxy configuration to allow downloads of remote datasets.
+                        Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
+        :type proxies: dict
+        :param kwargs: placeholder for passing generic parameters
+        :type kwargs: object
+        """
         # Custom processor attributes
         self.delimiter = delimiter
 
@@ -524,7 +606,8 @@ class NERProcessor(Processor):
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
-            tasks={}
+            tasks={},
+            proxies=proxies
         )
 
         if metric and label_list:
@@ -534,7 +617,7 @@ class NERProcessor(Processor):
                         "using the default task or add a custom task later via processor.add_task()")
 
     def file_to_dicts(self, file: str) -> [dict]:
-        dicts = read_ner_file(filename=file, sep=self.delimiter)
+        dicts = read_ner_file(filename=file, sep=self.delimiter,  proxies=self.proxies)
         return dicts
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
@@ -575,8 +658,40 @@ class BertStyleLMProcessor(Processor):
         dev_split=0.0,
         next_sent_pred=True,
         max_docs=None,
-        **kwargs,
+        proxies=None,
+        **kwargs
     ):
+        """
+        :param tokenizer: Used to split a sentence (str) into tokens.
+        :param max_seq_len: Samples are truncated after this many tokens.
+        :type max_seq_len: int
+        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
+        :type data_dir: str
+        :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
+        :type label_list: list
+        :param metric: name of metric that shall be used for evaluation, e.g. "acc" or "f1_macro".
+                 Alternatively you can also supply a custom function, that takes preds and labels as args and returns a numerical value.
+                 For using multiple metrics supply them as a list, e.g ["acc", my_custom_metric_fn].
+        :type metric: str, function, or list
+        :param train_filename: The name of the file containing training data.
+        :type train_filename: str
+        :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
+                             will be a slice of the train set.
+        :type dev_filename: str or None
+        :param test_filename: None
+        :type test_filename: str
+        :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
+        :type dev_split: float
+        :param next_sent_pred: Whether to use next_sentence_prediction objective or not
+        :type next_sent_pred: bool
+        :param max_docs: maximum number of documents to include from input dataset
+        :type max_docs: int
+        :param proxies: proxy configuration to allow downloads of remote datasets.
+                        Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
+        :type proxies: dict
+        :param kwargs: placeholder for passing generic parameters
+        :type kwargs: object
+        """
 
         self.delimiter = ""
         self.max_docs = max_docs
@@ -589,7 +704,8 @@ class BertStyleLMProcessor(Processor):
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
-            tasks={}
+            tasks={},
+            proxies=proxies
         )
 
         self.next_sent_pred = next_sent_pred
@@ -599,7 +715,7 @@ class BertStyleLMProcessor(Processor):
             self.add_task("nextsentence", "acc", ["False", "True"])
 
     def file_to_dicts(self, file: str) -> list:
-        dicts = read_docs_from_txt(filename=file, delimiter=self.delimiter, max_docs=self.max_docs)
+        dicts = read_docs_from_txt(filename=file, delimiter=self.delimiter, max_docs=self.max_docs, proxies=self.proxies)
         return dicts
 
     def _dict_to_samples(self, dictionary, all_dicts=None):
@@ -631,7 +747,7 @@ class BertStyleLMProcessor(Processor):
                         seq_b=tokenized["text_b"][seq_name],
                         tokenizer=self.tokenizer,
                         max_seq_len=self.max_seq_len)
-                    samples.append(Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized))
+                samples.append(Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized))
             # if we don't do next sentence prediction, we should feed in a single sentence
             else:
                 text_a = doc[idx]
@@ -651,7 +767,7 @@ class BertStyleLMProcessor(Processor):
                         seq_b=None,
                         tokenizer=self.tokenizer,
                         max_seq_len=self.max_seq_len)
-                    samples.append(Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized))
+                samples.append(Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized))
         return samples
 
     def _sample_to_features(self, sample) -> dict:
@@ -665,6 +781,7 @@ class BertStyleLMProcessor(Processor):
 #########################################
 # SQUAD 2.0 Processor ####
 #########################################
+
 class SquadProcessor(Processor):
     """ Used to handle the SQuAD dataset"""
 
@@ -681,7 +798,8 @@ class SquadProcessor(Processor):
         dev_split=0,
         doc_stride=128,
         max_query_length=64,
-        **kwargs,
+        proxies=None,
+        **kwargs
     ):
         """
         :param tokenizer: Used to split a sentence (str) into tokens.
@@ -725,6 +843,7 @@ class SquadProcessor(Processor):
             dev_split=dev_split,
             data_dir=data_dir,
             tasks={},
+            proxies=proxies
         )
 
         if metric and label_list:
@@ -733,80 +852,118 @@ class SquadProcessor(Processor):
             logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
                         "using the default task or add a custom task later via processor.add_task()")
 
-    def dataset_from_dicts(self, dicts, index=0, rest_api_schema=False, return_baskets = False):
+    def dataset_from_dicts(self, dicts, index=None, rest_api_schema=False, return_baskets=False):
+        """ Overwrites the method from the base class since Question Answering processing is quite different.
+        This method allows for documents and questions to be tokenized earlier. Then SampleBaskets are initialized
+        with one document and one question. """
+
         if rest_api_schema:
             dicts = [self._convert_rest_api_dict(x) for x in dicts]
-        #We need to add the index (coming from multiprocessing chunks) to have a unique numerical basket ID
-        self.baskets = [
-            SampleBasket(raw=tr, id=(i+index)*10000)
-            for i, tr in enumerate(dicts)
-        ]
-        self._init_samples_in_baskets_squad()
+        self.baskets = self._dicts_to_baskets(dicts, index)
+        self._init_samples_in_baskets()
         self._featurize_samples()
         if index == 0:
-            self._log_samples(3)
-
+            self._log_samples(2)
+        # This mode is for inference where we need to keep baskets
         if return_baskets:
             dataset, tensor_names = self._create_dataset(keep_baskets=True)
             return dataset, tensor_names, self.baskets
+        # This mode is for training where we can free ram by removing baskets
         else:
             dataset, tensor_names = self._create_dataset(keep_baskets=False)
             return dataset, tensor_names
 
-    def _init_samples_in_baskets_squad(self):
-        #this function is only needed to work with integer IDs instead of strings
-        for basket in self.baskets:
-            all_dicts = [b.raw for b in self.baskets]
-            basket.samples = self._dict_to_samples(dictionary=basket.raw, all_dicts=all_dicts)
-            for num, sample in enumerate(basket.samples):
-                 sample.id = basket.id + num
+    def _dicts_to_baskets(self, dicts, index=None):
+        # Perform tokenization on documents and questions resulting in a nested list of doc-question pairs
+        dicts_tokenized = [self.apply_tokenization(d) for d in dicts]
+
+        baskets = []
+        for d_idx, document in enumerate(dicts_tokenized):
+            for q_idx, raw in enumerate(document):
+                squad_id_hex = dicts[d_idx]["qas"][q_idx]["id"]
+                if squad_id_hex is None:
+                    id_1 = d_idx + index
+                    id_2 = q_idx
+                else:
+                    id_1, id_2 = encode_squad_id(squad_id_hex)
+                basket = SampleBasket(raw=raw, id=f"{id_1}-{id_2}")
+                baskets.append(basket)
+        return baskets
+
+
+    def apply_tokenization(self, dictionary):
+        """ This performs tokenization on all documents and questions. The result is a list (unnested)
+        where each entry is a dictionary for one document-question pair (potentially mutliple answers). """
+
+        raw_baskets = []
+        document_text = dictionary["context"]
+        document_tokenized = tokenize_with_metadata(document_text, self.tokenizer)
+        document_start_of_word = [int(x) for x in document_tokenized["start_of_word"]]
+        questions = dictionary["qas"]
+        for question in questions:
+            squad_id = question["id"]
+            question_text = question["question"]
+            question_tokenized = tokenize_with_metadata(question_text, self.tokenizer)
+            question_start_of_word = [int(x) for x in question_tokenized["start_of_word"]]
+            answers = []
+            for answer in question["answers"]:
+                a = {"text": answer["text"],
+                     "offset": answer["answer_start"]}
+                answers.append(a)
+            raw = {"document_text": document_text,
+                   "document_tokens": document_tokenized["tokens"],
+                   "document_offsets": document_tokenized["offsets"],
+                   "document_start_of_word": document_start_of_word,
+                   "question_text": question_text,
+                   "question_tokens": question_tokenized["tokens"],
+                   "question_offsets": question_tokenized["offsets"],
+                   "question_start_of_word": question_start_of_word,
+                   "answers": answers,
+                   "is_impossible": question["is_impossible"],
+                   "squad_id": squad_id}
+            raw_baskets.append(raw)
+        return raw_baskets
 
     def _convert_rest_api_dict(self, infer_dict):
         # convert input coming from inferencer to SQuAD format
-        converted = {}
-        converted["paragraphs"] = [
-            {
-                "qas": [
-                    {
-                        "question": infer_dict.get("questions", None)[0],
-                        "id": "unusedID",
-                    }
-                ],
-                "context": infer_dict.get("text", None),
-                "document_id": infer_dict.get("document_id", None),
-            }
-        ]
+        if len(infer_dict.get("questions")) > 1:
+            raise ValueError("Inferencer currently does not support answering multiple questions on a text."
+                                "As a workaround, multiple input dicts with text and question pairs can be "
+                                "supplied in a single API request.")
+        converted = {
+            "qas": [
+                {
+                    "question": infer_dict.get("questions", ["Missing?"])[0],
+                    "id": None,
+                    "answers": [],
+                    "is_impossible": False
+                }
+            ],
+            "context": infer_dict.get("text", "Missing!"),
+            "document_id": infer_dict.get("document_id", None),
+        }
         return converted
 
     def file_to_dicts(self, file: str) -> [dict]:
-        dict = read_squad_file(filename=file)
-        return dict
+        nested_dicts = read_squad_file(filename=file)
+        dicts = [y for x in nested_dicts for y in x["paragraphs"]]
+        return dicts
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
-        if "paragraphs" not in dictionary:  # TODO change this inference mode hack
-            dictionary = self._convert_rest_api_dict(infer_dict=dictionary)
-        samples = create_samples_squad(entry=dictionary)
-        for sample in samples:
-            tokenized = tokenize_with_metadata(
-                text=" ".join(sample.clear_text["doc_tokens"]),
-                tokenizer=self.tokenizer
-            )
-            sample.tokenized = tokenized
-
+        n_special_tokens = self.tokenizer.num_added_tokens(pair=True)
+        samples = create_samples_squad(dictionary=dictionary,
+                                       max_query_len=self.max_query_length,
+                                       max_seq_len=self.max_seq_len,
+                                       doc_stride=self.doc_stride,
+                                       n_special_tokens=n_special_tokens)
         return samples
 
     def _sample_to_features(self, sample) -> dict:
         # TODO, make this function return one set of features per sample
-        features = sample_to_features_squad(
-            sample=sample,
-            tokenizer=self.tokenizer,
-            max_seq_len=self.max_seq_len,
-            doc_stride=self.doc_stride,
-            max_query_length=self.max_query_length,
-            tasks=self.tasks
-        )
+        features = sample_to_features_squad(sample=sample,
+                                            tokenizer=self.tokenizer,
+                                            max_seq_len=self.max_seq_len)
         return features
-
 
 class RegressionProcessor(Processor):
     """
@@ -828,8 +985,50 @@ class RegressionProcessor(Processor):
         label_name="regression_label",
         scaler_mean=None,
         scaler_scale=None,
-        **kwargs,
+        proxies=None,
+        **kwargs
     ):
+        """
+        :param tokenizer: Used to split a sentence (str) into tokens.
+        :param max_seq_len: Samples are truncated after this many tokens.
+        :type max_seq_len: int
+        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
+        :type data_dir: str
+        :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
+        :type label_list: list
+        :param metric: name of metric that shall be used for evaluation, e.g. "acc" or "f1_macro".
+                 Alternatively you can also supply a custom function, that takes preds and labels as args and returns a numerical value.
+                 For using multiple metrics supply them as a list, e.g ["acc", my_custom_metric_fn].
+        :type metric: str, function, or list
+        :param train_filename: The name of the file containing training data.
+        :type train_filename: str
+        :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
+                             will be a slice of the train set.
+        :type dev_filename: str or None
+        :param test_filename: None
+        :type test_filename: str
+        :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
+        :type dev_split: float
+        :param delimiter: Separator used in the input tsv / csv file
+        :type delimiter: str
+        :param quote_char: Character used for quoting strings in the input tsv/ csv file
+        :type quote_char: str
+        :param skiprows: number of rows to skip in the tsvs (e.g. for multirow headers)
+        :type skiprows: int
+        :param label_column_name: name of the column in the input csv/tsv that shall be used as training labels
+        :type label_column_name: str
+        :param label_name: name for the internal label variable in FARM (only needed to adjust in rare cases)
+        :type label_name: str
+        :param scaler_mean: Value to substract from the label for normalization
+        :type scaler_mean: float
+        :param scaler_scale: Value to divide the label by for normalization
+        :type scaler_scale: float
+        :param proxies: proxy configuration to allow downloads of remote datasets.
+                        Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
+        :type proxies: dict
+        :param kwargs: placeholder for passing generic parameters
+        :type kwargs: object
+        """
 
         # Custom processor attributes
         self.delimiter = delimiter
@@ -844,6 +1043,7 @@ class RegressionProcessor(Processor):
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
+            proxies=proxies
         )
 
         self.add_task(name="regression", metric="mse", label_list= [scaler_mean, scaler_scale], label_column_name=label_column_name, task_type="regression", label_name=label_name)
@@ -856,8 +1056,9 @@ class RegressionProcessor(Processor):
             delimiter=self.delimiter,
             skiprows=self.skiprows,
             quotechar=self.quote_char,
+            proxies=self.proxies
         )
-
+        
         # collect all labels and compute scaling stats
         train_labels = []
         for d in dicts:

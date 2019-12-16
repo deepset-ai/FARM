@@ -18,7 +18,7 @@ device, n_gpu = initialize_device_settings(use_cuda=use_gpu)
 lang_model = "bert-base-german-cased"
 
 # 1.Create a tokenizer
-tokenizer = Tokenizer.from_pretrained(
+tokenizer = Tokenizer.load(
     pretrained_model_name_or_path=lang_model, do_lower_case=False
 )
 

@@ -30,13 +30,15 @@ DOWNSTREAM_TASK_MAP = {
     'cola': "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/cola.tar.gz",
 }
 
-
-def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=None, header=0):
+def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=None, header=0, proxies=None):
     """Reads a tab separated value file. Tries to download the data if filename is not found"""
+
+    # get remote dataset if needed
     if not (os.path.exists(filename)):
         logger.info(f" Couldn't find {filename} locally. Trying to download ...")
-        _download_extract_downstream_data(filename)
+        _download_extract_downstream_data(filename, proxies=proxies)
 
+    # read file into df
     df = pd.read_csv(
         filename,
         sep=delimiter,
@@ -47,6 +49,9 @@ def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=N
         header=header
     )
 
+    # let's rename our target columns to the default names FARM expects:
+    # "text": contains the text
+    # "text_classification_label": contains a label for text classification
     columns = ["text"] + list(rename_columns.keys())
     df = df[columns]
     for source_column, label_name in rename_columns.items():
@@ -57,7 +62,7 @@ def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=N
     return raw_dict
 
 
-def read_ner_file(filename, sep="\t", **kwargs):
+def read_ner_file(filename, sep="\t", proxies=None):
     """
     read file
     return format :
@@ -65,7 +70,7 @@ def read_ner_file(filename, sep="\t", **kwargs):
     """
     if not (os.path.exists(filename)):
         logger.info(f" Couldn't find {filename} locally. Trying to download ...")
-        _download_extract_downstream_data(filename)
+        _download_extract_downstream_data(filename, proxies)
 
     f = open(filename, encoding='utf-8')
 
@@ -91,11 +96,11 @@ def read_ner_file(filename, sep="\t", **kwargs):
     return data
 
 
-def read_squad_file(filename):
+def read_squad_file(filename, proxies=None):
     """Read a SQuAD json file"""
     if not (os.path.exists(filename)):
         logger.info(f" Couldn't find {filename} locally. Trying to download ...")
-        _download_extract_downstream_data(filename)
+        _download_extract_downstream_data(filename, proxies)
     with open(filename, "r", encoding="utf-8") as reader:
         input_data = json.load(reader)["data"]
     return input_data
@@ -128,7 +133,7 @@ def write_squad_predictions(predictions, out_filename, predictions_filename=None
     logger.info(f"Written Squad predictions to: {filepath}")
 
 
-def _download_extract_downstream_data(input_file):
+def _download_extract_downstream_data(input_file, proxies=None):
     # download archive to temp dir and extract to correct position
     full_path = os.path.realpath(input_file)
     directory = os.path.dirname(full_path)
@@ -152,7 +157,7 @@ def _download_extract_downstream_data(input_file):
         logger.error("Cannot download {}. Unknown data source.".format(taskname))
     else:
         with tempfile.NamedTemporaryFile() as temp_file:
-            http_get(DOWNSTREAM_TASK_MAP[taskname], temp_file)
+            http_get(DOWNSTREAM_TASK_MAP[taskname], temp_file, proxies=proxies)
             temp_file.flush()
             temp_file.seek(0)  # making tempfile accessible
             tfile = tarfile.open(temp_file.name)
@@ -169,10 +174,10 @@ def _conll03get(dataset, directory, language):
         file.write(response.content)
 
 
-def read_docs_from_txt(filename, delimiter="", encoding="utf-8", max_docs=None):
+def read_docs_from_txt(filename, delimiter="", encoding="utf-8", max_docs=None, proxies=None):
     """Reads a text file with one sentence per line and a delimiter between docs (default: empty lines) ."""
     if not (os.path.exists(filename)):
-        _download_extract_downstream_data(filename)
+        _download_extract_downstream_data(filename, proxies)
     all_docs = []
     doc = []
     corpus_lines = 0
@@ -274,7 +279,7 @@ def _get_random_sentence(all_baskets, forbidden_doc):
     # Similar to original BERT tf repo: This outer loop should rarely go for more than one iteration for large
     # corpora. However, just to be careful, we try to make sure that
     # the random document is not the same as the document we're processing.
-    for _ in range(10):
+    for _ in range(100):
         rand_doc_idx = random.randrange(len(all_baskets))
         rand_doc = all_baskets[rand_doc_idx]["doc"]
 
@@ -330,6 +335,7 @@ def mask_random_words(tokens, vocab, token_groups=None, max_predictions_per_seq=
     random.shuffle(cand_indices)
     output_label = [''] * len(tokens)
     num_masked = 0
+    assert "[MASK]" not in tokens
 
     # 2. Mask the first groups until we reach the number of tokens we wanted to mask (num_to_mask)
     for index_set in cand_indices:
@@ -349,6 +355,7 @@ def mask_random_words(tokens, vocab, token_groups=None, max_predictions_per_seq=
                 tokens[index] = "[MASK]"
 
             # 10% randomly change token to random token
+            #TODO currently custom vocab is not included here
             elif prob < 0.9:
                 tokens[index] = random.choice(list(vocab.items()))[0]
 

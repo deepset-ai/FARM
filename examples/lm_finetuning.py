@@ -34,7 +34,7 @@ evaluate_every = 30
 lang_model = "bert-base-cased"
 
 # 1.Create a tokenizer
-tokenizer = Tokenizer.from_pretrained(
+tokenizer = Tokenizer.load(
     pretrained_model_name_or_path=lang_model, do_lower_case=False
 )
 
@@ -43,7 +43,7 @@ processor = BertStyleLMProcessor(
     data_dir="../data/lm_finetune_nips", tokenizer=tokenizer, max_seq_len=128, max_docs=30
 )
 # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
-data_silo = DataSilo(processor=processor, batch_size=batch_size)
+data_silo = DataSilo(processor=processor, batch_size=batch_size, max_multiprocessing_chunksize=20)
 
 # 4. Create an AdaptiveModel
 # a) which consists of a pretrained language model as a basis

@@ -33,8 +33,8 @@ lang_model = "bert-base-german-cased"
 
 # 1.Create a tokenizer
 tokenizer = Tokenizer.load(
-    pretrained_model_name_or_path=lang_model, do_lower_case=False
-)
+    pretrained_model_name_or_path=lang_model,
+    do_lower_case=False)
 
 # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
 ner_labels = ["[PAD]", "X", "O", "B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-OTH", "I-OTH"]
