@@ -211,11 +211,11 @@ class DataSilo:
             self.data["test"] = None
 
         self._save_dataset_to_cache()
-        self._derive_stats_and_meta_data()
 
-    def _derive_stats_and_meta_data(self):
+        # derive stats and meta data
         self._calculate_statistics()
         # self.calculate_class_weights()
+
         self._initialize_data_loaders()
 
     def _get_checkpoint_checksum(self):
@@ -242,7 +242,11 @@ class DataSilo:
 
         self.tensor_names = torch.load(cache_dir / "tensor_names")
 
-        self._derive_stats_and_meta_data()
+        # derive stats and meta data
+        self._calculate_statistics()
+        # self.calculate_class_weights()
+
+        self._initialize_data_loaders()
 
     def _save_dataset_to_cache(self):
         checksum = self._get_checkpoint_checksum()
