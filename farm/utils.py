@@ -1,3 +1,5 @@
+import hashlib
+import json
 import logging
 import random
 
@@ -243,3 +245,10 @@ def decode_squad_id(part_1, part_2):
     assert len(hexa) == 24
     return hexa
 
+
+def get_dict_checksum(payload_dict):
+    """
+    Get MD5 checksum for a dict.
+    """
+    checksum = hashlib.md5(json.dumps(payload_dict, sort_keys=True).encode("utf-8")).hexdigest()
+    return checksum
