@@ -64,8 +64,55 @@ def initialize_optimizer(model,
                          distributed=False,
                          grad_acc_steps=1,
                          local_rank=-1,
-                         use_amp=None,
-                        ):
+                         use_amp=None):
+    """
+    Initializes an optimizer, a learning rate scheduler and converts the model if needed (e.g for mixed precision).
+    Per default, we use transformers' AdamW and a linear warmup schedule with warmup ratio 0.1.
+    You can easily switch optimizer and schedule via `optimizer_opts` and `schedule_opts`.
+
+    :param model: model to optimize (e.g. trimming weights to fp16 / mixed precision)
+    :type model: AdaptiveModel
+    :param n_batches: number of batches for training
+    :type n_batches: int
+    :param n_epochs: number of epochs for training
+    :param device:
+    :param learning_rate: Learning rate
+    :type learning_rate: float
+    :param optimizer_opts: Dict to customize the optimizer. Choose any optimizer available from torch.optim, apex.optimizers or
+                           transformers.optimization by supplying the class name and the parameters for the constructor.
+                           Examples:
+                           1) AdamW from Transformers (Default):
+                           {"name": "TransformersAdamW", "correct_bias": False, "weight_decay": 0.01}
+                           2) SGD from pytorch:
+                           {"name": "SGD", "momentum": 0.0}
+                           3) FusedLAMB from apex:
+                           {"name": "FusedLAMB", "bias_correction": True}
+    :param schedule_opts: Dict to customize the learning rate schedule.
+                          Choose any Schedule from Pytorch or Huggingface's Transformers by supplying the class name
+                          and the parameters needed by the constructor.
+                          Examples:
+                          1) Linear Warmup (Default):
+                          {"name": "LinearWarmup",
+                                    "num_warmup_steps": 0.1 * num_training_steps,
+                                    "num_training_steps": num_training_steps}
+                          2) CosineWarmup:
+                                    {"name": "CosineWarmup",
+                                    "num_warmup_steps": 0.1 * num_training_steps,
+                                    "num_training_steps": num_training_steps}
+                          3) CyclicLR from pytorch:
+                          {"name": "CyclicLR", "base_lr": 1e-5, "max_lr":1e-4, "step_size_up": 100}
+    :param distributed: Whether training on distributed machines
+    :param grad_acc_steps: Number of steps to accumulate gradients for. Helpful to mimic large batch_sizes on small machines.
+    :param local_rank: rank of the machine in a distributed setting
+    :param use_amp: Optimization level of nvidia's automatic mixed precision (AMP). The higher the level, the faster the model.
+                    Options:
+                    "O0" (Normal FP32 training)
+                    "O1" (Mixed Precision => Recommended)
+                    "O2" (Almost FP16)
+                    "O3" (Pure FP16).
+                    See details on: https://nvidia.github.io/apex/amp.html
+    :return: model, optimizer, scheduler
+    """
 
     if use_amp and not AMP_AVAILABLE:
         raise ImportError(f'Got use_amp = {use_amp}, but cannot find apex. '
@@ -87,8 +134,14 @@ def initialize_optimizer(model,
     optimizer_opts["lr"] = learning_rate
 
     if schedule_opts is None:
-        schedule_opts = {"name": "WarmupLinearSchedule", "warmup_proportion": 0.1}
-    schedule_opts["t_total"] = num_train_optimization_steps
+        # Default schedule: Linear Warmup with 10% warmup
+        schedule_opts = {"name": "LinearWarmup",
+                         "num_warmup_steps": 0.1 * num_train_optimization_steps,
+                         "num_training_steps": num_train_optimization_steps}
+
+        # schedule_opts = {"name": "OneCycleLR", "max_lr":learning_rate, "pct_start": 0.1,
+        #                  "total_steps": num_train_optimization_steps }
+    schedule_opts["num_training_steps"] = num_train_optimization_steps
 
     # Get optimizer from pytorch, transformers or apex
     optimizer = _get_optim(model, optimizer_opts)
@@ -105,7 +158,6 @@ def initialize_optimizer(model,
 def _get_optim(model, opts):
     """ Get the optimizer based on dictionary with options. Options are passed to the optimizer constructor.
 
-    TODO
     :param model: model to optimize
     :param opts: config dictionary that will be passed to optimizer together with the params
     (e.g. lr, weight_decay, correct_bias ...). no_decay' can be given - parameters containing any of those strings
@@ -150,7 +202,9 @@ def _get_optim(model, opts):
                 optim_constructor = getattr(import_module('apex.optimizers'), optimizer_name)
             except (AttributeError, ImportError):
                 try:
-                    # Workaround to allow loading AdamW from transformers even though pytorch > 1.2 has now also a AdamW
+                    # Workaround to allow loading AdamW from transformers
+                    # pytorch > 1.2 has now also a AdamW (but without the option to set bias_correction = False,
+                    # which is done in the original BERT implementation)
                     optim_constructor = getattr(sys.modules[__name__], optimizer_name)
                 except (AttributeError, ImportError):
                     raise AttributeError(f"Optimizer '{optimizer_name}' not found in 'torch', 'transformers', 'apex' or 'local imports")
@@ -160,9 +214,7 @@ def _get_optim(model, opts):
 
 def _get_scheduler(optimizer, opts):
     """ Get the scheduler based on dictionary with options. Options are passed to the scheduler constructor.
-    TODO
-    :param schedule_name: name which will be looked up in torch.optim.lr_scheduler
-    or transformers.optimization
+
     :param optimizer: optimizer whose learning rate to control
     :param opts: dictionary of args to be passed to constructor of schedule
     :return: created scheduler
@@ -172,7 +224,16 @@ def _get_scheduler(optimizer, opts):
         sched_constructor = getattr(import_module('torch.optim.lr_scheduler'), schedule_name)
     except AttributeError:
         try:
-            # TODO this will switch soon in transformers: https://github.com/huggingface/transformers/pull/1832
+            # The method names in transformers became quite long and unhandy.
+            # for convenience we offer usage of shorter alias (e.g. "LinearWarmup")
+            scheduler_translations = {"LinearWarmup": "get_linear_schedule_with_warmup",
+                                      "Constant": "get_constant_schedule_with_warmup",
+                                      "CosineWarmup": "get_cosine_schedule_with_warmup",
+                                     "CosineWarmupWithRestarts": "get_cosine_with_hard_restarts_schedule_with_warmup"
+            }
+            if schedule_name in scheduler_translations.keys():
+                schedule_name = scheduler_translations[schedule_name]
+            # in contrast to torch, we actually get here a method and not a class
             sched_constructor = getattr(import_module('transformers.optimization'), schedule_name)
         except AttributeError:
             raise AttributeError(f"Scheduler '{schedule_name}' not found in 'torch' or 'transformers'")
@@ -183,8 +244,9 @@ def _get_scheduler(optimizer, opts):
     allowed_args = inspect.signature(sched_constructor).parameters.keys()
 
     # convert from warmup proporation to steps if required
-    if 'warmup_steps' in allowed_args and 'warmup_steps' not in opts:
-        opts['warmup_steps'] = int(opts["warmup_proportion"] * opts["t_total"])
+    if 'num_warmup_steps' in allowed_args and 'num_warmup_steps' not in opts and 'warmup_proportion' in opts:
+        opts['num_warmup_steps'] = int(opts["warmup_proportion"] * opts["num_training_steps"])
+        MlLogger.log_params({"warmup_proportion": opts["warmup_proportion"]})
 
     # only pass args that are supported by the constructor
     opts = {k: v for k, v in opts.items() if k in allowed_args}

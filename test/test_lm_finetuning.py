@@ -57,7 +57,7 @@ def test_lm_finetuning(caplog):
         n_batches=len(data_silo.loaders["train"]),
         n_epochs=1,
         device=device,
-        schedule_opts={'name': 'WarmupCosineSchedule'})
+        schedule_opts={'name': 'CosineWarmup', 'warmup_proportion': 0.1})
 
     trainer = Trainer(
         optimizer=optimizer,
@@ -133,8 +133,8 @@ def test_lm_finetuning_no_next_sentence(caplog):
         n_batches=len(data_silo.loaders["train"]),
         n_epochs=1,
         device=device,
-        schedule_opts={'name': 'WarmupCosineSchedule'})
-
+        schedule_opts={'name': 'CosineWarmup', 'warmup_proportion': 0.1}
+    )
     trainer = Trainer(
         optimizer=optimizer,
         data_silo=data_silo,
@@ -212,8 +212,8 @@ def test_lm_finetuning_custom_vocab(caplog):
         n_batches=len(data_silo.loaders["train"]),
         n_epochs=1,
         device=device,
-        schedule_opts={'name': 'WarmupCosineSchedule'})
-
+        schedule_opts={'name': 'CosineWarmup', 'warmup_proportion': 0.1}
+    )
     trainer = Trainer(
         optimizer=optimizer,
         data_silo=data_silo,

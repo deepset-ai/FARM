@@ -5,11 +5,8 @@
     "output_dir": {"value": null, "default": "saved_models",    "desc": "Output directory where model predictions and checkpoints will be saved."},
     "cuda":        {"value": null, "default": true,  "desc": "CUDA flag,  uses CUDA if available."},
     "local_rank":  {"value": null, "default": -1,    "desc": "If local_rank == -1 -> multiGPU mode on one machine,  other values signal distributed computation across several nodes (apex install required)."},
-    "use_amp":     {"value": "O1", "default": null, "desc": "Automatic mixed precision with APEX. Must be set to null to disable or to any optimisation level (see apex documentation). 'O1' is recommended."},
-    "loss_scale":  {"value": null, "default": "dynamic",     "desc": "Loss scaling to improve fp16 numeric stability. Only used when AMP is enabled. 'dynamic' (default value): dynamic loss scaling. Positive power of 2: static loss scaling value."},
+    "use_amp":     {"value": [null,"O0","O1"], "default": null, "desc": "Automatic mixed precision with APEX. Must be set to null to disable or to any optimisation level (see apex documentation). 'O1' is recommended."},
     "seed":        {"value": null, "default": 42, "desc": "Random seed for initializations."},
-    "server_ip":   {"value": null, "default": "", "desc": "Can be used for distant debugging."},
-    "server_port": {"value": null, "default": "", "desc": "Can be used for distant debugging."}
   }, 
 
   "task": {
@@ -43,9 +40,9 @@
     "layer_dims":                   {"value": null, "default": [768, 15], "desc": "Cannot do experiments on this value, since it is already a list. Dimensions of the prediction head. Needs to be of type String, otherwise it gets iterated over."}
   },
   "optimizer": {
-    "learning_rate":      {"value": null, "default": 5e-5, "desc": "The initial learning rate for Adam."},
+    "learning_rate":      {"value": null, "default": 5e-5, "desc": "The learning rate for the optimizer."},
     "optimizer_opts":     {"value": null, "default": null, "desc": "Additional optimizer config."},
-    "schedule_opts":      {"value": null, "default":  {"name": "WarmupLinearSchedule", "warmup_proportion":  0.4}, "desc":  "opts for lr schedule"}
+    "schedule_opts":      {"value": null, "default":  {"name": "LinearWarmup", "warmup_proportion":  0.4}, "desc":  "opts for lr schedule"}
  },
   "logging": {
     "eval_every":    {"value": null,                                "default": 60,   "desc": "Steps per training loop (batches) required for evaluation on dev set. Set to 0 when you do not want to do evaluation on dev set during training."},

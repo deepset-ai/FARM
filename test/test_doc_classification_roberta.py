@@ -56,7 +56,7 @@ def test_doc_classification():
         n_batches=len(data_silo.loaders["train"]),
         n_epochs=1,
         device=device,
-        schedule_opts={'name': 'WarmupCosineSchedule'})
+        schedule_opts=None)
 
     trainer = Trainer(
         optimizer=optimizer,

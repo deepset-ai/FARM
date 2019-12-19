@@ -15,7 +15,7 @@ def test_qa(caplog):
     caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
-    device, n_gpu = initialize_device_settings(use_cuda=False)
+    device, n_gpu = initialize_device_settings(use_cuda=True)
     batch_size = 2
     n_epochs = 1
     evaluate_every = 4
@@ -55,9 +55,8 @@ def test_qa(caplog):
         #optimizer_opts={'name': 'AdamW', 'lr': 2E-05},
         n_batches=len(data_silo.loaders["train"]),
         n_epochs=n_epochs,
-        device=device,
-        schedule_opts={'name': 'WarmupCosineSchedule'})
-
+        device=device
+    )
     trainer = Trainer(
         optimizer=optimizer,
         data_silo=data_silo,

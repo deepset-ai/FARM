@@ -113,6 +113,7 @@ class Trainer:
         grad_acc_steps=1,
         local_rank=-1,
         early_stopping=None,
+        log_learning_rate=False
     ):
         """
         :param optimizer: An optimizer object that determines the learning strategy to be used during training
@@ -145,6 +146,8 @@ class Trainer:
         :type local_rank: int
         :param early_stopping: an initialized EarlyStopping object to control early stopping and saving of best models.
         :type early_stopping: EarlyStopping
+        :param log_learning_rate: Whether to log learning rate to Mlflow
+        :type log_learning_rate: bool
         """
         self.data_silo = data_silo
         self.epochs = int(epochs)
@@ -160,6 +163,7 @@ class Trainer:
         self.local_rank = local_rank
         self.log_params()
         self.early_stopping = early_stopping
+        self.log_learning_rate = log_learning_rate
 
         if use_amp and not AMP_AVAILABLE:
             raise ImportError(f'Got use_amp = {use_amp}, but cannot find apex. '
@@ -264,12 +268,14 @@ class Trainer:
         else:
             loss.backward()
 
+        if self.log_learning_rate:
+            MlLogger.log_metrics({"learning_rate": self.lr_schedule.get_lr()[0]}, step=self.global_step)
+
         if (step + 1) % self.grad_acc_steps == 0:
             # TODO We might wanna add gradient clipping here
             self.optimizer.step()
             self.optimizer.zero_grad()
             if self.lr_schedule:
-                MlLogger.log_metrics({"learning_rate": self.lr_schedule.get_lr()[0]}, step=self.global_step)
                 self.lr_schedule.step()
         return loss
 

@@ -24,6 +24,7 @@ def test_ner():
     evaluate_every = 1
     lang_model = "bert-base-german-cased"
     use_amp = 'O1'
+    #use_amp = None
 
     tokenizer = Tokenizer.load(
         pretrained_model_name_or_path=lang_model, do_lower_case=False
@@ -85,7 +86,7 @@ def test_ner():
     ]
     model = Inferencer.load(save_dir, gpu=True)
     #TODO convert_iob_to_simple_tags seems somehow broken - returns empty list
-    result = model.inference_from_dicts(dicts=basic_texts, use_multiprocessing=False)
+    result = model.inference_from_dicts(dicts=basic_texts, max_processes=1)
     print(result)
     assert result[0]["predictions"][0]["context"] == "Crown"
     assert isinstance(result[0]["predictions"][0]["probability"], np.float32)

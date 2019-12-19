@@ -29,7 +29,7 @@ ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_question_
 ##########################
 set_all_seeds(seed=42)
 device, n_gpu = initialize_device_settings(use_cuda=True)
-batch_size = 24
+batch_size = 5
 n_epochs = 2
 evaluate_every = 500
 base_LM_model = "bert-base-cased"
@@ -76,9 +76,10 @@ model = AdaptiveModel(
 model, optimizer, lr_schedule = initialize_optimizer(
     model=model,
     learning_rate=1e-5,
-    warmup_proportion=0.2,
+    schedule_opts={"name": "LinearWarmup", "warmup_proportion": 0.2},
     n_batches=len(data_silo.loaders["train"]),
     n_epochs=n_epochs,
+    device=device
 )
 # 6. Feed everything to the Trainer, which keeps care of growing our model and evaluates it from time to time
 trainer = Trainer(

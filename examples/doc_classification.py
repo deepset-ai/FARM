@@ -76,7 +76,6 @@ model = AdaptiveModel(
 model, optimizer, lr_schedule = initialize_optimizer(
     model=model,
     learning_rate=2e-5,
-    warmup_proportion=0.1,
     n_batches=len(data_silo.loaders["train"]),
     n_epochs=n_epochs,
     use_amp=use_amp)
@@ -89,8 +88,7 @@ trainer = Trainer(
     n_gpu=n_gpu,
     lr_schedule=lr_schedule,
     evaluate_every=evaluate_every,
-    device=device,
-    use_amp=use_amp)
+    device=device,)
 
 # 7. Let it grow
 model = trainer.train(model)

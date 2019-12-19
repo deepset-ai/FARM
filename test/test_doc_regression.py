@@ -55,7 +55,7 @@ def test_doc_regression(caplog):
         n_batches=len(data_silo.loaders["train"]),
         n_epochs=1,
         device=device,
-        schedule_opts={'name': 'WarmupCosineSchedule'}
+        schedule_opts={'name': 'CosineWarmup', 'warmup_proportion': 0.1}
     )
 
     trainer = Trainer(
