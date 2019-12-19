@@ -1,6 +1,4 @@
 import copy
-import hashlib
-import json
 import logging
 import torch.multiprocessing as mp
 import os
@@ -23,6 +21,7 @@ from farm.data_handler.processor import Processor
 from farm.data_handler.utils import grouper
 from farm.utils import MLFlowLogger as MlLogger
 from farm.utils import log_ascii_workers, calc_chunksize
+from farm.utils import get_dict_checksum
 from farm.visual.ascii.images import TRACTOR_SMALL
 
 logger = logging.getLogger(__name__)
@@ -69,10 +68,11 @@ class DataSilo:
 
         loaded_from_cache = False
         if checkpointing:  # Check if DataSets are present in cache
-            checksum = self._get_checkpoint_checksum()
-            dataset_path = Path(f"cache/data_silo_{checksum}")
+            checksum = self._get_checksum()
+            dataset_path = Path(f"cache/data_silo/{checksum}")
 
             if dataset_path.exists():
+                logger.info("Loading datasets from cache ...")
                 self._load_dataset_from_cache(dataset_path)
                 loaded_from_cache = True
 
@@ -218,14 +218,21 @@ class DataSilo:
 
         self._initialize_data_loaders()
 
-    def _get_checkpoint_checksum(self):
-        checkpoint_dict = {
-            "train_filename": self.processor.train_filename
+    def _get_checksum(self):
+        """
+        Get checksum based on a dict to ensure validity of cached DataSilo
+        """
+        # keys in the dict identifies uniqueness for a given DataSilo.
+        payload_dict = {
+            "train_filename": str(Path(self.processor.train_filename).absolute())
         }
-        checksum = hashlib.md5(json.dumps(checkpoint_dict, sort_keys=True).encode("utf-8")).hexdigest()
+        checksum = get_dict_checksum(payload_dict)
         return checksum
 
     def _load_dataset_from_cache(self, cache_dir):
+        """
+        Load serialized dataset from a cache.
+        """
         self.data["train"] = torch.load(cache_dir / "train_dataset")
 
         dev_dataset_path = cache_dir / "dev_dataset"
@@ -249,9 +256,12 @@ class DataSilo:
         self._initialize_data_loaders()
 
     def _save_dataset_to_cache(self):
-        checksum = self._get_checkpoint_checksum()
+        """
+        Serialize and save dataset to a cache.
+        """
+        checksum = self._get_checksum()
 
-        cache_dir = Path(f"cache/data_silo_{checksum}")
+        cache_dir = Path(f"cache/data_silo/{checksum}")
         cache_dir.mkdir(parents=True, exist_ok=True)
 
         torch.save(self.data["train"], cache_dir / "train_dataset")
