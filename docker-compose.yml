@@ -2,13 +2,13 @@ version: '3'
 services:
   inference-api:
     # this Docker image comes with preloaded models.
-    image: "deepset/farm-inference-api:base-models"
+    image: "deepset/farm-inference-api:base-models-0.3.1"
     ports:
       - "5000:5000"
     # (optional) mount your own models
     volumes:
       - "./saved_models:/home/user/saved_models"
   inference-ui:
-    image: "deepset/farm-inference-ui:latest"
+    image: "deepset/farm-inference-ui:0.3"
     ports:
       - "3000:80"
