@@ -93,12 +93,12 @@ def initialize_optimizer(model,
                           Examples:
                           1) Linear Warmup (Default):
                           {"name": "LinearWarmup",
-                                    "num_warmup_steps": 0.1 * num_training_steps,
-                                    "num_training_steps": num_training_steps}
+                          "num_warmup_steps": 0.1 * num_training_steps,
+                          "num_training_steps": num_training_steps}
                           2) CosineWarmup:
-                                    {"name": "CosineWarmup",
-                                    "num_warmup_steps": 0.1 * num_training_steps,
-                                    "num_training_steps": num_training_steps}
+                          {"name": "CosineWarmup",
+                          "num_warmup_steps": 0.1 * num_training_steps,
+                          "num_training_steps": num_training_steps}
                           3) CyclicLR from pytorch:
                           {"name": "CyclicLR", "base_lr": 1e-5, "max_lr":1e-4, "step_size_up": 100}
     :param distributed: Whether training on distributed machines
