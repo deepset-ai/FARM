@@ -2,7 +2,7 @@ import numpy as np
 
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import NERProcessor
-from farm.modeling.optimization import initialize_optimizer
+from farm.modeling.optimization import initialize_optimizer, AMP_AVAILABLE
 from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import LanguageModel
@@ -23,8 +23,10 @@ def test_ner():
     batch_size = 2
     evaluate_every = 1
     lang_model = "bert-base-german-cased"
-    use_amp = 'O1'
-    #use_amp = None
+    if AMP_AVAILABLE:
+        use_amp = 'O1'
+    else:
+        use_amp = None
 
     tokenizer = Tokenizer.load(
         pretrained_model_name_or_path=lang_model, do_lower_case=False
@@ -85,7 +87,6 @@ def test_ner():
         {"text": "1980 kam der Crown von Toyota"},
     ]
     model = Inferencer.load(save_dir, gpu=True)
-    #TODO convert_iob_to_simple_tags seems somehow broken - returns empty list
     result = model.inference_from_dicts(dicts=basic_texts, max_processes=1)
     print(result)
     assert result[0]["predictions"][0]["context"] == "Crown"
