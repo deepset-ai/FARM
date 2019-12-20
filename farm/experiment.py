@@ -14,14 +14,6 @@ from farm.file_utils import read_config, unnestConfig
 
 logger = logging.getLogger(__name__)
 
-try:
-    from farm.train import WrappedDDP
-except ImportError:
-    logger.info(
-        "Importing Data Loader for Distributed Training failed. Apex not installed?"
-    )
-
-
 logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
     datefmt="%m/%d/%Y %H:%M:%S",
@@ -36,7 +28,6 @@ def load_experiments(file):
 
 
 def run_experiment(args):
-
     logger.info(
         "\n***********************************************"
         f"\n************* Experiment: {args.task.name} ************"
@@ -56,14 +47,14 @@ def run_experiment(args):
     device, n_gpu = initialize_device_settings(
         use_cuda=args.general.cuda,
         local_rank=args.general.local_rank,
-        fp16=args.general.fp16,
+        use_amp=args.general.use_amp,
     )
 
     args.parameter.batch_size = int(
         args.parameter.batch_size // args.parameter.gradient_accumulation_steps
     )
-    if n_gpu > 1:
-        args.parameter.batch_size = args.parameter.batch_size * n_gpu
+    # if n_gpu > 1:
+    #     args.parameter.batch_size = args.parameter.batch_size * n_gpu
     set_all_seeds(args.general.seed)
 
     # Prepare Data
@@ -102,17 +93,18 @@ def run_experiment(args):
     )
 
     # Init optimizer
-
-    # TODO: warmup linear is sometimes NONE depending on fp16 - is there a neater way to handle this?
-    optimizer, warmup_linear = initialize_optimizer(
+    optimizer_opts = dict(args.optimizer.optimizer_opts) if args.optimizer.optimizer_opts else None
+    schedule_opts = dict(args.optimizer.schedule_opts) if args.optimizer.schedule_opts else None
+    model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
-        learning_rate=args.parameter.learning_rate,
-        warmup_proportion=args.parameter.warmup_proportion,
-        loss_scale=args.general.loss_scale,
-        fp16=args.general.fp16,
+        learning_rate=args.optimizer.learning_rate,
+        schedule_opts=schedule_opts,
+        optimizer_opts=optimizer_opts,
+        use_amp=args.general.use_amp,
         n_batches=len(data_silo.loaders["train"]),
         grad_acc_steps=args.parameter.gradient_accumulation_steps,
         n_epochs=args.parameter.epochs,
+        device=device
     )
 
     trainer = Trainer(
@@ -121,9 +113,9 @@ def run_experiment(args):
         epochs=args.parameter.epochs,
         n_gpu=n_gpu,
         grad_acc_steps=args.parameter.gradient_accumulation_steps,
-        fp16=args.general.fp16,
+        use_amp=args.general.use_amp,
         local_rank=args.general.local_rank,
-        warmup_linear=warmup_linear,
+        lr_schedule=lr_schedule,
         evaluate_every=args.logging.eval_every,
         device=device,
     )
@@ -136,6 +128,7 @@ def run_experiment(args):
     processor.save(f"{args.general.output_dir}/{model_name}")
     model.save(f"{args.general.output_dir}/{model_name}")
 
+    ml_logger.end_run()
 
 def get_adaptive_model(
     lm_output_type,

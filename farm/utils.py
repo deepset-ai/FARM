@@ -43,7 +43,7 @@ def calc_chunksize(num_dicts, min_chunksize=4, max_chunksize=2000, max_processes
     return multiprocessing_chunk_size, num_processes
 
 
-def initialize_device_settings(use_cuda, local_rank=-1, fp16=False):
+def initialize_device_settings(use_cuda, local_rank=-1, use_amp=None):
     if not use_cuda:
         device = torch.device("cpu")
         n_gpu = 0
@@ -60,8 +60,8 @@ def initialize_device_settings(use_cuda, local_rank=-1, fp16=False):
         # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
         torch.distributed.init_process_group(backend="nccl")
     logger.info(
-        "device: {} n_gpu: {}, distributed training: {}, 16-bits training: {}".format(
-            device, n_gpu, bool(local_rank != -1), fp16
+        "device: {} n_gpu: {}, distributed training: {}, automatic mixed precision training: {}".format(
+            device, n_gpu, bool(local_rank != -1), use_amp
         )
     )
     return device, n_gpu
@@ -115,6 +115,10 @@ class MLFlowLogger(BaseMLLogger):
     @classmethod
     def log_artifacts(cls, dir_path, artifact_path=None):
         mlflow.log_artifacts(dir_path, artifact_path)
+
+    @classmethod
+    def end_run(cls):
+        mlflow.end_run()
 
 
 class TensorBoardLogger(BaseMLLogger):

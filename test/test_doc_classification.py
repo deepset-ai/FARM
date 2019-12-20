@@ -12,11 +12,13 @@ from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer
 from farm.utils import set_all_seeds, initialize_device_settings
 
-def test_doc_classification(caplog):
-    caplog.set_level(logging.CRITICAL)
+
+def test_doc_classification(caplog=None):
+    if caplog:
+        caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
-    device, n_gpu = initialize_device_settings(use_cuda=False)
+    device, n_gpu = initialize_device_settings(use_cuda=True)
     n_epochs = 1
     batch_size = 1
     evaluate_every = 2
@@ -50,19 +52,21 @@ def test_doc_classification(caplog):
         lm_output_types=["per_sequence"],
         device=device)
 
-    optimizer, warmup_linear = initialize_optimizer(
+    model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
         learning_rate=2e-5,
-        warmup_proportion=0.1,
+        #optimizer_opts={'name': 'AdamW', 'lr': 2E-05},
         n_batches=len(data_silo.loaders["train"]),
-        n_epochs=1)
+        n_epochs=1,
+        device=device,
+        schedule_opts=None)
 
     trainer = Trainer(
         optimizer=optimizer,
         data_silo=data_silo,
         epochs=n_epochs,
         n_gpu=n_gpu,
-        warmup_linear=warmup_linear,
+        lr_schedule=lr_schedule,
         evaluate_every=evaluate_every,
         device=device)
 
@@ -78,10 +82,10 @@ def test_doc_classification(caplog):
     ]
 
 
-    inf = Inferencer.load(save_dir,batch_size=2)
+    inf = Inferencer.load(save_dir, batch_size=2)
     result = inf.inference_from_dicts(dicts=basic_texts)
-    assert isinstance(result[0]["predictions"][0]["probability"],np.float32)
+    assert isinstance(result[0]["predictions"][0]["probability"], np.float32)
 
 
-if(__name__=="__main__"):
+if __name__ == "__main__":
     test_doc_classification()
