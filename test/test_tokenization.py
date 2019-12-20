@@ -173,6 +173,5 @@ def test_bert_custom_vocab(caplog):
     assert tokenized_meta["start_of_word"] == [True, True, True, True, True, True, False, False, False, False, True, True, True, False, False, False, False, False, False, False]
 
 
-
-if(__name__=="__main__"):
+if __name__ == "__main__":
     test_all_tokenizer_on_special_cases()

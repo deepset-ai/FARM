@@ -66,7 +66,7 @@ class Inferencer:
 
         """
         # Init device and distributed settings
-        device, n_gpu = initialize_device_settings(use_cuda=gpu, local_rank=-1, fp16=False)
+        device, n_gpu = initialize_device_settings(use_cuda=gpu, local_rank=-1, use_amp=None)
 
         self.processor = processor
         self.model = model
@@ -117,7 +117,7 @@ class Inferencer:
 
         """
 
-        device, n_gpu = initialize_device_settings(use_cuda=gpu, local_rank=-1, fp16=False)
+        device, n_gpu = initialize_device_settings(use_cuda=gpu, local_rank=-1, use_amp=None)
 
         model = AdaptiveModel.load(load_dir, device, strict=strict)
         if embedder_only:

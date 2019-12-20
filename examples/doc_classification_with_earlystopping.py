@@ -93,7 +93,6 @@ model = AdaptiveModel(
 optimizer, warmup_linear = initialize_optimizer(
     model=model,
     learning_rate=0.5e-5,
-    warmup_proportion=0.1,
     n_batches=len(data_silo.loaders["train"]),
     n_epochs=n_epochs)
 
