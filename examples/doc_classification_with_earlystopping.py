@@ -29,7 +29,8 @@ ml_logger.init_experiment(experiment_name="Public_FARM", run_name="DocClassifica
 ########## Settings
 ##########################
 set_all_seeds(seed=42)
-device, n_gpu = initialize_device_settings(use_cuda=True)
+use_amp = None
+device, n_gpu = initialize_device_settings(use_cuda=True, use_amp=use_amp)
 n_epochs = 20
 batch_size = 32
 evaluate_every = 100
@@ -80,8 +81,6 @@ language_model = LanguageModel.load(lang_model)
 prediction_head = TextClassificationHead(layer_dims=[768, len(processor.tasks["text_classification"]["label_list"])],
                                          class_weights=data_silo.calculate_class_weights(task_name="text_classification"))
 
-
-
 model = AdaptiveModel(
     language_model=language_model,
     prediction_heads=[prediction_head],
@@ -90,11 +89,12 @@ model = AdaptiveModel(
     device=device)
 
 # 5. Create an optimizer
-optimizer, warmup_linear = initialize_optimizer(
+model, optimizer, lr_schedule = initialize_optimizer(
     model=model,
     learning_rate=0.5e-5,
     n_batches=len(data_silo.loaders["train"]),
-    n_epochs=n_epochs)
+    n_epochs=n_epochs,
+    use_amp=use_amp)
 
 # 6. Feed everything to the Trainer, which keeps care of growing our model into powerful plant and evaluates it from time to time
 # Also create an EarlyStopping instance and pass it on to the trainer
@@ -114,7 +114,7 @@ trainer = Trainer(
     data_silo=data_silo,
     epochs=n_epochs,
     n_gpu=n_gpu,
-    warmup_linear=warmup_linear,
+    lr_schedule=lr_schedule,
     evaluate_every=evaluate_every,
     device=device,
     early_stopping=earlystopping)
