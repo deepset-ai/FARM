@@ -2,7 +2,7 @@ import numpy as np
 
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import NERProcessor
-from farm.modeling.optimization import initialize_optimizer
+from farm.modeling.optimization import initialize_optimizer, AMP_AVAILABLE
 from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import LanguageModel
@@ -14,16 +14,19 @@ from farm.utils import set_all_seeds, initialize_device_settings
 import logging
 
 
-def test_ner(caplog=None):
-    if caplog:
-        caplog.set_level(logging.CRITICAL)
+def test_ner():
+    #caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)
-    n_epochs = 5
+    n_epochs = 1
     batch_size = 2
     evaluate_every = 1
     lang_model = "bert-base-german-cased"
+    if AMP_AVAILABLE:
+        use_amp = 'O1'
+    else:
+        use_amp = None
 
     tokenizer = Tokenizer.load(
         pretrained_model_name_or_path=lang_model, do_lower_case=False
@@ -53,18 +56,18 @@ def test_ner(caplog=None):
         prediction_heads=[prediction_head],
         embeds_dropout_prob=0.1,
         lm_output_types=["per_token"],
-        device=device,
+        device=device
     )
 
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
-        learning_rate=2e-5,
-        #optimizer_opts={'name': 'AdamW', 'lr': 2E-05},
+        learning_rate=2e-05,
+        schedule_opts=None,
         n_batches=len(data_silo.loaders["train"]),
-        n_epochs=1,
+        n_epochs=n_epochs,
         device=device,
-        schedule_opts={'name': 'LinearWarmup', 'warmup_proportion': 0.1}
-    )
+        use_amp=use_amp)
+
     trainer = Trainer(
         optimizer=optimizer,
         data_silo=data_silo,
@@ -81,13 +84,13 @@ def test_ner(caplog=None):
     processor.save(save_dir)
 
     basic_texts = [
-        {"text": "Albrecht Lehman ist eine Person"},
+        {"text": "1980 kam der Crown von Toyota"},
     ]
-    model = Inferencer.load(save_dir)
+    model = Inferencer.load(save_dir, gpu=True)
     result = model.inference_from_dicts(dicts=basic_texts, max_processes=1)
     print(result)
-    #assert result[0]["predictions"][0]["context"] == "sagte"
-    #assert isinstance(result[0]["predictions"][0]["probability"], np.float32)
+    assert result[0]["predictions"][0]["context"] == "Crown"
+    assert isinstance(result[0]["predictions"][0]["probability"], np.float32)
 
 
 if __name__ == "__main__":

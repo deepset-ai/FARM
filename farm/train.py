@@ -2,6 +2,7 @@ from __future__ import absolute_import, division, print_function
 
 import logging
 import torch
+from torch.nn.parallel import DistributedDataParallel as DDP
 from tqdm import tqdm
 
 from farm.utils import MLFlowLogger as MlLogger
@@ -10,44 +11,13 @@ from farm.data_handler.data_silo import DataSilo
 from farm.visual.ascii.images import GROWING_TREE
 from farm.modeling.adaptive_model import AdaptiveModel
 
-logger = logging.getLogger(__name__)
-
-
-class WrappedDataParallel(torch.nn.DataParallel):
-    """
-    A way of adapting attributes of underlying class to parallel mode. See: https://pytorch.org/tutorials/beginner/former_torchies/parallelism_tutorial.html#dataparallel
-
-    Gets into recursion errors. Workaround see: https://discuss.pytorch.org/t/access-att-of-model-wrapped-within-torch-nn-dataparallel-maximum-recursion-depth-exceeded/46975
-    """
-
-    def __getattr__(self, name):
-        try:
-            return super().__getattr__(name)
-        except AttributeError:
-            return getattr(self.module, name)
-
-
 try:
-    from apex.parallel import DistributedDataParallel as DDP
-
-    class WrappedDDP(DDP):
-        """
-        A way of adapting attributes of underlying class to distributed mode. Same as in WrappedDataParallel above.
-        Even when using distributed on a single machine with multiple GPUs, apex can speed up training significantly.
-        Distributed code must be launched with "python -m torch.distributed.launch --nproc_per_node=1 run_script.py"
-        """
-
-        def __getattr__(self, name):
-            try:
-                return super().__getattr__(name)
-            except AttributeError:
-                return getattr(self.module, name)
-
-
+    from apex import amp
+    AMP_AVAILABLE = True
 except ImportError:
-    logger.warning(
-        "Apex not installed. If you use distributed training with local rank != -1 apex must be installed."
-    )
+    AMP_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
 
 
 class EarlyStopping:
@@ -135,14 +105,15 @@ class Trainer:
         epochs,
         n_gpu,
         device,
-        warmup_linear=0.1,
+        lr_schedule=None,
         evaluate_every=100,
         evaluator_dev=None,
         evaluator_test=None,
-        fp16=False,
+        use_amp=None,
         grad_acc_steps=1,
         local_rank=-1,
         early_stopping=None,
+        log_learning_rate=False
     ):
         """
         :param optimizer: An optimizer object that determines the learning strategy to be used during training
@@ -153,22 +124,30 @@ class Trainer:
         :param n_gpu: The number of gpus available for training and evaluation.
         :type n_gpu: int
         :param device: The device on which the train, dev and test tensors should be hosted. Choose from "cpu" and "cuda".
-        :param warmup_linear: TODO
+        :param lr_schedule: An optional scheduler object that can regulate the learning rate of the optimizer
         :param evaluate_every: Perform dev set evaluation after this many steps of training.
         :type evaluate_every: int
-        :param evaluator_dev: The dev set Evaluator object.
-        :type evaluator_dev: Evaluator
-        :param evaluator_test: The test set Evaluator object.
-        :type evaluator_test: Evaluator
-        :param fp16: Whether to use floating point 16 mode.
-        :type fp16: bool
+        :param evaluator_dev: Evaluator for dev set. Options:
+                              `None` (Default) => will init a new evaluator, if there's a dev set in the DataSilo
+                              `Evaluator Object` => use the manually supplied evaluator
+                              `False` => Don't use any evaluator
+        :type evaluator_dev: Evaluator, None or False
+        :param evaluator_test: Evaluator for test set. Options:
+                              `None` (Default) => will init a new evaluator, if there's a test set in the DataSilo
+                              `Evaluator Object` => use the manually supplied evaluator
+                              `False` => Don't use any evaluator
+        :type evaluator_test: Evaluator, None or False
+        :param use_amp: Whether to use automatic mixed precision with Apex. One of the optimization levels must be chosen.
+                        "O1" is recommended in almost all cases.
+        :type use_amp: str
         :param grad_acc_steps: TODO
         :type grad_acc_steps: int
         :param local_rank: TODO
         :type local_rank: int
-        :param early_stopping: an initialized EarlyStopping object to control early stopping and
-        saving of best models.
-        :type EarlyStopping
+        :param early_stopping: an initialized EarlyStopping object to control early stopping and saving of best models.
+        :type early_stopping: EarlyStopping
+        :param log_learning_rate: Whether to log learning rate to Mlflow
+        :type log_learning_rate: bool
         """
         self.data_silo = data_silo
         self.epochs = int(epochs)
@@ -176,15 +155,20 @@ class Trainer:
         self.evaluate_every = evaluate_every
         self.n_gpu = n_gpu
         self.grad_acc_steps = grad_acc_steps
-        self.fp16 = fp16
-        self.learning_rate = self.optimizer.get_lr()
-        self.warmup_linear = warmup_linear
+        self.use_amp = use_amp
+        self.lr_schedule = lr_schedule
         self.global_step = 0
         self.data_loader_train = data_silo.get_data_loader("train")
         self.device = device
         self.local_rank = local_rank
         self.log_params()
         self.early_stopping = early_stopping
+        self.log_learning_rate = log_learning_rate
+
+        if use_amp and not AMP_AVAILABLE:
+            raise ImportError(f'Got use_amp = {use_amp}, but cannot find apex. '
+                              'Please install Apex if you want to make use of automatic mixed precision. '
+                              'https://github.com/NVIDIA/apex')
 
         # evaluator on dev set
         if evaluator_dev is None and self.data_silo.get_data_loader("dev"):
@@ -215,20 +199,15 @@ class Trainer:
 
         logger.info(f"\n {GROWING_TREE}")
         model.train()
-        # multi GPU + distributed settings
-        if self.fp16:
-            model.half()
-        if self.local_rank > -1:
-            model = WrappedDDP(model)
-        elif self.n_gpu > 1:
-            model = WrappedDataParallel(model)
 
         do_stopping = False
         evalnr = 0
+        loss = 0
         for epoch in range(1, self.epochs + 1):
-            for step, batch in enumerate(
-                tqdm(self.data_loader_train, desc=f"Train epoch {epoch}/{self.epochs}")
-            ):
+            progress_bar = tqdm(self.data_loader_train)
+            for step, batch in enumerate(progress_bar):
+                progress_bar.set_description(f"Train epoch {epoch}/{self.epochs} (Cur. train loss: {loss:.4f})")
+
                 # Move batch of samples to device
                 batch = {key: batch[key].to(self.device) for key in batch}
 
@@ -236,10 +215,10 @@ class Trainer:
                 logits = model.forward(**batch)
                 per_sample_loss = model.logits_to_loss(logits=logits, **batch)
 
-                self.backward_propagate(per_sample_loss, step)
+                loss = self.backward_propagate(per_sample_loss, step)
 
                 # Perform  evaluation
-                if self.evaluator_dev is not None:
+                if self.evaluator_dev:
                     if self.global_step != 0 and (
                         self.global_step % self.evaluate_every == 0
                     ):
@@ -262,12 +241,16 @@ class Trainer:
                 self.global_step += 1
             if do_stopping:
                 break
-        if self.evaluator_test is not None:
-            if self.early_stopping and self.early_stopping.save_dir:
-                logger.info("Restoring best model so far from {}".format(self.early_stopping.save_dir))
-                lm_name = model.language_model.name
-                model = AdaptiveModel.load(self.early_stopping.save_dir, self.device, lm_name=lm_name)
-                model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
+
+        # With early stopping we want to restore the best model
+        if self.early_stopping and self.early_stopping.save_dir:
+            logger.info("Restoring best model so far from {}".format(self.early_stopping.save_dir))
+            lm_name = model.language_model.name
+            model = AdaptiveModel.load(self.early_stopping.save_dir, self.device, lm_name=lm_name)
+            model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
+
+        # Eval on test set
+        if self.evaluator_test:
             result = self.evaluator_test.eval(model)
             self.evaluator_test.log_results(result, "Test", self.global_step)
         return model
@@ -279,23 +262,22 @@ class Trainer:
                 {"Train_loss_total": float(loss.detach().cpu().numpy())},
                 step=self.global_step,
             )
-        if self.fp16:
-            self.optimizer.backward(loss)
+        if self.use_amp:
+            with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                scaled_loss.backward()
         else:
             loss.backward()
 
+        if self.log_learning_rate:
+            MlLogger.log_metrics({"learning_rate": self.lr_schedule.get_lr()[0]}, step=self.global_step)
+
         if (step + 1) % self.grad_acc_steps == 0:
-            if self.fp16:
-                # modify learning rate with special warm up BERT uses
-                # if args.fp16 is False, BertAdam is used that handles this automatically
-                lr_this_step = self.learning_rate * self.warmup_linear.get_lr(
-                    self.global_step, self.warmup_proportion
-                )
-                for param_group in self.optimizer.param_groups:
-                    param_group["lr"] = lr_this_step
-                # MlLogger.write_metrics({"learning_rate": lr_this_step}, step=self.global_step)
+            # TODO We might wanna add gradient clipping here
             self.optimizer.step()
             self.optimizer.zero_grad()
+            if self.lr_schedule:
+                self.lr_schedule.step()
+        return loss
 
     def adjust_loss(self, loss):
         loss = loss.mean()

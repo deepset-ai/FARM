@@ -20,7 +20,7 @@ class AdaptiveModel(nn.Module):
         prediction_heads,
         embeds_dropout_prob,
         lm_output_types,
-        device,
+        device
     ):
         """
         :param language_model: Any model that turns token ids into vector representations
@@ -297,7 +297,7 @@ class AdaptiveModel(nn.Module):
 
         model_vocab_len = self.language_model.model.resize_token_embeddings(new_num_tokens=None).num_embeddings
 
-        msg = "Vocab size of tokenizer doesn't match with model. " \
+        msg = f"Vocab size of tokenizer {vocab_size} doesn't match with model {model_vocab_len}. " \
               "If you added a custom vocabulary to the tokenizer, " \
               "make sure to supply 'n_added_tokens' to LanguageModel.load() and BertStyleLM.load()"
         assert vocab_size == model_vocab_len, msg

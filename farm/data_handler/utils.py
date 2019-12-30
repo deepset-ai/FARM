@@ -30,13 +30,15 @@ DOWNSTREAM_TASK_MAP = {
     'cola': "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/cola.tar.gz",
 }
 
-
 def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=None, header=0, proxies=None):
     """Reads a tab separated value file. Tries to download the data if filename is not found"""
+
+    # get remote dataset if needed
     if not (os.path.exists(filename)):
         logger.info(f" Couldn't find {filename} locally. Trying to download ...")
         _download_extract_downstream_data(filename, proxies=proxies)
 
+    # read file into df
     df = pd.read_csv(
         filename,
         sep=delimiter,
@@ -47,6 +49,9 @@ def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=N
         header=header
     )
 
+    # let's rename our target columns to the default names FARM expects:
+    # "text": contains the text
+    # "text_classification_label": contains a label for text classification
     columns = ["text"] + list(rename_columns.keys())
     df = df[columns]
     for source_column, label_name in rename_columns.items():
@@ -274,7 +279,7 @@ def _get_random_sentence(all_baskets, forbidden_doc):
     # Similar to original BERT tf repo: This outer loop should rarely go for more than one iteration for large
     # corpora. However, just to be careful, we try to make sure that
     # the random document is not the same as the document we're processing.
-    for _ in range(10):
+    for _ in range(100):
         rand_doc_idx = random.randrange(len(all_baskets))
         rand_doc = all_baskets[rand_doc_idx]["doc"]
 

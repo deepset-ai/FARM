@@ -62,10 +62,9 @@ model = AdaptiveModel(
     device=device)
 
 # 5. Create an optimizer
-optimizer, warmup_linear = initialize_optimizer(
+model, optimizer, lr_schedule = initialize_optimizer(
     model=model,
     learning_rate=2e-5,
-    warmup_proportion=0.1,
     n_batches=len(data_silo.loaders["train"]),
     n_epochs=n_epochs)
 
@@ -75,7 +74,7 @@ trainer = Trainer(
     data_silo=data_silo,
     epochs=n_epochs,
     n_gpu=n_gpu,
-    warmup_linear=warmup_linear,
+    lr_schedule=lr_schedule,
     evaluate_every=evaluate_every,
     device=device)
 

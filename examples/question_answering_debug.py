@@ -27,18 +27,18 @@ ml_logger.init_experiment(experiment_name="SQuAD", run_name="qa_albert")
 ######## Settings
 ########################
 set_all_seeds(seed=42)
-device, n_gpu = initialize_device_settings(use_cuda=False)
-batch_size = 32
+device, n_gpu = initialize_device_settings(use_cuda=True)
+batch_size = 60
 n_epochs = 2
-evaluate_every = 1
-base_LM_model = "albert"
-train_filename="train-v2.0.json"
-dev_filename="dev-v2.0.json"
+evaluate_every = 500
+base_LM_model = "albert-base-v1"
+train_filename="subsets/train_medium-v2.0.json"
+dev_filename="subsets/dev_medium-v2.0.json"
 save_dir = "../saved_models/qa_medium_albert"
-inference_file = "../data/squad20/subsets/5ad3ff1b604f3c001a3ffc74.json"
+inference_file = "../data/squad20/subsets/dev_medium-v2.0.json"
 predictions_file = save_dir + "/predictions.json"
 full_predictions_file = save_dir + "/full_predictions.json"
-inference_multiprocessing = False
+max_processes_for_inference = 8
 train = False
 inference = True
 
@@ -77,10 +77,10 @@ if train:
     )
 
     # 5. Create an optimizer
-    optimizer, warmup_linear = initialize_optimizer(
+    model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
         learning_rate=3e-5,
-        warmup_proportion=0.1,
+        schedule_opts={"name": "LinearWarmup", "warmup_proportion": 0.2},
         n_batches=len(data_silo.loaders["train"]),
         n_epochs=n_epochs,
     )
@@ -90,7 +90,7 @@ if train:
         data_silo=data_silo,
         epochs=n_epochs,
         n_gpu=n_gpu,
-        warmup_linear=warmup_linear,
+        lr_schedule=lr_schedule,
         evaluate_every=evaluate_every,
         device=device,
     )
@@ -104,8 +104,10 @@ if train:
 
 if inference:
     model = Inferencer.load(save_dir, batch_size=32, gpu=True)
-    full_result = model.inference_from_file(file=inference_file,
-                                            use_multiprocessing=inference_multiprocessing)
+    full_result = model.inference_from_file(
+        file=inference_file,
+        max_processes=max_processes_for_inference,
+    )
 
     for x in full_result:
         print(x)

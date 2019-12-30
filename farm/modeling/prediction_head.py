@@ -912,9 +912,11 @@ class QuestionAnsweringHead(PredictionHead):
             return False
         if end_idx < seq_2_start_t and end_idx != 0:
             return False
-        if start_idx >= n_non_padding:
+        # The -1 is to stop the idx falling on a final special token
+        # TODO: this makes the assumption that there is a special token that comes at the end of the second sequence
+        if start_idx >= n_non_padding - 1:
             return False
-        if end_idx >= n_non_padding:
+        if end_idx >= n_non_padding - 1:
             return False
         # Check if start comes after end
         if end_idx < start_idx:
