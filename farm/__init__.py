@@ -8,6 +8,9 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
+# reduce verbosity from transformers library
+logging.getLogger('transformers.configuration_utils').setLevel(logging.WARNING)
+
 # https://pytorch.org/docs/stable/multiprocessing.html#sharing-strategies
 if "file_descriptor" in mp.get_all_sharing_strategies():
     import resource

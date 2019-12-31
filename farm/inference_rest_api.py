@@ -79,7 +79,7 @@ class InferenceEndpoint(Resource):
         dicts = request.get_json().get("input", None)
         if not dicts:
             return {}
-        results = model.inference_from_dicts(dicts=dicts, rest_api_schema=True, use_multiprocessing=False)
+        results = model.inference_from_dicts(dicts=dicts, rest_api_schema=True, max_processes=1)
         return results[0]
 
 

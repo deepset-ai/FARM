@@ -66,7 +66,7 @@ class Inferencer:
 
         """
         # Init device and distributed settings
-        device, n_gpu = initialize_device_settings(use_cuda=gpu, local_rank=-1, fp16=False)
+        device, n_gpu = initialize_device_settings(use_cuda=gpu, local_rank=-1, use_amp=None)
 
         self.processor = processor
         self.model = model
@@ -117,7 +117,7 @@ class Inferencer:
 
         """
 
-        device, n_gpu = initialize_device_settings(use_cuda=gpu, local_rank=-1, fp16=False)
+        device, n_gpu = initialize_device_settings(use_cuda=gpu, local_rank=-1, use_amp=None)
 
         model = AdaptiveModel.load(load_dir, device, strict=strict)
         if embedder_only:
@@ -136,12 +136,20 @@ class Inferencer:
             return_class_probs=return_class_probs,
         )
 
-    def inference_from_file(self, file, use_multiprocessing=True):
+    def inference_from_file(self, file, max_processes=128):
+        """
+        Run downstream inference on the dicts in the file.
+
+        :param file: path of the input file for Inference
+        :type file: str
+        :param max_processes: the maximum size of `multiprocessing.Pool`. Set to value of 1 to disable multiprocessing.
+        :type max_processes: int
+        """
         dicts = self.processor.file_to_dicts(file)
-        preds_all = self.inference_from_dicts(dicts, rest_api_schema=False, use_multiprocessing=use_multiprocessing)
+        preds_all = self.inference_from_dicts(dicts, rest_api_schema=False, max_processes=max_processes)
         return preds_all
 
-    def inference_from_dicts(self, dicts, rest_api_schema=False, use_multiprocessing=True):
+    def inference_from_dicts(self, dicts, rest_api_schema=False, max_processes=128):
         """
         Runs down-stream inference using the prediction head.
 
@@ -150,9 +158,9 @@ class Inferencer:
         :param rest_api_schema: whether conform to the schema used for dicts in the HTTP API for Inference.
         :type rest_api_schema: bool
         :return: dict of predictions
-        :param use_multiprocessing: time incurred in spawning processes could outweigh performance boost for very small
-            number of dicts, eg, HTTP APIs for inference. This flags allows to disable multiprocessing for such cases.
-
+        :param max_processes: the maximum size of `multiprocessing.Pool`. Set to value of 1 to disable multiprocessing.
+            For very small number of dicts, time incurred in spawning processes could outweigh performance boost, eg,
+            in the case of HTTP APIs for Inference. For such cases, multiprocessing can be disabled using this param.
         """
         if self.prediction_type == "embedder":
             raise TypeError(
@@ -162,11 +170,8 @@ class Inferencer:
                 f"b) ... run inference on a downstream task: make sure your model path {self.name} contains a saved prediction head"
             )
 
-        multiprocessing_chunk_size, num_cpus_used = calc_chunksize(len(dicts))
-        if num_cpus_used == mp.cpu_count():
-            num_cpus_used -= 1 # We reserve one processor to do model inference CPU calculations (besides GPU computations)
-
-        if use_multiprocessing:
+        if max_processes > 1:  # use multiprocessing if max_processes > 1
+            multiprocessing_chunk_size, num_cpus_used = calc_chunksize(len(dicts), max_processes)
             with ExitStack() as stack:
                 p = stack.enter_context(mp.Pool(processes=num_cpus_used))
 

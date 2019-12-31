@@ -36,7 +36,7 @@ def test_lm_finetuning(caplog):
         max_seq_len=12,
         next_sent_pred=True
     )
-    data_silo = DataSilo(processor=processor, batch_size=batch_size)
+    data_silo = DataSilo(processor=processor, batch_size=batch_size, max_processes=1)
 
     language_model = LanguageModel.load(lang_model)
     lm_prediction_head = BertLMHead.load(lang_model)
@@ -50,20 +50,20 @@ def test_lm_finetuning(caplog):
         device=device,
     )
 
-    optimizer, warmup_linear = initialize_optimizer(
+    model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
         learning_rate=2e-5,
-        warmup_proportion=0.1,
+        #optimizer_opts={'name': 'AdamW', 'lr': 2E-05},
         n_batches=len(data_silo.loaders["train"]),
-        n_epochs=n_epochs,
-    )
+        n_epochs=1,
+        device=device,
+        schedule_opts={'name': 'CosineWarmup', 'warmup_proportion': 0.1})
 
     trainer = Trainer(
         optimizer=optimizer,
         data_silo=data_silo,
         epochs=n_epochs,
         n_gpu=n_gpu,
-        warmup_linear=warmup_linear,
         evaluate_every=evaluate_every,
         device=device,
     )
@@ -113,7 +113,7 @@ def test_lm_finetuning_no_next_sentence(caplog):
         max_seq_len=12,
         next_sent_pred=False
     )
-    data_silo = DataSilo(processor=processor, batch_size=batch_size)
+    data_silo = DataSilo(processor=processor, batch_size=batch_size, max_processes=1)
 
     language_model = LanguageModel.load(lang_model)
     lm_prediction_head = BertLMHead.load(lang_model)
@@ -126,20 +126,21 @@ def test_lm_finetuning_no_next_sentence(caplog):
         device=device,
     )
 
-    optimizer, warmup_linear = initialize_optimizer(
+    model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
         learning_rate=2e-5,
-        warmup_proportion=0.1,
+        #optimizer_opts={'name': 'AdamW', 'lr': 2E-05},
         n_batches=len(data_silo.loaders["train"]),
-        n_epochs=n_epochs,
+        n_epochs=1,
+        device=device,
+        schedule_opts={'name': 'CosineWarmup', 'warmup_proportion': 0.1}
     )
-
     trainer = Trainer(
         optimizer=optimizer,
         data_silo=data_silo,
         epochs=n_epochs,
         n_gpu=n_gpu,
-        warmup_linear=warmup_linear,
+        lr_schedule=lr_schedule,
         evaluate_every=evaluate_every,
         device=device,
     )
@@ -190,7 +191,7 @@ def test_lm_finetuning_custom_vocab(caplog):
         max_seq_len=12,
         next_sent_pred=True
     )
-    data_silo = DataSilo(processor=processor, batch_size=batch_size)
+    data_silo = DataSilo(processor=processor, batch_size=batch_size, max_processes=1)
 
     language_model = LanguageModel.load(lang_model, n_added_tokens=len(tokenizer.added_tokens_decoder))
     lm_prediction_head = BertLMHead.load(lang_model, n_added_tokens=len(tokenizer.added_tokens_decoder))
@@ -204,20 +205,21 @@ def test_lm_finetuning_custom_vocab(caplog):
         device=device
     )
 
-    optimizer, warmup_linear = initialize_optimizer(
+    model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
         learning_rate=2e-5,
-        warmup_proportion=0.1,
+        #optimizer_opts={'name': 'AdamW', 'lr': 2E-05},
         n_batches=len(data_silo.loaders["train"]),
-        n_epochs=n_epochs,
+        n_epochs=1,
+        device=device,
+        schedule_opts={'name': 'CosineWarmup', 'warmup_proportion': 0.1}
     )
-
     trainer = Trainer(
         optimizer=optimizer,
         data_silo=data_silo,
         epochs=n_epochs,
         n_gpu=n_gpu,
-        warmup_linear=warmup_linear,
+        lr_schedule=lr_schedule,
         evaluate_every=evaluate_every,
         device=device,
     )

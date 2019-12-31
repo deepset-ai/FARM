@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 from transformers.modeling_bert import BertModel, BertConfig
 from transformers.modeling_roberta import RobertaModel, RobertaConfig
 from transformers.modeling_xlnet import XLNetModel, XLNetConfig
-# from transformers.modeling_albert import AlbertModel, AlbertConfig
+from transformers.modeling_albert import AlbertModel, AlbertConfig
 from transformers.modeling_utils import SequenceSummary
 
 
@@ -89,6 +89,8 @@ class LanguageModel(nn.Module):
             # it's a model name which we try to resolve from s3. for now only works for bert models
             if 'roberta' in pretrained_model_name_or_path:
                 language_model = cls.subclasses["Roberta"].load(pretrained_model_name_or_path, **kwargs)
+            elif "albert" in pretrained_model_name_or_path:
+                language_model = cls.subclasses["Albert"].load(pretrained_model_name_or_path, **kwargs)
             elif 'bert' in pretrained_model_name_or_path:
                 language_model = cls.subclasses["Bert"].load(pretrained_model_name_or_path, **kwargs)
             elif 'xlnet' in pretrained_model_name_or_path:
@@ -324,95 +326,95 @@ class Bert(LanguageModel):
             string = self.model.config.to_json_string()
             file.write(string)
 
-# class Albert(LanguageModel):
-#     """
-#     An ALBERT model that wraps the HuggingFace's implementation
-#     (https://github.com/huggingface/transformers) to fit the LanguageModel class.
-#
-#     """
-#
-#     def __init__(self):
-#         super(Albert, self).__init__()
-#         self.model = None
-#         self.name = "albert"
-#
-#     @classmethod
-#     def load(cls, pretrained_model_name_or_path, language=None, **kwargs):
-#         """
-#         Load a language model either by supplying
-#
-#         * the name of a remote model on s3 ("albert-base" ...)
-#         * or a local path of a model trained via transformers ("some_dir/huggingface_model")
-#         * or a local path of a model trained via FARM ("some_dir/farm_model")
-#
-#         :param pretrained_model_name_or_path: name or path of a model
-#         :param language: (Optional) Name of language the model was trained for (e.g. "german").
-#                          If not supplied, FARM will try to infer it from the model name.
-#         :return: Language Model
-#
-#         """
-#         albert = cls()
-#         albert.name = pretrained_model_name_or_path
-#         # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
-#         farm_lm_config = os.path.join(pretrained_model_name_or_path, "language_model_config.json")
-#         if os.path.exists(farm_lm_config):
-#             # FARM style
-#             config = AlbertConfig.from_pretrained(farm_lm_config)
-#             farm_lm_model = os.path.join(pretrained_model_name_or_path, "language_model.bin")
-#             albert.model = AlbertModel.from_pretrained(farm_lm_model, config=config, **kwargs)
-#             albert.language = albert.model.config.language
-#         else:
-#             # Huggingface transformer Style
-#             albert.model = AlbertModel.from_pretrained(pretrained_model_name_or_path, **kwargs)
-#             albert.language = cls._infer_language_from_name(pretrained_model_name_or_path)
-#         return albert
-#
-#     def forward(
-#         self,
-#         input_ids,
-#         segment_ids,
-#         padding_mask,
-#         **kwargs,
-#     ):
-#         """
-#         Perform the forward pass of the Roberta model.
-#
-#         :param input_ids: The ids of each token in the input sequence. Is a tensor of shape [batch_size, max_seq_len]
-#         :type input_ids: torch.Tensor
-#         :param segment_ids: The id of the segment. For example, in next sentence prediction, the tokens in the
-#            first sentence are marked with 0 and those in the second are marked with 1.
-#            It is a tensor of shape [batch_size, max_seq_len]
-#         :type segment_ids: torch.Tensor
-#         :param padding_mask: A mask that assigns a 1 to valid input tokens and 0 to padding tokens
-#            of shape [batch_size, max_seq_len]
-#         :return: Embeddings for each token in the input sequence.
-#
-#         """
-#         output_tuple = self.model(
-#             input_ids,
-#             token_type_ids=segment_ids,
-#             attention_mask=padding_mask,
-#         )
-#         if self.model.encoder.output_hidden_states == True:
-#             sequence_output, pooled_output, all_hidden_states = output_tuple[0], output_tuple[1], output_tuple[2]
-#             return sequence_output, pooled_output, all_hidden_states
-#         else:
-#             sequence_output, pooled_output = output_tuple[0], output_tuple[1]
-#             return sequence_output, pooled_output
-#
-#     def enable_hidden_states_output(self):
-#         self.model.encoder.output_hidden_states = True
-#
-#     def disable_hidden_states_output(self):
-#         self.model.encoder.output_hidden_states = False
-#
-#     def save_config(self, save_dir):
-#         save_filename = os.path.join(save_dir, "language_model_config.json")
-#         with open(save_filename, "w") as file:
-#             setattr(self.model.config, "name", self.__class__.__name__)
-#             setattr(self.model.config, "language", self.language)
-#             string = self.model.config.to_json_string()
-#             file.write(string)
+class Albert(LanguageModel):
+    """
+    An ALBERT model that wraps the HuggingFace's implementation
+    (https://github.com/huggingface/transformers) to fit the LanguageModel class.
+
+    """
+
+    def __init__(self):
+        super(Albert, self).__init__()
+        self.model = None
+        self.name = "albert"
+
+    @classmethod
+    def load(cls, pretrained_model_name_or_path, language=None, **kwargs):
+        """
+        Load a language model either by supplying
+
+        * the name of a remote model on s3 ("albert-base" ...)
+        * or a local path of a model trained via transformers ("some_dir/huggingface_model")
+        * or a local path of a model trained via FARM ("some_dir/farm_model")
+
+        :param pretrained_model_name_or_path: name or path of a model
+        :param language: (Optional) Name of language the model was trained for (e.g. "german").
+                         If not supplied, FARM will try to infer it from the model name.
+        :return: Language Model
+
+        """
+        albert = cls()
+        albert.name = pretrained_model_name_or_path
+        # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
+        farm_lm_config = os.path.join(pretrained_model_name_or_path, "language_model_config.json")
+        if os.path.exists(farm_lm_config):
+            # FARM style
+            config = AlbertConfig.from_pretrained(farm_lm_config)
+            farm_lm_model = os.path.join(pretrained_model_name_or_path, "language_model.bin")
+            albert.model = AlbertModel.from_pretrained(farm_lm_model, config=config, **kwargs)
+            albert.language = albert.model.config.language
+        else:
+            # Huggingface transformer Style
+            albert.model = AlbertModel.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            albert.language = cls._infer_language_from_name(pretrained_model_name_or_path)
+        return albert
+
+    def forward(
+        self,
+        input_ids,
+        segment_ids,
+        padding_mask,
+        **kwargs,
+    ):
+        """
+        Perform the forward pass of the Roberta model.
+
+        :param input_ids: The ids of each token in the input sequence. Is a tensor of shape [batch_size, max_seq_len]
+        :type input_ids: torch.Tensor
+        :param segment_ids: The id of the segment. For example, in next sentence prediction, the tokens in the
+           first sentence are marked with 0 and those in the second are marked with 1.
+           It is a tensor of shape [batch_size, max_seq_len]
+        :type segment_ids: torch.Tensor
+        :param padding_mask: A mask that assigns a 1 to valid input tokens and 0 to padding tokens
+           of shape [batch_size, max_seq_len]
+        :return: Embeddings for each token in the input sequence.
+
+        """
+        output_tuple = self.model(
+            input_ids,
+            token_type_ids=segment_ids,
+            attention_mask=padding_mask,
+        )
+        if self.model.encoder.output_hidden_states == True:
+            sequence_output, pooled_output, all_hidden_states = output_tuple[0], output_tuple[1], output_tuple[2]
+            return sequence_output, pooled_output, all_hidden_states
+        else:
+            sequence_output, pooled_output = output_tuple[0], output_tuple[1]
+            return sequence_output, pooled_output
+
+    def enable_hidden_states_output(self):
+        self.model.encoder.output_hidden_states = True
+
+    def disable_hidden_states_output(self):
+        self.model.encoder.output_hidden_states = False
+
+    def save_config(self, save_dir):
+        save_filename = os.path.join(save_dir, "language_model_config.json")
+        with open(save_filename, "w") as file:
+            setattr(self.model.config, "name", self.__class__.__name__)
+            setattr(self.model.config, "language", self.language)
+            string = self.model.config.to_json_string()
+            file.write(string)
 
 class Roberta(LanguageModel):
     """

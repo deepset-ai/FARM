@@ -21,7 +21,7 @@ class Evaluator:
     """Handles evaluation of a given model over a specified dataset."""
 
     def __init__(
-        self, data_loader, tasks, device, classification_report=True
+        self, data_loader, tasks, device, report=True
     ):
         """
         :param data_loader: The PyTorch DataLoader that will return batches of data from the evaluation dataset
@@ -30,25 +30,23 @@ class Evaluator:
         :param device: The device on which the tensors should be processed. Choose from "cpu" and "cuda".
         :param metrics: The list of metrics which need to be computed, one for each prediction head.
         :param metrics: list
-        :param classification_report: Whether a report on the classification performance should be generated.
-        :type classification_report: bool
+        :param report: Whether an eval report should be generated (e.g. classification report per class).
+        :type report: bool
         """
 
         self.data_loader = data_loader
-        #self.label_maps = label_maps
         self.tasks = tasks
         self.device = device
+        self.report = report
 
-        # Where should metric be defined? When dataset loaded? In config?
-        #self.metrics = metrics
-        self.classification_report = classification_report
-
-    def eval(self, model):
+    def eval(self, model, return_preds_and_labels=False):
         """
         Performs evaluation on a given model.
 
         :param model: The model on which to perform evaluation
         :type model: AdaptiveModel
+        :param return_preds_and_labels: Whether to add preds and labels in the returned dicts of the
+        :type return_preds_and_labels: bool
         :return all_results: A list of dictionaries, one for each prediction head. Each dictionary contains the metrics
                              and reports generated during evaluation.
         :rtype all_results: list of dicts
@@ -107,7 +105,7 @@ class Evaluator:
             )
 
             # Select type of report depending on prediction head output type
-            if self.classification_report:
+            if self.report:
                 if head.ph_output_type == "per_token":
                     report_fn = token_classification_report
                 elif head.ph_output_type == "per_sequence":
@@ -141,17 +139,24 @@ class Evaluator:
                         labels=all_possible_labels,
                         target_names=head.label_list)
 
+            if return_preds_and_labels:
+                result["preds"] = preds_all[head_num]
+                result["labels"] = label_all[head_num]
+
             all_results.append(result)
 
         return all_results
 
     @staticmethod
-    def log_results(results, dataset_name, steps, logging=True, print=True):
+    def log_results(results, dataset_name, steps, logging=True, print=True, num_fold=None):
         # Print a header
         header = "\n\n"
         header += BUSH_SEP + "\n"
         header += "***************************************************\n"
-        header += f"***** EVALUATION | {dataset_name.upper()} SET | AFTER {steps} BATCHES *****\n"
+        if num_fold:
+            header += f"***** EVALUATION | FOLD: {num_fold} | {dataset_name.upper()} SET | AFTER {steps} BATCHES *****\n"
+        else:
+            header += f"***** EVALUATION | {dataset_name.upper()} SET | AFTER {steps} BATCHES *****\n"
         header += "***************************************************\n"
         header += BUSH_SEP + "\n"
         logger.info(header)
@@ -161,13 +166,14 @@ class Evaluator:
             for metric_name, metric_val in head.items():
                 # log with ML framework (e.g. Mlflow)
                 if logging:
-                    if isinstance(metric_val, numbers.Number):
-                        MlLogger.log_metrics(
-                            metrics={
-                                f"{dataset_name}_{metric_name}_{head['task_name']}": metric_val
-                            },
-                            step=steps,
-                        )
+                    if not metric_name in ["preds","labels"] and not metric_name.startswith("_"):
+                        if isinstance(metric_val, numbers.Number):
+                            MlLogger.log_metrics(
+                                metrics={
+                                    f"{dataset_name}_{metric_name}_{head['task_name']}": metric_val
+                                },
+                                step=steps,
+                            )
                 # print via standard python logger
                 if print:
                     if metric_name == "report":
@@ -175,4 +181,5 @@ class Evaluator:
                             metric_val = metric_val[:7500] + "\n ............................. \n" + metric_val[-500:]
                         logger.info("{}: \n {}".format(metric_name, metric_val))
                     else:
-                        logger.info("{}: {}".format(metric_name, metric_val))
+                        if not metric_name in ["preds", "labels"] and not metric_name.startswith("_"):
+                            logger.info("{}: {}".format(metric_name, metric_val))

@@ -1,3 +1,5 @@
+import hashlib
+import json
 import logging
 import random
 
@@ -21,8 +23,9 @@ def set_all_seeds(seed, n_gpu=0):
     if n_gpu > 0:
         torch.cuda.manual_seed_all(seed)
 
-def calc_chunksize(num_dicts, min_chunksize=4, max_chunksize=2000):
-    num_cpus = mp.cpu_count() or 1
+
+def calc_chunksize(num_dicts, min_chunksize=4, max_chunksize=2000, max_processes=128):
+    num_cpus = min(mp.cpu_count() - 1 or 1, max_processes)  # -1 to keep a CPU core free for the main process
     dicts_per_cpu = np.ceil(num_dicts / num_cpus)
     # automatic adjustment of multiprocessing chunksize
     # for small files (containing few dicts) we want small chunksize to ulitize all available cores but never less
@@ -35,11 +38,12 @@ def calc_chunksize(num_dicts, min_chunksize=4, max_chunksize=2000):
     while num_dicts % multiprocessing_chunk_size == 1:
         multiprocessing_chunk_size -= -1
     dict_batches_to_process = int(num_dicts / multiprocessing_chunk_size)
-    num_cpus_used = min(mp.cpu_count(), dict_batches_to_process) or 1
-    return multiprocessing_chunk_size,num_cpus_used
+    num_processes = min(num_cpus, dict_batches_to_process) or 1
+
+    return multiprocessing_chunk_size, num_processes
 
 
-def initialize_device_settings(use_cuda, local_rank=-1, fp16=False):
+def initialize_device_settings(use_cuda, local_rank=-1, use_amp=None):
     if not use_cuda:
         device = torch.device("cpu")
         n_gpu = 0
@@ -56,8 +60,8 @@ def initialize_device_settings(use_cuda, local_rank=-1, fp16=False):
         # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
         torch.distributed.init_process_group(backend="nccl")
     logger.info(
-        "device: {} n_gpu: {}, distributed training: {}, 16-bits training: {}".format(
-            device, n_gpu, bool(local_rank != -1), fp16
+        "device: {} n_gpu: {}, distributed training: {}, automatic mixed precision training: {}".format(
+            device, n_gpu, bool(local_rank != -1), use_amp
         )
     )
     return device, n_gpu
@@ -111,6 +115,10 @@ class MLFlowLogger(BaseMLLogger):
     @classmethod
     def log_artifacts(cls, dir_path, artifact_path=None):
         mlflow.log_artifacts(dir_path, artifact_path)
+
+    @classmethod
+    def end_run(cls):
+        mlflow.end_run()
 
 
 class TensorBoardLogger(BaseMLLogger):
@@ -261,3 +269,11 @@ def decode_id(len_id, int_1, int_2, int_3):
     hexa = hexa_1 + hexa_2 + hexa_3
     assert len(hexa) == len_id
     return hexa
+
+
+def get_dict_checksum(payload_dict):
+    """
+    Get MD5 checksum for a dict.
+    """
+    checksum = hashlib.md5(json.dumps(payload_dict, sort_keys=True).encode("utf-8")).hexdigest()
+    return checksum

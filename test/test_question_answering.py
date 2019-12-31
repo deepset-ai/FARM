@@ -15,7 +15,7 @@ def test_qa(caplog):
     caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
-    device, n_gpu = initialize_device_settings(use_cuda=False)
+    device, n_gpu = initialize_device_settings(use_cuda=True)
     batch_size = 2
     n_epochs = 1
     evaluate_every = 4
@@ -49,21 +49,22 @@ def test_qa(caplog):
         device=device,
     )
 
-    optimizer, warmup_linear = initialize_optimizer(
+    model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
-        learning_rate=1e-5,
-        warmup_proportion=0.2,
+        learning_rate=2e-5,
+        #optimizer_opts={'name': 'AdamW', 'lr': 2E-05},
         n_batches=len(data_silo.loaders["train"]),
         n_epochs=n_epochs,
+        device=device
     )
     trainer = Trainer(
         optimizer=optimizer,
         data_silo=data_silo,
         epochs=n_epochs,
         n_gpu=n_gpu,
-        warmup_linear=warmup_linear,
+        lr_schedule=lr_schedule,
         evaluate_every=evaluate_every,
-        device=device,
+        device=device
     )
     model = trainer.train(model)
     save_dir = "testsave/qa"
@@ -71,5 +72,5 @@ def test_qa(caplog):
     processor.save(save_dir)
 
 
-if __name__ == "__main__":
+if(__name__=="__main__"):
     test_qa()
