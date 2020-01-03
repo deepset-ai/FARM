@@ -20,8 +20,8 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-ml_logger = MLFlowLogger(tracking_uri="")
-ml_logger.init_experiment(experiment_name="", run_name="")
+ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
+ml_logger.init_experiment(experiment_name="Public_FARM", run_name="run_xmlr_qa")
 
 #########################
 ######## Settings
@@ -35,17 +35,17 @@ embedding_dims = 768
 base_LM_model = "xlm-roberta-base"
 
 data_dir = "../data/squad20"
-train_filename = "subsets/train_small-v2.0.json"
-dev_filename = "subsets/train_small-v2.0.json"
+train_filename = "train-sample2.json"
+dev_filename = "train-sample2.json"
 
-save_dir = "../saved_models/xlmr"
+save_dir = "../saved_models/xlmr-qa"
 
 inference_file = "../data/MLQA_V1/dev/dev-context-de-question-de.json"
 predictions_file = save_dir + "/predictions.json"
 full_predictions_file = save_dir + "/full_predictions.json"
 max_processes_for_inference = 8
 train = True
-inference = True
+inference = False
 
 if train:
     # 1.Create a tokenizer
