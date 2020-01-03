@@ -101,7 +101,7 @@ class LanguageModel(nn.Module):
         if not language_model:
             raise Exception(
                 f"Model not found for {pretrained_model_name_or_path}. Either supply the local path for a saved model "
-                f"or one of bert/roberta/xlnet models that can be downloaded from remote. Here's the list of available "
+                f"or one of bert/roberta/xlnet/albert models that can be downloaded from remote. Here's the list of available "
                 f"models: https://farm.deepset.ai/api/modeling.html#farm.modeling.language_model.LanguageModel.load"
             )
 
@@ -354,7 +354,10 @@ class Albert(LanguageModel):
 
         """
         albert = cls()
-        albert.name = pretrained_model_name_or_path
+        if "farm_lm_name" in kwargs:
+            albert.name = kwargs["farm_lm_name"]
+        else:
+            albert.name = pretrained_model_name_or_path
         # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
         farm_lm_config = os.path.join(pretrained_model_name_or_path, "language_model_config.json")
         if os.path.exists(farm_lm_config):

@@ -14,7 +14,7 @@ from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
 
 from farm.data_handler.utils import is_json
-from farm.utils import convert_iob_to_simple_tags, decode_squad_id
+from farm.utils import convert_iob_to_simple_tags
 
 logger = logging.getLogger(__name__)
 
@@ -1106,10 +1106,8 @@ class QuestionAnsweringHead(PredictionHead):
 
         # Iterate over the preds of each sample
         for sample_idx in range(n_samples):
-            # Aggregation of sample predictions is done using these ids
-            # See SquadProcessor.convert_squad_id for why there are two parts
-            squad_id_1, squad_id_2, _ = ids[sample_idx]
-            basket_id = f"{squad_id_1}-{squad_id_2}"
+            id_1, id_2, _ = ids[sample_idx]
+            basket_id = f"{id_1}-{id_2}"
 
             # curr_passage_start_t is the token offset of the current passage
             # It will always be a multiple of doc_stride
@@ -1166,6 +1164,8 @@ class QuestionAnsweringHead(PredictionHead):
         returns the n_best predictions on the document level. """
 
         # Initialize some variables
+        # no_ans_threshold is how much greater the no_answer logit needs to be over the pos_answer in order to be chosen
+        no_ans_threshold = 0
         document_no_answer = True
         passage_no_answer = []
         passage_best_score = []
@@ -1176,7 +1176,7 @@ class QuestionAnsweringHead(PredictionHead):
             best_pred = sample_preds[0]
             best_pred_score = best_pred[2]
             no_answer_score = self.get_no_answer_score(sample_preds)
-            no_answer = no_answer_score > best_pred_score
+            no_answer = no_answer_score - no_ans_threshold > best_pred_score
             passage_no_answer.append(no_answer)
             no_answer_scores.append(no_answer_score)
             passage_best_score.append(best_pred_score)
