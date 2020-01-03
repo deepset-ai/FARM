@@ -296,14 +296,23 @@ class Processor(ABC):
             id_prefix = "infer"
         else:
             id_prefix = "train"
-            # We need to add the index (coming from multiprocessing chunks) to have a unique basket ID
-        self.baskets = [
-            SampleBasket(raw=tr, id=f"{id_prefix}-{index}")
-            for (tr, index) in zip(dicts, indices)
-        ]
+        # We need to add the index (coming from multiprocessing chunks) to have a unique basket ID
+        if indices:
+            self.baskets = [
+                SampleBasket(raw=tr, id=f"{id_prefix}-{index}")
+                for (tr, index) in zip(dicts, indices)
+            ]
+        else:
+            self.baskets = [
+                SampleBasket(raw=tr, id=f"{id_prefix}-{i}")
+                for (i, tr) in enumerate(dicts)
+            ]
         self._init_samples_in_baskets()
         self._featurize_samples()
-        if 0 in indices:
+        if indices:
+            if 0 in indices:
+                self._log_samples(3)
+        else:
             self._log_samples(3)
         if return_baskets:
             dataset, tensor_names = self._create_dataset(keep_baskets=True)
