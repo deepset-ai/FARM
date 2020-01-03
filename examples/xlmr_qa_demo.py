@@ -28,17 +28,23 @@ ml_logger.init_experiment(experiment_name="Public_FARM", run_name="run_xmlr_qa")
 ########################
 set_all_seeds(seed=42)
 device, n_gpu = initialize_device_settings(use_cuda=True)
-batch_size = 15
+batch_size = 1
+grad_acc_steps = 1
 n_epochs = 2
 evaluate_every = 200
-embedding_dims = 768
-base_LM_model = "xlm-roberta-base"
+base_LM_model = "xlm-roberta-large"
+if "large" in base_LM_model:
+    embedding_dims = 1024
+else:
+    embedding_dims = 768
 
 data_dir = "../data/squad20"
+train_filename = "train-v2.0.json"
 train_filename = "train-sample2.json"
+dev_filename = "dev-v2.0.json"
 dev_filename = "train-sample2.json"
 
-save_dir = "../saved_models/xlmr-qa"
+save_dir = "../saved_models/xlmr-large-qa"
 
 inference_file = "../data/MLQA_V1/dev/dev-context-de-question-de.json"
 predictions_file = save_dir + "/predictions.json"
@@ -62,7 +68,7 @@ if train:
         dev_filename=dev_filename,
         test_filename=None,
         data_dir=data_dir,
-        dev_split=0.1
+        dev_split=0.0
     )
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
@@ -89,6 +95,7 @@ if train:
         schedule_opts={"name": "LinearWarmup", "warmup_proportion": 0.2},
         n_batches=len(data_silo.loaders["train"]),
         n_epochs=n_epochs,
+        grad_acc_steps=grad_acc_steps,
         device=device
     )
 
