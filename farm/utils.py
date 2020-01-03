@@ -27,16 +27,17 @@ def set_all_seeds(seed, n_gpu=0):
 def calc_chunksize(num_dicts, min_chunksize=4, max_chunksize=2000, max_processes=128):
     num_cpus = min(mp.cpu_count() - 1 or 1, max_processes)  # -1 to keep a CPU core free for the main process
     dicts_per_cpu = np.ceil(num_dicts / num_cpus)
-
-    # automatic adjustment of multiprocessing chunksize for small files (containing few dicts). We want
-    # small chunksize to utilize all available cores but never less than 2, because we need it to sample
-    # another random sentence in LM finetuning for large files. We want to minimize the overhead of passing
-    # data to processes, but without giving too much data to one process, so we clip it at 5k.
-
-    multiprocessing_chunk_size = int(
-        np.clip((np.ceil(dicts_per_cpu / 5)), a_min=min_chunksize, a_max=max_chunksize)
-    )
-
+    # automatic adjustment of multiprocessing chunksize
+    # for small files (containing few dicts) we want small chunksize to ulitize all available cores but never less
+    # than 2, because we need it to sample another random sentence in LM finetuning
+    # for large files we want to minimize processor spawning without giving too much data to one process, so we
+    # clip it at 5k
+    multiprocessing_chunk_size = int(np.clip((np.ceil(dicts_per_cpu / 5)), a_min=min_chunksize, a_max=max_chunksize))
+    # This lets us avoid cases in lm_finetuning where a chunk only has a single doc and hence cannot pick
+    # a valid next sentence substitute from another document
+    if num_dicts != 1:
+        while num_dicts % multiprocessing_chunk_size == 1:
+            multiprocessing_chunk_size -= -1
     dict_batches_to_process = int(num_dicts / multiprocessing_chunk_size)
     num_processes = min(num_cpus, dict_batches_to_process) or 1
 
@@ -230,25 +231,6 @@ def format_log(ascii, logger):
     ascii_lines = ascii.split("\n")
     for l in ascii_lines:
         logger.info(l)
-
-
-def encode_squad_id(squad_id):
-    """ Convert 24 digit hexadecimal squad_id to 2 ints. Each is the base equivalent of a half of the hexadecimal.
-    This is needed since PyTorch tensors cannot be created for ints bigger than 64 bit"""
-    if squad_id is None:
-        return 0, 0
-    assert len(squad_id) == 24
-    hexa_1 = squad_id[:12]
-    hexa_2 = squad_id[12:]
-    int_1 = int(hexa_1, 16)
-    int_2 = int(hexa_2, 16)
-    return int_1, int_2
-
-def decode_squad_id(part_1, part_2):
-    hexa = hex(part_1) + hex(part_2)
-    assert len(hexa) == 24
-    return hexa
-
 
 def get_dict_checksum(payload_dict):
     """

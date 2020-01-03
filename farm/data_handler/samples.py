@@ -11,7 +11,7 @@ class SampleBasket:
     is needed for tasks like question answering where the source text can generate multiple input - label
     pairs."""
 
-    def __init__(self, id: str, raw: dict, samples=None):
+    def __init__(self, id: str, raw: dict, external_id=None, samples=None):
         """
         :param id: A unique identifying id.
         :type id: str

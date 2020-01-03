@@ -97,8 +97,8 @@ class DataSilo:
         :return: PyTorch Dataset
         """
         dicts = [d[1] for d in chunk]
-        index = chunk[0][0]
-        dataset = processor.dataset_from_dicts(dicts=dicts, index=index)
+        indices = [x[0] for x in chunk]
+        dataset = processor.dataset_from_dicts(dicts=dicts, indices=indices)
         return dataset
 
     def _get_dataset(self, filename, dicts=None):
