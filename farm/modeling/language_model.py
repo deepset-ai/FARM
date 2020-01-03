@@ -354,7 +354,10 @@ class Albert(LanguageModel):
 
         """
         albert = cls()
-        albert.name = pretrained_model_name_or_path
+        if "farm_lm_name" in kwargs:
+            albert.name = kwargs["farm_lm_name"]
+        else:
+            albert.name = pretrained_model_name_or_path
         # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
         farm_lm_config = os.path.join(pretrained_model_name_or_path, "language_model_config.json")
         if os.path.exists(farm_lm_config):

@@ -14,7 +14,7 @@ from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
 
 from farm.data_handler.utils import is_json
-from farm.utils import convert_iob_to_simple_tags, decode_id
+from farm.utils import convert_iob_to_simple_tags
 
 logger = logging.getLogger(__name__)
 
@@ -1106,10 +1106,8 @@ class QuestionAnsweringHead(PredictionHead):
 
         # Iterate over the preds of each sample
         for sample_idx in range(n_samples):
-            # Aggregation of sample predictions is done using these ids
-            # See SquadProcessor.convert_squad_id for why there are two parts
-            squad_id_1, squad_id_2, squad_id_3, squad_id_4, _ = ids[sample_idx]
-            basket_id = f"{squad_id_1}-{squad_id_2}-{squad_id_3}-{squad_id_4}"
+            id_1, id_2, _ = ids[sample_idx]
+            basket_id = f"{id_1}-{id_2}"
 
             # curr_passage_start_t is the token offset of the current passage
             # It will always be a multiple of doc_stride

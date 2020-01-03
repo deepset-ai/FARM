@@ -231,46 +231,6 @@ def format_log(ascii, logger):
     for l in ascii_lines:
         logger.info(l)
 
-def encode_id(id):
-    """ Convert a 24 or 32, 40 digit hexadecimal id to 4 ints. The first int is the length of the original id.
-    The remaining 3 ints are the base 10 equivalents of one third of the hexadecimal.
-    This is needed since PyTorch tensors cannot be created for ints bigger than 64 bit"""
-    if id is None:
-        return 0, 0, 0, 0
-    len_id = len(id)
-    assert len_id in [24, 32, 40]
-    if len_id == 40:
-        hexa_1 = id[:14]
-        hexa_2 = id[14:27]
-        hexa_3 = id[27:]
-    else:
-        third = int(len_id / 3)
-        hexa_1 = id[:third]
-        hexa_2 = id[third:third*2]
-        hexa_3 = id[third*2:]
-    int_1 = int(hexa_1, 16)
-    int_2 = int(hexa_2, 16)
-    int_3 = int(hexa_3, 16)
-    return len_id, int_1, int_2, int_3
-
-def decode_id(len_id, int_1, int_2, int_3):
-    hexa_1 = hex(int_1)[2:]
-    hexa_2 = hex(int_2)[2:]
-    hexa_3 = hex(int_3)[2:]
-    if len_id == 40:
-        hexa_1 = hexa_1.zfill(14)
-        hexa_2 = hexa_2.zfill(13)
-        hexa_3 = hexa_3.zfill(13)
-    else:
-        third = int(len_id / 3)
-        hexa_1 = hexa_1.zfill(third)
-        hexa_2 = hexa_2.zfill(third)
-        hexa_3 = hexa_3.zfill(third)
-    hexa = hexa_1 + hexa_2 + hexa_3
-    assert len(hexa) == len_id
-    return hexa
-
-
 def get_dict_checksum(payload_dict):
     """
     Get MD5 checksum for a dict.

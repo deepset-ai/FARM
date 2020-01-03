@@ -20,22 +20,29 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
-ml_logger.init_experiment(experiment_name="SQuAD", run_name="qa_albert")
+# ml_logger = MLFlowLogger(tracking_uri="http://infineon:jKh-ytr-nhq-uys@18.194.141.251")
+ml_logger = MLFlowLogger(tracking_uri="")
+
+ml_logger.init_experiment(experiment_name="albert_qa_german", run_name="albert-xl-oscar-all + qa_single_sequence_german")
 
 #########################
 ######## Settings
 ########################
 set_all_seeds(seed=42)
 device, n_gpu = initialize_device_settings(use_cuda=True)
-batch_size = 60
+batch_size = 15
 n_epochs = 2
-evaluate_every = 500
-base_LM_model = "albert-base-v1"
-train_filename="subsets/train_medium-v2.0.json"
-dev_filename="subsets/dev_medium-v2.0.json"
-save_dir = "../saved_models/qa_medium_albert"
-inference_file = "../data/squad20/subsets/dev_medium-v2.0.json"
+evaluate_every = 200
+embedding_dims = 768
+# base_LM_model = "../saved_models/albert-xl-german-oscar-all380k"
+base_LM_model = "bert-base-cased"
+data_dir = "../data/squad20"
+train_filename = "subsets/train_small-v2.0.json"
+dev_filename = None
+# save_dir = "../saved_models/albert-xl-german-oscar-all380k"
+save_dir = "../saved_models/squad_german_original"
+
+inference_file = "../data/MLQA_V1/dev/dev-context-de-question-de.json"
 predictions_file = save_dir + "/predictions.json"
 full_predictions_file = save_dir + "/full_predictions.json"
 max_processes_for_inference = 8
@@ -56,7 +63,8 @@ if train:
         train_filename=train_filename,
         dev_filename=dev_filename,
         test_filename=None,
-        data_dir="../data/squad20",
+        data_dir=data_dir,
+        dev_split=0.05
     )
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
@@ -66,7 +74,7 @@ if train:
     # a) which consists of a pretrained language model as a basis
     language_model = LanguageModel.load(base_LM_model)
     # b) and a prediction head on top that is suited for our task => Question Answering
-    prediction_head = QuestionAnsweringHead(layer_dims=[768, len(label_list)])
+    prediction_head = QuestionAnsweringHead(layer_dims=[embedding_dims, len(label_list)])
 
     model = AdaptiveModel(
         language_model=language_model,
@@ -83,7 +91,9 @@ if train:
         schedule_opts={"name": "LinearWarmup", "warmup_proportion": 0.2},
         n_batches=len(data_silo.loaders["train"]),
         n_epochs=n_epochs,
+        device=device
     )
+
     # 6. Feed everything to the Trainer, which keeps care of growing our model and evaluates it from time to time
     trainer = Trainer(
         optimizer=optimizer,
@@ -114,7 +124,7 @@ if inference:
         print()
 
     result = {r["id"]: r["preds"][0][0] for r in full_result}
-    full_result =  {r["id"]: r["preds"] for r in full_result}
+    full_result = {r["id"]: r["preds"] for r in full_result}
 
     json.dump(result,
               open(predictions_file, "w"),

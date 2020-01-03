@@ -204,8 +204,8 @@ class Inferencer:
     @classmethod
     def _create_datasets_chunkwise(cls, chunk, processor, rest_api_schema):
         dicts = [d[1] for d in chunk]
-        index = chunk[0][0]
-        dataset, tensor_names, baskets = processor.dataset_from_dicts(dicts, index, rest_api_schema, return_baskets=True)
+        indices = [d[0] for d in chunk]
+        dataset, tensor_names, baskets = processor.dataset_from_dicts(dicts, indices, rest_api_schema, return_baskets=True)
         return dataset, tensor_names, baskets
 
     def _run_inference(self, dataset, tensor_names, baskets, rest_api_schema=False):

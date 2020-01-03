@@ -30,7 +30,7 @@ from farm.data_handler.utils import (
     is_json,
 )
 from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
-from farm.utils import MLFlowLogger as MlLogger, encode_id
+from farm.utils import MLFlowLogger as MlLogger
 from farm.data_handler.utils import get_sentence_pair
 
 logger = logging.getLogger(__name__)
@@ -283,7 +283,7 @@ class Processor(ABC):
         dataset, tensor_names = convert_features_to_dataset(features=features_flat)
         return dataset, tensor_names
 
-    def dataset_from_dicts(self, dicts, index=0, rest_api_schema=False, return_baskets = False):
+    def dataset_from_dicts(self, dicts, indices=None, rest_api_schema=False, return_baskets = False):
         """
         Contains all the functionality to turn a list of dict objects into a PyTorch Dataset and a
         list of tensor names. This can be used for inference mode.
@@ -298,12 +298,12 @@ class Processor(ABC):
             id_prefix = "train"
             # We need to add the index (coming from multiprocessing chunks) to have a unique basket ID
         self.baskets = [
-            SampleBasket(raw=tr, id=f"{id_prefix}-{i + index}")
-            for i, tr in enumerate(dicts)
+            SampleBasket(raw=tr, id=f"{id_prefix}-{index}")
+            for (tr, index) in zip(dicts, indices)
         ]
         self._init_samples_in_baskets()
         self._featurize_samples()
-        if index == 0:
+        if 0 in indices:
             self._log_samples(3)
         if return_baskets:
             dataset, tensor_names = self._create_dataset(keep_baskets=True)
@@ -852,17 +852,17 @@ class SquadProcessor(Processor):
             logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
                         "using the default task or add a custom task later via processor.add_task()")
 
-    def dataset_from_dicts(self, dicts, index=None, rest_api_schema=False, return_baskets=False):
+    def dataset_from_dicts(self, dicts, indices=None, rest_api_schema=False, return_baskets=False):
         """ Overwrites the method from the base class since Question Answering processing is quite different.
         This method allows for documents and questions to be tokenized earlier. Then SampleBaskets are initialized
         with one document and one question. """
 
         if rest_api_schema:
             dicts = [self._convert_rest_api_dict(x) for x in dicts]
-        self.baskets = self._dicts_to_baskets(dicts, index)
+        self.baskets = self._dicts_to_baskets(dicts, indices)
         self._init_samples_in_baskets()
         self._featurize_samples()
-        if index == 0:
+        if 0 in indices:
             self._log_samples(2)
         # This mode is for inference where we need to keep baskets
         if return_baskets:
@@ -873,21 +873,14 @@ class SquadProcessor(Processor):
             dataset, tensor_names = self._create_dataset(keep_baskets=False)
             return dataset, tensor_names
 
-    def _dicts_to_baskets(self, dicts, index=None):
+    def _dicts_to_baskets(self, dicts, indices):
         # Perform tokenization on documents and questions resulting in a nested list of doc-question pairs
         dicts_tokenized = [self.apply_tokenization(d) for d in dicts]
 
         baskets = []
-        for d_idx, document in enumerate(dicts_tokenized):
+        for index, document in zip(indices, dicts_tokenized):
             for q_idx, raw in enumerate(document):
-                # TODO: This needs to become more general not squad specific
-                id_hex = dicts[d_idx]["qas"][q_idx]["id"]
-                if id_hex is None:
-                    id_1 = d_idx + index
-                    id_2 = q_idx
-                else:
-                    id_1, id_2, id_3, id_4 = encode_id(id_hex)
-                basket = SampleBasket(raw=raw, id=f"{id_1}-{id_2}-{id_3}-{id_4}")
+                basket = SampleBasket(raw=raw, id=f"{index}-{q_idx}")
                 baskets.append(basket)
         return baskets
 
