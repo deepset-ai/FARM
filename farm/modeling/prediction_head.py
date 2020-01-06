@@ -729,15 +729,18 @@ class QuestionAnsweringHead(PredictionHead):
     A question answering head predicts the start and end of the answer on token level.
     """
 
-    def __init__(self, layer_dims, task_name="question_answering", **kwargs):
+    def __init__(self, layer_dims, task_name="question_answering", n_best=5,  **kwargs):
         """
         :param layer_dims: dimensions of Feed Forward block, e.g. [768,2], for adjusting to BERT embedding. Output should be always 2
         :type layer_dims: List[Int]
+        :param n_best: The number of candidate positive answer spans to consider from each passage
+        :type n_best: int
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
         """
         super(QuestionAnsweringHead, self).__init__()
         self.layer_dims = layer_dims
+        self.n_best = n_best
         self.feed_forward = FeedForwardBlock(self.layer_dims)
         self.num_labels = self.layer_dims[-1]
         self.ph_output_type = "per_token_squad"
@@ -859,7 +862,7 @@ class QuestionAnsweringHead(PredictionHead):
         end_indices = flat_sorted_indices % max_seq_len
         sorted_candidates = torch.cat((start_indices, end_indices), dim=2)
 
-        # Get the n_best candidate answers for each sample that are valid (via some heuristic checks)
+        # Get the self.n_best candidate answers for each sample that are valid (via some heuristic checks)
         for sample_idx in range(batch_size):
             sample_top_n = self.get_top_candidates(sorted_candidates[sample_idx], start_end_matrix[sample_idx],
                                                    n_non_padding[sample_idx], max_answer_length,
@@ -869,7 +872,7 @@ class QuestionAnsweringHead(PredictionHead):
         return all_top_n
 
     def get_top_candidates(self, sorted_candidates, start_end_matrix,
-                           n_non_padding, max_answer_length, seq_2_start_t, n_best=5):
+                           n_non_padding, max_answer_length, seq_2_start_t):
         """ Returns top candidate answers. Operates on a matrix of summed start and end logits. This matrix corresponds
         to a single sample (includes special tokens, question tokens, passage tokens). This method always returns a
         list of len n_best + 1 (it is comprised of the n_best positive answers along with the one no_answer)"""
@@ -880,7 +883,7 @@ class QuestionAnsweringHead(PredictionHead):
 
         # Iterate over all candidates and break when we have all our n_best candidates
         for candidate_idx in range(n_candidates):
-            if len(top_candidates) == n_best:
+            if len(top_candidates) == self.n_best:
                 break
             else:
                 # Retrieve candidate's indices
@@ -1159,7 +1162,7 @@ class QuestionAnsweringHead(PredictionHead):
         else:
             return list(set(positive_answers))
 
-    def reduce_preds(self, preds, n_best=5):
+    def reduce_preds(self, preds):
         """ This function contains the logic for choosing the best answers from each passage. In the end, it
         returns the n_best predictions on the document level. """
 
@@ -1192,7 +1195,7 @@ class QuestionAnsweringHead(PredictionHead):
                             for start, end, score in passage_preds
                             if not (start == -1 and end == -1)]
         pos_answers_sorted = sorted(pos_answers_flat, key=lambda x: x[2], reverse=True)
-        pos_answers_reduced = pos_answers_sorted[:n_best]
+        pos_answers_reduced = pos_answers_sorted[:self.n_best]
         no_answer_pred = [-1, -1, max(no_answer_scores)]
 
         # TODO this is how big the no_answer threshold needs to be to change a no_answer to a pos answer
