@@ -264,3 +264,12 @@ class GracefulKiller:
 
     def exit_gracefully(self, signum, frame):
         self.kill_now = True
+
+
+def get_dict_checksum(payload_dict):
+    """
+    Get MD5 checksum for a dict.
+    """
+    checksum = hashlib.md5(json.dumps(payload_dict, sort_keys=True).encode("utf-8")).hexdigest()
+    return checksum
+
