@@ -729,18 +729,19 @@ class QuestionAnsweringHead(PredictionHead):
     A question answering head predicts the start and end of the answer on token level.
     """
 
-    def __init__(self, layer_dims, task_name="question_answering", n_best=5,  **kwargs):
+    def __init__(self, layer_dims, task_name="question_answering", no_ans_threshold=0.0, context_window_size=100, **kwargs):
         """
         :param layer_dims: dimensions of Feed Forward block, e.g. [768,2], for adjusting to BERT embedding. Output should be always 2
         :type layer_dims: List[Int]
-        :param n_best: The number of candidate positive answer spans to consider from each passage
-        :type n_best: int
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
+        :param no_ans_threshold: no_ans_threshold is how much greater the no_answer logit needs to be over the pos_answer in order to be chosen
+        :type no_ans_threshold: float
+        :param context_window_size: The size, in characters, of the window around the answer span that is used when displaying the context around the answer.
+        :type no_ans_threshold: int
         """
         super(QuestionAnsweringHead, self).__init__()
         self.layer_dims = layer_dims
-        self.n_best = n_best
         self.feed_forward = FeedForwardBlock(self.layer_dims)
         self.num_labels = self.layer_dims[-1]
         self.ph_output_type = "per_token_squad"
@@ -749,6 +750,8 @@ class QuestionAnsweringHead(PredictionHead):
         )  # predicts start and end token of answer
         self.task_name = task_name
         self.generate_config()
+        self.no_ans_threshold = no_ans_threshold
+        self.context_window_size = context_window_size
 
 
     @classmethod
@@ -862,7 +865,7 @@ class QuestionAnsweringHead(PredictionHead):
         end_indices = flat_sorted_indices % max_seq_len
         sorted_candidates = torch.cat((start_indices, end_indices), dim=2)
 
-        # Get the self.n_best candidate answers for each sample that are valid (via some heuristic checks)
+        # Get the n_best candidate answers for each sample that are valid (via some heuristic checks)
         for sample_idx in range(batch_size):
             sample_top_n = self.get_top_candidates(sorted_candidates[sample_idx], start_end_matrix[sample_idx],
                                                    n_non_padding[sample_idx], max_answer_length,
@@ -872,7 +875,7 @@ class QuestionAnsweringHead(PredictionHead):
         return all_top_n
 
     def get_top_candidates(self, sorted_candidates, start_end_matrix,
-                           n_non_padding, max_answer_length, seq_2_start_t):
+                           n_non_padding, max_answer_length, seq_2_start_t, n_best=5):
         """ Returns top candidate answers. Operates on a matrix of summed start and end logits. This matrix corresponds
         to a single sample (includes special tokens, question tokens, passage tokens). This method always returns a
         list of len n_best + 1 (it is comprised of the n_best positive answers along with the one no_answer)"""
@@ -883,7 +886,7 @@ class QuestionAnsweringHead(PredictionHead):
 
         # Iterate over all candidates and break when we have all our n_best candidates
         for candidate_idx in range(n_candidates):
-            if len(top_candidates) == self.n_best:
+            if len(top_candidates) == n_best:
                 break
             else:
                 # Retrieve candidate's indices
@@ -1043,14 +1046,14 @@ class QuestionAnsweringHead(PredictionHead):
             ret.append(curr)
         return ret
 
-    def create_context(self, ans_start_ch, ans_end_ch, clear_text, window_size_ch=100):
+    def create_context(self, ans_start_ch, ans_end_ch, clear_text):
         if ans_start_ch == 0 and ans_end_ch == 0:
             context_start_ch = 0
             context_end_ch = 0
         else:
             len_text = len(clear_text)
             midpoint = int((ans_end_ch - ans_start_ch) / 2) + ans_start_ch
-            half_window = int(window_size_ch / 2)
+            half_window = int(self.context_window_size / 2)
             context_start_ch = midpoint - half_window
             context_end_ch = midpoint + half_window
             # if we have part of the context window overlapping start or end of the passage,
@@ -1162,13 +1165,11 @@ class QuestionAnsweringHead(PredictionHead):
         else:
             return list(set(positive_answers))
 
-    def reduce_preds(self, preds):
+    def reduce_preds(self, preds, n_best=5):
         """ This function contains the logic for choosing the best answers from each passage. In the end, it
         returns the n_best predictions on the document level. """
 
         # Initialize some variables
-        # no_ans_threshold is how much greater the no_answer logit needs to be over the pos_answer in order to be chosen
-        no_ans_threshold = 0
         document_no_answer = True
         passage_no_answer = []
         passage_best_score = []
@@ -1179,7 +1180,7 @@ class QuestionAnsweringHead(PredictionHead):
             best_pred = sample_preds[0]
             best_pred_score = best_pred[2]
             no_answer_score = self.get_no_answer_score(sample_preds)
-            no_answer = no_answer_score - no_ans_threshold > best_pred_score
+            no_answer = no_answer_score - self.no_ans_threshold > best_pred_score
             passage_no_answer.append(no_answer)
             no_answer_scores.append(no_answer_score)
             passage_best_score.append(best_pred_score)
@@ -1195,7 +1196,7 @@ class QuestionAnsweringHead(PredictionHead):
                             for start, end, score in passage_preds
                             if not (start == -1 and end == -1)]
         pos_answers_sorted = sorted(pos_answers_flat, key=lambda x: x[2], reverse=True)
-        pos_answers_reduced = pos_answers_sorted[:self.n_best]
+        pos_answers_reduced = pos_answers_sorted[:n_best]
         no_answer_pred = [-1, -1, max(no_answer_scores)]
 
         # TODO this is how big the no_answer threshold needs to be to change a no_answer to a pos answer
