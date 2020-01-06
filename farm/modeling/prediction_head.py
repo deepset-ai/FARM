@@ -729,7 +729,7 @@ class QuestionAnsweringHead(PredictionHead):
     A question answering head predicts the start and end of the answer on token level.
     """
 
-    def __init__(self, layer_dims, task_name="question_answering", no_ans_threshold=0.0, context_window_size=100, **kwargs):
+    def __init__(self, layer_dims, task_name="question_answering", no_ans_threshold=0.0, context_window_size=100, n_best=5, **kwargs):
         """
         :param layer_dims: dimensions of Feed Forward block, e.g. [768,2], for adjusting to BERT embedding. Output should be always 2
         :type layer_dims: List[Int]
@@ -738,7 +738,9 @@ class QuestionAnsweringHead(PredictionHead):
         :param no_ans_threshold: no_ans_threshold is how much greater the no_answer logit needs to be over the pos_answer in order to be chosen
         :type no_ans_threshold: float
         :param context_window_size: The size, in characters, of the window around the answer span that is used when displaying the context around the answer.
-        :type no_ans_threshold: int
+        :type context_window_size: int
+        :param n_best: The number of candidate positive answer spans to consider from each passage
+        :type n_best: int
         """
         super(QuestionAnsweringHead, self).__init__()
         self.layer_dims = layer_dims
@@ -752,6 +754,7 @@ class QuestionAnsweringHead(PredictionHead):
         self.generate_config()
         self.no_ans_threshold = no_ans_threshold
         self.context_window_size = context_window_size
+        self.n_best = n_best
 
 
     @classmethod
@@ -1165,7 +1168,7 @@ class QuestionAnsweringHead(PredictionHead):
         else:
             return list(set(positive_answers))
 
-    def reduce_preds(self, preds, n_best=5):
+    def reduce_preds(self, preds):
         """ This function contains the logic for choosing the best answers from each passage. In the end, it
         returns the n_best predictions on the document level. """
 
@@ -1196,7 +1199,7 @@ class QuestionAnsweringHead(PredictionHead):
                             for start, end, score in passage_preds
                             if not (start == -1 and end == -1)]
         pos_answers_sorted = sorted(pos_answers_flat, key=lambda x: x[2], reverse=True)
-        pos_answers_reduced = pos_answers_sorted[:n_best]
+        pos_answers_reduced = pos_answers_sorted[:self.n_best]
         no_answer_pred = [-1, -1, max(no_answer_scores)]
 
         # TODO this is how big the no_answer threshold needs to be to change a no_answer to a pos answer
