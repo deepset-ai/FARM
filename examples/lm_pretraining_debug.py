@@ -31,12 +31,12 @@ ml_logger.init_experiment(experiment_name="from_scratch", run_name="debug")
 ########################
 set_all_seeds(seed=39)
 device, n_gpu = initialize_device_settings(use_cuda=True)
-learning_rate = 1e-5
-batch_size = 45
+learning_rate = 1e-6
+batch_size = 32
 max_seq_len = 128
-n_epochs = 100
-evaluate_every = 50
-vocab_size = 30522
+n_epochs = 10
+evaluate_every = 63
+vocab_size = 30000
 # dev_filename = None
 save_dir = "../saved_models/from_scratch"
 predictions_file = save_dir + "/predictions.json"
@@ -47,14 +47,14 @@ inference = True
 
 if train:
     # 1.Create a tokenizer
-    tokenizer = BertTokenizer("../saved_models/qa_model_medium/vocab.txt")
+    tokenizer = BertTokenizer("../saved_models/airbert_2.3.0/vocab.txt")
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
     processor = BertStyleLMProcessor(
         data_dir="../data/lm_finetune_nips",
         tokenizer=tokenizer, max_seq_len=max_seq_len,
-        train_filename="tiny.txt",
-        dev_filename="tiny.txt",
+        train_filename="train_small.txt",
+        dev_filename="train_small.txt",
         test_filename=None
         )
 

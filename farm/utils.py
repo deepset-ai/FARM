@@ -36,7 +36,11 @@ def calc_chunksize(num_dicts, min_chunksize=4, max_chunksize=2000, max_processes
     multiprocessing_chunk_size = int(
         np.clip((np.ceil(dicts_per_cpu / 5)), a_min=min_chunksize, a_max=max_chunksize)
     )
-
+    # This lets us avoid cases in lm_finetuning where a chunk only has a single doc and hence cannot pick
+    # a valid next sentence substitute from another document
+    if num_dicts != 1:
+        while num_dicts % multiprocessing_chunk_size == 1:
+            multiprocessing_chunk_size -= -1
     dict_batches_to_process = int(num_dicts / multiprocessing_chunk_size)
     num_processes = min(num_cpus, dict_batches_to_process) or 1
 
