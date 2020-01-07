@@ -23,7 +23,8 @@ from transformers.tokenization_bert import BertTokenizer
 from transformers.tokenization_roberta import RobertaTokenizer
 from transformers.tokenization_xlnet import XLNetTokenizer
 from transformers.tokenization_albert import AlbertTokenizer
-from transformers.tokenization_xlm_roberta import XLMRobertaTokenizer
+# from transformers.tokenization_xlm_roberta import XLMRobertaTokenizer
+from farm.modeling.xlmr_tok import XLMRobertaTokenizer
 
 logger = logging.getLogger(__name__)
 
