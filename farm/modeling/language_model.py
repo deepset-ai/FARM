@@ -277,7 +277,7 @@ class Bert(LanguageModel):
         bert = cls()
         bert.name = name
         bert.language = language
-        config = BertConfig(vocab_size_or_config_json_file=vocab_size)
+        config = BertConfig(vocab_size=vocab_size)
         bert.model = BertModel(config)
         return bert
 
