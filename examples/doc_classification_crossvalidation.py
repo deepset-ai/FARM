@@ -117,6 +117,7 @@ def train_on_split(silo_to_use, n_fold, save_dir):
     optimizer, warmup_linear = initialize_optimizer(
         model=model,
         learning_rate=0.5e-5,
+        device=device,
         n_batches=len(silo_to_use.loaders["train"]),   # TODO
         n_epochs=n_epochs)
 
