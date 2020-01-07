@@ -92,6 +92,7 @@ model = AdaptiveModel(
 model, optimizer, lr_schedule = initialize_optimizer(
     model=model,
     learning_rate=0.5e-5,
+    device=device,
     n_batches=len(data_silo.loaders["train"]),
     n_epochs=n_epochs,
     use_amp=use_amp)

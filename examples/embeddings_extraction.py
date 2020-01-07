@@ -43,5 +43,5 @@ basic_texts = [
 ]
 
 model = Inferencer(adaptive_model, processor, gpu=use_gpu)
-result = model.extract_vectors(dicts=basic_texts)
+result = model.extract_vectors(dicts=basic_texts, extraction_strategy="reduce_mean", extraction_layer=-1)
 print(result)

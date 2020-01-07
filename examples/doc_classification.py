@@ -27,7 +27,7 @@ set_all_seeds(seed=42)
 n_epochs = 1
 batch_size = 32
 evaluate_every = 100
-lang_model = "bert-base-german-cased"
+lang_model = "bert-base-cased"
 use_amp = None
 
 device, n_gpu = initialize_device_settings(use_cuda=True, use_amp=use_amp)
@@ -76,6 +76,7 @@ model = AdaptiveModel(
 model, optimizer, lr_schedule = initialize_optimizer(
     model=model,
     learning_rate=2e-5,
+    device=device,
     n_batches=len(data_silo.loaders["train"]),
     n_epochs=n_epochs,
     use_amp=use_amp)
