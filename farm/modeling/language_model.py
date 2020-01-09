@@ -531,7 +531,7 @@ class DistilBert(LanguageModel):
     token belongs to which segment. Just separate your segments with the separation 
     token tokenizer.sep_token (or [SEP])
     - Unlike the other BERT variants, DistilBert does not output the
-    pooled_output. It needs to be calculated - see _get_pooled_output().
+    pooled_output. An additional pooler is initialized.
     
     """
 
@@ -539,6 +539,7 @@ class DistilBert(LanguageModel):
         super(DistilBert, self).__init__()
         self.model = None
         self.name = "distilbert"
+        self.pooler = None
 
     @classmethod
     def load(cls, pretrained_model_name_or_path, language=None, **kwargs):
@@ -572,19 +573,17 @@ class DistilBert(LanguageModel):
             distilbert.model = DistilBertModel.from_pretrained(pretrained_model_name_or_path, **kwargs)
             distilbert.language = cls._infer_language_from_name(pretrained_model_name_or_path)
         config = distilbert.model.config
-        # for calculating the pooling output
-        cls.dense = nn.Linear(dim, dim)
-        cls.activation = nn.Tanh()
 
+        # DistilBERT does not provide a pooled_output by default. Therefore, we need to initialize an extra pooler.
+        # The pooler takes the first hidden representation & feeds it to a dense layer of (hidden_dim x hidden_dim).
+        # We don't want a dropout in the end of the pooler, since we do that already in the adaptive model before we
+        # feed everything to the prediction head
+        config.summary_last_dropout = 0
+        config.summary_type = 'first'
+        config.summary_activation = 'tanh'
+        distilbert.pooler = SequenceSummary(config)
+        distilbert.pooler.apply(distilbert.model._init_weights)
         return distilbert
-
-    def _get_pooled_output(self, last_hidden_states):
-        """
-        Last layer hidden-state of the first token of the sequence (classification token) further processed 
-        by a Linear layer and a Tanh activation function. 
-        """
-        first_token_tensor = last_hidden_states[:, 0]
-        return self.activation(self.dense(first_token_tensor))
 
     def forward(
         self,
@@ -606,18 +605,14 @@ class DistilBert(LanguageModel):
             input_ids,
             attention_mask=padding_mask,
         )
-        if self.model.config.output_hidden_states == True and self.model.config.output_attentions == True :
-            sequence_output, pooled_output, attention_heads = output_tuple[0], self._get_pooled_output(output_tuple[0]), output_tuple[2]
-            return sequence_output, pooled_output, attention_heads
-        elif self.model.config.output_hidden_states == True:
-            sequence_output, pooled_output = output_tuple[0], self._get_pooled_output(output_tuple[0])
+        # We need to manually aggregate that to get a pooled output (one vec per seq)
+        pooled_output = self.pooler(output_tuple[0])
+        if self.model.config.output_hidden_states == True:
+            sequence_output, all_hidden_states = output_tuple[0], output_tuple[1]
             return sequence_output, pooled_output
-        elif self.model.config.output_attentions == True:
-            sequence_output, attention_heads = output_tuple[0], self._get_pooled_output(output_tuple[0])
-            return sequence_output, attention_heads
         else:
             sequence_output = output_tuple[0]
-            return sequence_output
+            return sequence_output, pooled_output
 
     def enable_hidden_states_output(self):
         self.model.config.output_hidden_states = True
