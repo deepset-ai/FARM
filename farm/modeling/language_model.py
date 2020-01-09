@@ -76,6 +76,7 @@ class LanguageModel(nn.Module):
         * xlnet-base-cased
         * xlnet-large-cased
         * albert-base-v2
+        * albert-large-v2
         * distilbert-base-german-cased
         * distilbert-base-multilingual-cased
 
@@ -96,12 +97,12 @@ class LanguageModel(nn.Module):
                 language_model = cls.subclasses["Roberta"].load(pretrained_model_name_or_path, **kwargs)
             elif 'albert' in pretrained_model_name_or_path:
                 language_model = cls.subclasses["Albert"].load(pretrained_model_name_or_path, **kwargs)
+            elif 'distilbert' in pretrained_model_name_or_path:
+                language_model = cls.subclasses["DistilBert"].load(pretrained_model_name_or_path, **kwargs)
             elif 'bert' in pretrained_model_name_or_path:
                 language_model = cls.subclasses["Bert"].load(pretrained_model_name_or_path, **kwargs)
             elif 'xlnet' in pretrained_model_name_or_path:
                 language_model = cls.subclasses["XLNet"].load(pretrained_model_name_or_path, **kwargs)
-            elif 'distilbert' in pretrained_model_name_or_path:
-                language_model = cls.subclasses["DistilBert"].load(pretrained_model_name_or_path, **kwargs)
             else:
                 language_model = None
 
