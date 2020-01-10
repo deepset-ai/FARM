@@ -41,7 +41,7 @@ class DataSilo:
         automatic_loading=True,
         max_multiprocessing_chunksize=2000,
         max_processes=128,
-        checkpointing=False,
+        caching=False,
     ):
         """
         :param processor: A dataset specific Processor object which will turn input (file or dict) into a Pytorch Dataset.
@@ -67,7 +67,7 @@ class DataSilo:
         self.max_multiprocessing_chunksize = max_multiprocessing_chunksize
 
         loaded_from_cache = False
-        if checkpointing:  # Check if DataSets are present in cache
+        if caching:  # Check if DataSets are present in cache
             checksum = self._get_checksum()
             dataset_path = Path(f"cache/data_silo/{checksum}")
 

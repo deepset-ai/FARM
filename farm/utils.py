@@ -3,6 +3,8 @@ import json
 import logging
 import random
 import os
+import signal
+
 
 import numpy as np
 import torch
@@ -252,3 +254,13 @@ def get_dict_checksum(payload_dict):
     """
     checksum = hashlib.md5(json.dumps(payload_dict, sort_keys=True).encode("utf-8")).hexdigest()
     return checksum
+
+
+class GracefulKiller:
+    kill_now = False
+
+    def __init__(self):
+        signal.signal(signal.SIGTERM, self.exit_gracefully)
+
+    def exit_gracefully(self, signum, frame):
+        self.kill_now = True
