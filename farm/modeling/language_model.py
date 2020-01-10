@@ -91,6 +91,8 @@ class LanguageModel(nn.Module):
         else:
             # it's a model name which we try to resolve from s3. for now only works for bert models
             if "xlm" in pretrained_model_name_or_path and "roberta" in pretrained_model_name_or_path:
+                # TODO: for some reason, the pretrained XLMRoberta has different vocab size in the tokenizer compared to the model this is a hack to resolve that
+                n_added_tokens = 3
                 language_model = cls.subclasses["XLMRoberta"].load(pretrained_model_name_or_path, **kwargs)
             elif 'roberta' in pretrained_model_name_or_path:
                 language_model = cls.subclasses["Roberta"].load(pretrained_model_name_or_path, **kwargs)
