@@ -1,9 +1,6 @@
-from __future__ import absolute_import, division, print_function
-
 import logging
 import sys
 import torch
-from torch.nn.parallel import DistributedDataParallel as DDP
 from tqdm import tqdm
 
 from farm.utils import MLFlowLogger as MlLogger
@@ -12,6 +9,7 @@ from farm.eval import Evaluator
 from farm.data_handler.data_silo import DataSilo
 from farm.visual.ascii.images import GROWING_TREE
 from farm.modeling.adaptive_model import AdaptiveModel
+from farm.modeling.optimization import get_scheduler
 
 try:
     from apex import amp
@@ -116,10 +114,10 @@ class Trainer:
         grad_acc_steps=1,
         local_rank=-1,
         early_stopping=None,
-        log_learning_rate=False
-        save_on_sigkill=False,
+        log_learning_rate=False,
+        checkpoint_on_sigkill=False,
         checkpoint_every=None,
-        checkpointing_dir=None,
+        checkpoint_root_dir=None,
         from_step=1,
         from_epoch=1
     ):
@@ -178,17 +176,17 @@ class Trainer:
             raise ImportError(f'Got use_amp = {use_amp}, but cannot find apex. '
                               'Please install Apex if you want to make use of automatic mixed precision. '
                               'https://github.com/NVIDIA/apex')
-        self.save_on_sigkill = save_on_sigkill
-        if save_on_sigkill:
+        self.checkpoint_on_sigkill = checkpoint_on_sigkill
+        if checkpoint_on_sigkill:
             self.sigkill_handler = GracefulKiller()
         else:
             self.sigkill_handler = None
-        self.checkpointing_dir = checkpointing_dir
+        self.checkpoint_root_dir = checkpoint_root_dir
         self.checkpoint_every = checkpoint_every
-        if self.checkpoint_every and not checkpointing_dir:
+        if self.checkpoint_every and not checkpoint_root_dir:
             raise Exception("checkpoint_path needs to be supplied when using checkpoint_every.")
-        if save_on_sigkill and not checkpointing_dir:
-            raise Exception("checkpoint_path needs to be supplied when using save_on_sigkill.")
+        if checkpoint_on_sigkill and not checkpoint_root_dir:
+            raise Exception("checkpoint_path needs to be supplied when using checkpoint_on_sigkill.")
 
         self.from_epoch = from_epoch
         self.from_step = from_step
@@ -212,72 +210,78 @@ class Trainer:
         self.evaluator_test = evaluator_test
 
     @classmethod
-    def create_or_load_from_checkpoint(cls, data_silo, checkpointing_dir, **kwargs):
-        if checkpointing_dir.exists():
-            dirs = [d for d in checkpointing_dir.iterdir() if d.is_dir()]
-            total_steps_at_checkpoints = []
-            for d in dirs:
-                epoch, step = [int(s) for s in str(d).split("_") if s.isdigit()]
-                total_steps_at_checkpoints.append((d, epoch * step))
-            total_steps_at_checkpoints.sort(key=lambda tup: tup[1], reverse=True)
-            latest_checkpoint_path = total_steps_at_checkpoints[0][0]
+    def create_or_load_checkpoint(cls, data_silo, checkpoint_root_dir, resume_from_checkpoint="latest", **kwargs):
+        if checkpoint_root_dir.exists():
+            if resume_from_checkpoint == "latest":
+                dirs = [d for d in checkpoint_root_dir.iterdir() if d.is_dir()]
+                total_steps_at_checkpoints = []
+                for d in dirs:
+                    epoch, step = [int(s) for s in str(d).split("_") if s.isdigit()]
+                    total_steps_at_checkpoints.append((d, epoch * step))
+                total_steps_at_checkpoints.sort(key=lambda tup: tup[1], reverse=True)
+                checkpoint_to_load = total_steps_at_checkpoints[0][0]
+            else:
+                checkpoint_to_load = checkpoint_root_dir / resume_from_checkpoint
 
-            trainer = cls.load_from_checkpoint(checkpoint_path=latest_checkpoint_path, data_silo=data_silo)
-            logging.info(f"Resuming training from the latest train checkpoint at {latest_checkpoint_path} ...")
+            trainer = cls._load_checkpoint(path=checkpoint_to_load, data_silo=data_silo)
+            logging.info(f"Resuming training from the latest train checkpoint at {checkpoint_to_load} ...")
         else:
             logging.info(f"No train checkpoints found. Starting a new training ...")
-            trainer = Trainer(data_silo=data_silo, checkpointing_dir=checkpointing_dir, **kwargs)
+            trainer = Trainer(data_silo=data_silo, checkpoint_root_dir=checkpoint_root_dir, **kwargs)
         return trainer
 
     @classmethod
-    def load_from_checkpoint(cls, checkpoint_path, data_silo):
-        if checkpoint_path.exists():
+    def _load_checkpoint(cls, path, data_silo):
+        if path.exists():
 
-            trainer_checkpoint = torch.load(checkpoint_path / "trainer")
+            trainer_checkpoint = torch.load(path / "trainer")
             trainer_state_dict = trainer_checkpoint["trainer_state_dict"]
 
             device = trainer_state_dict["device"]
-            model = AdaptiveModel.load(load_dir=checkpoint_path, device=device)
+            model = AdaptiveModel.load(load_dir=path, device=device)  # TODO verify if init opmtimzer changes are reflected here.
 
             optimizer = trainer_checkpoint["optimizer"]
-            optimizer.log_learning_rate = False
 
-            trainer = Trainer(
-                data_silo=data_silo,
-                model=model,
-                **trainer_state_dict
-            )
+            scheduler_state_dict = trainer_checkpoint["scheduler_state"]
+            scheduler_opts = trainer_checkpoint["scheduler_opts"]
+            scheduler = get_scheduler(optimizer, scheduler_opts)
+            scheduler.load_state_dict(scheduler_state_dict)
+
+            trainer = Trainer(data_silo=data_silo, model=model, lr_schedule=scheduler, **trainer_state_dict)
             return trainer
 
     def save(self):
-        checkpoint_dir = self.checkpointing_dir / f"epoch_{self.from_epoch}_step_{self.from_step}"
-        checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        checkpoint_path = self.checkpoint_root_dir / f"epoch_{self.from_epoch}_step_{self.from_step}"
+        checkpoint_path.mkdir(parents=True, exist_ok=True)
 
         trainer_state_dict = self.get_state_dict()
-        self.model.save(checkpoint_dir)
-        torch.save({
-            "trainer_state_dict": trainer_state_dict,
-            'model_state_dict': self.model.state_dict(),
-            "optimizer": self.optimizer,
-        }, checkpoint_dir / "trainer")
+        self.model.save(checkpoint_path)
+        torch.save(
+            {
+                "trainer_state_dict": trainer_state_dict,
+                "model_state_dict": self.model.state_dict(),
+                "optimizer": self.optimizer,
+                "scheduler_opts": self.lr_schedule.opts,
+                "scheduler_state": self.lr_schedule.state_dict(),
+            },
+            checkpoint_path / "trainer",
+        )
 
         # TODO custom defined evaluators are not saved in the checkpoint.
-        logger.info(f"Saved a training checkpoint at {checkpoint_dir}")
+        logger.info(f"Saved a training checkpoint at {checkpoint_path}")
 
     def get_state_dict(self):
         state_dict = {
             "optimizer": self.optimizer,
-            "warmup_linear": self.warmup_linear,
             "evaluate_every": self.evaluate_every,
             "n_gpu": self.n_gpu,
             "grad_acc_steps": self.grad_acc_steps,
             "device": self.device,
             "local_rank": self.local_rank,
             "early_stopping": self.early_stopping,
-            "fp16": self.fp16,
             "epochs": self.epochs,
-            "save_on_sigkill": self.save_on_sigkill,
-            "checkpointing_dir": self.checkpointing_dir,
+            "checkpoint_on_sigkill": self.checkpoint_on_sigkill,
+            "checkpoint_root_dir": self.checkpoint_root_dir,
             "checkpoint_every": self.checkpoint_every,
             "from_epoch": self.from_epoch,
             "from_step": self.from_step,
@@ -297,6 +301,7 @@ class Trainer:
         logger.info(f"\n {GROWING_TREE}")
         self.model.train()
 
+        do_stopping = False
         evalnr = 0
         loss = 0
 

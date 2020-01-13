@@ -1,4 +1,5 @@
 from importlib import import_module
+import copy
 import logging
 import sys
 import inspect
@@ -147,7 +148,7 @@ def initialize_optimizer(model,
     optimizer = _get_optim(model, optimizer_opts)
 
     # Get learning rate schedule
-    scheduler = _get_scheduler(optimizer, schedule_opts)
+    scheduler = get_scheduler(optimizer, schedule_opts)
 
     # Adjust for parallel training + amp
     model, optimizer = _optimize_model(model, device, local_rank, optimizer, distributed, use_amp)
@@ -212,13 +213,14 @@ def _get_optim(model, opts):
     return optim_constructor(optimizable_parameters)
 
 
-def _get_scheduler(optimizer, opts):
+def get_scheduler(optimizer, opts):
     """ Get the scheduler based on dictionary with options. Options are passed to the scheduler constructor.
 
     :param optimizer: optimizer whose learning rate to control
     :param opts: dictionary of args to be passed to constructor of schedule
     :return: created scheduler
     """
+    _opts = copy.deepcopy(opts)
     schedule_name = opts.pop('name', None)
     try:
         sched_constructor = getattr(import_module('torch.optim.lr_scheduler'), schedule_name)
@@ -255,7 +257,9 @@ def _get_scheduler(optimizer, opts):
     logger.info(f"Loading schedule `{schedule_name}`: '{opts}'")
     MlLogger.log_params(opts)
     MlLogger.log_params({"schedule_name": schedule_name})
-    return sched_constructor(optimizer, **opts)
+    scheduler = sched_constructor(optimizer, **opts)
+    scheduler.opts = _opts
+    return scheduler
 
 
 def calculate_optimization_steps(n_batches, grad_acc_steps, n_epochs, local_rank):
