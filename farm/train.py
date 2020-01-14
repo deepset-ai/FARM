@@ -122,6 +122,7 @@ class Trainer:
         checkpoint_root_dir=None,
         from_epoch=1,
         from_step=1,
+        global_step=0,
     ):
         """
         :param optimizer: An optimizer object that determines the learning strategy to be used during training
@@ -181,7 +182,6 @@ class Trainer:
         self.grad_acc_steps = grad_acc_steps
         self.use_amp = use_amp
         self.lr_schedule = lr_schedule
-        self.global_step = 0
         self.data_loader_train = data_silo.get_data_loader("train")
         self.device = device
         self.local_rank = local_rank
@@ -207,6 +207,7 @@ class Trainer:
 
         self.from_epoch = from_epoch
         self.from_step = from_step
+        self.global_step = (from_epoch * from_step) - 1
 
         # evaluator on dev set
         if evaluator_dev is None and self.data_silo.get_data_loader("dev"):
