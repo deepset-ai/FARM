@@ -1,5 +1,4 @@
 from importlib import import_module
-import copy
 import logging
 import sys
 import inspect
@@ -220,8 +219,7 @@ def get_scheduler(optimizer, opts):
     :param opts: dictionary of args to be passed to constructor of schedule
     :return: created scheduler
     """
-    _opts = copy.deepcopy(opts)
-    schedule_name = opts.pop('name', None)
+    schedule_name = opts.get('name')
     try:
         sched_constructor = getattr(import_module('torch.optim.lr_scheduler'), schedule_name)
     except AttributeError:
@@ -245,20 +243,21 @@ def get_scheduler(optimizer, opts):
     # get supported args of constructor
     allowed_args = inspect.signature(sched_constructor).parameters.keys()
 
-    # convert from warmup proporation to steps if required
+    # convert from warmup proportion to steps if required
     if 'num_warmup_steps' in allowed_args and 'num_warmup_steps' not in opts and 'warmup_proportion' in opts:
         opts['num_warmup_steps'] = int(opts["warmup_proportion"] * opts["num_training_steps"])
         MlLogger.log_params({"warmup_proportion": opts["warmup_proportion"]})
 
     # only pass args that are supported by the constructor
-    opts = {k: v for k, v in opts.items() if k in allowed_args}
+    constructor_opts = {k: v for k, v in opts.items() if k in allowed_args}
 
     # Logging
-    logger.info(f"Loading schedule `{schedule_name}`: '{opts}'")
-    MlLogger.log_params(opts)
+    logger.info(f"Loading schedule `{schedule_name}`: '{constructor_opts}'")
+    MlLogger.log_params(constructor_opts)
     MlLogger.log_params({"schedule_name": schedule_name})
-    scheduler = sched_constructor(optimizer, **opts)
-    scheduler.opts = _opts
+
+    scheduler = sched_constructor(optimizer, **constructor_opts)
+    scheduler.opts = opts  # save the opts with the scheduler to use in load/save
     return scheduler
 
 
