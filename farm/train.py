@@ -350,10 +350,11 @@ class Trainer:
             progress_bar = tqdm(self.data_loader_train)    # start at a random location
             for step, batch in enumerate(progress_bar, start=1):
                 # when resuming training from a checkpoint, we want to fast forward to the step of the checkpoint
-                if resume_from_step and step < resume_from_step:
+                if resume_from_step and step <= resume_from_step:
                     if resume_from_step == step:
                         resume_from_step = None
-                    continue
+                    else:
+                        continue
 
                 if self.sigkill_handler and self.sigkill_handler.kill_now:  # save the current state as a checkpoint
                     self._save()
