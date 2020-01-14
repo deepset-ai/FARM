@@ -354,8 +354,7 @@ class Trainer:
                 if resume_from_step and step <= resume_from_step:
                     if resume_from_step == step:
                         resume_from_step = None
-                    else:
-                        continue
+                    continue
 
                 if self.sigkill_handler and self.sigkill_handler.kill_now:  # save the current state as a checkpoint
                     self._save()
