@@ -122,7 +122,6 @@ class Trainer:
         checkpoint_root_dir=None,
         from_epoch=1,
         from_step=1,
-        global_step=0,
     ):
         """
         :param optimizer: An optimizer object that determines the learning strategy to be used during training
@@ -325,6 +324,7 @@ class Trainer:
             "checkpoint_every": self.checkpoint_every,
             "from_epoch": self.from_epoch,
             "from_step": self.from_step,
+            "log_learning_rate": self.log_learning_rate,
         }
 
         return state_dict
