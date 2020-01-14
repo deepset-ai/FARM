@@ -1,6 +1,8 @@
+
 import logging
 import sys
 import torch
+from pathlib import Path
 from tqdm import tqdm
 
 from farm.utils import MLFlowLogger as MlLogger
@@ -118,8 +120,8 @@ class Trainer:
         checkpoint_on_sigkill=False,
         checkpoint_every=None,
         checkpoint_root_dir=None,
+        from_epoch=1,
         from_step=1,
-        from_epoch=1
     ):
         """
         :param optimizer: An optimizer object that determines the learning strategy to be used during training
@@ -154,7 +156,22 @@ class Trainer:
         :type early_stopping: EarlyStopping
         :param log_learning_rate: Whether to log learning rate to Mlflow
         :type log_learning_rate: bool
+        :param checkpoint_on_sigkill: save a checkpoint for the Trainer when a SIGKILL signal is sent. The checkpoint
+               can be used to resume training. It is useful in frameworks like AWS SageMaker with Spot instances where
+               a SIGKILL notifies to save the training state and subsequently the instance is terminated.
+        :type checkpoint_on_sigkill: bool
+        :param checkpoint_every: save a train checkpoint after this many steps of training.
+        :type checkpoint_every: int
+        :param checkpoint_root_dir: the Path of directory where all train checkpoints are saved.
+        :type checkpoint_root_dir: Path
+        :param from_epoch: the epoch number to start the training from. In the case when training resumes from a saved
+               checkpoint, it is used to fast-forward training to the last epoch in the checkpoint.
+        :type from_epoch: int
+        :param from_step: the step number to start the training from. In the case when training resumes from a saved
+               checkpoint, it is used to fast-forward training to the last step in the checkpoint.
+        :type from_step: int
         """
+
         self.model = model
         self.data_silo = data_silo
         self.epochs = int(epochs)
@@ -211,6 +228,18 @@ class Trainer:
 
     @classmethod
     def create_or_load_checkpoint(cls, data_silo, checkpoint_root_dir, resume_from_checkpoint="latest", **kwargs):
+        """
+        Try loading a saved Trainer checkpoint. If no checkpoint found, it creates a new instance of Trainer.
+
+        :param data_silo: A DataSilo object that will contain the train, dev and test datasets as PyTorch DataLoaders
+        :type data_silo: DataSilo
+        :param checkpoint_root_dir: Path of the directory where all train checkpoints are saved. Each individual
+               checkpoint is stored in a sub-directory under it.
+        :type checkpoint_root_dir: Path
+        :param resume_from_checkpoint: the checkpoint name to start training from, e.g., "epoch_1_step_4532". It
+               defaults to "latest", using the checkpoint with the highest train steps.
+        :type resume_from_checkpoint: str
+        """
         if checkpoint_root_dir.exists():
             if resume_from_checkpoint == "latest":
                 dirs = [d for d in checkpoint_root_dir.iterdir() if d.is_dir()]
@@ -232,29 +261,36 @@ class Trainer:
 
     @classmethod
     def _load_checkpoint(cls, path, data_silo):
-        if path.exists():
+        """
+        Load the train checkpoint at given path.
+        """
+        if not path.exists():
+            raise Exception(f"The checkpoint path {path} does not exists.")
 
-            trainer_checkpoint = torch.load(path / "trainer")
-            trainer_state_dict = trainer_checkpoint["trainer_state_dict"]
+        trainer_checkpoint = torch.load(path / "trainer")
+        trainer_state_dict = trainer_checkpoint["trainer_state_dict"]
 
-            device = trainer_state_dict["device"]
-            model = AdaptiveModel.load(load_dir=path, device=device)  # TODO verify if init opmtimzer changes are reflected here.
+        device = trainer_state_dict["device"]
+        model = AdaptiveModel.load(load_dir=path, device=device)
 
-            optimizer = trainer_checkpoint["optimizer"]
+        optimizer = trainer_checkpoint["optimizer"]
 
-            scheduler_state_dict = trainer_checkpoint["scheduler_state"]
-            scheduler_opts = trainer_checkpoint["scheduler_opts"]
-            scheduler = get_scheduler(optimizer, scheduler_opts)
-            scheduler.load_state_dict(scheduler_state_dict)
+        scheduler_state_dict = trainer_checkpoint["scheduler_state"]
+        scheduler_opts = trainer_checkpoint["scheduler_opts"]
+        scheduler = get_scheduler(optimizer, scheduler_opts)
+        scheduler.load_state_dict(scheduler_state_dict)
 
-            trainer = Trainer(data_silo=data_silo, model=model, lr_schedule=scheduler, **trainer_state_dict)
-            return trainer
+        trainer = Trainer(data_silo=data_silo, model=model, lr_schedule=scheduler, **trainer_state_dict)
+        return trainer
 
-    def save(self):
+    def _save(self):
+        """
+        Save a train checkpoint at the Trainer's checkpoint_path.
+        """
         checkpoint_path = self.checkpoint_root_dir / f"epoch_{self.from_epoch}_step_{self.from_step}"
         checkpoint_path.mkdir(parents=True, exist_ok=True)
 
-        trainer_state_dict = self.get_state_dict()
+        trainer_state_dict = self._get_state_dict()
         self.model.save(checkpoint_path)
         torch.save(
             {
@@ -270,7 +306,10 @@ class Trainer:
         # TODO custom defined evaluators are not saved in the checkpoint.
         logger.info(f"Saved a training checkpoint at {checkpoint_path}")
 
-    def get_state_dict(self):
+    def _get_state_dict(self):
+        """
+        Serializable state dictionary of a Trainer object
+        """
         state_dict = {
             "optimizer": self.optimizer,
             "evaluate_every": self.evaluate_every,
@@ -317,11 +356,11 @@ class Trainer:
                     continue
 
                 if self.sigkill_handler and self.sigkill_handler.kill_now:  # save the current state as a checkpoint
-                    self.save()
+                    self._save()
                     sys.exit(0)
 
-                if step and step % self.checkpoint_every == 0:  # save a checkpoint and continue training
-                    self.save()
+                if self.checkpoint_every and step % self.checkpoint_every == 0:  # save a checkpoint and continue training
+                    self._save()
 
                 progress_bar.set_description(f"Train epoch {epoch}/{self.epochs} (Cur. train loss: {loss:.4f})")
 
@@ -390,7 +429,7 @@ class Trainer:
         if self.log_learning_rate:
             MlLogger.log_metrics({"learning_rate": self.lr_schedule.get_lr()[0]}, step=self.global_step)
 
-        if (step + 1) % self.grad_acc_steps == 0:
+        if step % self.grad_acc_steps == 0:
             # TODO We might wanna add gradient clipping here
             self.optimizer.step()
             self.optimizer.zero_grad()
