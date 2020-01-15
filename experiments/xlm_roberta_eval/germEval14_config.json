@@ -45,7 +45,7 @@
   "optimizer": {
     "learning_rate":      {"value": 1e-5, "default": 5e-5, "desc": "The learning rate for the optimizer."},
     "optimizer_opts":     {"value": null, "default": null, "desc": "Additional optimizer config."},
-    "schedule_opts":      {"value": null, "default":  {"name": "LinearWarmup", "warmup_proportion":  0.4}, "desc":  "opts for lr schedule"}
+    "schedule_opts":      {"value": {"name": "LinearWarmup", "warmup_proportion":  0.1}, "default":  {"name": "LinearWarmup", "warmup_proportion":  0.4}, "desc":  "opts for lr schedule"}
  },
 
   "logging": {

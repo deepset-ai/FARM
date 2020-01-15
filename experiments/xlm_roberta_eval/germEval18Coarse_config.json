@@ -46,7 +46,7 @@
   "optimizer": {
     "learning_rate":      {"value": null, "default": 1e-6, "desc": "The initial learning rate for AdamW."},
     "optimizer_opts":     {"value": null, "default": null, "desc": "Additional optimizer config."},
-    "schedule_opts":      {"value": null, "default":  {"name": "LinearWarmup", "warmup_proportion":  0.2}, "desc":  "opts for lr schedule"}
+    "schedule_opts":      {"value": {"name": "LinearWarmup", "warmup_proportion":  0.1}, "default":  {"name": "LinearWarmup", "warmup_proportion":  0.2}, "desc":  "opts for lr schedule"}
  },
   "logging": {
     "eval_every":     {"value": null,                                "default": 30,   "desc": "Steps per training loop (batches) required for evaluation on dev set. Set to 0 when you do not want to do evaluation on dev set during training."},
