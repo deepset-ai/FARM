@@ -34,6 +34,10 @@ from transformers.modeling_albert import AlbertModel, AlbertConfig
 from transformers.modeling_distilbert import DistilBertModel, DistilBertConfig
 from transformers.modeling_utils import SequenceSummary
 
+# These are the names of the attributes in various model configs which refer to the number of dimensions
+# in the output vectors
+OUTPUT_DIM_NAMES = ["dim", "hidden_size", "d_model"]
+
 class LanguageModel(nn.Module):
     """
     The parent class for any kind of model that can embed language into a semantic vector space. Practically
@@ -112,6 +116,14 @@ class LanguageModel(nn.Module):
                 f"or one of bert/roberta/xlnet/albert/distilbert models that can be downloaded from remote. Here's the list of available "
                 f"models: https://farm.deepset.ai/api/modeling.html#farm.modeling.language_model.LanguageModel.load"
             )
+
+        cls.output_dims = None
+        config = language_model.model.config
+        for odn in OUTPUT_DIM_NAMES:
+            if odn in dir(config):
+                cls.output_dims = getattr(config, odn)
+        if cls.output_dims is None:
+            raise Exception("Could not infer the output dimensions of the language model")
 
         # resize embeddings in case of custom vocab
         if n_added_tokens != 0:
