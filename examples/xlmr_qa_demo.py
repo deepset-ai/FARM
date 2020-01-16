@@ -141,3 +141,6 @@ def xlmr_qa_demo():
                   indent=4,
                   ensure_ascii=False)
 
+
+if __name__ == "__main__":
+    xlmr_qa_demo()
