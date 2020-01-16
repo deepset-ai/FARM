@@ -2,6 +2,7 @@ import hashlib
 import json
 import logging
 import random
+import os
 
 import numpy as np
 import torch
@@ -14,14 +15,27 @@ from farm.visual.ascii.images import WELCOME_BARN, WORKER_M, WORKER_F, WORKER_X
 logger = logging.getLogger(__name__)
 
 
+def set_all_seeds(seed, deterministic_cudnn=False):
+    """
+    Setting multiple seeds to make runs reproducible.
 
+    Important: Enabling `deterministic_cudnn` gives you full reproducibility with CUDA,
+    but might slow down your training (see https://pytorch.org/docs/stable/notes/randomness.html#cudnn) !
 
-def set_all_seeds(seed, n_gpu=0):
+    :param seed:number to use as seed
+    :type seed: int
+    :param deterministic_torch: Enable for full reproducibility when using CUDA. Caution: might slow down training.
+    :type deterministic_cudnn: bool
+    :return: None
+    """
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    if n_gpu > 0:
-        torch.cuda.manual_seed_all(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
+    torch.cuda.manual_seed_all(seed)
+    if deterministic_cudnn:
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
 
 def calc_chunksize(num_dicts, min_chunksize=4, max_chunksize=2000, max_processes=128):
