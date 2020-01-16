@@ -2,6 +2,7 @@ import hashlib
 import json
 import logging
 import random
+import os
 
 import numpy as np
 import torch
@@ -14,14 +15,15 @@ from farm.visual.ascii.images import WELCOME_BARN, WORKER_M, WORKER_F, WORKER_X
 logger = logging.getLogger(__name__)
 
 
-
-
 def set_all_seeds(seed, n_gpu=0):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
+    os.environ['PYTHONHASHSEED'] = str(seed)
     if n_gpu > 0:
         torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False
 
 
 def calc_chunksize(num_dicts, min_chunksize=4, max_chunksize=2000, max_processes=128):
