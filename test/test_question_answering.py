@@ -9,13 +9,13 @@ from farm.modeling.prediction_head import QuestionAnsweringHead
 from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer
 from farm.utils import set_all_seeds, initialize_device_settings
-
+from farm.infer import Inferencer
 
 def test_qa(caplog):
     caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
-    device, n_gpu = initialize_device_settings(use_cuda=True)
+    device, n_gpu = initialize_device_settings(use_cuda=False)
     batch_size = 2
     n_epochs = 1
     evaluate_every = 4
@@ -70,6 +70,32 @@ def test_qa(caplog):
     save_dir = "testsave/qa"
     model.save(save_dir)
     processor.save(save_dir)
+
+    model = Inferencer.load(save_dir, batch_size=2, gpu=False)
+
+    QA_input_api_format = [
+        {
+            "questions": ["Who counted the game among the best ever made?"],
+            "text": "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
+        }]
+    QA_input_squad = [{"qas":
+                           [{"question": "Who counted the game among the best ever made?",
+                             "id": None,
+                             "answers": [],
+                             "is_impossible": False}],
+                 "context": "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created.",
+                 "document_id": None}]
+
+
+    result = model.inference_from_dicts(dicts=QA_input_squad)
+    result2 = model.inference_from_dicts(dicts=QA_input_api_format, rest_api_schema=True)
+
+    # top answer
+    assert result[0]["preds"][0][0] == result2[0]["predictions"][0]["answers"][0]["answer"]
+    # top score
+    assert result[0]["preds"][0][3] == result2[0]["predictions"][0]["answers"][0]["score"]
+
+
 
 
 if(__name__=="__main__"):
