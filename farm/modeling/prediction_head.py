@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from scipy.special import expit, softmax
 import tqdm
-
+from pathlib import Path
 import torch
 from transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN, BertForQuestionAnswering
 
@@ -63,9 +63,7 @@ class PredictionHead(nn.Module):
         :param head_num: Which head to save
         :type head_num: int
         """
-        output_config_file = os.path.join(
-            save_dir, f"prediction_head_{head_num}_config.json"
-        )
+        output_config_file = save_dir / f"prediction_head_{head_num}_config.json"
         with open(output_config_file, "w") as file:
             json.dump(self.config, file)
 
@@ -78,7 +76,7 @@ class PredictionHead(nn.Module):
         :param head_num: which head to save
         :type head_num: int
         """
-        output_model_file = os.path.join(save_dir, f"prediction_head_{head_num}.bin")
+        output_model_file = save_dir / f"prediction_head_{head_num}.bin"
         torch.save(self.state_dict(), output_model_file)
         self.save_config(save_dir, head_num)
 
@@ -153,9 +151,9 @@ class PredictionHead(nn.Module):
 
     @classmethod
     def _get_model_file(cls, config_file):
-        if "config.json" in config_file and "prediction_head" in config_file:
+        if "config.json" in str(config_file) and "prediction_head" in str(config_file):
             head_num = int("".join([char for char in os.path.basename(config_file) if char.isdigit()]))
-            model_file = os.path.join(os.path.dirname(config_file), f"prediction_head_{head_num}.bin")
+            model_file = Path(os.path.dirname(config_file)) / f"prediction_head_{head_num}.bin"
         else:
             raise ValueError(f"This doesn't seem to be a proper prediction_head config file: '{config_file}'")
         return model_file

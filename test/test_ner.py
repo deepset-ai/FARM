@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 
 from farm.data_handler.data_silo import DataSilo
@@ -35,7 +37,7 @@ def test_ner(caplog=None):
     processor = NERProcessor(
         tokenizer=tokenizer,
         max_seq_len=8,
-        data_dir="samples/ner",
+        data_dir=Path("samples/ner"),
         train_filename="train-sample.txt",
         dev_filename="dev-sample.txt",
         test_filename=None,
@@ -75,7 +77,7 @@ def test_ner(caplog=None):
         device=device,
     )
 
-    save_dir = "testsave/ner"
+    save_dir = Path("testsave/ner")
     model = trainer.train(model)
     model.save(save_dir)
     processor.save(save_dir)
