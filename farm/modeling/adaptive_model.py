@@ -4,7 +4,7 @@ import os
 from torch import nn
 
 from farm.modeling.language_model import LanguageModel
-from farm.modeling.prediction_head import PredictionHead, BertLMHead, QuestionAnsweringHead
+from farm.modeling.prediction_head import PredictionHead, BertLMHead, QuestionAnsweringHead, TokenClassificationHead
 from farm.utils import MLFlowLogger as MlLogger
 
 logger = logging.getLogger(__name__)
@@ -327,6 +327,10 @@ class AdaptiveModel(nn.Module):
 
         if task_type == "question-answering":
             ph = QuestionAnsweringHead.load(model_name_or_path)
+            adaptive_model = cls(language_model=lm, prediction_heads=[ph], embeds_dropout_prob=0.1,
+                               lm_output_types="per_token", device=device)
+        elif task_type == "ner":
+            ph = TokenClassificationHead.load(model_name_or_path)
             adaptive_model = cls(language_model=lm, prediction_heads=[ph], embeds_dropout_prob=0.1,
                                lm_output_types="per_token", device=device)
         else:

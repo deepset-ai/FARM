@@ -418,6 +418,7 @@ class TokenClassificationHead(PredictionHead):
         self.task_name = task_name
         self.generate_config()
 
+
     def forward(self, X):
         logits = self.feed_forward(X)
         return logits
@@ -761,8 +762,14 @@ class QuestionAnsweringHead(PredictionHead):
     @classmethod
     def load(cls, pretrained_model_name_or_path):
         """
-        Almost identical to a QuestionAnsweringHead. Only difference: we can load the weights from
-         a pretrained language model that was saved in the pytorch-transformers style (all in one model).
+        Load a prediction head from a saved FARM or transformers model. If `pretrained_model_name_or_path`
+        is not a local path, we will try to resolve it with a public model hub (https://huggingface.co/models)
+
+        :param pretrained_model_name_or_path: local path of a saved model or name of a publicly available model.
+                                              Examplary names:
+                                              - asdas
+                                              See https://huggingface.co/models for full list
+
         """
 
         if os.path.exists(pretrained_model_name_or_path) \
@@ -776,16 +783,14 @@ class QuestionAnsweringHead(PredictionHead):
             logger.info("Loading prediction head from {}".format(model_file))
             prediction_head.load_state_dict(torch.load(model_file, map_location=torch.device("cpu")))
         else:
-            # b) pytorch-transformers style
-            # load weights from bert model
-            # (we might change this later to load directly from a state_dict to generalize for other language models)
-            bert_qa = AutoModelForQuestionAnswering.from_pretrained(pretrained_model_name_or_path)
-
+            # b) transformers style
+            # load all weights from model
+            full_qa_model = AutoModelForQuestionAnswering.from_pretrained(pretrained_model_name_or_path)
             # init empty head
-            head = cls(layer_dims=[bert_qa.config.hidden_size, 2], loss_ignore_index=-1, task_name="question_answering")
-            # load weights
-            head.feed_forward.feed_forward[0].load_state_dict(bert_qa.qa_outputs.state_dict())
-            del bert_qa
+            head = cls(layer_dims=[full_qa_model.config.hidden_size, 2], loss_ignore_index=-1, task_name="question_answering")
+            # transfer weights for head from full model
+            head.feed_forward.feed_forward[0].load_state_dict(full_qa_model.qa_outputs.state_dict())
+            del full_qa_model
 
         return head
 

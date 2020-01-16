@@ -7,14 +7,16 @@ from functools import partial
 import torch
 from torch.utils.data.sampler import SequentialSampler
 from tqdm import tqdm
+from transformers.configuration_auto import AutoConfig
 
 from farm.data_handler.dataloader import NamedDataLoader
-from farm.data_handler.processor import Processor, InferenceProcessor, SquadProcessor
+from farm.data_handler.processor import Processor, InferenceProcessor, SquadProcessor, NERProcessor, TextClassificationProcessor
 from farm.data_handler.utils import grouper
 from farm.modeling.tokenization import Tokenizer
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.utils import initialize_device_settings
 from farm.utils import set_all_seeds, calc_chunksize, log_ascii_workers
+
 
 logger = logging.getLogger(__name__)
 
@@ -125,35 +127,67 @@ class Inferencer:
         if os.path.exists(model_name_or_path):
             model = AdaptiveModel.load(model_name_or_path, device, strict=strict)
             if task_type == "embeddings":
-                # model.prediction_heads = []
                 processor = InferenceProcessor.load_from_dir(model_name_or_path)
             else:
                 processor = Processor.load_from_dir(model_name_or_path)
 
-
-
-        # b) otherwise try to load from remote model hub
+        # b) or from remote transformers model hub
         else:
             if not task_type:
-                raise ValueError("Please specify the type of model you want to load from transformers via arg `task_type`. "
-                                 "Valid options:"
-                                 "'question-answering', 'embeddings")
+                raise ValueError("Please specify the 'task_type' of the model you want to load from transformers. "
+                                 "Valid options for arg `task_type`:"
+                                 "'question-answering', 'embeddings'")
 
             model = AdaptiveModel.convert_from_transformers(model_name_or_path, device, task_type)
+            config = AutoConfig.from_pretrained(model_name_or_path)
             tokenizer = Tokenizer.load(model_name_or_path)
 
             # TODO infer task_type automatically from config (if possible)
-
             if task_type == "question-answering":
                 processor = SquadProcessor(
                     tokenizer=tokenizer,
                     max_seq_len=256,
                     label_list=["start_token", "end_token"],
                     metric="squad",
-                    data_dir="../data/squad20",
+                    data_dir=None,
+                )
+            elif task_type == "embeddings":
+                processor = InferenceProcessor.load_from_dir(model_name_or_path)
+            elif task_type == "classification":
+                label_list = list(config.label2id.keys())
+
+                processor = TextClassificationProcessor(tokenizer=tokenizer,
+                                                        max_seq_len=256,
+                                                        data_dir=None,
+                                                        label_list=label_list,
+                                                        label_column_name="label",
+                                                        metric="acc",
+                                                        quote_char='"',
+                                                        )
+            elif task_type == "multilabel-classification":
+                # label_list = ["toxic", "severe_toxic", "obscene", "threat", "insult", "identity_hate"]
+                label_list = list(config.label2id.keys())
+
+                processor = TextClassificationProcessor(tokenizer=tokenizer,
+                                                        max_seq_len=256,
+                                                        data_dir=None,
+                                                        label_list=label_list,
+                                                        label_column_name="label",
+                                                        metric="acc",
+                                                        quote_char='"',
+                                                        multilabel=True,
+                                                        )
+            elif task_type == "ner":
+                label_list = list(config.label2id.keys())
+                # label_list = ["[PAD]", "X", "O", "B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC",
+                #               "I-LOC", "B-OTH", "I-OTH"]
+                processor = NERProcessor(
+                    tokenizer=tokenizer, max_seq_len=256, data_dir=None, metric="seq_f1",
+                    label_list=label_list
                 )
             else:
-                raise NotImplementedError
+                raise ValueError(f"`task_type` {task_type} is not supported yet. "
+                                 f"Valid options for arg `task_type`: 'question-answering', 'embeddings'")
 
         return cls(
             model,
@@ -161,37 +195,6 @@ class Inferencer:
             batch_size=batch_size,
             gpu=gpu,
             name=name,
-            return_class_probs=return_class_probs,
-        )
-
-    @classmethod
-    def load_from_remote(cls, model_name, gpu, task_type, batch_size=4, embedder_only=False,
-        return_class_probs=False):
-
-        device, n_gpu = initialize_device_settings(use_cuda=gpu, local_rank=-1, use_amp=None)
-
-        model = AdaptiveModel.convert_from_transformers(model_name, device, task_type)
-        tokenizer = Tokenizer.load(model_name)
-
-        # TODO infer task_type automatically from config (if possible)
-
-        if task_type == "question-answering":
-            processor = SquadProcessor(
-                        tokenizer=tokenizer,
-                        max_seq_len=256,
-                        label_list=["start_token", "end_token"],
-                        metric="squad",
-                        data_dir="../data/squad20",
-                    )
-        else:
-            raise NotImplementedError
-
-        return cls(
-            model,
-            processor,
-            batch_size=batch_size,
-            gpu=gpu,
-            name=model_name,
             return_class_probs=return_class_probs,
         )
 
