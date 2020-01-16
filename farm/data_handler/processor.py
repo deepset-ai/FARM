@@ -1053,6 +1053,7 @@ class RegressionProcessor(Processor):
             proxies=proxies
         )
 
+        # Note that label_list is being hijacked to store the scaling mean and scale
         self.add_task(name="regression", metric="mse", label_list= [scaler_mean, scaler_scale], label_column_name=label_column_name, task_type="regression", label_name=label_name)
 
     def file_to_dicts(self, file: str) -> [dict]:

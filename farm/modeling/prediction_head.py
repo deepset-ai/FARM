@@ -164,6 +164,8 @@ class PredictionHead(nn.Module):
             logger.info(f"Resizing input dimensions of {type(self).__name__} ({self.task_name}) "
                   f"from {old_dims} to {new_dims} to match language model")
             self.feed_forward = FeedForwardBlock(new_dims)
+            self.layer_dims[0] = input_dim
+            self.feed_forward.layer_dims[0] = input_dim
 
     def resize_output(self, output_dim):
         """ This function compares the number of labels against the output dimensionality
@@ -178,7 +180,8 @@ class PredictionHead(nn.Module):
             logger.info(f"Resizing input dimensions of {type(self).__name__} ({self.task_name}) "
                   f"from {old_dims} to {new_dims} to match number of labels")
             self.feed_forward = FeedForwardBlock(new_dims)
-
+            self.layer_dims[-1] = output_dim
+            self.feed_forward.layer_dims[-1] = output_dim
 
     @classmethod
     def _get_model_file(cls, config_file):
@@ -204,6 +207,7 @@ class RegressionHead(PredictionHead):
         # num_labels could in most cases also be automatically retrieved from the data processor
         self.layer_dims = layer_dims
         self.feed_forward = FeedForwardBlock(self.layer_dims)
+        # num_labels is being set to 2 since it is being hijacked to store the scaling factor and the mean
         self.num_labels = 2
         self.ph_output_type = "per_sequence_continuous"
         self.model_type = "regression"
@@ -756,7 +760,7 @@ class QuestionAnsweringHead(PredictionHead):
     A question answering head predicts the start and end of the answer on token level.
     """
 
-    def __init__(self, layer_dims, task_name="question_answering", no_ans_threshold=0.0, context_window_size=100, n_best=5, **kwargs):
+    def __init__(self, layer_dims=[1,1], task_name="question_answering", no_ans_threshold=0.0, context_window_size=100, n_best=5, **kwargs):
         """
         :param layer_dims: dimensions of Feed Forward block, e.g. [768,2], for adjusting to BERT embedding. Output should be always 2
         :type layer_dims: List[Int]

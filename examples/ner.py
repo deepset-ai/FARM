@@ -40,8 +40,7 @@ tokenizer = Tokenizer.load(
 ner_labels = ["[PAD]", "X", "O", "B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-OTH", "I-OTH"]
 
 processor = NERProcessor(
-    tokenizer=tokenizer, max_seq_len=128, data_dir="../data/conll03-de", metric="seq_f1",label_list=ner_labels,
-    train_filename="train_small.txt", dev_filename="dev_small.txt"
+    tokenizer=tokenizer, max_seq_len=128, data_dir="../data/conll03-de", metric="seq_f1",label_list=ner_labels
 )
 
 # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets

@@ -62,7 +62,7 @@ data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=Fal
 # a) which consists of a pretrained language model as a basis
 language_model = LanguageModel.load(base_LM_model)
 # b) and a prediction head on top that is suited for our task => Question Answering
-prediction_head = QuestionAnsweringHead(layer_dims=[768, len(label_list)])
+prediction_head = QuestionAnsweringHead()
 
 model = AdaptiveModel(
     language_model=language_model,

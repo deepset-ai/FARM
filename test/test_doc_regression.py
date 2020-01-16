@@ -39,7 +39,7 @@ def test_doc_regression(caplog):
         batch_size=batch_size)
 
     language_model = LanguageModel.load(lang_model)
-    prediction_head = RegressionHead(layer_dims=[768, 1])
+    prediction_head = RegressionHead()
     model = AdaptiveModel(
         language_model=language_model,
         prediction_heads=[prediction_head],

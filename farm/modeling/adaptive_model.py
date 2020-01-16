@@ -252,7 +252,13 @@ class AdaptiveModel(nn.Module):
                 raise Exception(f"The task \'{head.task_name}\' is missing a valid set of labels")
             label_list = tasks[head.task_name]["label_list"]
             head.label_list = label_list
-            head.resize_output(len(label_list))
+            if "RegressionHead" in str(type(head)):
+                # This needs to be explicitly set because the regression label_list is being hijacked to store
+                # the scaling factor and the mean
+                num_labels = 1
+            else:
+                num_labels = len(label_list)
+            head.resize_output(num_labels)
             head.metric = tasks[head.task_name]["metric"]
 
     @classmethod

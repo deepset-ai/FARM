@@ -27,7 +27,7 @@ set_all_seeds(seed=42)
 n_epochs = 1
 batch_size = 32
 evaluate_every = 100
-lang_model = "bert-base-german-cased"
+lang_model = "albert-base-v1"
 use_amp = None
 
 device, n_gpu = initialize_device_settings(use_cuda=True, use_amp=use_amp)
