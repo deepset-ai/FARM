@@ -157,7 +157,11 @@ def _download_extract_downstream_data(input_file, proxies=None):
     elif taskname not in DOWNSTREAM_TASK_MAP:
         logger.error("Cannot download {}. Unknown data source.".format(taskname))
     else:
-        with tempfile.NamedTemporaryFile() as temp_file:
+        if os.name == "nt":  # make use of NamedTemporaryFile compatible with Windows
+            delete_tmp_file = False
+        else:
+            delete_tmp_file = True
+        with tempfile.NamedTemporaryFile(delete=delete_tmp_file) as temp_file:
             http_get(DOWNSTREAM_TASK_MAP[taskname], temp_file, proxies=proxies)
             temp_file.flush()
             temp_file.seek(0)  # making tempfile accessible
