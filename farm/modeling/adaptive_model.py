@@ -333,6 +333,9 @@ class AdaptiveModel(nn.Module):
             ph = TokenClassificationHead.load(model_name_or_path)
             adaptive_model = cls(language_model=lm, prediction_heads=[ph], embeds_dropout_prob=0.1,
                                lm_output_types="per_token", device=device)
+        elif task_type == "embeddings":
+            adaptive_model = cls(language_model=lm, prediction_heads=[], embeds_dropout_prob=0.1,
+                                 lm_output_types=["per_token", "per_sequence"], device=device)
         else:
             raise NotImplementedError(f"Huggingface's transformer models of type {task_type} are not supported yet")
 
