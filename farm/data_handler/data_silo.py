@@ -344,7 +344,14 @@ class DataSilo:
         if sum(lengths) != len(ds):
             raise ValueError("Sum of input lengths does not equal the length of the input dataset!")
 
-        idx_dataset = np.where(np.array(ds.cumulative_sizes) > lengths[0])[0][0]
+        try:
+            idx_dataset = np.where(np.array(ds.cumulative_sizes) > lengths[0])[0][0]
+        except IndexError:
+            raise Exception("All dataset chunks are being assigned to train set leaving no samples for dev set. "
+                            "Either consider increasing dev_split or setting it to 0.0\n"
+                            f"Cumulative chunk sizes: {ds.cumulative_sizes}\n"
+                            f"train/dev split: {lengths}")
+
         assert idx_dataset >= 1, "Dev_split ratio is too large, there is no data in train set. " \
                              f"Please lower dev_split = {self.processor.dev_split}"
 

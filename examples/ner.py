@@ -18,18 +18,18 @@ logging.basicConfig(
     level=logging.INFO,
 )
 
-# ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
-# ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_minimal_example_ner")
+ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
+ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_ner")
 
 ##########################
 ########## Settings
 ##########################
 set_all_seeds(seed=42)
 device, n_gpu = initialize_device_settings(use_cuda=True)
-n_epochs = 1
+n_epochs = 4
 batch_size = 32
-evaluate_every = 100
-lang_model = "bert-base-german-cased"
+evaluate_every = 750
+lang_model = "xlm-roberta-large"
 
 # 1.Create a tokenizer
 tokenizer = Tokenizer.load(
@@ -63,7 +63,7 @@ model = AdaptiveModel(
 # 5. Create an optimizer
 model, optimizer, lr_schedule = initialize_optimizer(
     model=model,
-    learning_rate=2e-5,
+    learning_rate=1e-5,
     n_batches=len(data_silo.loaders["train"]),
     n_epochs=n_epochs,
     device=device,

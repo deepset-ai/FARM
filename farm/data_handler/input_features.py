@@ -375,7 +375,7 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
     # However, when this is passed in to the forward fn of the Roberta model, it throws an error since
     # Roberta has only a single token embedding (!!!). To get around this, we want to have a segment_ids
     # vec that is only 0s
-    if tokenizer.__class__.__name__ == "RobertaTokenizer":
+    if tokenizer.__class__.__name__ in ["RobertaTokenizer", "XLMRobertaTokenizer"]:
         segment_ids = np.zeros_like(segment_ids)
 
     # Todo: explain how only the first of labels will be used in train, and the full array will be used in eval
