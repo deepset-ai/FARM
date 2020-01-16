@@ -1,5 +1,6 @@
 # fmt: off
 import logging
+from pathlib import Path
 
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import RegressionProcessor
@@ -41,7 +42,7 @@ def doc_regression():
     #    We do not have a sample dataset for regression yet, add your own dataset to run the example
     processor = RegressionProcessor(tokenizer=tokenizer,
                                     max_seq_len=128,
-                                    data_dir="../data/<YOUR-DATASET>",
+                                    data_dir=Path("../data/<YOUR-DATASET>"),
                                     label_column_name="label"
                                     )
 
@@ -85,7 +86,7 @@ def doc_regression():
     model = trainer.train(model)
 
     # 8. Hooray! You have a model. Store it:
-    save_dir = "saved_models/bert-doc-regression-tutorial"
+    save_dir = Path("saved_models/bert-doc-regression-tutorial")
     model.save(save_dir)
     processor.save(save_dir)
 

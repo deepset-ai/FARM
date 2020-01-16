@@ -1,5 +1,6 @@
 # fmt: off
 import logging
+from pathlib import Path
 
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import TextClassificationProcessor
@@ -44,8 +45,8 @@ def doc_classification_cola():
 
     processor = TextClassificationProcessor(tokenizer=tokenizer,
                                             max_seq_len=64,
-                                            data_dir="../data/cola",
-                                            dev_filename="dev.tsv",
+                                            data_dir=Path("../data/cola"),
+                                            dev_filename=Path("dev.tsv"),
                                             dev_split=None,
                                             test_filename=None,
                                             label_list=label_list,
@@ -97,7 +98,7 @@ def doc_classification_cola():
     model = trainer.train(model)
 
     # 8. Hooray! You have a model. Store it:
-    save_dir = "saved_models/bert-doc-tutorial"
+    save_dir = Path("saved_models/bert-doc-tutorial")
     model.save(save_dir)
     processor.save(save_dir)
 

@@ -1,5 +1,6 @@
 # fmt: off
 import logging
+from pathlib import Path
 
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import TextClassificationProcessor
@@ -45,14 +46,14 @@ def doc_classification_multilabel_roberta():
 
     processor = TextClassificationProcessor(tokenizer=tokenizer,
                                             max_seq_len=128,
-                                            data_dir="../data/toxic-comments",
+                                            data_dir=Path("../data/toxic-comments"),
                                             label_list=label_list,
                                             label_column_name="label",
                                             metric=metric,
                                             quote_char='"',
                                             multilabel=True,
-                                            train_filename="train.tsv",
-                                            dev_filename="val.tsv",
+                                            train_filename=Path("train.tsv"),
+                                            dev_filename=Path("val.tsv"),
                                             test_filename=None,
                                             dev_split=0
                                             )
@@ -97,7 +98,7 @@ def doc_classification_multilabel_roberta():
     model = trainer.train(model)
 
     # 8. Hooray! You have a model. Store it:
-    save_dir = "saved_models/bert-multi-doc-roberta"
+    save_dir = Path("saved_models/bert-multi-doc-roberta")
     model.save(save_dir)
     processor.save(save_dir)
 

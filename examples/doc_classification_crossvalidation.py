@@ -1,6 +1,7 @@
 # fmt: off
 import logging
 import json
+from pathlib import Path
 
 from farm.data_handler.data_silo import DataSilo, DataSiloForCrossVal
 from farm.data_handler.processor import TextClassificationProcessor
@@ -83,7 +84,7 @@ def doc_classification_crossvalidation():
     label_list = ["OTHER", "OFFENSE"]
     processor = TextClassificationProcessor(tokenizer=tokenizer,
                                             max_seq_len=64,
-                                            data_dir="../data/germeval18",
+                                            data_dir=Path("../data/germeval18"),
                                             label_list=label_list,
                                             metric=metric,
                                             label_column_name="coarse_label"
@@ -163,7 +164,7 @@ def doc_classification_crossvalidation():
     all_labels = []
     bestfold = None
     bestf1_offense = -1
-    save_dir = "saved_models/bert-german-doc-tutorial-es"
+    save_dir = Path("saved_models/bert-german-doc-tutorial-es")
     for num_fold, silo in enumerate(silos):
         model = train_on_split(silo, num_fold, save_dir)
 
@@ -215,7 +216,7 @@ def doc_classification_crossvalidation():
     )
     # restore model from the best fold
     lm_name = model.language_model.name
-    save_dir = "saved_models/bert-german-doc-tutorial-es-{}".format(bestfold)
+    save_dir = Path(f"saved_models/bert-german-doc-tutorial-es-{bestfold}")
     model = AdaptiveModel.load(save_dir, device, lm_name=lm_name)
     model.connect_heads_with_processor(data_silo.processor.tasks, require_labels=True)
 

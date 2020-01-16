@@ -1,5 +1,6 @@
 # fmt: off
 import logging
+from pathlib import Path
 
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import TextClassificationProcessor
@@ -65,7 +66,7 @@ def doc_classification_with_earlystopping():
 
     processor = TextClassificationProcessor(tokenizer=tokenizer,
                                             max_seq_len=64,
-                                            data_dir="../data/germeval18",
+                                            data_dir=Path("../data/germeval18"),
                                             label_list=label_list,
                                             metric=metric,
                                             label_column_name="coarse_label"
@@ -110,7 +111,7 @@ def doc_classification_with_earlystopping():
         metric="f1_offense", mode="max",   # use the metric from our own metrics function instead of loss
         # metric="f1_macro", mode="max",  # use f1_macro from the dev evaluator of the trainer
         # metric="loss", mode="min",   # use loss from the dev evaluator of the trainer
-        save_dir="saved_models/bert-german-doc-tutorial-es",  # where to save the best model
+        save_dir=Path("saved_models/bert-german-doc-tutorial-es"),  # where to save the best model
         patience=5    # number of evaluations to wait for improvement before terminating the training
     )
 
@@ -132,7 +133,7 @@ def doc_classification_with_earlystopping():
     # defined with the EarlyStopping instance
     # The model we have at this moment is the model from the last training epoch that was carried
     # out before early stopping terminated the training
-    save_dir = "saved_models/bert-german-doc-tutorial"
+    save_dir = Path("saved_models/bert-german-doc-tutorial")
     model.save(save_dir)
     processor.save(save_dir)
 
