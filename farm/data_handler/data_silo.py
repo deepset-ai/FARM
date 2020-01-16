@@ -109,7 +109,7 @@ class DataSilo:
         if dicts is None:
             dicts = self.processor.file_to_dicts(filename)
             #shuffle list of dicts here if we later want to have a random dev set splitted from train set
-            if self.processor.train_filename in str(filename):
+            if str(self.processor.train_filename) in str(filename):
                 if not self.processor.dev_filename:
                     if self.processor.dev_split > 0.0:
                         random.shuffle(dicts)
