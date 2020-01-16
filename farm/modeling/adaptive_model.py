@@ -40,18 +40,25 @@ class AdaptiveModel(nn.Module):
         """
         super(AdaptiveModel, self).__init__()
         self.language_model = language_model.to(device)
+        self.lm_output_dims = language_model.output_dims
         self.prediction_heads = nn.ModuleList([ph.to(device) for ph in prediction_heads])
+        self.num_labels = [head.num_labels for head in prediction_heads]
+        self.fit_dims()
         # set shared weights for LM finetuning
         for head in self.prediction_heads:
             if head.model_type == "language_modelling":
                 head.set_shared_weights(language_model.model.embeddings.word_embeddings.weight)
-        self.num_labels = [head.num_labels for head in prediction_heads]
         self.dropout = nn.Dropout(embeds_dropout_prob)
         self.lm_output_types = (
             [lm_output_types] if isinstance(lm_output_types, str) else lm_output_types
         )
 
         self.log_params()
+
+    def fit_dims(self):
+        for ph, num_labels in zip(self.prediction_heads, self.num_labels):
+            ph.resize_input(self.lm_output_dims)
+            ph.resize_output(num_labels)
 
     def save(self, save_dir):
         """

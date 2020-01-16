@@ -151,6 +151,35 @@ class PredictionHead(nn.Module):
         # TODO maybe just return **kwargs to not force people to implement this
         raise NotImplementedError()
 
+    def resize_input(self, input_dim):
+        """ This function compares the output dimensionality of the language model against the input dimensionality
+        of the prediction head. If there is a mismatch, the prediction head will be resized to fit."""
+        if "feed_forward" not in dir(self):
+            return
+        else:
+            old_dims = self.feed_forward.layer_dims
+            if input_dim == old_dims[0]:
+                return
+            new_dims = [input_dim] + old_dims[1:]
+            logger.info(f"Resizing input dimensions of {type(self).__name__} ({self.task_name}) "
+                  f"from {old_dims} to {new_dims} to match language model")
+            self.feed_forward = FeedForwardBlock(new_dims)
+
+    def resize_output(self, output_dim):
+        """ This function compares the number of labels against the output dimensionality
+        of the prediction head. If there is a mismatch, the prediction head will be resized to fit."""
+        if "feed_forward" not in dir(self):
+            return
+        else:
+            old_dims = self.feed_forward.layer_dims
+            if output_dim == old_dims[-1]:
+                return
+            new_dims = old_dims[:-1] + [output_dim]
+            logger.info(f"Resizing input dimensions of {type(self).__name__} ({self.task_name}) "
+                  f"from {old_dims} to {new_dims} to match number of labels")
+            self.feed_forward = FeedForwardBlock(new_dims)
+
+
     @classmethod
     def _get_model_file(cls, config_file):
         if "config.json" in config_file and "prediction_head" in config_file:
@@ -405,9 +434,8 @@ class MultiLabelTextClassificationHead(PredictionHead):
 
 
 class TokenClassificationHead(PredictionHead):
-    def __init__(self, layer_dims, task_name="ner", **kwargs):
+    def __init__(self, layer_dims=[1,1], task_name="ner", **kwargs):
         super(TokenClassificationHead, self).__init__()
-
         self.layer_dims = layer_dims
         self.feed_forward = FeedForwardBlock(self.layer_dims)
         self.num_labels = self.layer_dims[-1]
@@ -705,7 +733,7 @@ class FeedForwardBlock(nn.Module):
     def __init__(self, layer_dims, **kwargs):
         # Todo: Consider having just one input argument
         super(FeedForwardBlock, self).__init__()
-
+        self.layer_dims = layer_dims
         # If read from config the input will be string
         n_layers = len(layer_dims) - 1
         layers_all = []
