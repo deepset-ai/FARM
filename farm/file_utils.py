@@ -4,7 +4,7 @@ This file is adapted from the AllenNLP library at https://github.com/allenai/all
 Copyright by the AllenNLP authors.
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
-
+from pathlib import Path
 import fnmatch
 import json
 import logging
@@ -26,14 +26,14 @@ from tqdm import tqdm
 try:
     from torch.hub import _get_torch_home
 
-    torch_cache_home = _get_torch_home()
+    torch_cache_home = Path(_get_torch_home())
 except ImportError:
-    torch_cache_home = os.path.expanduser(
+    torch_cache_home = Path(os.path.expanduser(
         os.getenv(
-            "TORCH_HOME", os.path.join(os.getenv("XDG_CACHE_HOME", "~/.cache"), "torch")
+            "TORCH_HOME", Path(os.getenv("XDG_CACHE_HOME", "~/.cache")) / "torch"
         )
-    )
-default_cache_path = os.path.join(torch_cache_home, "farm")
+    ))
+default_cache_path = torch_cache_home / "farm"
 
 try:
     from urllib.parse import urlparse
@@ -76,10 +76,8 @@ def filename_to_url(filename, cache_dir=None):
     """
     if cache_dir is None:
         cache_dir = FARM_CACHE
-    if sys.version_info[0] == 3 and isinstance(cache_dir, Path):
-        cache_dir = str(cache_dir)
 
-    cache_path = os.path.join(cache_dir, filename)
+    cache_path = cache_dir / filename
     if not os.path.exists(cache_path):
         raise EnvironmentError("file {} not found".format(cache_path))
 
@@ -219,7 +217,7 @@ def get_from_cache(url, cache_dir=None):
     filename = url_to_filename(url, etag)
 
     # get cache path to put the file
-    cache_path = os.path.join(cache_dir, filename)
+    cache_path = cache_dir / filename
 
     # If we don't have a connection (etag is None) and can't identify the file
     # try to get the last downloaded one
@@ -227,7 +225,7 @@ def get_from_cache(url, cache_dir=None):
         matching_files = fnmatch.filter(os.listdir(cache_dir), filename + ".*")
         matching_files = list(filter(lambda s: not s.endswith(".json"), matching_files))
         if matching_files:
-            cache_path = os.path.join(cache_dir, matching_files[-1])
+            cache_path = cache_dir / matching_files[-1]
 
     if not os.path.exists(cache_path):
         # Download to temporary file, then copy to cache dir once finished.

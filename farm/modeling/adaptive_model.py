@@ -251,12 +251,12 @@ class AdaptiveModel(nn.Module):
     def _get_prediction_head_files(cls, load_dir):
         files = os.listdir(load_dir)
         model_files = [
-            os.path.join(load_dir, f)
+            load_dir / f
             for f in files
             if ".bin" in f and "prediction_head" in f
         ]
         config_files = [
-            os.path.join(load_dir, f)
+            load_dir / f
             for f in files
             if "config.json" in f and "prediction_head" in f
         ]
