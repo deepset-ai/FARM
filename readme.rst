@@ -28,6 +28,10 @@
 	:target: https://github.com/ambv/black
 	:alt: Last Commit
 
+.. image:: https://pepy.tech/badge/farm
+	:target: https://pepy.tech/project/farm
+	:alt: Downloads
+	
 What is it?
 ############
 FARM makes cutting edge **Transfer Learning** for NLP simple.
