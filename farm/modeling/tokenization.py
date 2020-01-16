@@ -23,7 +23,10 @@ from transformers.tokenization_bert import BertTokenizer
 from transformers.tokenization_roberta import RobertaTokenizer
 from transformers.tokenization_xlnet import XLNetTokenizer
 from transformers.tokenization_albert import AlbertTokenizer
+# from transformers.tokenization_xlm_roberta import XLMRobertaTokenizer
+from farm.modeling.xlmr_tok import XLMRobertaTokenizer
 from transformers.tokenization_distilbert import DistilBertTokenizer 
+
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +56,8 @@ class Tokenizer:
         if tokenizer_class is None:
             if "albert" in pretrained_model_name_or_path.lower():
                 tokenizer_class = "AlbertTokenizer"
+            elif "xlm-roberta" in pretrained_model_name_or_path.lower():
+                tokenizer_class = "XLMRobertaTokenizer"
             elif "roberta" in pretrained_model_name_or_path.lower():
                 tokenizer_class = "RobertaTokenizer"
             elif "distilbert" in pretrained_model_name_or_path.lower():
@@ -65,17 +70,23 @@ class Tokenizer:
                 raise ValueError(f"Could not infer tokenizer_type from name '{pretrained_model_name_or_path}'. Set arg `tokenizer_type` in Tokenizer.load() to one of: 'bert', 'roberta', 'xlnet' ")
             logger.info(f"Loading tokenizer of type '{tokenizer_class}'")
         # return appropriate tokenizer object
-        # TODO raise error if this does not return a tokenizer
         if tokenizer_class == "AlbertTokenizer":
-            return AlbertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
-        if tokenizer_class == "RobertaTokenizer":
-            return RobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            ret = AlbertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        elif tokenizer_class == "XLMRobertaTokenizer":
+            ret = XLMRobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        elif tokenizer_class == "RobertaTokenizer":
+            ret = RobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "DistilBertTokenizer":
-            return DistilBertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            ret = DistilBertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "BertTokenizer":
-            return BertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            ret = BertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "XLNetTokenizer":
-            return XLNetTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            ret = XLNetTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        if ret is None:
+            raise Exception("Unable to load tokenizer")
+
+        else:
+            return ret
 
 def tokenize_with_metadata(text, tokenizer):
     """
