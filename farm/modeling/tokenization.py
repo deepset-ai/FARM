@@ -25,6 +25,8 @@ from transformers.tokenization_xlnet import XLNetTokenizer
 from transformers.tokenization_albert import AlbertTokenizer
 # from transformers.tokenization_xlm_roberta import XLMRobertaTokenizer
 from farm.modeling.xlmr_tok import XLMRobertaTokenizer
+from transformers.tokenization_distilbert import DistilBertTokenizer 
+
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +60,8 @@ class Tokenizer:
                 tokenizer_class = "XLMRobertaTokenizer"
             elif "roberta" in pretrained_model_name_or_path.lower():
                 tokenizer_class = "RobertaTokenizer"
+            elif "distilbert" in pretrained_model_name_or_path.lower():
+                tokenizer_class = "DistilBertTokenizer"
             elif "bert" in pretrained_model_name_or_path.lower():
                 tokenizer_class = "BertTokenizer"
             elif "xlnet" in pretrained_model_name_or_path.lower():
@@ -72,6 +76,8 @@ class Tokenizer:
             ret = XLMRobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "RobertaTokenizer":
             ret = RobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        elif tokenizer_class == "DistilBertTokenizer":
+            ret = DistilBertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "BertTokenizer":
             ret = BertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "XLNetTokenizer":
@@ -81,7 +87,6 @@ class Tokenizer:
 
         else:
             return ret
-
 
 def tokenize_with_metadata(text, tokenizer):
     """

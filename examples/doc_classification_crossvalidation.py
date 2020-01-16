@@ -43,6 +43,7 @@ n_epochs = 20
 batch_size = 32
 evaluate_every = 100
 lang_model = "bert-base-german-cased"
+use_amp = None
 
 # 1.Create a tokenizer
 tokenizer = Tokenizer.load(
@@ -113,12 +114,14 @@ def train_on_split(silo_to_use, n_fold, save_dir):
         lm_output_types=["per_sequence"],
         device=device)
 
-    #  Create an optimizer
-    optimizer, warmup_linear = initialize_optimizer(
+    # Create an optimizer
+    model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
         learning_rate=0.5e-5,
-        n_batches=len(silo_to_use.loaders["train"]),   # TODO
-        n_epochs=n_epochs)
+        device=device,
+        n_batches=len(silo_to_use.loaders["train"]),
+        n_epochs=n_epochs,
+        use_amp=use_amp)
 
     # Feed everything to the Trainer, which keeps care of growing our model into powerful plant and evaluates it from time to time
     # Also create an EarlyStopping instance and pass it on to the trainer
@@ -139,7 +142,7 @@ def train_on_split(silo_to_use, n_fold, save_dir):
         data_silo=silo_to_use,
         epochs=n_epochs,
         n_gpu=n_gpu,
-        warmup_linear=warmup_linear,
+        lr_schedule=lr_schedule,
         evaluate_every=evaluate_every,
         device=device,
         early_stopping=earlystopping,

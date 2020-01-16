@@ -32,8 +32,8 @@ from transformers.modeling_roberta import RobertaModel, RobertaConfig
 from transformers.modeling_xlnet import XLNetModel, XLNetConfig
 from transformers.modeling_albert import AlbertModel, AlbertConfig
 from transformers.modeling_xlm_roberta import XLMRobertaModel, XLMRobertaConfig
+from transformers.modeling_distilbert import DistilBertModel, DistilBertConfig
 from transformers.modeling_utils import SequenceSummary
-
 
 class LanguageModel(nn.Module):
     """
@@ -78,6 +78,12 @@ class LanguageModel(nn.Module):
         * xlnet-large-cased
         * xlm-roberta-base
         * xlm-roberta-large
+        * albert-base-v2
+        * albert-large-v2
+        * distilbert-base-german-cased
+        * distilbert-base-multilingual-cased
+
+        See all supported model variations here: https://huggingface.co/transformers/pretrained_models.html
 
         :param pretrained_model_name_or_path: The path of the saved pretrained model or its name.
         :type pretrained_model_name_or_path: str
@@ -96,8 +102,10 @@ class LanguageModel(nn.Module):
                 language_model = cls.subclasses["XLMRoberta"].load(pretrained_model_name_or_path, **kwargs)
             elif 'roberta' in pretrained_model_name_or_path:
                 language_model = cls.subclasses["Roberta"].load(pretrained_model_name_or_path, **kwargs)
-            elif "albert" in pretrained_model_name_or_path:
+            elif 'albert' in pretrained_model_name_or_path:
                 language_model = cls.subclasses["Albert"].load(pretrained_model_name_or_path, **kwargs)
+            elif 'distilbert' in pretrained_model_name_or_path:
+                language_model = cls.subclasses["DistilBert"].load(pretrained_model_name_or_path, **kwargs)
             elif 'bert' in pretrained_model_name_or_path:
                 language_model = cls.subclasses["Bert"].load(pretrained_model_name_or_path, **kwargs)
             elif 'xlnet' in pretrained_model_name_or_path:
@@ -108,7 +116,7 @@ class LanguageModel(nn.Module):
         if not language_model:
             raise Exception(
                 f"Model not found for {pretrained_model_name_or_path}. Either supply the local path for a saved model "
-                f"or one of bert/roberta/xlnet/albert models that can be downloaded from remote. Here's the list of available "
+                f"or one of bert/roberta/xlnet/albert/distilbert models that can be downloaded from remote. Here's the list of available "
                 f"models: https://farm.deepset.ai/api/modeling.html#farm.modeling.language_model.LanguageModel.load"
             )
 
@@ -387,7 +395,7 @@ class Albert(LanguageModel):
         **kwargs,
     ):
         """
-        Perform the forward pass of the Roberta model.
+        Perform the forward pass of the Albert model.
 
         :param input_ids: The ids of each token in the input sequence. Is a tensor of shape [batch_size, max_seq_len]
         :type input_ids: torch.Tensor
@@ -605,6 +613,113 @@ class XLMRoberta(LanguageModel):
 
     def disable_hidden_states_output(self):
         self.model.encoder.output_hidden_states = False
+
+    def save_config(self, save_dir):
+        save_filename = os.path.join(save_dir, "language_model_config.json")
+        with open(save_filename, "w") as file:
+            setattr(self.model.config, "name", self.__class__.__name__)
+            setattr(self.model.config, "language", self.language)
+            string = self.model.config.to_json_string()
+            file.write(string)
+
+class DistilBert(LanguageModel):
+    """
+    A DistilBERT model that wraps HuggingFace's implementation
+    (https://github.com/huggingface/transformers) to fit the LanguageModel class.
+
+    NOTE: 
+    - DistilBert doesn’t have token_type_ids, you don’t need to indicate which 
+    token belongs to which segment. Just separate your segments with the separation 
+    token tokenizer.sep_token (or [SEP])
+    - Unlike the other BERT variants, DistilBert does not output the
+    pooled_output. An additional pooler is initialized.
+    
+    """
+
+    def __init__(self):
+        super(DistilBert, self).__init__()
+        self.model = None
+        self.name = "distilbert"
+        self.pooler = None
+
+    @classmethod
+    def load(cls, pretrained_model_name_or_path, language=None, **kwargs):
+        """
+        Load a pretrained model by supplying
+
+        * the name of a remote model on s3 ("distilbert-base-german-cased" ...)
+        * OR a local path of a model trained via transformers ("some_dir/huggingface_model")
+        * OR a local path of a model trained via FARM ("some_dir/farm_model")
+
+        :param pretrained_model_name_or_path: The path of the saved pretrained model or its name.
+        :type pretrained_model_name_or_path: str
+
+        """
+
+        distilbert = cls()
+        if "farm_lm_name" in kwargs:
+            distilbert.name = kwargs["farm_lm_name"]
+        else:
+            distilbert.name = pretrained_model_name_or_path
+        # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
+        farm_lm_config = os.path.join(pretrained_model_name_or_path, "language_model_config.json")
+        if os.path.exists(farm_lm_config):
+            # FARM style
+            distilbert_config = DistilBertConfig.from_pretrained(farm_lm_config)
+            farm_lm_model = os.path.join(pretrained_model_name_or_path, "language_model.bin")
+            distilbert.model = DistilBertModel.from_pretrained(farm_lm_model, config=distilbert_config, **kwargs)
+            distilbert.language = distilbert.model.config.language
+        else:
+            # Pytorch-transformer Style
+            distilbert.model = DistilBertModel.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            distilbert.language = cls._infer_language_from_name(pretrained_model_name_or_path)
+        config = distilbert.model.config
+
+        # DistilBERT does not provide a pooled_output by default. Therefore, we need to initialize an extra pooler.
+        # The pooler takes the first hidden representation & feeds it to a dense layer of (hidden_dim x hidden_dim).
+        # We don't want a dropout in the end of the pooler, since we do that already in the adaptive model before we
+        # feed everything to the prediction head
+        config.summary_last_dropout = 0
+        config.summary_type = 'first'
+        config.summary_activation = 'tanh'
+        distilbert.pooler = SequenceSummary(config)
+        distilbert.pooler.apply(distilbert.model._init_weights)
+        return distilbert
+
+    def forward(
+        self,
+        input_ids,
+        padding_mask,
+        **kwargs,
+    ):
+        """
+        Perform the forward pass of the DistilBERT model.
+
+        :param input_ids: The ids of each token in the input sequence. Is a tensor of shape [batch_size, max_seq_len]
+        :type input_ids: torch.Tensor
+        :param padding_mask: A mask that assigns a 1 to valid input tokens and 0 to padding tokens
+           of shape [batch_size, max_seq_len]
+        :return: Embeddings for each token in the input sequence.
+
+        """
+        output_tuple = self.model(
+            input_ids,
+            attention_mask=padding_mask,
+        )
+        # We need to manually aggregate that to get a pooled output (one vec per seq)
+        pooled_output = self.pooler(output_tuple[0])
+        if self.model.config.output_hidden_states == True:
+            sequence_output, all_hidden_states = output_tuple[0], output_tuple[1]
+            return sequence_output, pooled_output
+        else:
+            sequence_output = output_tuple[0]
+            return sequence_output, pooled_output
+
+    def enable_hidden_states_output(self):
+        self.model.config.output_hidden_states = True
+
+    def disable_hidden_states_output(self):
+        self.model.config.output_hidden_states = False
 
     def save_config(self, save_dir):
         save_filename = os.path.join(save_dir, "language_model_config.json")
