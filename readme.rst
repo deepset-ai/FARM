@@ -158,7 +158,7 @@ Upcoming features
 
 Acknowledgements
 ###################
-- FARM is built upon parts of the great `transformers <https://github.com/huggingface/pytorch-transformers>`_  repository from Huggingface. It utilizes their implementations of the BERT model and Tokenizer.
+- FARM is built upon parts of the great `transformers <https://github.com/huggingface/pytorch-transformers>`_  repository from Huggingface. It utilizes their implementations of models and tokenizers.
 - The original BERT model and `paper <https://arxiv.org/abs/1810.04805>`_  was published by Jacob Devlin, Ming-Wei Chang, Kenton Lee and Kristina Toutanova.
 
 Citation
