@@ -182,6 +182,7 @@ class PredictionHead(nn.Module):
             self.feed_forward = FeedForwardBlock(new_dims)
             self.layer_dims[-1] = output_dim
             self.feed_forward.layer_dims[-1] = output_dim
+            self.num_labels = output_dim
 
     @classmethod
     def _get_model_file(cls, config_file):
@@ -199,7 +200,7 @@ class PredictionHead(nn.Module):
 class RegressionHead(PredictionHead):
     def __init__(
         self,
-        layer_dims,
+        layer_dims=[1,1],
         task_name="regression",
         **kwargs,
     ):
@@ -442,6 +443,7 @@ class TokenClassificationHead(PredictionHead):
         super(TokenClassificationHead, self).__init__()
         self.layer_dims = layer_dims
         self.feed_forward = FeedForwardBlock(self.layer_dims)
+        self.num_labels = self.layer_dims[-1]
         self.loss_fct = CrossEntropyLoss(reduction="none")
         self.ph_output_type = "per_token"
         self.model_type = "token_classification"
