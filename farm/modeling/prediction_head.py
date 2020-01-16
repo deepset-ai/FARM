@@ -252,7 +252,7 @@ class RegressionHead(PredictionHead):
 class TextClassificationHead(PredictionHead):
     def __init__(
         self,
-        layer_dims,
+        layer_dims=[1,1],
         class_weights=None,
         loss_ignore_index=-100,
         loss_reduction="none",
@@ -346,7 +346,7 @@ class TextClassificationHead(PredictionHead):
 class MultiLabelTextClassificationHead(PredictionHead):
     def __init__(
         self,
-        layer_dims,
+        layer_dims=[1,1],
         class_weights=None,
         loss_reduction="none",
         task_name="text_classification",
@@ -438,7 +438,6 @@ class TokenClassificationHead(PredictionHead):
         super(TokenClassificationHead, self).__init__()
         self.layer_dims = layer_dims
         self.feed_forward = FeedForwardBlock(self.layer_dims)
-        self.num_labels = self.layer_dims[-1]
         self.loss_fct = CrossEntropyLoss(reduction="none")
         self.ph_output_type = "per_token"
         self.model_type = "token_classification"

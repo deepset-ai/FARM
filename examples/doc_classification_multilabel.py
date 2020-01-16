@@ -51,8 +51,8 @@ processor = TextClassificationProcessor(tokenizer=tokenizer,
                                         metric=metric,
                                         quote_char='"',
                                         multilabel=True,
-                                        train_filename="train.tsv",
-                                        dev_filename="val.tsv",
+                                        train_filename="train_small.tsv",
+                                        dev_filename="val_small.tsv",
                                         test_filename=None,
                                         dev_split=0
                                         )
@@ -66,7 +66,7 @@ data_silo = DataSilo(
 # a) which consists of a pretrained language model as a basis
 language_model = LanguageModel.load(lang_model)
 # b) and a prediction head on top that is suited for our task => Text classification
-prediction_head = MultiLabelTextClassificationHead(layer_dims=[768, len(processor.tasks["text_classification"]["label_list"])])
+prediction_head = MultiLabelTextClassificationHead()
 
 model = AdaptiveModel(
     language_model=language_model,

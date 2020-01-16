@@ -49,8 +49,8 @@ processor = TextClassificationProcessor(tokenizer=tokenizer,
                                         metric=metric,
                                         quote_char='"',
                                         multilabel=True,
-                                        train_filename="train.tsv",
-                                        dev_filename="val.tsv",
+                                        train_filename="train_small.tsv",
+                                        dev_filename="val_small.tsv",
                                         test_filename=None,
                                         dev_split=0
                                         )

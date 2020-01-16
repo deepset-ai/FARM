@@ -42,8 +42,7 @@ class AdaptiveModel(nn.Module):
         self.language_model = language_model.to(device)
         self.lm_output_dims = language_model.output_dims
         self.prediction_heads = nn.ModuleList([ph.to(device) for ph in prediction_heads])
-        self.num_labels = [head.num_labels for head in prediction_heads]
-        self.fit_dims()
+        self.connect_lm_to_ph()
         # set shared weights for LM finetuning
         for head in self.prediction_heads:
             if head.model_type == "language_modelling":
@@ -52,13 +51,13 @@ class AdaptiveModel(nn.Module):
         self.lm_output_types = (
             [lm_output_types] if isinstance(lm_output_types, str) else lm_output_types
         )
-
         self.log_params()
 
-    def fit_dims(self):
-        for ph, num_labels in zip(self.prediction_heads, self.num_labels):
+    def connect_lm_to_ph(self):
+        """This iterates over each prediction head and ensures that its input dimensionality matches the output
+        dimensionality of the language model. If it doesn't, it is resized so it does fit"""
+        for ph in self.prediction_heads:
             ph.resize_input(self.lm_output_dims)
-            ph.resize_output(num_labels)
 
     def save(self, save_dir):
         """
@@ -251,7 +250,9 @@ class AdaptiveModel(nn.Module):
             label_list = tasks[head.task_name]["label_list"]
             if not label_list and require_labels:
                 raise Exception(f"The task \'{head.task_name}\' is missing a valid set of labels")
-            head.label_list = tasks[head.task_name]["label_list"]
+            label_list = tasks[head.task_name]["label_list"]
+            head.label_list = label_list
+            head.resize_output(len(label_list))
             head.metric = tasks[head.task_name]["metric"]
 
     @classmethod

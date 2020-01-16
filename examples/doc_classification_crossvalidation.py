@@ -103,9 +103,7 @@ def train_on_split(silo_to_use, n_fold, save_dir):
     # a) which consists of a pretrained language model as a basis
     language_model = LanguageModel.load(lang_model)
     # b) and a prediction head on top that is suited for our task => Text classification
-    prediction_head = TextClassificationHead(
-        layer_dims=[768, len(processor.tasks["text_classification"]["label_list"])],
-        class_weights=data_silo.calculate_class_weights(task_name="text_classification"))
+    prediction_head = TextClassificationHead(class_weights=data_silo.calculate_class_weights(task_name="text_classification"))
 
     model = AdaptiveModel(
         language_model=language_model,
