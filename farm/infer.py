@@ -9,8 +9,9 @@ from torch.utils.data.sampler import SequentialSampler
 from tqdm import tqdm
 
 from farm.data_handler.dataloader import NamedDataLoader
-from farm.data_handler.processor import Processor, InferenceProcessor
+from farm.data_handler.processor import Processor, InferenceProcessor, SquadProcessor
 from farm.data_handler.utils import grouper
+from farm.modeling.tokenization import Tokenizer
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.utils import initialize_device_settings
 from farm.utils import set_all_seeds, calc_chunksize, log_ascii_workers
@@ -91,18 +92,18 @@ class Inferencer:
     @classmethod
     def load(
         cls,
-        load_dir,
+        model_name_or_path,
         batch_size=4,
         gpu=False,
-        embedder_only=False,
+        task_type=None,
         return_class_probs=False,
         strict=True
     ):
         """
         Initializes Inferencer from directory with saved model.
 
-        :param load_dir: Directory where the saved model is located.
-        :type load_dir: str
+        :param model_name_or_path: Directory where the saved model is located.
+        :type model_name_or_path: str
         :param batch_size: Number of samples computed once per batch
         :type batch_size: int
         :param gpu: If GPU shall be used
@@ -118,21 +119,79 @@ class Inferencer:
         """
 
         device, n_gpu = initialize_device_settings(use_cuda=gpu, local_rank=-1, use_amp=None)
+        name = os.path.basename(model_name_or_path)
 
-        model = AdaptiveModel.load(load_dir, device, strict=strict)
-        if embedder_only:
-            # model.prediction_heads = []
-            processor = InferenceProcessor.load_from_dir(load_dir)
+        # a) either from local dir
+        if os.path.exists(model_name_or_path):
+            model = AdaptiveModel.load(model_name_or_path, device, strict=strict)
+            if task_type == "embeddings":
+                # model.prediction_heads = []
+                processor = InferenceProcessor.load_from_dir(model_name_or_path)
+            else:
+                processor = Processor.load_from_dir(model_name_or_path)
+
+
+
+        # b) otherwise try to load from remote model hub
         else:
-            processor = Processor.load_from_dir(load_dir)
+            if not task_type:
+                raise ValueError("Please specify the type of model you want to load from transformers via arg `task_type`. "
+                                 "Valid options:"
+                                 "'question-answering', 'embeddings")
 
-        name = os.path.basename(load_dir)
+            model = AdaptiveModel.convert_from_transformers(model_name_or_path, device, task_type)
+            tokenizer = Tokenizer.load(model_name_or_path)
+
+            # TODO infer task_type automatically from config (if possible)
+
+            if task_type == "question-answering":
+                processor = SquadProcessor(
+                    tokenizer=tokenizer,
+                    max_seq_len=256,
+                    label_list=["start_token", "end_token"],
+                    metric="squad",
+                    data_dir="../data/squad20",
+                )
+            else:
+                raise NotImplementedError
+
         return cls(
             model,
             processor,
             batch_size=batch_size,
             gpu=gpu,
             name=name,
+            return_class_probs=return_class_probs,
+        )
+
+    @classmethod
+    def load_from_remote(cls, model_name, gpu, task_type, batch_size=4, embedder_only=False,
+        return_class_probs=False):
+
+        device, n_gpu = initialize_device_settings(use_cuda=gpu, local_rank=-1, use_amp=None)
+
+        model = AdaptiveModel.convert_from_transformers(model_name, device, task_type)
+        tokenizer = Tokenizer.load(model_name)
+
+        # TODO infer task_type automatically from config (if possible)
+
+        if task_type == "question-answering":
+            processor = SquadProcessor(
+                        tokenizer=tokenizer,
+                        max_seq_len=256,
+                        label_list=["start_token", "end_token"],
+                        metric="squad",
+                        data_dir="../data/squad20",
+                    )
+        else:
+            raise NotImplementedError
+
+        return cls(
+            model,
+            processor,
+            batch_size=batch_size,
+            gpu=gpu,
+            name=model_name,
             return_class_probs=return_class_probs,
         )
 

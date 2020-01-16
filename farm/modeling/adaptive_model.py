@@ -4,7 +4,7 @@ import os
 from torch import nn
 
 from farm.modeling.language_model import LanguageModel
-from farm.modeling.prediction_head import PredictionHead, BertLMHead
+from farm.modeling.prediction_head import PredictionHead, BertLMHead, QuestionAnsweringHead
 from farm.utils import MLFlowLogger as MlLogger
 
 logger = logging.getLogger(__name__)
@@ -306,3 +306,30 @@ class AdaptiveModel(nn.Module):
             if head.model_type == "language_modelling":
                 ph_decoder_len = head.decoder.weight.shape[0]
                 assert vocab_size == ph_decoder_len, msg
+
+    def convert_to_transformers(self):
+        pass
+
+    @classmethod
+    def convert_from_transformers(cls, model_name_or_path, device, task_type):
+        """
+
+        :param model_name_or_path:
+        :param device:
+        :param task_type: One of :
+                          - 'question-answering'
+                          - 'text_classification'
+                          - 'ner'
+        :return:
+        """
+        lm = LanguageModel.load(model_name_or_path)
+        #TODO Infer type of head automatically from config
+
+        if task_type == "question-answering":
+            ph = QuestionAnsweringHead.load(model_name_or_path)
+            adaptive_model = cls(language_model=lm, prediction_heads=[ph], embeds_dropout_prob=0.1,
+                               lm_output_types="per_token", device=device)
+        else:
+            raise NotImplementedError(f"Huggingface's transformer models of type {task_type} are not supported yet")
+
+        return adaptive_model

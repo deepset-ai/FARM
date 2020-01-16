@@ -9,6 +9,7 @@ import tqdm
 
 import torch
 from transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN, BertForQuestionAnswering
+from transformers.modeling_auto import AutoModelForQuestionAnswering
 
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
@@ -778,7 +779,7 @@ class QuestionAnsweringHead(PredictionHead):
             # b) pytorch-transformers style
             # load weights from bert model
             # (we might change this later to load directly from a state_dict to generalize for other language models)
-            bert_qa = BertForQuestionAnswering.from_pretrained(pretrained_model_name_or_path)
+            bert_qa = AutoModelForQuestionAnswering.from_pretrained(pretrained_model_name_or_path)
 
             # init empty head
             head = cls(layer_dims=[bert_qa.config.hidden_size, 2], loss_ignore_index=-1, task_name="question_answering")
