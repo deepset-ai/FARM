@@ -287,7 +287,13 @@ class Trainer:
         scheduler = get_scheduler(optimizer, scheduler_opts)
         scheduler.load_state_dict(scheduler_state_dict)
 
-        trainer = Trainer(data_silo=data_silo, model=model, lr_schedule=scheduler, **trainer_state_dict)
+        trainer = Trainer(
+            data_silo=data_silo,
+            model=model,
+            optimizer=optimizer,
+            lr_schedule=scheduler,
+            **trainer_state_dict
+        )
         return trainer
 
     def _save(self):
