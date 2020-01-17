@@ -177,7 +177,7 @@ class PredictionHead(nn.Module):
             if output_dim == old_dims[-1]:
                 return
             new_dims = old_dims[:-1] + [output_dim]
-            logger.info(f"Resizing input dimensions of {type(self).__name__} ({self.task_name}) "
+            logger.info(f"Resizing output dimensions of {type(self).__name__} ({self.task_name}) "
                   f"from {old_dims} to {new_dims} to match number of labels")
             self.feed_forward = FeedForwardBlock(new_dims)
             self.layer_dims[-1] = output_dim
