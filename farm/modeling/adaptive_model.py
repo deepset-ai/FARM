@@ -40,9 +40,9 @@ class AdaptiveModel(nn.Module):
         """
         super(AdaptiveModel, self).__init__()
         self.language_model = language_model.to(device)
-        self.lm_output_dims = language_model.output_dims
+        self.lm_output_dims = language_model.get_output_dims()
         self.prediction_heads = nn.ModuleList([ph.to(device) for ph in prediction_heads])
-        self.connect_lm_to_ph()
+        self.fit_heads_to_lm()
         # set shared weights for LM finetuning
         for head in self.prediction_heads:
             if head.model_type == "language_modelling":
@@ -53,7 +53,7 @@ class AdaptiveModel(nn.Module):
         )
         self.log_params()
 
-    def connect_lm_to_ph(self):
+    def fit_heads_to_lm(self):
         """This iterates over each prediction head and ensures that its input dimensionality matches the output
         dimensionality of the language model. If it doesn't, it is resized so it does fit"""
         for ph in self.prediction_heads:

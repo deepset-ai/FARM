@@ -198,7 +198,7 @@ class PredictionHead(nn.Module):
 class RegressionHead(PredictionHead):
     def __init__(
         self,
-        layer_dims=[1,1],
+        layer_dims=[768,1],
         task_name="regression",
         **kwargs,
     ):
@@ -255,7 +255,7 @@ class RegressionHead(PredictionHead):
 class TextClassificationHead(PredictionHead):
     def __init__(
         self,
-        layer_dims=[1,1],
+        layer_dims=[768,1],
         class_weights=None,
         loss_ignore_index=-100,
         loss_reduction="none",
@@ -349,7 +349,7 @@ class TextClassificationHead(PredictionHead):
 class MultiLabelTextClassificationHead(PredictionHead):
     def __init__(
         self,
-        layer_dims=[1,1],
+        layer_dims=[768,1],
         class_weights=None,
         loss_reduction="none",
         task_name="text_classification",
@@ -437,7 +437,7 @@ class MultiLabelTextClassificationHead(PredictionHead):
 
 
 class TokenClassificationHead(PredictionHead):
-    def __init__(self, layer_dims=[1,1], task_name="ner", **kwargs):
+    def __init__(self, layer_dims=[768,1], task_name="ner", **kwargs):
         super(TokenClassificationHead, self).__init__()
         self.layer_dims = layer_dims
         self.feed_forward = FeedForwardBlock(self.layer_dims)
@@ -760,7 +760,7 @@ class QuestionAnsweringHead(PredictionHead):
     A question answering head predicts the start and end of the answer on token level.
     """
 
-    def __init__(self, layer_dims=[1,1], task_name="question_answering", no_ans_threshold=0.0, context_window_size=100, n_best=5, **kwargs):
+    def __init__(self, layer_dims=[768,1], task_name="question_answering", no_ans_threshold=0.0, context_window_size=100, n_best=5, **kwargs):
         """
         :param layer_dims: dimensions of Feed Forward block, e.g. [768,2], for adjusting to BERT embedding. Output should be always 2
         :type layer_dims: List[Int]
