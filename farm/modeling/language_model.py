@@ -306,7 +306,6 @@ class Bert(LanguageModel):
             # Pytorch-transformer Style
             bert.model = BertModel.from_pretrained(pretrained_model_name_or_path, **kwargs)
             bert.language = cls._infer_language_from_name(pretrained_model_name_or_path)
-        # bert.infer_output_dims()
         return bert
 
     def forward(
@@ -401,7 +400,6 @@ class Albert(LanguageModel):
             # Huggingface transformer Style
             albert.model = AlbertModel.from_pretrained(pretrained_model_name_or_path, **kwargs)
             albert.language = cls._infer_language_from_name(pretrained_model_name_or_path)
-        # albert.infer_output_dims()
         return albert
 
     def forward(
@@ -497,7 +495,6 @@ class Roberta(LanguageModel):
             # Huggingface transformer Style
             roberta.model = RobertaModel.from_pretrained(pretrained_model_name_or_path, **kwargs)
             roberta.language = cls._infer_language_from_name(pretrained_model_name_or_path)
-        # roberta.infer_output_dims()
         return roberta
 
     def forward(
@@ -592,7 +589,6 @@ class XLMRoberta(LanguageModel):
             # Huggingface transformer Style
             xlm_roberta.model = XLMRobertaModel.from_pretrained(pretrained_model_name_or_path, **kwargs)
             xlm_roberta.language = cls._infer_language_from_name(pretrained_model_name_or_path)
-        # xlm_roberta.infer_output_dims()
         return xlm_roberta
 
     def forward(
@@ -704,7 +700,6 @@ class DistilBert(LanguageModel):
         config.summary_activation = 'tanh'
         distilbert.pooler = SequenceSummary(config)
         distilbert.pooler.apply(distilbert.model._init_weights)
-        # distilbert.infer_output_dims()
         return distilbert
 
     def forward(
@@ -803,7 +798,6 @@ class XLNet(LanguageModel):
         config.summary_last_dropout = 0
         xlnet.pooler = SequenceSummary(config)
         xlnet.pooler.apply(xlnet.model._init_weights)
-        # xlnet.infer_output_dims()
         return xlnet
 
     def forward(
