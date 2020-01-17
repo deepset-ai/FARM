@@ -1,9 +1,9 @@
-
 import logging
 import sys
 import torch
 from pathlib import Path
 from tqdm import tqdm
+import numpy
 
 from farm.utils import MLFlowLogger as MlLogger
 from farm.utils import GracefulKiller
@@ -270,13 +270,20 @@ class Trainer:
         trainer_checkpoint = torch.load(path / "trainer")
         trainer_state_dict = trainer_checkpoint["trainer_state_dict"]
 
-        device = trainer_state_dict["device"]
-        model = AdaptiveModel.load(load_dir=path, device=device)
+        numpy_rng_state = trainer_checkpoint["numpy_rng_state"]
+        numpy.random.set_state(numpy_rng_state)
+        rng_state = trainer_checkpoint["rng_state"]
+        cuda_rng_state = trainer_checkpoint["cuda_rng_state"]
+        torch.set_rng_state(rng_state)
+        torch.cuda.set_rng_state(cuda_rng_state)
+
+        model = trainer_checkpoint["model"]
 
         optimizer = trainer_checkpoint["optimizer"]
 
         scheduler_state_dict = trainer_checkpoint["scheduler_state"]
         scheduler_opts = trainer_checkpoint["scheduler_opts"]
+        scheduler_opts["last_epoch"] = scheduler_state_dict["last_epoch"]
         scheduler = get_scheduler(optimizer, scheduler_opts)
         scheduler.load_state_dict(scheduler_state_dict)
 
@@ -294,11 +301,15 @@ class Trainer:
         self.model.save(checkpoint_path)
         torch.save(
             {
+                "model": self.model,
                 "trainer_state_dict": trainer_state_dict,
                 "model_state_dict": self.model.state_dict(),
                 "optimizer": self.optimizer,
                 "scheduler_opts": self.lr_schedule.opts,
                 "scheduler_state": self.lr_schedule.state_dict(),
+                "numpy_rng_state": numpy.random.get_state(),
+                "rng_state": torch.get_rng_state(),
+                "cuda_rng_state": torch.cuda.get_rng_state(),
             },
             checkpoint_path / "trainer",
         )
@@ -311,7 +322,6 @@ class Trainer:
         Serializable state dictionary of a Trainer object
         """
         state_dict = {
-            "optimizer": self.optimizer,
             "evaluate_every": self.evaluate_every,
             "n_gpu": self.n_gpu,
             "grad_acc_steps": self.grad_acc_steps,
