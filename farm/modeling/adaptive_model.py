@@ -239,6 +239,18 @@ class AdaptiveModel(nn.Module):
         :param require_labels: If True, an error will be thrown when a task is not supplied with labels)
         :return:
         """
+
+        # Drop the next sentence prediction head if it does not appear in tasks. This is triggered by the interaction
+        # setting the argument BertStyleLMProcessor(next_sent_pred=False)
+        if "nextsentence" not in tasks:
+            idx = None
+            for i, ph in enumerate(self.prediction_heads):
+                if ph.task_name == "nextsentence":
+                    idx = i
+            logger.info("Removing the NextSentenceHead since next_sent_pred is set to False in the BertStyleLMProcessor")
+            if idx is not None:
+                del self.prediction_heads[i]
+
         for head in self.prediction_heads:
             head.label_tensor_name = tasks[head.task_name]["label_tensor_name"]
             label_list = tasks[head.task_name]["label_list"]
