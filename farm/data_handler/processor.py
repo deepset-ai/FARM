@@ -722,10 +722,15 @@ class BertStyleLMProcessor(Processor):
         )
 
         self.next_sent_pred = next_sent_pred
-
-        self.add_task("lm", "acc", list(self.tokenizer.vocab))
+        added_tokens = self.get_added_tokens()
+        self.add_task("lm", "acc", list(self.tokenizer.vocab) + added_tokens)
         if self.next_sent_pred:
             self.add_task("nextsentence", "acc", ["False", "True"])
+
+    def get_added_tokens(self):
+        dictionary = self.tokenizer.added_tokens_encoder
+        sorted_tuples = sorted(dictionary.items(), key=lambda x: x[0])
+        return [x[1] for x in sorted_tuples]
 
     def file_to_dicts(self, file: str) -> list:
         dicts = read_docs_from_txt(filename=file, delimiter=self.delimiter, max_docs=self.max_docs, proxies=self.proxies)
