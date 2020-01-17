@@ -313,14 +313,19 @@ class AdaptiveModel(nn.Module):
     @classmethod
     def convert_from_transformers(cls, model_name_or_path, device, task_type):
         """
+        Load a (downstream) model from huggingface's transformers format. Use cases:
+         - continue training in FARM (e.g. take a squad QA model and fine-tune on your own data)
+         - compare models without switching frameworks
+         - use model directly for inference
 
         :param model_name_or_path:
-        :param device:
+        :param device: "cpu" or "cuda"
         :param task_type: One of :
                           - 'question-answering'
                           - 'text_classification'
-                          - 'ner'
-        :return:
+                          - 'embeddings'
+                          More tasks coming soon ...
+        :return: AdaptiveModel
         """
         lm = LanguageModel.load(model_name_or_path)
         #TODO Infer type of head automatically from config
@@ -329,10 +334,10 @@ class AdaptiveModel(nn.Module):
             ph = QuestionAnsweringHead.load(model_name_or_path)
             adaptive_model = cls(language_model=lm, prediction_heads=[ph], embeds_dropout_prob=0.1,
                                lm_output_types="per_token", device=device)
-        elif task_type == "ner":
-            ph = TokenClassificationHead.load(model_name_or_path)
-            adaptive_model = cls(language_model=lm, prediction_heads=[ph], embeds_dropout_prob=0.1,
-                               lm_output_types="per_token", device=device)
+        # elif task_type == "ner":
+        #     ph = TokenClassificationHead.load(model_name_or_path)
+        #     adaptive_model = cls(language_model=lm, prediction_heads=[ph], embeds_dropout_prob=0.1,
+        #                        lm_output_types="per_token", device=device)
         elif task_type == "embeddings":
             adaptive_model = cls(language_model=lm, prediction_heads=[], embeds_dropout_prob=0.1,
                                  lm_output_types=["per_token", "per_sequence"], device=device)

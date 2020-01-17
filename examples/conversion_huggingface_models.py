@@ -14,10 +14,8 @@ model = AdaptiveModel.convert_from_transformers("ktrapeznikov/albert-xlarge-v2-s
 
 # Question answering
 inf = Inferencer.load("ktrapeznikov/albert-xlarge-v2-squad-v2", task_type="question-answering")
-QA_input = [
-    {"questions": ["Who counted the game among the best ever made?"],
-     "text": "Twilight Princess was released to universal critical acclaim and commercial success. GameTrailers in their review called it one of the greatest games ever created."
-    }]
+QA_input = [{"questions": ["Who counted the game among the best ever made?"],
+             "text": "Twilight Princess was released to universal critical acclaim and commercial success. GameTrailers in their review called it one of the greatest games ever created."}]
 
 result = inf.inference_from_dicts(dicts=QA_input, rest_api_schema=True)
 
