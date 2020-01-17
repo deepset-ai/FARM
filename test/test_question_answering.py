@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import SquadProcessor
@@ -33,7 +34,7 @@ def test_qa(caplog):
         train_filename="train-sample.json",
         dev_filename="dev-sample.json",
         test_filename=None,
-        data_dir="samples/qa",
+        data_dir=Path("samples/qa"),
         label_list=label_list,
         metric="squad"
     )
@@ -67,7 +68,7 @@ def test_qa(caplog):
         device=device
     )
     model = trainer.train(model)
-    save_dir = "testsave/qa"
+    save_dir = Path("testsave/qa")
     model.save(save_dir)
     processor.save(save_dir)
 

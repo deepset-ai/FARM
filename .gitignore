@@ -137,6 +137,9 @@ save/
 testsave/
 saved_models/
 
-#mlruns
+# mlruns
 mlruns/
 .DS_Store
+
+# cache
+*cache*
