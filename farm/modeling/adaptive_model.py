@@ -5,6 +5,7 @@ from torch import nn
 
 from farm.modeling.language_model import LanguageModel
 from farm.modeling.prediction_head import PredictionHead, BertLMHead, QuestionAnsweringHead, TokenClassificationHead
+from transformers.modeling_auto import AutoModelForQuestionAnswering, AutoModelForSequenceClassification
 from farm.utils import MLFlowLogger as MlLogger
 
 logger = logging.getLogger(__name__)
@@ -308,7 +309,41 @@ class AdaptiveModel(nn.Module):
                 assert vocab_size == ph_decoder_len, msg
 
     def convert_to_transformers(self):
+        if len(self.prediction_heads) != 1:
+            raise ValueError(f"Currently conversion only works for models with a SINGLE prediction head. "
+                             f"Your model has {len(self.prediction_heads)}")
+
+        #TODO add more infos to config
+
+        if self.prediction_heads[0].model_type == "span_classification":
+            # init model
+            transformers_model = AutoModelForQuestionAnswering.from_config(self.language_model.model.config)
+            # transfer weights for language model + prediction head
+            setattr(transformers_model, transformers_model.base_model_prefix, self.language_model.model)
+            transformers_model.qa_outputs.load_state_dict(
+                self.prediction_heads[0].feed_forward.feed_forward[0].state_dict())
+
+        elif self.prediction_heads[0].model_type == "text_classification":
+            # add more info to config
+            self.language_model.model.config.id2label = {id: label for id, label in enumerate(self.prediction_heads[0].label_list)}
+            self.language_model.model.config.label2id = {label: id for id, label in enumerate(self.prediction_heads[0].label_list)}
+            self.language_model.model.config.finetuning_task = "text_classification"
+            self.language_model.model.config.language = self.language_model.language
+
+            # init model
+            transformers_model = AutoModelForSequenceClassification.from_config(self.language_model.model.config)
+            # transfer weights for language model + prediction head
+            setattr(transformers_model, transformers_model.base_model_prefix, self.language_model.model)
+            transformers_model.classifier.load_state_dict(
+                self.prediction_heads[0].feed_forward.feed_forward[0].state_dict())
+
+        else:
+            raise NotImplementedError(f"FARM -> Transformers conversion is not supported yet for"
+                                      f" prediction heads of type {self.prediction_heads[0].model_type}")
         pass
+
+        return transformers_model
+
 
     @classmethod
     def convert_from_transformers(cls, model_name_or_path, device, task_type):
@@ -318,10 +353,15 @@ class AdaptiveModel(nn.Module):
          - compare models without switching frameworks
          - use model directly for inference
 
-        :param model_name_or_path:
+        :param model_name_or_path: local path of a saved model or name of a public one.
+                                              Exemplary public names:
+                                              - distilbert-base-uncased-distilled-squad
+                                              - deepset/bert-large-uncased-whole-word-masking-squad2
+
+                                              See https://huggingface.co/models for full list
         :param device: "cpu" or "cuda"
         :param task_type: One of :
-                          - 'question-answering'
+                          - 'question_answering'
                           - 'text_classification'
                           - 'embeddings'
                           More tasks coming soon ...
@@ -330,7 +370,7 @@ class AdaptiveModel(nn.Module):
         lm = LanguageModel.load(model_name_or_path)
         #TODO Infer type of head automatically from config
 
-        if task_type == "question-answering":
+        if task_type == "question_answering":
             ph = QuestionAnsweringHead.load(model_name_or_path)
             adaptive_model = cls(language_model=lm, prediction_heads=[ph], embeds_dropout_prob=0.1,
                                lm_output_types="per_token", device=device)

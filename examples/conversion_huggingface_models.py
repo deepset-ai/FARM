@@ -1,31 +1,57 @@
 from farm.modeling.adaptive_model import AdaptiveModel
+from farm.modeling.tokenization import Tokenizer
 from farm.infer import Inferencer
 import pprint
+from transformers.pipelines import pipeline
+import os
 
-# CASE 1:
-# Convert a model from transformers model hub to an adaptive model
-# (-> e.g. to continue training)
-model = AdaptiveModel.convert_from_transformers("ktrapeznikov/albert-xlarge-v2-squad-v2", device="cpu", task_type="question-answering")
-# ... continue as in the other examples to e.g. fine-tune this QA model on your own dataset
+##############################################
+###  From Transformers -> FARM
+##############################################
 
-# CASE 2:
-# You can also directly load everything you need into the Inferencer (incl. tokenizer & processor)
-# (-> just get predictions from a pretrained model)
+# CASE 1: MODEL
+# Load model from transformers model hub (-> continue training / compare models / ...)
+model = AdaptiveModel.convert_from_transformers("deepset/bert-large-uncased-whole-word-masking-squad2", device="cpu", task_type="question_answering")
+# ... continue as in the other examples e.g. to fine-tune this QA model on your own data
 
-# Question answering
-inf = Inferencer.load("ktrapeznikov/albert-xlarge-v2-squad-v2", task_type="question-answering")
-QA_input = [{"questions": ["Who counted the game among the best ever made?"],
-             "text": "Twilight Princess was released to universal critical acclaim and commercial success. GameTrailers in their review called it one of the greatest games ever created."}]
+# CASE 2: INFERENCER
+# Load Inferencer from transformers, incl. model & tokenizer (-> just get predictions)
+nlp = Inferencer.load("deepset/bert-large-uncased-whole-word-masking-squad2", task_type="question_answering")
 
-result = inf.inference_from_dicts(dicts=QA_input, rest_api_schema=True)
+# run predictions
+QA_input = [{"questions": ["Why is model conversion important?"],
+             "text": "The option to convert models between FARM and transformers gives freedom to the user and let people easily switch between frameworks."}]
+result = nlp.inference_from_dicts(dicts=QA_input, rest_api_schema=True)
+pprint.pprint(result)
 
-for x in result:
-    pprint.pprint(x)
+# save it
+farm_model_dir = "../saved_models/bert-english-qa-large"
+nlp.save(farm_model_dir)
 
-# Pure embeddings
-input = [{"text": "El nombre de Berlín parece provenir de las palabras berl o birl, que en el idioma polabo que hablaban los vendos significaba tierra no cultivable o tierra deshabitada, respectivamente."}]
-inf = Inferencer.load("dccuchile/bert-base-spanish-wwm-cased", task_type="embeddings")
-result = inf.extract_vectors(input)
+##############################################
+###  From FARM -> Transformers
+##############################################
 
-for x in result:
-    pprint.pprint(x)
+# load from FARM format
+model = AdaptiveModel.load(farm_model_dir, device="cpu")
+tokenizer = Tokenizer.load(farm_model_dir)
+
+# convert to transformers
+transformer_model = model.convert_to_transformers()
+
+# save it
+model_dir = "../saved_models/bert-large-uncased-whole-word-masking-squad2"
+os.mkdir(model_dir)
+transformer_model.save_pretrained(model_dir)
+tokenizer.save_pretrained(model_dir)
+
+# run predictions (using transformers)
+nlp = pipeline('question_answering', model=model_dir, tokenizer=model_dir)
+res = nlp({
+    'question': 'Why is model conversion important?',
+    'context': 'The option to convert models between FARM and transformers gives freedom to the user and let people easily switch between frameworks.'
+})
+pprint.pprint(res)
+
+# To upload to transformer's model hub run this in bash:
+# transformers-cli upload  ../saved_models/bert-large-uncased-whole-word-masking-squad2

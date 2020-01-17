@@ -80,7 +80,7 @@ class LanguageModel(nn.Module):
         * distilbert-base-german-cased
         * distilbert-base-multilingual-cased
 
-        See all supported model variations here: https://huggingface.co/transformers/pretrained_models.html
+        See all supported model variations here: https://huggingface.co/models
 
         :param pretrained_model_name_or_path: The path of the saved pretrained model or its name.
         :type pretrained_model_name_or_path: str

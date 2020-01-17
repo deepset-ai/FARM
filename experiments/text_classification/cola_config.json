@@ -7,7 +7,7 @@
     "cuda":        {"value": null, "default": true,  "desc": "CUDA flag,  uses CUDA if available."},
     "local_rank":  {"value": null, "default": -1,    "desc": "If local_rank == -1 -> multiGPU mode on one machine,  other values signal distributed computation across several nodes (apex install required)."},
     "use_amp":        {"value": null, "default": null, "desc": "Automatic mixed precision with APEX. Must be set to null to disable or to any optimisation level (see apex documentation). 'O1' is recommended."},
-    "seed":         {"value": null, "default": 42, "desc": "Random seed for initializations."},
+    "seed":         {"value": null, "default": 42, "desc": "Random seed for initializations."}
   }, 
 
   "task": {

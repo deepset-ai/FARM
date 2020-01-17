@@ -137,14 +137,14 @@ class Inferencer:
             if not task_type:
                 raise ValueError("Please specify the 'task_type' of the model you want to load from transformers. "
                                  "Valid options for arg `task_type`:"
-                                 "'question-answering', 'embeddings'")
+                                 "'question_answering', 'embeddings'")
 
             model = AdaptiveModel.convert_from_transformers(model_name_or_path, device, task_type)
             config = AutoConfig.from_pretrained(model_name_or_path)
             tokenizer = Tokenizer.load(model_name_or_path)
 
             # TODO infer task_type automatically from config (if possible)
-            if task_type == "question-answering":
+            if task_type == "question_answering":
                 processor = SquadProcessor(
                     tokenizer=tokenizer,
                     max_seq_len=max_seq_len,
@@ -190,7 +190,7 @@ class Inferencer:
             #     )
             else:
                 raise ValueError(f"`task_type` {task_type} is not supported yet. "
-                                 f"Valid options for arg `task_type`: 'question-answering', 'embeddings'")
+                                 f"Valid options for arg `task_type`: 'question_answering', 'embeddings'")
 
         return cls(
             model,
@@ -200,6 +200,10 @@ class Inferencer:
             name=name,
             return_class_probs=return_class_probs,
         )
+
+    def save(self, path):
+        self.model.save(path)
+        self.processor.save(path)
 
     def inference_from_file(self, file, max_processes=128):
         """
