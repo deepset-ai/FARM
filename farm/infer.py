@@ -103,9 +103,12 @@ class Inferencer:
         max_seq_len=256
     ):
         """
-        Initializes Inferencer from directory with saved model.
+        Load an Inferencer incl. all relevant components (model, tokenizer, processor ...) either by
 
-        :param model_name_or_path: Directory where the saved model is located.
+        1. specifying a public name from transformers' model hub (https://huggingface.co/models)
+        2. or pointing to a local directory it is saved in.
+
+        :param model_name_or_path: Local directory or public name of the model to load.
         :type model_name_or_path: str
         :param batch_size: Number of samples computed once per batch
         :type batch_size: int
