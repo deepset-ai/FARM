@@ -31,12 +31,12 @@ def question_answering():
     ##########################
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)
-    batch_size = 24
-    n_epochs = 2
-    evaluate_every = 500
+    batch_size = 32
+    n_epochs = 1
+    evaluate_every = 5000
     base_LM_model = "bert-base-cased"
-    train_filename="train-v2.0.json"
-    dev_filename="dev-v2.0.json"
+    train_filename="subsets/train_small-v2.0.json"
+    dev_filename="subsets/dev_small-v2.0.json"
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
@@ -98,14 +98,14 @@ def question_answering():
 
     # 8. Hooray! You have a model. Store it:
     save_dir = Path("../saved_models/bert-english-qa-tutorial")
-    model.save(save_dir)
-    processor.save(save_dir)
-
+    # model.save(save_dir)
+    # processor.save(save_dir)
+    #
     # 9. Load it & harvest your fruits (Inference)
     QA_input = [
             {
-                "questions": ["Who counted the game among the best ever made?"],
-                "text":  "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
+                "qas": ["Who counted the game among the best ever made?"],
+                "context":  "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
             }]
 
     model = Inferencer.load(save_dir, batch_size=40, gpu=True)
