@@ -27,7 +27,6 @@ def doc_classifcation():
     ########## Settings
     ##########################
     set_all_seeds(seed=42)
-    device, n_gpu = initialize_device_settings(use_cuda=True)
     n_epochs = 1
     batch_size = 32
     evaluate_every = 100
@@ -87,6 +86,7 @@ def doc_classifcation():
 
     # 6. Feed everything to the Trainer, which keeps care of growing our model into powerful plant and evaluates it from time to time
     trainer = Trainer(
+        model=model,
         optimizer=optimizer,
         data_silo=data_silo,
         epochs=n_epochs,
@@ -96,7 +96,7 @@ def doc_classifcation():
         device=device)
 
     # 7. Let it grow
-    model = trainer.train(model)
+    trainer.train()
 
     # 8. Hooray! You have a model. Store it:
     save_dir = Path("saved_models/bert-german-doc-tutorial")

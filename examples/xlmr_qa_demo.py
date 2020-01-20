@@ -102,6 +102,7 @@ def xlmr_qa_demo():
 
         # 6. Feed everything to the Trainer, which keeps care of growing our model and evaluates it from time to time
         trainer = Trainer(
+            model=model,
             optimizer=optimizer,
             data_silo=data_silo,
             epochs=n_epochs,
@@ -111,12 +112,11 @@ def xlmr_qa_demo():
             device=device,
         )
         # 7. Let it grow! Watch the tracked metrics live on the public mlflow server: https://public-mlflow.deepset.ai
-        model = trainer.train(model)
+        trainer.train()
 
         # 8. Hooray! You have a model. Store it:
         model.save(save_dir)
         processor.save(save_dir)
-
 
     if inference:
         model = Inferencer.load(save_dir, batch_size=32, gpu=True)

@@ -116,6 +116,7 @@ def doc_classification_with_earlystopping():
     )
 
     trainer = Trainer(
+        model=model,
         optimizer=optimizer,
         data_silo=data_silo,
         epochs=n_epochs,
@@ -126,7 +127,7 @@ def doc_classification_with_earlystopping():
         early_stopping=earlystopping)
 
     # 7. Let it grow
-    model = trainer.train(model)
+    trainer.train()
 
     # 8. Hooray! You have a model.
     # NOTE: if early stopping is used, the best model has been stored already in the directory
