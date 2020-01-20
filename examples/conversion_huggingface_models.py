@@ -46,7 +46,7 @@ transformer_model.save_pretrained(model_dir)
 tokenizer.save_pretrained(model_dir)
 
 # run predictions (using transformers)
-nlp = pipeline('question_answering', model=model_dir, tokenizer=model_dir)
+nlp = pipeline('question-answering', model=model_dir, tokenizer=model_dir)
 res = nlp({
     'question': 'Why is model conversion important?',
     'context': 'The option to convert models between FARM and transformers gives freedom to the user and let people easily switch between frameworks.'

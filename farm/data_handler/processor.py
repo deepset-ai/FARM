@@ -211,7 +211,7 @@ class Processor(ABC):
         self.tokenizer.save_pretrained(save_dir)
         # save processor
         config["processor"] = self.__class__.__name__
-        output_config_file = save_dir / "processor_config.json"
+        output_config_file = Path(save_dir) / "processor_config.json"
         with open(output_config_file, "w") as file:
             json.dump(config, file)
 

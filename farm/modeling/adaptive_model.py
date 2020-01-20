@@ -2,6 +2,7 @@ import logging
 import os
 
 from torch import nn
+from pathlib import Path
 
 from farm.modeling.language_model import LanguageModel
 from farm.modeling.prediction_head import PredictionHead, BertLMHead, QuestionAnsweringHead, TokenClassificationHead, TextClassificationHead
@@ -276,6 +277,7 @@ class AdaptiveModel(nn.Module):
 
     @classmethod
     def _get_prediction_head_files(cls, load_dir):
+        load_dir = Path(load_dir)
         files = os.listdir(load_dir)
         model_files = [
             load_dir / f

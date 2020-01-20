@@ -157,8 +157,12 @@ class LanguageModel(nn.Module):
         raise NotImplementedError()
 
     def save_config(self, save_dir):
-        """ To be implemented"""
-        raise NotImplementedError()
+        save_filename = Path(save_dir) / "language_model_config.json"
+        with open(save_filename, "w") as file:
+            setattr(self.model.config, "name", self.__class__.__name__)
+            setattr(self.model.config, "language", self.language)
+            string = self.model.config.to_json_string()
+            file.write(string)
 
     def save(self, save_dir):
         """
@@ -168,7 +172,7 @@ class LanguageModel(nn.Module):
         :type save_dir: str
         """
         # Save Weights
-        save_name = save_dir / "language_model.bin"
+        save_name = Path(save_dir) / "language_model.bin"
         model_to_save = (
             self.model.module if hasattr(self.model, "module") else self.model
         )  # Only save the model it-self
@@ -347,14 +351,6 @@ class Bert(LanguageModel):
     def disable_hidden_states_output(self):
         self.model.encoder.output_hidden_states = False
 
-    def save_config(self, save_dir):
-        save_filename = save_dir / "language_model_config.json"
-        with open(save_filename, "w") as file:
-            setattr(self.model.config, "name", self.__class__.__name__)
-            setattr(self.model.config, "language", self.language)
-            string = self.model.config.to_json_string()
-            file.write(string)
-
 
 class Albert(LanguageModel):
     """
@@ -440,14 +436,6 @@ class Albert(LanguageModel):
 
     def disable_hidden_states_output(self):
         self.model.encoder.output_hidden_states = False
-
-    def save_config(self, save_dir):
-        save_filename = os.path.join(save_dir, "language_model_config.json")
-        with open(save_filename, "w") as file:
-            setattr(self.model.config, "name", self.__class__.__name__)
-            setattr(self.model.config, "language", self.language)
-            string = self.model.config.to_json_string()
-            file.write(string)
 
 
 class Roberta(LanguageModel):
@@ -536,13 +524,6 @@ class Roberta(LanguageModel):
     def disable_hidden_states_output(self):
         self.model.encoder.output_hidden_states = False
 
-    def save_config(self, save_dir):
-        save_filename = save_dir / "language_model_config.json"
-        with open(save_filename, "w") as file:
-            setattr(self.model.config, "name", self.__class__.__name__)
-            setattr(self.model.config, "language", self.language)
-            string = self.model.config.to_json_string()
-            file.write(string)
 
 class XLMRoberta(LanguageModel):
     """
@@ -630,13 +611,6 @@ class XLMRoberta(LanguageModel):
     def disable_hidden_states_output(self):
         self.model.encoder.output_hidden_states = False
 
-    def save_config(self, save_dir):
-        save_filename = os.path.join(save_dir, "language_model_config.json")
-        with open(save_filename, "w") as file:
-            setattr(self.model.config, "name", self.__class__.__name__)
-            setattr(self.model.config, "language", self.language)
-            string = self.model.config.to_json_string()
-            file.write(string)
 
 class DistilBert(LanguageModel):
     """
@@ -737,13 +711,6 @@ class DistilBert(LanguageModel):
     def disable_hidden_states_output(self):
         self.model.config.output_hidden_states = False
 
-    def save_config(self, save_dir):
-        save_filename = os.path.join(save_dir, "language_model_config.json")
-        with open(save_filename, "w") as file:
-            setattr(self.model.config, "name", self.__class__.__name__)
-            setattr(self.model.config, "language", self.language)
-            string = self.model.config.to_json_string()
-            file.write(string)
 
 class XLNet(LanguageModel):
     """
@@ -846,11 +813,3 @@ class XLNet(LanguageModel):
 
     def disable_hidden_states_output(self):
         self.model.output_hidden_states = False
-
-    def save_config(self, save_dir):
-        save_filename = save_dir / "language_model_config.json"
-        with open(save_filename, "w") as file:
-            setattr(self.model.config, "name", self.__class__.__name__)
-            setattr(self.model.config, "language", self.language)
-            string = self.model.config.to_json_string()
-            file.write(string)

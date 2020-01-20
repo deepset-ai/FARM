@@ -31,11 +31,13 @@ def question_answering():
     ##########################
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)
-    batch_size = 24
-    n_epochs = 2
-    evaluate_every = 500
+    batch_size = 32
+    n_epochs = 3
+    evaluate_every = 2000
     base_LM_model = "bert-base-cased"
-
+    max_seq_len = 384
+    learning_rate = 3e-5
+    warmup_proportion = 0.2
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
@@ -46,7 +48,7 @@ def question_answering():
     metric = "squad"
     processor = SquadProcessor(
         tokenizer=tokenizer,
-        max_seq_len=256,
+        max_seq_len=max_seq_len,
         label_list=label_list,
         metric=metric,
         test_filename=None,
@@ -74,8 +76,8 @@ def question_answering():
     # 5. Create an optimizer
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
-        learning_rate=1e-5,
-        schedule_opts={"name": "LinearWarmup", "warmup_proportion": 0.2},
+        learning_rate=learning_rate,
+        schedule_opts={"name": "LinearWarmup", "warmup_proportion": warmup_proportion},
         n_batches=len(data_silo.loaders["train"]),
         n_epochs=n_epochs,
         device=device

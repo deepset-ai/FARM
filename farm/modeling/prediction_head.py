@@ -61,11 +61,11 @@ class PredictionHead(nn.Module):
         Saves the config as a json file.
 
         :param save_dir: Path to save config to
-        :type save_dir: str
+        :type save_dir: str or Path
         :param head_num: Which head to save
         :type head_num: int
         """
-        output_config_file = save_dir / f"prediction_head_{head_num}_config.json"
+        output_config_file = Path(save_dir) / f"prediction_head_{head_num}_config.json"
         with open(output_config_file, "w") as file:
             json.dump(self.config, file)
 
@@ -74,11 +74,11 @@ class PredictionHead(nn.Module):
         Saves the prediction head state dict.
 
         :param save_dir: path to save prediction head to
-        :type save_dir: str
+        :type save_dir: str or Path
         :param head_num: which head to save
         :type head_num: int
         """
-        output_model_file = save_dir / f"prediction_head_{head_num}.bin"
+        output_model_file = Path(save_dir) / f"prediction_head_{head_num}.bin"
         torch.save(self.state_dict(), output_model_file)
         self.save_config(save_dir, head_num)
 
