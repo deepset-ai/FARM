@@ -16,7 +16,6 @@ from farm.eval import Evaluator
 from sklearn.metrics import matthews_corrcoef, recall_score, precision_score, f1_score, mean_squared_error, r2_score
 from farm.metrics import simple_accuracy, register_metrics
 
-
 def doc_classification_with_earlystopping():
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
@@ -159,6 +158,5 @@ def doc_classification_with_earlystopping():
 
 if __name__ == "__main__":
     doc_classification_with_earlystopping()
-
 
 # fmt: on

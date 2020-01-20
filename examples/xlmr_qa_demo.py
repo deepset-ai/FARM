@@ -36,10 +36,6 @@ def xlmr_qa_demo():
     n_epochs = 2
     evaluate_every = 200
     base_LM_model = "xlm-roberta-large"
-    if "large" in base_LM_model:
-        embedding_dims = 1024
-    else:
-        embedding_dims = 768
 
     data_dir = Path("../data/squad20")
     train_filename = Path("train-v2.0.json")
@@ -79,7 +75,7 @@ def xlmr_qa_demo():
         # a) which consists of a pretrained language model as a basis
         language_model = LanguageModel.load(base_LM_model, n_added_tokens=3)
         # b) and a prediction head on top that is suited for our task => Question Answering
-        prediction_head = QuestionAnsweringHead(layer_dims=[embedding_dims, len(label_list)])
+        prediction_head = QuestionAnsweringHead()
 
         model = AdaptiveModel(
             language_model=language_model,

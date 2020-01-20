@@ -16,7 +16,6 @@ from farm.eval import Evaluator
 from sklearn.metrics import matthews_corrcoef, recall_score, precision_score, f1_score, mean_squared_error, r2_score
 from farm.metrics import simple_accuracy, register_metrics
 
-
 def doc_classification_crossvalidation():
     ##########################
     ########## Logging
@@ -107,7 +106,6 @@ def doc_classification_crossvalidation():
         language_model = LanguageModel.load(lang_model)
         # b) and a prediction head on top that is suited for our task => Text classification
         prediction_head = TextClassificationHead(
-            layer_dims=[768, len(processor.tasks["text_classification"]["label_list"])],
             class_weights=data_silo.calculate_class_weights(task_name="text_classification"))
 
         model = AdaptiveModel(
@@ -133,7 +131,7 @@ def doc_classification_crossvalidation():
         # according to some metric and stop training when no improvement is happening for some iterations.
         # NOTE: Using a different save directory for each fold, allows us afterwards to use the
         # nfolds best models in an ensemble!
-        save_dir += f"-{n_fold}"
+        save_dir = Path(str(save_dir) + f"-{n_fold}")
         earlystopping = EarlyStopping(
             metric="f1_offense", mode="max",   # use the metric from our own metrics function instead of loss
             save_dir=save_dir,  # where to save the best model

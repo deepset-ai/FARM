@@ -16,7 +16,6 @@ from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer
 from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
 
-
 def question_answering():
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
@@ -65,7 +64,7 @@ def question_answering():
     # a) which consists of a pretrained language model as a basis
     language_model = LanguageModel.load(base_LM_model)
     # b) and a prediction head on top that is suited for our task => Question Answering
-    prediction_head = QuestionAnsweringHead(layer_dims=[768, len(label_list)])
+    prediction_head = QuestionAnsweringHead()
 
     model = AdaptiveModel(
         language_model=language_model,
@@ -124,7 +123,6 @@ def question_answering():
         predictions_filename=filename,
         out_filename="predictions.json"
     )
-
 
 if __name__ == "__main__":
     question_answering()

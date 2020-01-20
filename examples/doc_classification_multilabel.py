@@ -13,7 +13,6 @@ from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer
 from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
 
-
 def doc_classification_multilabel():
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
@@ -69,7 +68,7 @@ def doc_classification_multilabel():
     # a) which consists of a pretrained language model as a basis
     language_model = LanguageModel.load(lang_model)
     # b) and a prediction head on top that is suited for our task => Text classification
-    prediction_head = MultiLabelTextClassificationHead(layer_dims=[768, len(processor.tasks["text_classification"]["label_list"])])
+    prediction_head = MultiLabelTextClassificationHead()
 
     model = AdaptiveModel(
         language_model=language_model,
