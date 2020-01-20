@@ -56,8 +56,8 @@ def question_answering():
         data_dir=Path("../data/squad20"),
     )
 
-
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
+    # NOTE: In FARM, the dev set metrics differ from test set metrics in that they are calculated on a token level instead of a word level
     data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=False)
 
     # 4. Create an AdaptiveModel
@@ -123,6 +123,10 @@ def question_answering():
         predictions_filename=filename,
         out_filename="predictions.json"
     )
+
+    # To get evaluate the model's performance on the SQuAD dev set, run the farm/squad_evaluation.py script in the command line with something like this
+    # python squad_evaluation.py path/to/squad20/dev-v2.0.json path/to/predictions.json
+
 
 if __name__ == "__main__":
     question_answering()
