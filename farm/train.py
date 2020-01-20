@@ -162,7 +162,8 @@ class Trainer:
         :type checkpoint_on_sigkill: bool
         :param checkpoint_every: save a train checkpoint after this many steps of training.
         :type checkpoint_every: int
-        :param checkpoint_root_dir: the Path of directory where all train checkpoints are saved.
+        :param checkpoint_root_dir: the Path of directory where all train checkpoints are saved. For each individual
+               checkpoint, a subdirectory with the name epoch_{epoch_num}_step_{step_num} is created.
         :type checkpoint_root_dir: Path
         :param from_epoch: the epoch number to start the training from. In the case when training resumes from a saved
                checkpoint, it is used to fast-forward training to the last epoch in the checkpoint.
@@ -263,6 +264,12 @@ class Trainer:
     def _load_checkpoint(cls, path, data_silo):
         """
         Load the train checkpoint at given path.
+
+        :param path: The checkpoint path is subdirectory under checkpoint_root_dir. The individual checkpoint dirs have
+               a default naming convention of "epoch_{epoch_num}_step_{step_num}".
+        :type path: Path
+        :param data_silo: A DataSilo object that will contain the train, dev and test datasets as PyTorch DataLoaders
+        :type data_silo: DataSilo
         """
         if not path.exists():
             raise Exception(f"The checkpoint path {path} does not exists.")
@@ -297,11 +304,21 @@ class Trainer:
             lr_schedule=scheduler,
             **trainer_state_dict
         )
+
+        logger.info(f"Loaded a train checkpoint from {path}")
         return trainer
 
     def _save(self):
         """
         Save a train checkpoint at the Trainer's checkpoint_path.
+
+        Some objects(eg, scheduler) in the Trainer are not serializable using the Pickle module. For these objects,
+        the state_dict is stored for the checkpoint, that can be used to reconstruct a similar state upon resuming
+        train from the checkpoint.
+
+        #TODO The model is currently saved as a whole serialized object. The disadvantage of this approach is that it is
+        bound to specifics Python version, FARM version, directory structures etc. A more modular and reusable approach
+        is to save using AdaptiveModel's save() method where the model and the state_dict are stored separately.
         """
         checkpoint_path = self.checkpoint_root_dir / f"epoch_{self.from_epoch}_step_{self.from_step}"
         checkpoint_path.mkdir(parents=True, exist_ok=True)
@@ -366,7 +383,7 @@ class Trainer:
 
         resume_from_step = self.from_step
 
-        for epoch in range(self.from_epoch, self.epochs + 1):
+        for epoch in range(self.from_epoch + 1, self.epochs + 1):
             progress_bar = tqdm(self.data_loader_train)    # start at a random location
             for step, batch in enumerate(progress_bar, start=1):
                 # when resuming training from a checkpoint, we want to fast forward to the step of the checkpoint
