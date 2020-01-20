@@ -8,9 +8,10 @@ with open("requirements.txt") as f:
 parsed_requirements = [
     x.strip()
     for x in parsed_requirements
-    if ((x.strip()[0] != "#") and (len(x.strip()) > 3))
+    if ((x.strip()[0] != "#") and (len(x.strip()) > 3) and "-e git://" not in x)
 ]
 
+parsed_requirements.append('transformers @ git+https://github.com:huggingface/transformers.git@23c6998bf46e43092fc59543ea7795074a720f08#egg=transformers@v2.3.0#egg=transformers')
 
 setup(
     name="farm",
@@ -20,7 +21,7 @@ setup(
     description="Toolkit for finetuning and evaluating transformer based language models",
     long_description=open("readme.rst", "r", encoding="utf-8").read(),
     long_description_content_type="text/x-rst",
-    keywords="BERT NLP deep learning language-model transformer",
+    keywords="BERT NLP deep learning language-model transformer qa question-answering transfer-learning",
     license="Apache",
     url="https://gitlab.com/deepset-ai/ml/lm/farm",
     download_url="https://github.com/deepset-ai/FARM/archive/0.3.2.tar.gz",

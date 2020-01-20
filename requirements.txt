@@ -16,7 +16,8 @@ sklearn
 seqeval
 mlflow==1.0.0
 # huggingface repository
-transformers==2.3.0
+# until next release (2.3.1) we take this recent version from master branch, as it includes important fixes for loading tokenizer from remote
+-e git://github.com:huggingface/transformers.git@23c6998bf46e43092fc59543ea7795074a720f08
 # accessing dictionary elements with dot notation
 dotmap==1.3.0
 # for inference-rest-apis

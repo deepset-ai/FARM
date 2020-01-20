@@ -256,6 +256,37 @@ class TextClassificationHead(PredictionHead):
 
         self.generate_config()
 
+    @classmethod
+    def load(cls, pretrained_model_name_or_path):
+        """
+        Load a prediction head from a saved FARM or transformers model. If `pretrained_model_name_or_path`
+        is not a local path, we will try to resolve it with a public model hub (https://huggingface.co/models)
+
+        :param pretrained_model_name_or_path: local path of a saved model or name of a publicly available model.
+                                              Exemplary names:
+                                              - distilbert-base-uncased-distilled-squad
+                                              - bert-large-uncased-whole-word-masking-finetuned-squad
+
+                                              See https://huggingface.co/models for full list
+
+        """
+
+        if os.path.exists(pretrained_model_name_or_path) \
+                and "config.json" in pretrained_model_name_or_path \
+                and "prediction_head" in pretrained_model_name_or_path:
+            # a) FARM style
+            super(TextClassificationHead, cls).load(pretrained_model_name_or_path)
+        else:
+            # b) transformers style
+            # load all weights from model
+            full_model = AutoModelForSequenceClassification.from_pretrained(pretrained_model_name_or_path)
+            # init empty head
+            head = cls(layer_dims=[full_model.config.hidden_size, len(full_model.config.id2label)])
+            # transfer weights for head from full model
+            head.feed_forward.feed_forward[0].load_state_dict(full_model.classifier.state_dict())
+            del full_model
+
+        return head
     def forward(self, X):
         logits = self.feed_forward(X)
         return logits

@@ -155,17 +155,17 @@ class Inferencer:
             elif task_type == "embeddings":
                 processor = InferenceProcessor(tokenizer=tokenizer, max_seq_len=max_seq_len)
 
-            # elif task_type == "classification":
-            #     label_list = list(config.label2id.keys())
-            #     processor = TextClassificationProcessor(tokenizer=tokenizer,
-            #                                             max_seq_len=max_seq_len,
-            #                                             data_dir=None,
-            #                                             label_list=label_list,
-            #                                             label_column_name="label",
-            #                                             metric="acc",
-            #                                             quote_char='"',
-            #                                             )
-            #
+            elif task_type == "text_classification":
+                label_list = list(config.id2label[id] for id in range(len(config.id2label)))
+                processor = TextClassificationProcessor(tokenizer=tokenizer,
+                                                        max_seq_len=max_seq_len,
+                                                        data_dir=None,
+                                                        label_list=label_list,
+                                                        label_column_name="label",
+                                                        metric="acc",
+                                                        quote_char='"',
+                                                        )
+
             # elif task_type == "multilabel-classification":
             #     # label_list = ["toxic", "severe_toxic", "obscene", "threat", "insult", "identity_hate"]
             #     label_list = list(config.label2id.keys())
