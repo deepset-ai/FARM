@@ -48,7 +48,7 @@ def test_ner(caplog=None):
 
     data_silo = DataSilo(processor=processor, batch_size=batch_size)
     language_model = LanguageModel.load(lang_model)
-    prediction_head = TokenClassificationHead(layer_dims=[768, len(ner_labels)])
+    prediction_head = TokenClassificationHead()
 
     model = AdaptiveModel(
         language_model=language_model,

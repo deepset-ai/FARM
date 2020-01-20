@@ -13,7 +13,6 @@ from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer
 from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
 
-
 def ner():
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
@@ -53,8 +52,7 @@ def ner():
     # a) which consists of a pretrained language model as a basis
     language_model = LanguageModel.load(lang_model)
     # b) and a prediction head on top that is suited for our task => NER
-    prediction_head = TokenClassificationHead(task_name="ner",
-                                              layer_dims=[1024, len(processor.tasks["ner"]["label_list"])])
+    prediction_head = TokenClassificationHead()
 
     model = AdaptiveModel(
         language_model=language_model,

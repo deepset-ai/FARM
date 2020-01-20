@@ -40,18 +40,24 @@ class AdaptiveModel(nn.Module):
         """
         super(AdaptiveModel, self).__init__()
         self.language_model = language_model.to(device)
+        self.lm_output_dims = language_model.get_output_dims()
         self.prediction_heads = nn.ModuleList([ph.to(device) for ph in prediction_heads])
+        self.fit_heads_to_lm()
         # set shared weights for LM finetuning
         for head in self.prediction_heads:
             if head.model_type == "language_modelling":
                 head.set_shared_weights(language_model.model.embeddings.word_embeddings.weight)
-        self.num_labels = [head.num_labels for head in prediction_heads]
         self.dropout = nn.Dropout(embeds_dropout_prob)
         self.lm_output_types = (
             [lm_output_types] if isinstance(lm_output_types, str) else lm_output_types
         )
-
         self.log_params()
+
+    def fit_heads_to_lm(self):
+        """This iterates over each prediction head and ensures that its input dimensionality matches the output
+        dimensionality of the language model. If it doesn't, it is resized so it does fit"""
+        for ph in self.prediction_heads:
+            ph.resize_input(self.lm_output_dims)
 
     def save(self, save_dir):
         """
@@ -256,7 +262,15 @@ class AdaptiveModel(nn.Module):
             label_list = tasks[head.task_name]["label_list"]
             if not label_list and require_labels:
                 raise Exception(f"The task \'{head.task_name}\' is missing a valid set of labels")
-            head.label_list = tasks[head.task_name]["label_list"]
+            label_list = tasks[head.task_name]["label_list"]
+            head.label_list = label_list
+            if "RegressionHead" in str(type(head)):
+                # This needs to be explicitly set because the regression label_list is being hijacked to store
+                # the scaling factor and the mean
+                num_labels = 1
+            else:
+                num_labels = len(label_list)
+            head.resize_output(num_labels)
             head.metric = tasks[head.task_name]["metric"]
 
     @classmethod

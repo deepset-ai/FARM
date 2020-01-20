@@ -37,6 +37,9 @@ from transformers.modeling_xlm_roberta import XLMRobertaModel, XLMRobertaConfig
 from transformers.modeling_distilbert import DistilBertModel, DistilBertConfig
 from transformers.modeling_utils import SequenceSummary
 
+# These are the names of the attributes in various model configs which refer to the number of dimensions
+# in the output vectors
+OUTPUT_DIM_NAMES = ["dim", "hidden_size", "d_model"]
 
 class LanguageModel(nn.Module):
     """
@@ -136,6 +139,14 @@ class LanguageModel(nn.Module):
             assert vocab_size == model_emb_size
 
         return language_model
+
+    def get_output_dims(self):
+        config = self.model.config
+        for odn in OUTPUT_DIM_NAMES:
+            if odn in dir(config):
+                return getattr(config, odn)
+        else:
+            raise Exception("Could not infer the output dimensions of the language model")
 
     def freeze(self, layers):
         """ To be implemented"""

@@ -41,7 +41,7 @@ def test_qa(caplog):
 
     data_silo = DataSilo(processor=processor, batch_size=batch_size)
     language_model = LanguageModel.load(base_LM_model)
-    prediction_head = QuestionAnsweringHead(layer_dims=[768, len(label_list)])
+    prediction_head = QuestionAnsweringHead()
     model = AdaptiveModel(
         language_model=language_model,
         prediction_heads=[prediction_head],
