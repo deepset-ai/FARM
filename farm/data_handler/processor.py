@@ -173,7 +173,7 @@ class Processor(ABC):
         :return: An instance of a Processor Subclass (e.g. GNADProcessor)
         """
         # read config
-        processor_config_file = load_dir / "processor_config.json"
+        processor_config_file = Path(load_dir) / "processor_config.json"
         config = json.load(open(processor_config_file))
         # init tokenizer
         if "lower_case" in config.keys():
