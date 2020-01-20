@@ -1,4 +1,6 @@
 import logging
+from pathlib import Path
+
 import numpy as np
 
 from farm.data_handler.data_silo import DataSilo
@@ -27,7 +29,7 @@ def test_doc_classification():
 
     processor = TextClassificationProcessor(tokenizer=tokenizer,
                                             max_seq_len=8,
-                                            data_dir="samples/doc_class",
+                                            data_dir=Path("samples/doc_class"),
                                             train_filename="train-sample.tsv",
                                             label_list=["OTHER", "OFFENSE"],
                                             metric="f1_macro",
@@ -41,7 +43,7 @@ def test_doc_classification():
         batch_size=batch_size)
 
     language_model = Roberta.load(lang_model)
-    prediction_head = TextClassificationHead(layer_dims=[768, len(processor.tasks["text_classification"]["label_list"])])
+    prediction_head = TextClassificationHead()
     model = AdaptiveModel(
         language_model=language_model,
         prediction_heads=[prediction_head],
@@ -69,7 +71,7 @@ def test_doc_classification():
 
     model = trainer.train(model)
 
-    save_dir = "testsave/doc_class_roberta"
+    save_dir = Path("testsave/doc_class_roberta")
     model.save(save_dir)
     processor.save(save_dir)
 

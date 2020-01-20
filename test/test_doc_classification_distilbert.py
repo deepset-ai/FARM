@@ -1,3 +1,4 @@
+from pathlib import Path
 import logging
 import numpy as np
 
@@ -30,8 +31,8 @@ def test_doc_classification(caplog=None):
 
     processor = TextClassificationProcessor(tokenizer=tokenizer,
                                             max_seq_len=8,
-                                            data_dir="samples/doc_class",
-                                            train_filename="train-sample.tsv",
+                                            data_dir=Path("samples/doc_class"),
+                                            train_filename=Path("train-sample.tsv"),
                                             label_list=["OTHER", "OFFENSE"],
                                             metric="f1_macro",
                                             dev_filename="test-sample.tsv",
@@ -44,7 +45,7 @@ def test_doc_classification(caplog=None):
         batch_size=batch_size)
 
     language_model = DistilBert.load(lang_model)
-    prediction_head = TextClassificationHead(layer_dims=[768, len(processor.tasks["text_classification"]["label_list"])])
+    prediction_head = TextClassificationHead()
     model = AdaptiveModel(
         language_model=language_model,
         prediction_heads=[prediction_head],
@@ -71,7 +72,7 @@ def test_doc_classification(caplog=None):
 
     model = trainer.train(model)
 
-    save_dir = "testsave/doc_class"
+    save_dir = Path("testsave/doc_class")
     model.save(save_dir)
     processor.save(save_dir)
 

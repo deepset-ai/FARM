@@ -1,4 +1,6 @@
 import logging
+from pathlib import Path
+
 import numpy as np
 
 from farm.data_handler.data_silo import DataSilo
@@ -28,7 +30,7 @@ def test_doc_regression(caplog):
 
     processor = RegressionProcessor(tokenizer=tokenizer,
                             max_seq_len=8,
-                            data_dir="samples/doc_regr",
+                            data_dir=Path("samples/doc_regr"),
                             train_filename="train-sample.tsv",
                             dev_filename="test-sample.tsv",
                             test_filename=None,
@@ -39,7 +41,7 @@ def test_doc_regression(caplog):
         batch_size=batch_size)
 
     language_model = LanguageModel.load(lang_model)
-    prediction_head = RegressionHead(layer_dims=[768, 1])
+    prediction_head = RegressionHead()
     model = AdaptiveModel(
         language_model=language_model,
         prediction_heads=[prediction_head],
@@ -70,7 +72,7 @@ def test_doc_regression(caplog):
 
     model = trainer.train(model)
 
-    save_dir = "testsave/doc_regr"
+    save_dir = Path("testsave/doc_regr")
     model.save(save_dir)
     processor.save(save_dir)
 

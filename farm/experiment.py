@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 from farm.data_handler.data_silo import DataSilo
 from farm.modeling.adaptive_model import AdaptiveModel
@@ -65,7 +66,7 @@ def run_experiment(args):
     processor = Processor.load(
         tokenizer=tokenizer,
         max_seq_len=args.parameter.max_seq_len,
-        data_dir=args.general.data_dir,
+        data_dir=Path(args.general.data_dir),
         **args.task.toDict(),  # args is of type DotMap and needs conversion to std python dicts
     )
 
@@ -125,8 +126,8 @@ def run_experiment(args):
     model_name = (
         f"{model.language_model.name}-{model.language_model.language}-{args.task.name}"
     )
-    processor.save(f"{args.general.output_dir}/{model_name}")
-    model.save(f"{args.general.output_dir}/{model_name}")
+    processor.save(Path(f"{args.general.output_dir}/{model_name}"))
+    model.save(Path(f"{args.general.output_dir}/{model_name}"))
 
     ml_logger.end_run()
 

@@ -89,7 +89,7 @@ class Inferencer:
         self.return_class_probs = return_class_probs
 
         model.connect_heads_with_processor(processor.tasks, require_labels=False)
-        set_all_seeds(42, n_gpu)
+        set_all_seeds(42)
 
     @classmethod
     def load(

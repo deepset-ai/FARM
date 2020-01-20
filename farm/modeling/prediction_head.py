@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from scipy.special import expit, softmax
 import tqdm
-
+from pathlib import Path
 import torch
 from transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN
 from transformers.modeling_auto import AutoModelForQuestionAnswering, AutoModelForTokenClassification, AutoModelForSequenceClassification
@@ -65,9 +65,7 @@ class PredictionHead(nn.Module):
         :param head_num: Which head to save
         :type head_num: int
         """
-        output_config_file = os.path.join(
-            save_dir, f"prediction_head_{head_num}_config.json"
-        )
+        output_config_file = save_dir / f"prediction_head_{head_num}_config.json"
         with open(output_config_file, "w") as file:
             json.dump(self.config, file)
 
@@ -80,7 +78,7 @@ class PredictionHead(nn.Module):
         :param head_num: which head to save
         :type head_num: int
         """
-        output_model_file = os.path.join(save_dir, f"prediction_head_{head_num}.bin")
+        output_model_file = save_dir / f"prediction_head_{head_num}.bin"
         torch.save(self.state_dict(), output_model_file)
         self.save_config(save_dir, head_num)
 
@@ -153,11 +151,44 @@ class PredictionHead(nn.Module):
         # TODO maybe just return **kwargs to not force people to implement this
         raise NotImplementedError()
 
+    def resize_input(self, input_dim):
+        """ This function compares the output dimensionality of the language model against the input dimensionality
+        of the prediction head. If there is a mismatch, the prediction head will be resized to fit."""
+        if "feed_forward" not in dir(self):
+            return
+        else:
+            old_dims = self.feed_forward.layer_dims
+            if input_dim == old_dims[0]:
+                return
+            new_dims = [input_dim] + old_dims[1:]
+            logger.info(f"Resizing input dimensions of {type(self).__name__} ({self.task_name}) "
+                  f"from {old_dims} to {new_dims} to match language model")
+            self.feed_forward = FeedForwardBlock(new_dims)
+            self.layer_dims[0] = input_dim
+            self.feed_forward.layer_dims[0] = input_dim
+
+    def resize_output(self, output_dim):
+        """ This function compares the number of labels against the output dimensionality
+        of the prediction head. If there is a mismatch, the prediction head will be resized to fit."""
+        if "feed_forward" not in dir(self):
+            return
+        else:
+            old_dims = self.feed_forward.layer_dims
+            if output_dim == old_dims[-1]:
+                return
+            new_dims = old_dims[:-1] + [output_dim]
+            logger.info(f"Resizing output dimensions of {type(self).__name__} ({self.task_name}) "
+                  f"from {old_dims} to {new_dims} to match number of labels")
+            self.feed_forward = FeedForwardBlock(new_dims)
+            self.layer_dims[-1] = output_dim
+            self.feed_forward.layer_dims[-1] = output_dim
+            self.num_labels = output_dim
+
     @classmethod
     def _get_model_file(cls, config_file):
-        if "config.json" in config_file and "prediction_head" in config_file:
+        if "config.json" in str(config_file) and "prediction_head" in str(config_file):
             head_num = int("".join([char for char in os.path.basename(config_file) if char.isdigit()]))
-            model_file = os.path.join(os.path.dirname(config_file), f"prediction_head_{head_num}.bin")
+            model_file = Path(os.path.dirname(config_file)) / f"prediction_head_{head_num}.bin"
         else:
             raise ValueError(f"This doesn't seem to be a proper prediction_head config file: '{config_file}'")
         return model_file
@@ -169,7 +200,7 @@ class PredictionHead(nn.Module):
 class RegressionHead(PredictionHead):
     def __init__(
         self,
-        layer_dims,
+        layer_dims=[768,1],
         task_name="regression",
         **kwargs,
     ):
@@ -177,6 +208,7 @@ class RegressionHead(PredictionHead):
         # num_labels could in most cases also be automatically retrieved from the data processor
         self.layer_dims = layer_dims
         self.feed_forward = FeedForwardBlock(self.layer_dims)
+        # num_labels is being set to 2 since it is being hijacked to store the scaling factor and the mean
         self.num_labels = 2
         self.ph_output_type = "per_sequence_continuous"
         self.model_type = "regression"
@@ -225,7 +257,7 @@ class RegressionHead(PredictionHead):
 class TextClassificationHead(PredictionHead):
     def __init__(
         self,
-        layer_dims,
+        layer_dims=[768,1],
         class_weights=None,
         loss_ignore_index=-100,
         loss_reduction="none",
@@ -350,7 +382,7 @@ class TextClassificationHead(PredictionHead):
 class MultiLabelTextClassificationHead(PredictionHead):
     def __init__(
         self,
-        layer_dims,
+        layer_dims=[768,1],
         class_weights=None,
         loss_reduction="none",
         task_name="text_classification",
@@ -438,9 +470,8 @@ class MultiLabelTextClassificationHead(PredictionHead):
 
 
 class TokenClassificationHead(PredictionHead):
-    def __init__(self, layer_dims, task_name="ner", **kwargs):
+    def __init__(self, layer_dims=[768,1], task_name="ner", **kwargs):
         super(TokenClassificationHead, self).__init__()
-
         self.layer_dims = layer_dims
         self.feed_forward = FeedForwardBlock(self.layer_dims)
         self.num_labels = self.layer_dims[-1]
@@ -763,7 +794,7 @@ class FeedForwardBlock(nn.Module):
     def __init__(self, layer_dims, **kwargs):
         # Todo: Consider having just one input argument
         super(FeedForwardBlock, self).__init__()
-
+        self.layer_dims = layer_dims
         # If read from config the input will be string
         n_layers = len(layer_dims) - 1
         layers_all = []
@@ -787,7 +818,7 @@ class QuestionAnsweringHead(PredictionHead):
     A question answering head predicts the start and end of the answer on token level.
     """
 
-    def __init__(self, layer_dims, task_name="question_answering", no_ans_threshold=0.0, context_window_size=100, n_best=5, **kwargs):
+    def __init__(self, layer_dims=[768,1], task_name="question_answering", no_ans_threshold=0.0, context_window_size=100, n_best=5, **kwargs):
         """
         :param layer_dims: dimensions of Feed Forward block, e.g. [768,2], for adjusting to BERT embedding. Output should be always 2
         :type layer_dims: List[Int]
@@ -797,7 +828,7 @@ class QuestionAnsweringHead(PredictionHead):
         :type no_ans_threshold: float
         :param context_window_size: The size, in characters, of the window around the answer span that is used when displaying the context around the answer.
         :type context_window_size: int
-        :param n_best: The number of candidate positive answer spans to consider from each passage
+        :param n_best: The number of candidate positive answer spans to consider from each passage. Same value used as the number of candidates to be considered on document level.
         :type n_best: int
         """
         super(QuestionAnsweringHead, self).__init__()
@@ -1257,11 +1288,13 @@ class QuestionAnsweringHead(PredictionHead):
                             for passage_preds in preds
                             for start, end, score in passage_preds
                             if not (start == -1 and end == -1)]
-        pos_answers_sorted = sorted(pos_answers_flat, key=lambda x: x[2], reverse=True)
+
+        pos_answer_dedup = self.deduplicate(pos_answers_flat)
+        pos_answers_sorted = sorted(pos_answer_dedup, key=lambda x: x[2], reverse=True)
         pos_answers_reduced = pos_answers_sorted[:self.n_best]
         no_answer_pred = [-1, -1, max(no_answer_scores)]
 
-        # TODO this is how big the no_answer threshold needs to be to change a no_answer to a pos answer
+        # This is how big the no_answer threshold needs to be to change a no_answer to a pos answer
         #  (or vice versa). This can in future be used to train the threshold value
         no_ans_gap = max([nas - pbs for nas, pbs in zip(no_answer_scores, passage_best_score)])
 
@@ -1270,6 +1303,21 @@ class QuestionAnsweringHead(PredictionHead):
         else:
             n_preds = pos_answers_reduced
         return n_preds, no_ans_gap
+
+    @staticmethod
+    def deduplicate(flat_pos_answers):
+        # Remove duplicate spans that might be twice predicted in two different passages
+        seen = {}
+        for (start, end, score) in flat_pos_answers:
+            if (start, end) not in seen:
+                seen[(start, end)] = score
+            else:
+                seen_score = seen[(start, end)]
+                if score > seen_score:
+                    seen[(start, end)] = score
+        return [(start, end, score) for (start, end), score in seen.items()]
+
+
 
     ## THIS IS A SIMPLER IMPLEMENTATION OF PICKING BEST ANSWERS FOR A DOCUMENT. MATCHES THE HUGGINGFACE METHOD
     # @staticmethod
