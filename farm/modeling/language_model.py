@@ -304,7 +304,7 @@ class Bert(LanguageModel):
             bert.language = bert.model.config.language
         else:
             # Pytorch-transformer Style
-            bert.model = BertModel.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            bert.model = BertModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
             bert.language = cls._infer_language_from_name(pretrained_model_name_or_path)
         return bert
 
@@ -389,16 +389,16 @@ class Albert(LanguageModel):
         else:
             albert.name = pretrained_model_name_or_path
         # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
-        farm_lm_config = os.path.join(pretrained_model_name_or_path, "language_model_config.json")
+        farm_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(farm_lm_config):
             # FARM style
             config = AlbertConfig.from_pretrained(farm_lm_config)
-            farm_lm_model = os.path.join(pretrained_model_name_or_path, "language_model.bin")
+            farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
             albert.model = AlbertModel.from_pretrained(farm_lm_model, config=config, **kwargs)
             albert.language = albert.model.config.language
         else:
             # Huggingface transformer Style
-            albert.model = AlbertModel.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            albert.model = AlbertModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
             albert.language = cls._infer_language_from_name(pretrained_model_name_or_path)
         return albert
 
@@ -488,12 +488,12 @@ class Roberta(LanguageModel):
         if os.path.exists(farm_lm_config):
             # FARM style
             config = RobertaConfig.from_pretrained(farm_lm_config)
-            farm_lm_model = pretrained_model_name_or_path / "language_model.bin"
+            farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
             roberta.model = RobertaModel.from_pretrained(farm_lm_model, config=config, **kwargs)
             roberta.language = roberta.model.config.language
         else:
             # Huggingface transformer Style
-            roberta.model = RobertaModel.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            roberta.model = RobertaModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
             roberta.language = cls._infer_language_from_name(pretrained_model_name_or_path)
         return roberta
 
@@ -578,16 +578,16 @@ class XLMRoberta(LanguageModel):
         else:
             xlm_roberta.name = pretrained_model_name_or_path
         # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
-        farm_lm_config = os.path.join(pretrained_model_name_or_path, "language_model_config.json")
+        farm_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(farm_lm_config):
             # FARM style
             config = XLMRobertaConfig.from_pretrained(farm_lm_config)
-            farm_lm_model = os.path.join(pretrained_model_name_or_path, "language_model.bin")
+            farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
             xlm_roberta.model = XLMRobertaModel.from_pretrained(farm_lm_model, config=config, **kwargs)
             xlm_roberta.language = xlm_roberta.model.config.language
         else:
             # Huggingface transformer Style
-            xlm_roberta.model = XLMRobertaModel.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            xlm_roberta.model = XLMRobertaModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
             xlm_roberta.language = cls._infer_language_from_name(pretrained_model_name_or_path)
         return xlm_roberta
 
@@ -678,16 +678,16 @@ class DistilBert(LanguageModel):
         else:
             distilbert.name = pretrained_model_name_or_path
         # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
-        farm_lm_config = os.path.join(pretrained_model_name_or_path, "language_model_config.json")
+        farm_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(farm_lm_config):
             # FARM style
-            distilbert_config = DistilBertConfig.from_pretrained(farm_lm_config)
-            farm_lm_model = os.path.join(pretrained_model_name_or_path, "language_model.bin")
-            distilbert.model = DistilBertModel.from_pretrained(farm_lm_model, config=distilbert_config, **kwargs)
+            config = AlbertConfig.from_pretrained(farm_lm_config)
+            farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
+            distilbert.model = DistilBertModel.from_pretrained(farm_lm_model, config=config, **kwargs)
             distilbert.language = distilbert.model.config.language
         else:
             # Pytorch-transformer Style
-            distilbert.model = DistilBertModel.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            distilbert.model = DistilBertModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
             distilbert.language = cls._infer_language_from_name(pretrained_model_name_or_path)
         config = distilbert.model.config
 
@@ -779,16 +779,16 @@ class XLNet(LanguageModel):
         else:
             xlnet.name = pretrained_model_name_or_path
         # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
-        farm_lm_config = pretrained_model_name_or_path / "language_model_config.json"
+        farm_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(farm_lm_config):
             # FARM style
             config = XLNetConfig.from_pretrained(farm_lm_config)
-            farm_lm_model = pretrained_model_name_or_path / "language_model.bin"
+            farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
             xlnet.model = XLNetModel.from_pretrained(farm_lm_model, config=config, **kwargs)
             xlnet.language = xlnet.model.config.language
         else:
             # Pytorch-transformer Style
-            xlnet.model = XLNetModel.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            xlnet.model = XLNetModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
             xlnet.language = cls._infer_language_from_name(pretrained_model_name_or_path)
             config = xlnet.model.config
         # XLNet does not provide a pooled_output by default. Therefore, we need to initialize an extra pooler.

@@ -35,8 +35,7 @@ def question_answering():
     n_epochs = 2
     evaluate_every = 500
     base_LM_model = "bert-base-cased"
-    train_filename="train-v2.0.json"
-    dev_filename="dev-v2.0.json"
+
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
@@ -50,8 +49,6 @@ def question_answering():
         max_seq_len=256,
         label_list=label_list,
         metric=metric,
-        train_filename=train_filename,
-        dev_filename=dev_filename,
         test_filename=None,
         data_dir=Path("../data/squad20"),
     )
