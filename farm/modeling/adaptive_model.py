@@ -39,6 +39,7 @@ class AdaptiveModel(nn.Module):
         :param device: The device on which this model will operate. Either "cpu" or "cuda".
         """
         super(AdaptiveModel, self).__init__()
+        self.device = device
         self.language_model = language_model.to(device)
         self.lm_output_dims = language_model.get_output_dims()
         self.prediction_heads = nn.ModuleList([ph.to(device) for ph in prediction_heads])
@@ -58,6 +59,7 @@ class AdaptiveModel(nn.Module):
         dimensionality of the language model. If it doesn't, it is resized so it does fit"""
         for ph in self.prediction_heads:
             ph.resize_input(self.lm_output_dims)
+            ph.to(self.device)
 
     def save(self, save_dir):
         """
@@ -271,6 +273,7 @@ class AdaptiveModel(nn.Module):
             else:
                 num_labels = len(label_list)
             head.resize_output(num_labels)
+            head.to(self.device)
             head.metric = tasks[head.task_name]["metric"]
 
     @classmethod
