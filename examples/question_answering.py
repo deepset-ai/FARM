@@ -34,9 +34,9 @@ def question_answering():
     batch_size = 24
     n_epochs = 2
     evaluate_every = 500
-    base_LM_model = "bert-base-cased"
-    train_filename="train-v2.0.json"
-    dev_filename="dev-v2.0.json"
+    base_LM_model = "roberta-base"
+    train_filename = "train-v2.0.json"
+    dev_filename = "dev-v2.0.json"
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
@@ -55,7 +55,7 @@ def question_answering():
         test_filename=None,
         data_dir=Path("../data/squad20"),
     )
-
+    
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
     # NOTE: In FARM, the dev set metrics differ from test set metrics in that they are calculated on a token level instead of a word level
     data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=False)
@@ -104,8 +104,8 @@ def question_answering():
     # 9. Load it & harvest your fruits (Inference)
     QA_input = [
             {
-                "questions": ["Who counted the game among the best ever made?"],
-                "text":  "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
+                "qas": ["Who counted the game among the best ever made?"],
+                "context":  "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
             }]
 
     model = Inferencer.load(save_dir, batch_size=40, gpu=True)
@@ -124,8 +124,9 @@ def question_answering():
         out_filename="predictions.json"
     )
 
-    # To get evaluate the model's performance on the SQuAD dev set, run the farm/squad_evaluation.py script in the command line with something like this
-    # python squad_evaluation.py path/to/squad20/dev-v2.0.json path/to/predictions.json
+    # To get evaluate the model's performance on the SQuAD dev set, run the farm/squad_evaluation.py
+    # script in the command line with something like this:
+    #       python squad_evaluation.py path/to/squad20/dev-v2.0.json path/to/predictions.json
 
 
 if __name__ == "__main__":

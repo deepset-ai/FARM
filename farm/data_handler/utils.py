@@ -109,8 +109,7 @@ def read_squad_file(filename, proxies=None):
 def write_squad_predictions(predictions, out_filename, predictions_filename=None):
     predictions_json = {}
     for p in predictions:
-        for x in p["predictions"]:
-            predictions_json[x["question_id"]] = x["answers"][0]["answer"]
+        predictions_json[p["id"]] = p["preds"][0][0]
 
     if predictions_filename:
         dev_labels = {}
@@ -129,7 +128,7 @@ def write_squad_predictions(predictions, out_filename, predictions_filename=None
             predictions_json[x] = ""
 
     os.makedirs("model_output", exist_ok=True)
-    filepath = "model_output" /out_filename
+    filepath = Path("model_output") / out_filename
     json.dump(predictions_json, open(filepath, "w"))
     logger.info(f"Written Squad predictions to: {filepath}")
 
