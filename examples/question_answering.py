@@ -124,10 +124,13 @@ def question_answering():
         out_filename="predictions.json"
     )
 
-    # To get evaluate the model's performance on the SQuAD dev set, run the farm/squad_evaluation.py
-    # script in the command line with something like this:
+    # 11. Get final evaluation metric using the official SQuAD evaluation script
+    # To get evaluate the model's performance on the SQuAD dev set, run the official squad eval script
+    # (farm/squad_evaluation.py) in the command line with something like the command below.
+    # This is necessary since the FARM evaluation during training is done on the token level.
+    # This script performs word level evaluation and will generate metrics that are comparable
+    # to the SQuAD leaderboard and most other frameworks:
     #       python squad_evaluation.py path/to/squad20/dev-v2.0.json path/to/predictions.json
-
 
 if __name__ == "__main__":
     question_answering()
