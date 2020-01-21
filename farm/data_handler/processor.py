@@ -372,6 +372,7 @@ class TextClassificationProcessor(Processor):
         multilabel=False,
         header=0,
         proxies=None,
+        max_samples=None,
         **kwargs
     ):
         """
@@ -420,6 +421,7 @@ class TextClassificationProcessor(Processor):
         self.quote_char = quote_char
         self.skiprows = skiprows
         self.header = header
+        self.max_samples = max_samples
 
         super(TextClassificationProcessor, self).__init__(
             tokenizer=tokenizer,
@@ -456,7 +458,8 @@ class TextClassificationProcessor(Processor):
             quotechar=self.quote_char,
             rename_columns=column_mapping,
             header=self.header,
-            proxies=self.proxies
+            proxies=self.proxies,
+            max_samples=self.max_samples
             )
 
         return dicts

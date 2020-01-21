@@ -26,7 +26,6 @@ def doc_classifcation():
     ########## Settings
     ##########################
     set_all_seeds(seed=42)
-    device, n_gpu = initialize_device_settings(use_cuda=True)
     n_epochs = 1
     batch_size = 32
     evaluate_every = 100

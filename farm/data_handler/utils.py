@@ -31,7 +31,7 @@ DOWNSTREAM_TASK_MAP = {
     'cola': "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/cola.tar.gz",
 }
 
-def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=None, header=0, proxies=None):
+def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=None, header=0, proxies=None, max_samples=None):
     """Reads a tab separated value file. Tries to download the data if filename is not found"""
 
     # get remote dataset if needed
@@ -49,6 +49,8 @@ def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=N
         skiprows=skiprows,
         header=header
     )
+    if max_samples:
+        df = df.sample(max_samples)
 
     # let's rename our target columns to the default names FARM expects:
     # "text": contains the text
