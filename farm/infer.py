@@ -141,7 +141,7 @@ class Inferencer:
             if not task_type:
                 raise ValueError("Please specify the 'task_type' of the model you want to load from transformers. "
                                  "Valid options for arg `task_type`:"
-                                 "'question_answering', 'embeddings'")
+                                 "'question_answering', 'embeddings', 'text_classification'")
 
             model = AdaptiveModel.convert_from_transformers(model_name_or_path, device, task_type)
             config = AutoConfig.from_pretrained(model_name_or_path)
@@ -194,7 +194,7 @@ class Inferencer:
             #     )
             else:
                 raise ValueError(f"`task_type` {task_type} is not supported yet. "
-                                 f"Valid options for arg `task_type`: 'question_answering', 'embeddings'")
+                                 f"Valid options for arg `task_type`: 'question_answering', 'embeddings', 'text_classification'")
 
         return cls(
             model,
@@ -365,7 +365,7 @@ class FasttextInferencer:
         self.prediction_type = "embedder"
 
     @classmethod
-    def load(cls, load_dir, batch_size=4, gpu=False, embedder_only=True):
+    def load(cls, load_dir, batch_size=4, gpu=False):
         import fasttext
 
         if os.path.isfile(load_dir):
