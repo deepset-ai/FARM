@@ -95,7 +95,8 @@ class Processor(ABC):
         self.dev_filename = dev_filename
         self.test_filename = test_filename
         self.dev_split = dev_split
-        self.data_dir = data_dir
+        if data_dir:
+            self.data_dir = Path(data_dir)
 
         self.baskets = []
 
@@ -173,7 +174,7 @@ class Processor(ABC):
         :return: An instance of a Processor Subclass (e.g. GNADProcessor)
         """
         # read config
-        processor_config_file = load_dir / "processor_config.json"
+        processor_config_file = Path(load_dir) / "processor_config.json"
         config = json.load(open(processor_config_file))
         # init tokenizer
         if "lower_case" in config.keys():
@@ -211,7 +212,7 @@ class Processor(ABC):
         self.tokenizer.save_pretrained(save_dir)
         # save processor
         config["processor"] = self.__class__.__name__
-        output_config_file = save_dir / "processor_config.json"
+        output_config_file = Path(save_dir) / "processor_config.json"
         with open(output_config_file, "w") as file:
             json.dump(config, file)
 
@@ -522,7 +523,7 @@ class InferenceProcessor(Processor):
         :return: An instance of an InferenceProcessor
         """
         # read config
-        processor_config_file = load_dir / "processor_config.json"
+        processor_config_file = Path(load_dir) / "processor_config.json"
         config = json.load(open(processor_config_file))
         # init tokenizer
         tokenizer = Tokenizer.load(load_dir, tokenizer_class=config["tokenizer"])
@@ -813,8 +814,8 @@ class SquadProcessor(Processor):
         data_dir,
         label_list=None,
         metric="squad",
-        train_filename="train-v2.0.json",
-        dev_filename="dev-v2.0.json",
+        train_filename=Path("train-v2.0.json"),
+        dev_filename=Path("dev-v2.0.json"),
         test_filename=None,
         dev_split=0,
         doc_stride=128,

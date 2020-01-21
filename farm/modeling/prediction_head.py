@@ -8,7 +8,9 @@ from scipy.special import expit, softmax
 import tqdm
 from pathlib import Path
 import torch
-from transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN, BertForQuestionAnswering
+from transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN
+from transformers.modeling_auto import AutoModelForQuestionAnswering, AutoModelForTokenClassification, AutoModelForSequenceClassification
+from transformers.configuration_auto import AutoConfig
 
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
@@ -59,11 +61,11 @@ class PredictionHead(nn.Module):
         Saves the config as a json file.
 
         :param save_dir: Path to save config to
-        :type save_dir: str
+        :type save_dir: str or Path
         :param head_num: Which head to save
         :type head_num: int
         """
-        output_config_file = save_dir / f"prediction_head_{head_num}_config.json"
+        output_config_file = Path(save_dir) / f"prediction_head_{head_num}_config.json"
         with open(output_config_file, "w") as file:
             json.dump(self.config, file)
 
@@ -72,11 +74,11 @@ class PredictionHead(nn.Module):
         Saves the prediction head state dict.
 
         :param save_dir: path to save prediction head to
-        :type save_dir: str
+        :type save_dir: str or Path
         :param head_num: which head to save
         :type head_num: int
         """
-        output_model_file = save_dir / f"prediction_head_{head_num}.bin"
+        output_model_file = Path(save_dir) / f"prediction_head_{head_num}.bin"
         torch.save(self.state_dict(), output_model_file)
         self.save_config(save_dir, head_num)
 
@@ -286,6 +288,37 @@ class TextClassificationHead(PredictionHead):
 
         self.generate_config()
 
+    @classmethod
+    def load(cls, pretrained_model_name_or_path):
+        """
+        Load a prediction head from a saved FARM or transformers model. If `pretrained_model_name_or_path`
+        is not a local path, we will try to resolve it with a public model hub (https://huggingface.co/models)
+
+        :param pretrained_model_name_or_path: local path of a saved model or name of a publicly available model.
+                                              Exemplary names:
+                                              - distilbert-base-uncased-distilled-squad
+                                              - bert-large-uncased-whole-word-masking-finetuned-squad
+
+                                              See https://huggingface.co/models for full list
+
+        """
+
+        if os.path.exists(pretrained_model_name_or_path) \
+                and "config.json" in pretrained_model_name_or_path \
+                and "prediction_head" in pretrained_model_name_or_path:
+            # a) FARM style
+            super(TextClassificationHead, cls).load(pretrained_model_name_or_path)
+        else:
+            # b) transformers style
+            # load all weights from model
+            full_model = AutoModelForSequenceClassification.from_pretrained(pretrained_model_name_or_path)
+            # init empty head
+            head = cls(layer_dims=[full_model.config.hidden_size, len(full_model.config.id2label)])
+            # transfer weights for head from full model
+            head.feed_forward.feed_forward[0].load_state_dict(full_model.classifier.state_dict())
+            del full_model
+
+        return head
     def forward(self, X):
         logits = self.feed_forward(X)
         return logits
@@ -447,6 +480,36 @@ class TokenClassificationHead(PredictionHead):
         self.model_type = "token_classification"
         self.task_name = task_name
         self.generate_config()
+
+    @classmethod
+    def load(cls, pretrained_model_name_or_path):
+        """
+        Load a prediction head from a saved FARM or transformers model. If `pretrained_model_name_or_path`
+        is not a local path, we will try to resolve it with a public model hub (https://huggingface.co/models)
+
+        :param pretrained_model_name_or_path: local path of a saved model or name of a publicly available model.
+                                              Examplary names:
+                                              - asdas
+                                              See https://huggingface.co/models for full list
+
+        """
+
+        if os.path.exists(pretrained_model_name_or_path) \
+                and "config.json" in pretrained_model_name_or_path \
+                and "prediction_head" in pretrained_model_name_or_path:
+            # a) FARM style
+            return super(TokenClassificationHead, cls).load(pretrained_model_name_or_path)
+        else:
+            raise NotImplementedError("Loading prediction head from transformers format is not supported yet.")
+            # # b) transformers style
+            # # load all weights from model
+            # full_model = AutoModelForTokenClassification.from_pretrained(pretrained_model_name_or_path)
+            # # init empty head
+            # head = cls(layer_dims=[full_model.config.hidden_size, len(full_model.config.label2id)])
+            # # transfer weights for head from full model
+            # head.feed_forward.feed_forward[0].load_state_dict(full_model.classifier.state_dict())
+            # del full_model
+
 
     def forward(self, X):
         logits = self.feed_forward(X)
@@ -613,12 +676,7 @@ class BertLMHead(PredictionHead):
                 #TODO resize prediction head decoder for custom vocab
                 raise NotImplementedError("Custom vocab not yet supported for model loading from FARM files")
 
-            config_file = os.path.exists(pretrained_model_name_or_path)
-            model_file = cls._get_model_file(config_file)
-            config = json.load(open(config_file))
-            prediction_head = cls(**config)
-            logger.info("Loading prediction head from {}".format(model_file))
-            prediction_head.load_state_dict(torch.load(model_file, map_location=torch.device("cpu")))
+            super(BertLMHead, cls).load(pretrained_model_name_or_path)
         else:
             # b) pytorch-transformers style
             # load weights from bert model
@@ -791,31 +849,32 @@ class QuestionAnsweringHead(PredictionHead):
     @classmethod
     def load(cls, pretrained_model_name_or_path):
         """
-        Almost identical to a QuestionAnsweringHead. Only difference: we can load the weights from
-         a pretrained language model that was saved in the pytorch-transformers style (all in one model).
+        Load a prediction head from a saved FARM or transformers model. If `pretrained_model_name_or_path`
+        is not a local path, we will try to resolve it with a public model hub (https://huggingface.co/models)
+
+        :param pretrained_model_name_or_path: local path of a saved model or name of a publicly available model.
+                                              Exemplary names:
+                                              - distilbert-base-uncased-distilled-squad
+                                              - bert-large-uncased-whole-word-masking-finetuned-squad
+
+                                              See https://huggingface.co/models for full list
+
         """
 
         if os.path.exists(pretrained_model_name_or_path) \
                 and "config.json" in pretrained_model_name_or_path \
                 and "prediction_head" in pretrained_model_name_or_path:
-            config_file = os.path.exists(pretrained_model_name_or_path)
             # a) FARM style
-            model_file = cls._get_model_file(config_file)
-            config = json.load(open(config_file))
-            prediction_head = cls(**config)
-            logger.info("Loading prediction head from {}".format(model_file))
-            prediction_head.load_state_dict(torch.load(model_file, map_location=torch.device("cpu")))
+            super(QuestionAnsweringHead, cls).load(pretrained_model_name_or_path)
         else:
-            # b) pytorch-transformers style
-            # load weights from bert model
-            # (we might change this later to load directly from a state_dict to generalize for other language models)
-            bert_qa = BertForQuestionAnswering.from_pretrained(pretrained_model_name_or_path)
-
+            # b) transformers style
+            # load all weights from model
+            full_qa_model = AutoModelForQuestionAnswering.from_pretrained(pretrained_model_name_or_path)
             # init empty head
-            head = cls(layer_dims=[bert_qa.config.hidden_size, 2], loss_ignore_index=-1, task_name="question_answering")
-            # load weights
-            head.feed_forward.feed_forward[0].load_state_dict(bert_qa.qa_outputs.state_dict())
-            del bert_qa
+            head = cls(layer_dims=[full_qa_model.config.hidden_size, 2], loss_ignore_index=-1, task_name="question_answering")
+            # transfer weights for head from full model
+            head.feed_forward.feed_forward[0].load_state_dict(full_qa_model.qa_outputs.state_dict())
+            del full_qa_model
 
         return head
 

@@ -30,9 +30,11 @@ def doc_classifcation():
     batch_size = 32
     evaluate_every = 100
     lang_model = "bert-base-german-cased"
+    # or a local path:
+    lang_model = "../saved_models/farm-bert-base-cased-squad2"
     use_amp = None
 
-    device, n_gpu = initialize_device_settings(use_cuda=True, use_amp=use_amp)
+    device, n_gpu = initialize_device_settings(use_cuda=False, use_amp=use_amp)
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(

@@ -52,6 +52,8 @@ class Tokenizer:
         :param kwargs:
         :return: Tokenizer
         """
+
+        pretrained_model_name_or_path = str(pretrained_model_name_or_path)
         # guess tokenizer type from name
         if tokenizer_class is None:
             if "albert" in pretrained_model_name_or_path.lower():
