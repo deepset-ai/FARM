@@ -33,7 +33,7 @@ def question_answering():
     device, n_gpu = initialize_device_settings(use_cuda=True)
     batch_size = 24
     n_epochs = 2
-    evaluate_every = 500
+    evaluate_every = 2000
     base_LM_model = "roberta-base"
     train_filename = "train-v2.0.json"
     dev_filename = "dev-v2.0.json"
@@ -47,7 +47,7 @@ def question_answering():
     metric = "squad"
     processor = SquadProcessor(
         tokenizer=tokenizer,
-        max_seq_len=256,
+        max_seq_len=384,
         label_list=label_list,
         metric=metric,
         train_filename=train_filename,
@@ -55,7 +55,7 @@ def question_answering():
         test_filename=None,
         data_dir=Path("../data/squad20"),
     )
-    
+
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
     # NOTE: In FARM, the dev set metrics differ from test set metrics in that they are calculated on a token level instead of a word level
     data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=False)
@@ -77,7 +77,7 @@ def question_answering():
     # 5. Create an optimizer
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
-        learning_rate=1e-5,
+        learning_rate=3e-5,
         schedule_opts={"name": "LinearWarmup", "warmup_proportion": 0.2},
         n_batches=len(data_silo.loaders["train"]),
         n_epochs=n_epochs,
@@ -111,8 +111,7 @@ def question_answering():
     model = Inferencer.load(save_dir, batch_size=40, gpu=True)
     result = model.inference_from_dicts(dicts=QA_input)
 
-    for x in result:
-        pprint.pprint(x)
+    pprint.pprint(result)
 
     # 10. Do Inference on whole SQuAD Dataset & write the predictions file to disk
     filename = os.path.join(processor.data_dir,processor.dev_filename)
@@ -125,7 +124,7 @@ def question_answering():
     )
 
     # 11. Get final evaluation metric using the official SQuAD evaluation script
-    # To get evaluate the model's performance on the SQuAD dev set, run the official squad eval script
+    # To evaluate the model's performance on the SQuAD dev set, run the official squad eval script
     # (farm/squad_evaluation.py) in the command line with something like the command below.
     # This is necessary since the FARM evaluation during training is done on the token level.
     # This script performs word level evaluation and will generate metrics that are comparable

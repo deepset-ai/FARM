@@ -28,7 +28,7 @@ def lm_finetuning():
     ##########################
     ########## Settings
     ##########################
-    device, n_gpu = initialize_device_settings(use_cuda=True)
+    device, n_gpu = initialize_device_settings(use_cuda=False)
     n_epochs = 1
     batch_size = 32
     evaluate_every = 30
@@ -41,7 +41,7 @@ def lm_finetuning():
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
     processor = BertStyleLMProcessor(
-        data_dir="../data/lm_finetune_nips", tokenizer=tokenizer, max_seq_len=128, max_docs=30
+        data_dir=Path("../data/lm_finetune_nips"), tokenizer=tokenizer, max_seq_len=128, max_docs=20
     )
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
     data_silo = DataSilo(processor=processor, batch_size=batch_size, max_multiprocessing_chunksize=20)

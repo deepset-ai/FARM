@@ -89,7 +89,7 @@ class LanguageModel(nn.Module):
         * distilbert-base-german-cased
         * distilbert-base-multilingual-cased
 
-        See all supported model variations here: https://huggingface.co/transformers/pretrained_models.html
+        See all supported model variations here: https://huggingface.co/models
 
         :param pretrained_model_name_or_path: The path of the saved pretrained model or its name.
         :type pretrained_model_name_or_path: str
@@ -97,11 +97,12 @@ class LanguageModel(nn.Module):
         """
         config_file = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(config_file):
-            # it's a local directory
+            # it's a local directory in FARM format
             config = json.load(open(config_file))
             language_model = cls.subclasses[config["name"]].load(pretrained_model_name_or_path)
         else:
-            # it's a model name which we try to resolve from s3. for now only works for bert models
+            # it's transformers format (either from model hub or local)
+            pretrained_model_name_or_path = str(pretrained_model_name_or_path)
             if "xlm" in pretrained_model_name_or_path and "roberta" in pretrained_model_name_or_path:
                 # TODO: for some reason, the pretrained XLMRoberta has different vocab size in the tokenizer compared to the model this is a hack to resolve that
                 n_added_tokens = 3
@@ -157,8 +158,12 @@ class LanguageModel(nn.Module):
         raise NotImplementedError()
 
     def save_config(self, save_dir):
-        """ To be implemented"""
-        raise NotImplementedError()
+        save_filename = Path(save_dir) / "language_model_config.json"
+        with open(save_filename, "w") as file:
+            setattr(self.model.config, "name", self.__class__.__name__)
+            setattr(self.model.config, "language", self.language)
+            string = self.model.config.to_json_string()
+            file.write(string)
 
     def save(self, save_dir):
         """
@@ -168,7 +173,7 @@ class LanguageModel(nn.Module):
         :type save_dir: str
         """
         # Save Weights
-        save_name = save_dir / "language_model.bin"
+        save_name = Path(save_dir) / "language_model.bin"
         model_to_save = (
             self.model.module if hasattr(self.model, "module") else self.model
         )  # Only save the model it-self
@@ -304,7 +309,7 @@ class Bert(LanguageModel):
             bert.language = bert.model.config.language
         else:
             # Pytorch-transformer Style
-            bert.model = BertModel.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            bert.model = BertModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
             bert.language = cls._infer_language_from_name(pretrained_model_name_or_path)
         return bert
 
@@ -347,14 +352,6 @@ class Bert(LanguageModel):
     def disable_hidden_states_output(self):
         self.model.encoder.output_hidden_states = False
 
-    def save_config(self, save_dir):
-        save_filename = save_dir / "language_model_config.json"
-        with open(save_filename, "w") as file:
-            setattr(self.model.config, "name", self.__class__.__name__)
-            setattr(self.model.config, "language", self.language)
-            string = self.model.config.to_json_string()
-            file.write(string)
-
 
 class Albert(LanguageModel):
     """
@@ -389,16 +386,16 @@ class Albert(LanguageModel):
         else:
             albert.name = pretrained_model_name_or_path
         # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
-        farm_lm_config = os.path.join(pretrained_model_name_or_path, "language_model_config.json")
+        farm_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(farm_lm_config):
             # FARM style
             config = AlbertConfig.from_pretrained(farm_lm_config)
-            farm_lm_model = os.path.join(pretrained_model_name_or_path, "language_model.bin")
+            farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
             albert.model = AlbertModel.from_pretrained(farm_lm_model, config=config, **kwargs)
             albert.language = albert.model.config.language
         else:
             # Huggingface transformer Style
-            albert.model = AlbertModel.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            albert.model = AlbertModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
             albert.language = cls._infer_language_from_name(pretrained_model_name_or_path)
         return albert
 
@@ -441,14 +438,6 @@ class Albert(LanguageModel):
     def disable_hidden_states_output(self):
         self.model.encoder.output_hidden_states = False
 
-    def save_config(self, save_dir):
-        save_filename = os.path.join(save_dir, "language_model_config.json")
-        with open(save_filename, "w") as file:
-            setattr(self.model.config, "name", self.__class__.__name__)
-            setattr(self.model.config, "language", self.language)
-            string = self.model.config.to_json_string()
-            file.write(string)
-
 
 class Roberta(LanguageModel):
     """
@@ -488,12 +477,12 @@ class Roberta(LanguageModel):
         if os.path.exists(farm_lm_config):
             # FARM style
             config = RobertaConfig.from_pretrained(farm_lm_config)
-            farm_lm_model = pretrained_model_name_or_path / "language_model.bin"
+            farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
             roberta.model = RobertaModel.from_pretrained(farm_lm_model, config=config, **kwargs)
             roberta.language = roberta.model.config.language
         else:
             # Huggingface transformer Style
-            roberta.model = RobertaModel.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            roberta.model = RobertaModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
             roberta.language = cls._infer_language_from_name(pretrained_model_name_or_path)
         return roberta
 
@@ -536,13 +525,6 @@ class Roberta(LanguageModel):
     def disable_hidden_states_output(self):
         self.model.encoder.output_hidden_states = False
 
-    def save_config(self, save_dir):
-        save_filename = save_dir / "language_model_config.json"
-        with open(save_filename, "w") as file:
-            setattr(self.model.config, "name", self.__class__.__name__)
-            setattr(self.model.config, "language", self.language)
-            string = self.model.config.to_json_string()
-            file.write(string)
 
 class XLMRoberta(LanguageModel):
     """
@@ -578,16 +560,16 @@ class XLMRoberta(LanguageModel):
         else:
             xlm_roberta.name = pretrained_model_name_or_path
         # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
-        farm_lm_config = os.path.join(pretrained_model_name_or_path, "language_model_config.json")
+        farm_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(farm_lm_config):
             # FARM style
             config = XLMRobertaConfig.from_pretrained(farm_lm_config)
-            farm_lm_model = os.path.join(pretrained_model_name_or_path, "language_model.bin")
+            farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
             xlm_roberta.model = XLMRobertaModel.from_pretrained(farm_lm_model, config=config, **kwargs)
             xlm_roberta.language = xlm_roberta.model.config.language
         else:
             # Huggingface transformer Style
-            xlm_roberta.model = XLMRobertaModel.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            xlm_roberta.model = XLMRobertaModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
             xlm_roberta.language = cls._infer_language_from_name(pretrained_model_name_or_path)
         return xlm_roberta
 
@@ -630,13 +612,6 @@ class XLMRoberta(LanguageModel):
     def disable_hidden_states_output(self):
         self.model.encoder.output_hidden_states = False
 
-    def save_config(self, save_dir):
-        save_filename = os.path.join(save_dir, "language_model_config.json")
-        with open(save_filename, "w") as file:
-            setattr(self.model.config, "name", self.__class__.__name__)
-            setattr(self.model.config, "language", self.language)
-            string = self.model.config.to_json_string()
-            file.write(string)
 
 class DistilBert(LanguageModel):
     """
@@ -678,16 +653,16 @@ class DistilBert(LanguageModel):
         else:
             distilbert.name = pretrained_model_name_or_path
         # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
-        farm_lm_config = os.path.join(pretrained_model_name_or_path, "language_model_config.json")
+        farm_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(farm_lm_config):
             # FARM style
-            distilbert_config = DistilBertConfig.from_pretrained(farm_lm_config)
-            farm_lm_model = os.path.join(pretrained_model_name_or_path, "language_model.bin")
-            distilbert.model = DistilBertModel.from_pretrained(farm_lm_model, config=distilbert_config, **kwargs)
+            config = AlbertConfig.from_pretrained(farm_lm_config)
+            farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
+            distilbert.model = DistilBertModel.from_pretrained(farm_lm_model, config=config, **kwargs)
             distilbert.language = distilbert.model.config.language
         else:
             # Pytorch-transformer Style
-            distilbert.model = DistilBertModel.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            distilbert.model = DistilBertModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
             distilbert.language = cls._infer_language_from_name(pretrained_model_name_or_path)
         config = distilbert.model.config
 
@@ -737,13 +712,6 @@ class DistilBert(LanguageModel):
     def disable_hidden_states_output(self):
         self.model.config.output_hidden_states = False
 
-    def save_config(self, save_dir):
-        save_filename = os.path.join(save_dir, "language_model_config.json")
-        with open(save_filename, "w") as file:
-            setattr(self.model.config, "name", self.__class__.__name__)
-            setattr(self.model.config, "language", self.language)
-            string = self.model.config.to_json_string()
-            file.write(string)
 
 class XLNet(LanguageModel):
     """
@@ -779,16 +747,16 @@ class XLNet(LanguageModel):
         else:
             xlnet.name = pretrained_model_name_or_path
         # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
-        farm_lm_config = pretrained_model_name_or_path / "language_model_config.json"
+        farm_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(farm_lm_config):
             # FARM style
             config = XLNetConfig.from_pretrained(farm_lm_config)
-            farm_lm_model = pretrained_model_name_or_path / "language_model.bin"
+            farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
             xlnet.model = XLNetModel.from_pretrained(farm_lm_model, config=config, **kwargs)
             xlnet.language = xlnet.model.config.language
         else:
             # Pytorch-transformer Style
-            xlnet.model = XLNetModel.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            xlnet.model = XLNetModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
             xlnet.language = cls._infer_language_from_name(pretrained_model_name_or_path)
             config = xlnet.model.config
         # XLNet does not provide a pooled_output by default. Therefore, we need to initialize an extra pooler.
@@ -846,11 +814,3 @@ class XLNet(LanguageModel):
 
     def disable_hidden_states_output(self):
         self.model.output_hidden_states = False
-
-    def save_config(self, save_dir):
-        save_filename = save_dir / "language_model_config.json"
-        with open(save_filename, "w") as file:
-            setattr(self.model.config, "name", self.__class__.__name__)
-            setattr(self.model.config, "language", self.language)
-            string = self.model.config.to_json_string()
-            file.write(string)
