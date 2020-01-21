@@ -39,7 +39,7 @@ def test_qa(caplog):
         metric="squad"
     )
 
-    data_silo = DataSilo(processor=processor, batch_size=batch_size)
+    data_silo = DataSilo(processor=processor, batch_size=batch_size, max_processes=1)
     language_model = LanguageModel.load(base_LM_model)
     prediction_head = QuestionAnsweringHead()
     model = AdaptiveModel(
