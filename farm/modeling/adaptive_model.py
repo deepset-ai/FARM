@@ -255,8 +255,9 @@ class AdaptiveModel(nn.Module):
             for i, ph in enumerate(self.prediction_heads):
                 if ph.task_name == "nextsentence":
                     idx = i
-            logger.info("Removing the NextSentenceHead since next_sent_pred is set to False in the BertStyleLMProcessor")
             if idx is not None:
+                logger.info(
+                "Removing the NextSentenceHead since next_sent_pred is set to False in the BertStyleLMProcessor")
                 del self.prediction_heads[i]
 
         for head in self.prediction_heads:
