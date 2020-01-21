@@ -69,7 +69,7 @@ class AdaptiveModel(nn.Module):
         and model weights for each.
 
         :param save_dir: path to save to
-        :type save_dir: str
+        :type save_dir: Path
         """
         os.makedirs(save_dir, exist_ok=True)
         self.language_model.save(save_dir)
@@ -90,7 +90,7 @@ class AdaptiveModel(nn.Module):
         * vocab.txt vocab file for language model, turning text to Wordpiece Tokens
 
         :param load_dir: location where adaptive model is stored
-        :type load_dir: str
+        :type load_dir: Path
         :param device: to which device we want to sent the model, either cpu or cuda
         :type device: torch.device
         :param lm_name: the name to assign to the loaded language model

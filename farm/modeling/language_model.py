@@ -97,11 +97,12 @@ class LanguageModel(nn.Module):
         """
         config_file = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(config_file):
-            # it's a local directory
+            # it's a local directory in FARM format
             config = json.load(open(config_file))
             language_model = cls.subclasses[config["name"]].load(pretrained_model_name_or_path)
         else:
-            # it's a model name which we try to resolve from s3. for now only works for bert models
+            # it's transformers format (either from model hub or local)
+            pretrained_model_name_or_path = str(pretrained_model_name_or_path)
             if "xlm" in pretrained_model_name_or_path and "roberta" in pretrained_model_name_or_path:
                 # TODO: for some reason, the pretrained XLMRoberta has different vocab size in the tokenizer compared to the model this is a hack to resolve that
                 n_added_tokens = 3

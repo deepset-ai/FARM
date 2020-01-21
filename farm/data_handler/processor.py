@@ -95,7 +95,8 @@ class Processor(ABC):
         self.dev_filename = dev_filename
         self.test_filename = test_filename
         self.dev_split = dev_split
-        self.data_dir = data_dir
+        if data_dir:
+            self.data_dir = Path(data_dir)
 
         self.baskets = []
 

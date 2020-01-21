@@ -4,6 +4,7 @@ from farm.infer import Inferencer
 import pprint
 from transformers.pipelines import pipeline
 import os
+from pathlib import Path
 
 ##############################################
 ###  From Transformers -> FARM
@@ -25,7 +26,7 @@ result = nlp.inference_from_dicts(dicts=QA_input, rest_api_schema=True)
 pprint.pprint(result)
 
 # save it
-farm_model_dir = "../saved_models/bert-english-qa-large"
+farm_model_dir = Path("../saved_models/bert-english-qa-large")
 nlp.save(farm_model_dir)
 
 ##############################################
@@ -39,9 +40,9 @@ tokenizer = Tokenizer.load(farm_model_dir)
 # convert to transformers
 transformer_model = model.convert_to_transformers()
 
-# save it
+# save it (Note: transformers uses strings rather than Path objects)
 model_dir = "../saved_models/bert-large-uncased-whole-word-masking-squad2"
-os.mkdir(model_dir)
+os.makedirs(model_dir, exist_ok=True)
 transformer_model.save_pretrained(model_dir)
 tokenizer.save_pretrained(model_dir)
 

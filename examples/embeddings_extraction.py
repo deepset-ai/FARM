@@ -1,5 +1,6 @@
 from farm.infer import Inferencer
 from farm.utils import set_all_seeds
+from pathlib import Path
 
 def embeddings_extraction():
     set_all_seeds(seed=42)
@@ -7,7 +8,7 @@ def embeddings_extraction():
     use_gpu = False
     lang_model = "bert-base-german-cased"
     # or local path:
-    #lang_model = "../saved_models/farm-bert-base-cased-squad2"
+    # lang_model = Path("../saved_models/farm-bert-base-cased-squad2")
 
     # Input
     basic_texts = [
