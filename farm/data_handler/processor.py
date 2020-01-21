@@ -519,7 +519,7 @@ class InferenceProcessor(Processor):
         :return: An instance of an InferenceProcessor
         """
         # read config
-        processor_config_file = load_dir / "processor_config.json"
+        processor_config_file = Path(load_dir) / "processor_config.json"
         config = json.load(open(processor_config_file))
         # init tokenizer
         tokenizer = Tokenizer.load(load_dir, tokenizer_class=config["tokenizer"])

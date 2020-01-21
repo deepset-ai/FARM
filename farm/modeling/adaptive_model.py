@@ -102,7 +102,10 @@ class AdaptiveModel(nn.Module):
         """
 
         # Language Model
-        language_model = LanguageModel.load(load_dir, farm_lm_name=lm_name)
+        if lm_name:
+            language_model = LanguageModel.load(load_dir, farm_lm_name=lm_name)
+        else:
+            language_model = LanguageModel.load(load_dir)
 
         # Prediction heads
         _, ph_config_files = cls._get_prediction_head_files(load_dir)

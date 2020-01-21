@@ -114,8 +114,9 @@ class Inferencer:
         :type batch_size: int
         :param gpu: If GPU shall be used
         :type gpu: bool
-        :param embedder_only: If true, a faster processor (InferenceProcessor) is loaded. This should only be used for extracting embeddings (no downstream predictions).
-        :type embedder_only: bool
+        :param task_type: Type of task the model should be used for. Currently supporting:
+                          "embeddings", "question_answering", "text_classification". More coming soon...
+        :param task_type: str
         :param strict: whether to strictly enforce that the keys loaded from saved model match the ones in
                        the PredictionHead (see torch.nn.module.load_state_dict()).
                        Set to `False` for backwards compatibility with PHs saved with older version of FARM.
