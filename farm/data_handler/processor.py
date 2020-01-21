@@ -373,6 +373,7 @@ class TextClassificationProcessor(Processor):
         multilabel=False,
         header=0,
         proxies=None,
+        max_samples=None,
         **kwargs
     ):
         """
@@ -421,6 +422,7 @@ class TextClassificationProcessor(Processor):
         self.quote_char = quote_char
         self.skiprows = skiprows
         self.header = header
+        self.max_samples = max_samples
 
         super(TextClassificationProcessor, self).__init__(
             tokenizer=tokenizer,
@@ -457,7 +459,8 @@ class TextClassificationProcessor(Processor):
             quotechar=self.quote_char,
             rename_columns=column_mapping,
             header=self.header,
-            proxies=self.proxies
+            proxies=self.proxies,
+            max_samples=self.max_samples
             )
 
         return dicts
@@ -914,15 +917,22 @@ class SquadProcessor(Processor):
         document_start_of_word = [int(x) for x in document_tokenized["start_of_word"]]
         questions = dictionary["qas"]
         for question in questions:
-            squad_id = question["id"]
-            question_text = question["question"]
+            answers = []
+            # For training and dev where labelled samples are read in from a SQuAD style file
+            try:
+                squad_id = question["id"]
+                question_text = question["question"]
+                for answer in question["answers"]:
+                    a = {"text": answer["text"],
+                         "offset": answer["answer_start"]}
+                    answers.append(a)
+            # For inference where samples are read in as dicts without an id or answers
+            except TypeError:
+                squad_id = None
+                question_text = question
             question_tokenized = tokenize_with_metadata(question_text, self.tokenizer)
             question_start_of_word = [int(x) for x in question_tokenized["start_of_word"]]
-            answers = []
-            for answer in question["answers"]:
-                a = {"text": answer["text"],
-                     "offset": answer["answer_start"]}
-                answers.append(a)
+
             if "is_impossible" not in question:
                 is_impossible = False
             else:

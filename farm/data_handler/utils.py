@@ -31,7 +31,7 @@ DOWNSTREAM_TASK_MAP = {
     'cola': "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/cola.tar.gz",
 }
 
-def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=None, header=0, proxies=None):
+def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=None, header=0, proxies=None, max_samples=None):
     """Reads a tab separated value file. Tries to download the data if filename is not found"""
 
     # get remote dataset if needed
@@ -49,6 +49,8 @@ def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=N
         skiprows=skiprows,
         header=header
     )
+    if max_samples:
+        df = df.sample(max_samples)
 
     # let's rename our target columns to the default names FARM expects:
     # "text": contains the text
@@ -109,8 +111,7 @@ def read_squad_file(filename, proxies=None):
 def write_squad_predictions(predictions, out_filename, predictions_filename=None):
     predictions_json = {}
     for p in predictions:
-        for x in p["predictions"]:
-            predictions_json[x["question_id"]] = x["answers"][0]["answer"]
+        predictions_json[p["id"]] = p["preds"][0][0]
 
     if predictions_filename:
         dev_labels = {}
@@ -129,7 +130,7 @@ def write_squad_predictions(predictions, out_filename, predictions_filename=None
             predictions_json[x] = ""
 
     os.makedirs("model_output", exist_ok=True)
-    filepath = "model_output" /out_filename
+    filepath = Path("model_output") / out_filename
     json.dump(predictions_json, open(filepath, "w"))
     logger.info(f"Written Squad predictions to: {filepath}")
 

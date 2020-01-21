@@ -31,13 +31,12 @@ def question_answering():
     ##########################
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)
-    batch_size = 32
-    n_epochs = 3
+    batch_size = 24
+    n_epochs = 2
     evaluate_every = 2000
-    base_LM_model = "bert-base-cased"
-    max_seq_len = 384
-    learning_rate = 3e-5
-    warmup_proportion = 0.2
+    base_LM_model = "roberta-base"
+    train_filename = "train-v2.0.json"
+    dev_filename = "dev-v2.0.json"
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
@@ -48,15 +47,17 @@ def question_answering():
     metric = "squad"
     processor = SquadProcessor(
         tokenizer=tokenizer,
-        max_seq_len=max_seq_len,
+        max_seq_len=384,
         label_list=label_list,
         metric=metric,
+        train_filename=train_filename,
+        dev_filename=dev_filename,
         test_filename=None,
         data_dir=Path("../data/squad20"),
     )
 
-
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
+    # NOTE: In FARM, the dev set metrics differ from test set metrics in that they are calculated on a token level instead of a word level
     data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=False)
 
     # 4. Create an AdaptiveModel
@@ -76,8 +77,8 @@ def question_answering():
     # 5. Create an optimizer
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
-        learning_rate=learning_rate,
-        schedule_opts={"name": "LinearWarmup", "warmup_proportion": warmup_proportion},
+        learning_rate=3e-5,
+        schedule_opts={"name": "LinearWarmup", "warmup_proportion": 0.2},
         n_batches=len(data_silo.loaders["train"]),
         n_epochs=n_epochs,
         device=device
@@ -101,30 +102,19 @@ def question_answering():
     processor.save(save_dir)
 
     # 9. Load it & harvest your fruits (Inference)
-
-    # choose one of two possible formats
-    QA_input_api_format = [
-        {
-            "questions": ["Who counted the game among the best ever made?"],
-            "text": "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
-        }]
-
-    QA_input_squad = [{"qas":
-                           [{"question": "Who counted the game among the best ever made?",
-                             "id": None,
-                             "answers": [],
-                             "is_impossible": False}],
-                       "context": "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created.",
-                       "document_id": None}]
+    QA_input = [
+            {
+                "qas": ["Who counted the game among the best ever made?"],
+                "context":  "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
+            }]
 
     model = Inferencer.load(save_dir, batch_size=40, gpu=True)
-    result = model.inference_from_dicts(dicts=QA_input_squad)
-    result2 = model.inference_from_dicts(dicts=QA_input_api_format, rest_api_schema=True)
+    result = model.inference_from_dicts(dicts=QA_input)
 
     pprint.pprint(result)
 
     # 10. Do Inference on whole SQuAD Dataset & write the predictions file to disk
-    filename = os.path.join(processor.data_dir, processor.dev_filename)
+    filename = os.path.join(processor.data_dir,processor.dev_filename)
     result = model.inference_from_file(file=filename)
 
     write_squad_predictions(
@@ -133,6 +123,13 @@ def question_answering():
         out_filename="predictions.json"
     )
 
+    # 11. Get final evaluation metric using the official SQuAD evaluation script
+    # To evaluate the model's performance on the SQuAD dev set, run the official squad eval script
+    # (farm/squad_evaluation.py) in the command line with something like the command below.
+    # This is necessary since the FARM evaluation during training is done on the token level.
+    # This script performs word level evaluation and will generate metrics that are comparable
+    # to the SQuAD leaderboard and most other frameworks:
+    #       python squad_evaluation.py path/to/squad20/dev-v2.0.json path/to/predictions.json
 
 if __name__ == "__main__":
     question_answering()
