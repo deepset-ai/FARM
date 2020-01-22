@@ -20,7 +20,7 @@ def test_doc_classification(caplog=None):
         caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
-    device, n_gpu = initialize_device_settings(use_cuda=True)
+    device, n_gpu = initialize_device_settings(use_cuda=False)
     n_epochs = 1
     batch_size = 1
     evaluate_every = 2
@@ -87,7 +87,8 @@ def test_doc_classification(caplog=None):
     inf = Inferencer.load(save_dir, batch_size=2)
     result = inf.inference_from_dicts(dicts=basic_texts)
     assert isinstance(result[0]["predictions"][0]["probability"], np.float32)
-
+    result2 = inf.inference_from_dicts(dicts=basic_texts, rest_api_schema=True)
+    assert result == result2
 
 if __name__ == "__main__":
     test_doc_classification()

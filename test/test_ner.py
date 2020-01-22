@@ -21,7 +21,7 @@ def test_ner(caplog=None):
         caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
-    device, n_gpu = initialize_device_settings(use_cuda=True)
+    device, n_gpu = initialize_device_settings(use_cuda=False)
     n_epochs = 5
     batch_size = 2
     evaluate_every = 1
@@ -90,7 +90,8 @@ def test_ner(caplog=None):
     print(result)
     #assert result[0]["predictions"][0]["context"] == "sagte"
     #assert isinstance(result[0]["predictions"][0]["probability"], np.float32)
-
+    result2 = model.inference_from_dicts(dicts=basic_texts, rest_api_schema=True)
+    assert result == result2
 
 if __name__ == "__main__":
     test_ner()
