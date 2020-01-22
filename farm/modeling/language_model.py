@@ -119,8 +119,6 @@ class LanguageModel(nn.Module):
                 language_model = cls.subclasses["Bert"].load(pretrained_model_name_or_path, **kwargs)
             elif 'xlnet' in pretrained_model_name_or_path:
                 language_model = cls.subclasses["XLNet"].load(pretrained_model_name_or_path, **kwargs)
-            elif "albert" in pretrained_model_name_or_path:
-                language_model = cls.subclasses["Albert"].load(pretrained_model_name_or_path, **kwargs)
             else:
                 language_model = None
 
