@@ -45,7 +45,7 @@ def test_doc_classification(caplog=None):
         batch_size=batch_size)
 
     language_model = DistilBert.load(lang_model)
-    prediction_head = TextClassificationHead()
+    prediction_head = TextClassificationHead(num_labels=2)
     model = AdaptiveModel(
         language_model=language_model,
         prediction_heads=[prediction_head],

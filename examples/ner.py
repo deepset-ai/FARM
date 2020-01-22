@@ -52,7 +52,7 @@ def ner():
     # a) which consists of a pretrained language model as a basis
     language_model = LanguageModel.load(lang_model)
     # b) and a prediction head on top that is suited for our task => NER
-    prediction_head = TokenClassificationHead()
+    prediction_head = TokenClassificationHead(num_labels=len(ner_labels))
 
     model = AdaptiveModel(
         language_model=language_model,
