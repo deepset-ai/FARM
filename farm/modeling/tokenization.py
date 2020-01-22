@@ -19,7 +19,7 @@ import logging
 import re
 import numpy as np
 
-from transformers.tokenization_bert import BertTokenizer
+from transformers.tokenization_bert import BertTokenizer, BertTokenizerFast
 from transformers.tokenization_roberta import RobertaTokenizer
 from transformers.tokenization_xlnet import XLNetTokenizer
 from transformers.tokenization_albert import AlbertTokenizer
@@ -40,7 +40,7 @@ class Tokenizer:
     """
 
     @classmethod
-    def load(cls, pretrained_model_name_or_path, tokenizer_class=None, **kwargs):
+    def load(cls, pretrained_model_name_or_path, tokenizer_class=None, fast=True, **kwargs):
         """
         Enables loading of different Tokenizer classes with a uniform interface. Either infer the class from
         `pretrained_model_name_or_path` or define it manually via `tokenizer_class`.
@@ -81,7 +81,10 @@ class Tokenizer:
         elif tokenizer_class == "DistilBertTokenizer":
             ret = DistilBertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "BertTokenizer":
-            ret = BertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            if fast:
+                ret = BertTokenizerFast.from_pretrained(pretrained_model_name_or_path, add_special_tokens=False, **kwargs)
+            else:
+                ret = BertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "XLNetTokenizer":
             ret = XLNetTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         if ret is None:
