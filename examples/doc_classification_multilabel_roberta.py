@@ -55,7 +55,8 @@ def doc_classification_multilabel_roberta():
                                             train_filename=Path("train.tsv"),
                                             dev_filename=Path("val.tsv"),
                                             test_filename=None,
-                                            dev_split=0
+                                            dev_split=0,
+                                            max_samples=1000
                                             )
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
@@ -67,7 +68,7 @@ def doc_classification_multilabel_roberta():
     # a) which consists of a pretrained language model as a basis
     language_model = Roberta.load(lang_model)
     # b) and a prediction head on top that is suited for our task => Text classification
-    prediction_head = MultiLabelTextClassificationHead(layer_dims=[768, len(processor.tasks["text_classification"]["label_list"])])
+    prediction_head = MultiLabelTextClassificationHead(num_labels=len(label_list))
 
     model = AdaptiveModel(
         language_model=language_model,

@@ -278,8 +278,6 @@ class AdaptiveModel(nn.Module):
                 num_labels = 1
             else:
                 num_labels = len(label_list)
-            head.resize_output(num_labels)
-            head.to(self.device)
             head.metric = tasks[head.task_name]["metric"]
 
     @classmethod
