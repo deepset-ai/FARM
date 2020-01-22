@@ -41,7 +41,7 @@ class DataSilo:
         automatic_loading=True,
         max_multiprocessing_chunksize=2000,
         max_processes=128,
-        checkpointing=False,
+        caching=False,
     ):
         """
         :param processor: A dataset specific Processor object which will turn input (file or dict) into a Pytorch Dataset.
@@ -67,7 +67,7 @@ class DataSilo:
         self.max_multiprocessing_chunksize = max_multiprocessing_chunksize
 
         loaded_from_cache = False
-        if checkpointing:  # Check if DataSets are present in cache
+        if caching:  # Check if DataSets are present in cache
             checksum = self._get_checksum()
             dataset_path = Path(f"cache/data_silo/{checksum}")
 
@@ -211,6 +211,43 @@ class DataSilo:
             self.data["test"] = None
 
         self._save_dataset_to_cache()
+
+        # derive stats and meta data
+        self._calculate_statistics()
+        # self.calculate_class_weights()
+
+        self._initialize_data_loaders()
+
+    def _get_checksum(self):
+        """
+        Get checksum based on a dict to ensure validity of cached DataSilo
+        """
+        # keys in the dict identifies uniqueness for a given DataSilo.
+        payload_dict = {
+            "train_filename": str(Path(self.processor.train_filename).absolute())
+        }
+        checksum = get_dict_checksum(payload_dict)
+        return checksum
+
+    def _load_dataset_from_cache(self, cache_dir):
+        """
+        Load serialized dataset from a cache.
+        """
+        self.data["train"] = torch.load(cache_dir / "train_dataset")
+
+        dev_dataset_path = cache_dir / "dev_dataset"
+        if dev_dataset_path.exists():
+            self.data["dev"] = torch.load(dev_dataset_path)
+        else:
+            self.data["dev"] = None
+
+        test_dataset_path = cache_dir / "test_dataset"
+        if test_dataset_path.exists():
+            self.data["test"] = torch.load(test_dataset_path)
+        else:
+            self.data["test"] = None
+
+        self.tensor_names = torch.load(cache_dir / "tensor_names")
 
         # derive stats and meta data
         self._calculate_statistics()

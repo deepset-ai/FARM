@@ -70,6 +70,7 @@ def test_ner():
         use_amp=use_amp)
 
     trainer = Trainer(
+        model=model,
         optimizer=optimizer,
         data_silo=data_silo,
         epochs=n_epochs,
@@ -80,7 +81,7 @@ def test_ner():
     )
 
     save_dir = Path("testsave/ner")
-    model = trainer.train(model)
+    trainer.train()
     model.save(save_dir)
     processor.save(save_dir)
 

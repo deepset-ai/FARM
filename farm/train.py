@@ -1,15 +1,17 @@
-from __future__ import absolute_import, division, print_function
-
 import logging
+import sys
 import torch
-from torch.nn.parallel import DistributedDataParallel as DDP
+from pathlib import Path
 from tqdm import tqdm
+import numpy
 
 from farm.utils import MLFlowLogger as MlLogger
+from farm.utils import GracefulKiller
 from farm.eval import Evaluator
 from farm.data_handler.data_silo import DataSilo
 from farm.visual.ascii.images import GROWING_TREE
 from farm.modeling.adaptive_model import AdaptiveModel
+from farm.modeling.optimization import get_scheduler
 
 try:
     from apex import amp
@@ -100,6 +102,7 @@ class Trainer:
 
     def __init__(
         self,
+        model,
         optimizer,
         data_silo,
         epochs,
@@ -113,7 +116,12 @@ class Trainer:
         grad_acc_steps=1,
         local_rank=-1,
         early_stopping=None,
-        log_learning_rate=False
+        log_learning_rate=False,
+        checkpoint_on_sigterm=False,
+        checkpoint_every=None,
+        checkpoint_root_dir=None,
+        from_epoch=0,
+        from_step=0,
     ):
         """
         :param optimizer: An optimizer object that determines the learning strategy to be used during training
@@ -148,7 +156,24 @@ class Trainer:
         :type early_stopping: EarlyStopping
         :param log_learning_rate: Whether to log learning rate to Mlflow
         :type log_learning_rate: bool
+        :param checkpoint_on_sigterm: save a checkpoint for the Trainer when a SIGTERM signal is sent. The checkpoint
+               can be used to resume training. It is useful in frameworks like AWS SageMaker with Spot instances where
+               a SIGTERM notifies to save the training state and subsequently the instance is terminated.
+        :type checkpoint_on_sigterm: bool
+        :param checkpoint_every: save a train checkpoint after this many steps of training.
+        :type checkpoint_every: int
+        :param checkpoint_root_dir: the Path of directory where all train checkpoints are saved. For each individual
+               checkpoint, a subdirectory with the name epoch_{epoch_num}_step_{step_num} is created.
+        :type checkpoint_root_dir: Path
+        :param from_epoch: the epoch number to start the training from. In the case when training resumes from a saved
+               checkpoint, it is used to fast-forward training to the last epoch in the checkpoint.
+        :type from_epoch: int
+        :param from_step: the step number to start the training from. In the case when training resumes from a saved
+               checkpoint, it is used to fast-forward training to the last step in the checkpoint.
+        :type from_step: int
         """
+
+        self.model = model
         self.data_silo = data_silo
         self.epochs = int(epochs)
         self.optimizer = optimizer
@@ -157,7 +182,6 @@ class Trainer:
         self.grad_acc_steps = grad_acc_steps
         self.use_amp = use_amp
         self.lr_schedule = lr_schedule
-        self.global_step = 0
         self.data_loader_train = data_silo.get_data_loader("train")
         self.device = device
         self.local_rank = local_rank
@@ -169,6 +193,21 @@ class Trainer:
             raise ImportError(f'Got use_amp = {use_amp}, but cannot find apex. '
                               'Please install Apex if you want to make use of automatic mixed precision. '
                               'https://github.com/NVIDIA/apex')
+        self.checkpoint_on_sigterm = checkpoint_on_sigterm
+        if checkpoint_on_sigterm:
+            self.sigterm_handler = GracefulKiller()
+        else:
+            self.sigterm_handler = None
+        self.checkpoint_root_dir = checkpoint_root_dir
+        self.checkpoint_every = checkpoint_every
+        if self.checkpoint_every and not checkpoint_root_dir:
+            raise Exception("checkpoint_path needs to be supplied when using checkpoint_every.")
+        if checkpoint_on_sigterm and not checkpoint_root_dir:
+            raise Exception("checkpoint_path needs to be supplied when using checkpoint_on_sigterm.")
+
+        self.from_epoch = from_epoch
+        self.from_step = from_step
+        self.global_step = (from_epoch * from_step) - 1
 
         # evaluator on dev set
         if evaluator_dev is None and self.data_silo.get_data_loader("dev"):
@@ -188,32 +227,187 @@ class Trainer:
             )
         self.evaluator_test = evaluator_test
 
-    def train(self, model):
+    @classmethod
+    def create_or_load_checkpoint(cls, data_silo, checkpoint_root_dir, resume_from_checkpoint="latest", **kwargs):
+        """
+        Try loading a saved Trainer checkpoint. If no checkpoint found, it creates a new instance of Trainer.
+
+        :param data_silo: A DataSilo object that will contain the train, dev and test datasets as PyTorch DataLoaders
+        :type data_silo: DataSilo
+        :param checkpoint_root_dir: Path of the directory where all train checkpoints are saved. Each individual
+               checkpoint is stored in a sub-directory under it.
+        :type checkpoint_root_dir: Path
+        :param resume_from_checkpoint: the checkpoint name to start training from, e.g., "epoch_1_step_4532". It
+               defaults to "latest", using the checkpoint with the highest train steps.
+        :type resume_from_checkpoint: str
+        """
+        if checkpoint_root_dir.exists():
+            if resume_from_checkpoint == "latest":
+                dirs = [d for d in checkpoint_root_dir.iterdir() if d.is_dir()]
+                total_steps_at_checkpoints = []
+                for d in dirs:
+                    epoch, step = [int(s) for s in str(d).split("_") if s.isdigit()]
+                    total_steps_at_checkpoints.append((d, (epoch + 1) * (step + 1)))
+                total_steps_at_checkpoints.sort(key=lambda tup: tup[1], reverse=True)
+                checkpoint_to_load = total_steps_at_checkpoints[0][0]
+            else:
+                checkpoint_to_load = checkpoint_root_dir / resume_from_checkpoint
+
+            trainer = cls._load_checkpoint(path=checkpoint_to_load, data_silo=data_silo)
+            logging.info(f"Resuming training from the latest train checkpoint at {checkpoint_to_load} ...")
+        else:
+            logging.info(f"No train checkpoints found. Starting a new training ...")
+            trainer = Trainer(data_silo=data_silo, checkpoint_root_dir=checkpoint_root_dir, **kwargs)
+        return trainer
+
+    @classmethod
+    def _load_checkpoint(cls, path, data_silo):
+        """
+        Load the train checkpoint at given path.
+
+        :param path: The checkpoint path is subdirectory under checkpoint_root_dir. The individual checkpoint dirs have
+               a default naming convention of "epoch_{epoch_num}_step_{step_num}".
+        :type path: Path
+        :param data_silo: A DataSilo object that will contain the train, dev and test datasets as PyTorch DataLoaders
+        :type data_silo: DataSilo
+        """
+        if not path.exists():
+            raise Exception(f"The checkpoint path {path} does not exists.")
+
+        trainer_checkpoint = torch.load(path / "trainer")
+        trainer_state_dict = trainer_checkpoint["trainer_state_dict"]
+
+        # Just setting seeds is not sufficient to have deterministic results when resuming
+        # training from a checkpoint. Additionally, the previous states of Random Number
+        # Generators also need to be restored from the saved checkpoint.
+        numpy_rng_state = trainer_checkpoint["numpy_rng_state"]
+        numpy.random.set_state(numpy_rng_state)
+        rng_state = trainer_checkpoint["rng_state"]
+        cuda_rng_state = trainer_checkpoint["cuda_rng_state"]
+        torch.set_rng_state(rng_state)
+        torch.cuda.set_rng_state(cuda_rng_state)
+
+        model = trainer_checkpoint["model"]
+
+        optimizer = trainer_checkpoint["optimizer"]
+
+        scheduler_state_dict = trainer_checkpoint["scheduler_state"]
+        scheduler_opts = trainer_checkpoint["scheduler_opts"]
+        scheduler_opts["last_epoch"] = scheduler_state_dict["last_epoch"]
+        scheduler = get_scheduler(optimizer, scheduler_opts)
+        scheduler.load_state_dict(scheduler_state_dict)
+
+        trainer = Trainer(
+            data_silo=data_silo,
+            model=model,
+            optimizer=optimizer,
+            lr_schedule=scheduler,
+            **trainer_state_dict
+        )
+
+        logger.info(f"Loaded a train checkpoint from {path}")
+        return trainer
+
+    def _save(self):
+        """
+        Save a train checkpoint at the Trainer's checkpoint_path.
+
+        Some objects(eg, scheduler) in the Trainer are not serializable using the Pickle module. For these objects,
+        the state_dict is stored for the checkpoint, that can be used to reconstruct a similar state upon resuming
+        train from the checkpoint.
+
+        #TODO The model is currently saved as a whole serialized object. The disadvantage of this approach is that it is
+        bound to specifics Python version, FARM version, directory structures etc. A more modular and reusable approach
+        is to save using AdaptiveModel's save() method where the model and the state_dict are stored separately.
+        """
+        checkpoint_path = self.checkpoint_root_dir / f"epoch_{self.from_epoch}_step_{self.from_step}"
+        checkpoint_path.mkdir(parents=True, exist_ok=True)
+
+        trainer_state_dict = self._get_state_dict()
+        self.model.save(checkpoint_path)
+        torch.save(
+            {
+                "model": self.model,
+                "trainer_state_dict": trainer_state_dict,
+                "model_state_dict": self.model.state_dict(),
+                "optimizer": self.optimizer,
+                "scheduler_opts": self.lr_schedule.opts,
+                "scheduler_state": self.lr_schedule.state_dict(),
+                "numpy_rng_state": numpy.random.get_state(),
+                "rng_state": torch.get_rng_state(),
+                "cuda_rng_state": torch.cuda.get_rng_state(),
+            },
+            checkpoint_path / "trainer",
+        )
+
+        # TODO custom defined evaluators are not saved in the checkpoint.
+        logger.info(f"Saved a training checkpoint at {checkpoint_path}")
+
+    def _get_state_dict(self):
+        """
+        Serializable state dictionary of a Trainer object
+        """
+        state_dict = {
+            "evaluate_every": self.evaluate_every,
+            "n_gpu": self.n_gpu,
+            "grad_acc_steps": self.grad_acc_steps,
+            "device": self.device,
+            "local_rank": self.local_rank,
+            "early_stopping": self.early_stopping,
+            "epochs": self.epochs,
+            "checkpoint_on_sigterm": self.checkpoint_on_sigterm,
+            "checkpoint_root_dir": self.checkpoint_root_dir,
+            "checkpoint_every": self.checkpoint_every,
+            "from_epoch": self.from_epoch,
+            "from_step": self.from_step,
+            "log_learning_rate": self.log_learning_rate,
+        }
+
+        return state_dict
+
+    def train(self):
         """ Perform the training procedure. """
 
         # connect the prediction heads with the right output from processor
-        model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
+        self.model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
 
         # Check that the tokenizer fits the language model
-        model.verify_vocab_size(vocab_size=len(self.data_silo.processor.tokenizer))
+        self.model.verify_vocab_size(vocab_size=len(self.data_silo.processor.tokenizer))
 
         logger.info(f"\n {GROWING_TREE}")
-        model.train()
+        self.model.train()
 
         do_stopping = False
         evalnr = 0
         loss = 0
-        for epoch in range(1, self.epochs + 1):
+
+        resume_from_step = self.from_step
+
+        for epoch in range(self.from_epoch + 1, self.epochs + 1):
             progress_bar = tqdm(self.data_loader_train)
-            for step, batch in enumerate(progress_bar):
+            for step, batch in enumerate(progress_bar, start=1):
+                # when resuming training from a checkpoint, we want to fast forward to the step of the checkpoint
+                if resume_from_step and step <= resume_from_step:
+                    if resume_from_step == step:
+                        resume_from_step = None
+                    continue
+
+                if self.sigterm_handler and self.sigterm_handler.kill_now:  # save the current state as a checkpoint
+                    logger.info("Received a SIGTERM signal. Saving the current train state as a checkpoint ...")
+                    self._save()
+                    sys.exit(0)
+
+                if self.checkpoint_every and step % self.checkpoint_every == 0:  # save a checkpoint and continue training
+                    self._save()
+
                 progress_bar.set_description(f"Train epoch {epoch}/{self.epochs} (Cur. train loss: {loss:.4f})")
 
                 # Move batch of samples to device
                 batch = {key: batch[key].to(self.device) for key in batch}
 
                 # Forward pass through model
-                logits = model.forward(**batch)
-                per_sample_loss = model.logits_to_loss(logits=logits, **batch)
+                logits = self.model.forward(**batch)
+                per_sample_loss = self.model.logits_to_loss(logits=logits, **batch)
 
                 loss = self.backward_propagate(per_sample_loss, step)
 
@@ -223,7 +417,7 @@ class Trainer:
                         self.global_step % self.evaluate_every == 0
                     ):
                         evalnr += 1
-                        result = self.evaluator_dev.eval(model)
+                        result = self.evaluator_dev.eval(self.model)
                         self.evaluator_dev.log_results(result, "Dev", self.global_step)
                         if self.early_stopping:
                             do_stopping, save_model, eval_value = self.early_stopping.check_stopping(result)
@@ -231,7 +425,7 @@ class Trainer:
                                 logger.info(
                                     "Saving current best model to {}, eval={}".format(
                                         self.early_stopping.save_dir, eval_value))
-                                model.save(self.early_stopping.save_dir)
+                                self.model.save(self.early_stopping.save_dir)
                                 self.data_silo.processor.save(self.early_stopping.save_dir)
                             if do_stopping:
                                 # log the stopping
@@ -239,21 +433,23 @@ class Trainer:
                 if do_stopping:
                     break
                 self.global_step += 1
+                self.from_step = step
+            self.from_epoch = epoch
             if do_stopping:
                 break
 
         # With early stopping we want to restore the best model
         if self.early_stopping and self.early_stopping.save_dir:
             logger.info("Restoring best model so far from {}".format(self.early_stopping.save_dir))
-            lm_name = model.language_model.name
+            lm_name = self.model.language_model.name
             model = AdaptiveModel.load(self.early_stopping.save_dir, self.device, lm_name=lm_name)
             model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
 
         # Eval on test set
         if self.evaluator_test:
-            result = self.evaluator_test.eval(model)
+            result = self.evaluator_test.eval(self.model)
             self.evaluator_test.log_results(result, "Test", self.global_step)
-        return model
+        return self.model
 
     def backward_propagate(self, loss, step):
         loss = self.adjust_loss(loss)
@@ -271,7 +467,7 @@ class Trainer:
         if self.log_learning_rate:
             MlLogger.log_metrics({"learning_rate": self.lr_schedule.get_lr()[0]}, step=self.global_step)
 
-        if (step + 1) % self.grad_acc_steps == 0:
+        if step % self.grad_acc_steps == 0:
             # TODO We might wanna add gradient clipping here
             self.optimizer.step()
             self.optimizer.zero_grad()
