@@ -117,7 +117,7 @@ class Trainer:
         local_rank=-1,
         early_stopping=None,
         log_learning_rate=False,
-        checkpoint_on_sigkill=False,
+        checkpoint_on_sigterm=False,
         checkpoint_every=None,
         checkpoint_root_dir=None,
         from_epoch=0,
@@ -156,10 +156,10 @@ class Trainer:
         :type early_stopping: EarlyStopping
         :param log_learning_rate: Whether to log learning rate to Mlflow
         :type log_learning_rate: bool
-        :param checkpoint_on_sigkill: save a checkpoint for the Trainer when a SIGKILL signal is sent. The checkpoint
+        :param checkpoint_on_sigterm: save a checkpoint for the Trainer when a SIGTERM signal is sent. The checkpoint
                can be used to resume training. It is useful in frameworks like AWS SageMaker with Spot instances where
-               a SIGKILL notifies to save the training state and subsequently the instance is terminated.
-        :type checkpoint_on_sigkill: bool
+               a SIGTERM notifies to save the training state and subsequently the instance is terminated.
+        :type checkpoint_on_sigterm: bool
         :param checkpoint_every: save a train checkpoint after this many steps of training.
         :type checkpoint_every: int
         :param checkpoint_root_dir: the Path of directory where all train checkpoints are saved. For each individual
@@ -193,17 +193,17 @@ class Trainer:
             raise ImportError(f'Got use_amp = {use_amp}, but cannot find apex. '
                               'Please install Apex if you want to make use of automatic mixed precision. '
                               'https://github.com/NVIDIA/apex')
-        self.checkpoint_on_sigkill = checkpoint_on_sigkill
-        if checkpoint_on_sigkill:
-            self.sigkill_handler = GracefulKiller()
+        self.checkpoint_on_sigterm = checkpoint_on_sigterm
+        if checkpoint_on_sigterm:
+            self.sigterm_handler = GracefulKiller()
         else:
-            self.sigkill_handler = None
+            self.sigterm_handler = None
         self.checkpoint_root_dir = checkpoint_root_dir
         self.checkpoint_every = checkpoint_every
         if self.checkpoint_every and not checkpoint_root_dir:
             raise Exception("checkpoint_path needs to be supplied when using checkpoint_every.")
-        if checkpoint_on_sigkill and not checkpoint_root_dir:
-            raise Exception("checkpoint_path needs to be supplied when using checkpoint_on_sigkill.")
+        if checkpoint_on_sigterm and not checkpoint_root_dir:
+            raise Exception("checkpoint_path needs to be supplied when using checkpoint_on_sigterm.")
 
         self.from_epoch = from_epoch
         self.from_step = from_step
@@ -247,7 +247,7 @@ class Trainer:
                 total_steps_at_checkpoints = []
                 for d in dirs:
                     epoch, step = [int(s) for s in str(d).split("_") if s.isdigit()]
-                    total_steps_at_checkpoints.append((d, epoch * step))
+                    total_steps_at_checkpoints.append((d, (epoch + 1) * (step + 1)))
                 total_steps_at_checkpoints.sort(key=lambda tup: tup[1], reverse=True)
                 checkpoint_to_load = total_steps_at_checkpoints[0][0]
             else:
@@ -355,7 +355,7 @@ class Trainer:
             "local_rank": self.local_rank,
             "early_stopping": self.early_stopping,
             "epochs": self.epochs,
-            "checkpoint_on_sigkill": self.checkpoint_on_sigkill,
+            "checkpoint_on_sigterm": self.checkpoint_on_sigterm,
             "checkpoint_root_dir": self.checkpoint_root_dir,
             "checkpoint_every": self.checkpoint_every,
             "from_epoch": self.from_epoch,
@@ -392,7 +392,8 @@ class Trainer:
                         resume_from_step = None
                     continue
 
-                if self.sigkill_handler and self.sigkill_handler.kill_now:  # save the current state as a checkpoint
+                if self.sigterm_handler and self.sigterm_handler.kill_now:  # save the current state as a checkpoint
+                    logger.info("Received a SIGTERM signal. Saving the current train state as a checkpoint ...")
                     self._save()
                     sys.exit(0)
 
