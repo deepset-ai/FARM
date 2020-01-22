@@ -384,7 +384,7 @@ class Trainer:
         resume_from_step = self.from_step
 
         for epoch in range(self.from_epoch + 1, self.epochs + 1):
-            progress_bar = tqdm(self.data_loader_train)    # start at a random location
+            progress_bar = tqdm(self.data_loader_train)
             for step, batch in enumerate(progress_bar, start=1):
                 # when resuming training from a checkpoint, we want to fast forward to the step of the checkpoint
                 if resume_from_step and step <= resume_from_step:
