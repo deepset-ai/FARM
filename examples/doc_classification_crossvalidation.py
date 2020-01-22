@@ -139,6 +139,7 @@ def doc_classification_crossvalidation():
         )
 
         trainer = Trainer(
+            model=model,
             optimizer=optimizer,
             data_silo=silo_to_use,
             epochs=n_epochs,
@@ -150,9 +151,9 @@ def doc_classification_crossvalidation():
             evaluator_test=False)
 
         # train it
-        model = trainer.train(model)
+        trainer.train()
 
-        return model
+        return trainer.model
 
     # for each fold, run the whole training, earlystopping to get a model, then evaluate the model
     # on the test set of each fold

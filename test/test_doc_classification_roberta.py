@@ -61,6 +61,7 @@ def test_doc_classification():
         schedule_opts=None)
 
     trainer = Trainer(
+        model=model,
         optimizer=optimizer,
         data_silo=data_silo,
         epochs=n_epochs,
@@ -69,7 +70,7 @@ def test_doc_classification():
         evaluate_every=evaluate_every,
         device=device)
 
-    model = trainer.train(model)
+    trainer.train()
 
     save_dir = Path("testsave/doc_class_roberta")
     model.save(save_dir)

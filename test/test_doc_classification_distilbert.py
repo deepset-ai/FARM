@@ -62,6 +62,7 @@ def test_doc_classification(caplog=None):
         schedule_opts=None)
 
     trainer = Trainer(
+        model=model,
         optimizer=optimizer,
         data_silo=data_silo,
         epochs=n_epochs,
@@ -70,7 +71,7 @@ def test_doc_classification(caplog=None):
         evaluate_every=evaluate_every,
         device=device)
 
-    model = trainer.train(model)
+    trainer.train()
 
     save_dir = Path("testsave/doc_class")
     model.save(save_dir)

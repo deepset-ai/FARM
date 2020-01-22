@@ -68,6 +68,7 @@ def test_ner(caplog=None):
         schedule_opts={'name': 'LinearWarmup', 'warmup_proportion': 0.1}
     )
     trainer = Trainer(
+        model=model,
         optimizer=optimizer,
         data_silo=data_silo,
         epochs=n_epochs,
@@ -78,7 +79,7 @@ def test_ner(caplog=None):
     )
 
     save_dir = Path("testsave/ner")
-    model = trainer.train(model)
+    model = trainer.train()
     model.save(save_dir)
     processor.save(save_dir)
 

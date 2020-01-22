@@ -59,6 +59,7 @@ def test_qa(caplog):
         device=device
     )
     trainer = Trainer(
+        model=model,
         optimizer=optimizer,
         data_silo=data_silo,
         epochs=n_epochs,
@@ -67,7 +68,7 @@ def test_qa(caplog):
         evaluate_every=evaluate_every,
         device=device
     )
-    model = trainer.train(model)
+    trainer.train()
     save_dir = Path("testsave/qa")
     model.save(save_dir)
     processor.save(save_dir)
