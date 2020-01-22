@@ -32,7 +32,7 @@ def train_from_scratch():
     evaluate_every = 5000
     vocab_size = 30522
     # dev_filename = None
-    save_dir = "saved_models/train_from_scratch"
+    save_dir = Path("saved_models/train_from_scratch")
 
     n_epochs = 10
     learning_rate = 1e-4
