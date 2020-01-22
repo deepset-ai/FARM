@@ -211,7 +211,9 @@ class Inferencer:
 
     def inference_from_file(self, file, max_processes=128):
         """
-        Run downstream inference on the dicts in the file.
+        Run down-stream inference on samples created from an input file.
+        The file should be in the same format as the ones used during training
+        (e.g. squad style for QA, tsv for doc classification ...) as the same processor will be used for conversion .
 
         :param file: path of the input file for Inference
         :type file: str
@@ -224,11 +226,18 @@ class Inferencer:
 
     def inference_from_dicts(self, dicts, rest_api_schema=False, max_processes=128):
         """
-        Runs down-stream inference using the prediction head.
+        Runs down-stream inference on samples created from input dictionaries.
+        The format of the input `dicts` depends on the task:
+
+        QA:                    [{"qas": ["What is X?"], "context":  "Some context containing the answer"}]
+        Classification / NER:  [{"text": "Some input text"}]
+
 
         :param dicts: Samples to run inference on provided as a list of dicts. One dict per sample.
         :type dicts: [dict]
-        :param rest_api_schema: whether conform to the schema used for dicts in the HTTP API for Inference.
+        :param rest_api_schema: Whether input dicts use the format that complies with the FARM REST API.
+                                Currently only used for QA to switch from squad to a more useful format in production.
+                                While input is almost the same, output contains additional meta data(offset, context..)
         :type rest_api_schema: bool
         :return: dict of predictions
         :param max_processes: the maximum size of `multiprocessing.Pool`. Set to value of 1 to disable multiprocessing.
@@ -243,45 +252,57 @@ class Inferencer:
                 f"b) ... run inference on a downstream task: make sure your model path {self.name} contains a saved prediction head"
             )
 
+        # Using multiprocessing
         if max_processes > 1:  # use multiprocessing if max_processes > 1
             multiprocessing_chunk_size, num_cpus_used = calc_chunksize(len(dicts), max_processes)
             with ExitStack() as stack:
-                p = stack.enter_context(mp.Pool(processes=num_cpus_used))
 
+                # Get us some workers (i.e. processes)
+                p = stack.enter_context(mp.Pool(processes=num_cpus_used))
                 logger.info(
                     f"Got ya {num_cpus_used} parallel workers to do inference on {len(dicts)}dicts (chunksize = {multiprocessing_chunk_size})..."
                 )
                 log_ascii_workers(num_cpus_used, logger)
 
+                # We group the input dicts into chunks and feed each chunk to a different process,
+                # where it gets converted to a pytorch dataset
                 results = p.imap(
                     partial(self._create_datasets_chunkwise, processor=self.processor, rest_api_schema=rest_api_schema),
                     grouper(dicts, multiprocessing_chunk_size),
                     1,
                 )
 
+                # Once a process spits out a preprocessed chunk. we feed this dataset directly to the model.
+                # So we don't need to wait until all preprocessing has finished before getting first predictions.
                 preds_all = []
                 with tqdm(total=len(dicts), unit=" Dicts") as pbar:
                     for dataset, tensor_names, baskets in results:
                         # TODO change formot of formatted_preds in QA (list of dicts)
-                        preds_all.extend(self._run_inference(dataset, tensor_names, baskets, rest_api_schema))
+                        preds_all.extend(self._get_predictions(dataset, tensor_names, baskets, rest_api_schema))
                         pbar.update(multiprocessing_chunk_size)
 
+        # Using single process (helpful for debugging!)
         else:
             chunk = next(grouper(dicts, len(dicts)))
             dataset, tensor_names, baskets = self._create_datasets_chunkwise(chunk, processor=self.processor, rest_api_schema=rest_api_schema)
             # TODO change formot of formatted_preds in QA (list of dicts)
-            preds_all = self._run_inference(dataset, tensor_names, baskets, rest_api_schema)
+            preds_all = self._get_predictions(dataset, tensor_names, baskets, rest_api_schema)
 
         return preds_all
 
     @classmethod
     def _create_datasets_chunkwise(cls, chunk, processor, rest_api_schema):
+        """Convert ONE chunk of data (i.e. dictionaries) into ONE pytorch dataset.
+        This is usually executed in one of many parallel processes.
+        The resulting datasets of the processes are merged together afterwards"""
+
         dicts = [d[1] for d in chunk]
         indices = [d[0] for d in chunk]
         dataset, tensor_names, baskets = processor.dataset_from_dicts(dicts, indices, rest_api_schema, return_baskets=True)
         return dataset, tensor_names, baskets
 
-    def _run_inference(self, dataset, tensor_names, baskets, rest_api_schema=False):
+    def _get_predictions(self, dataset, tensor_names, baskets, rest_api_schema=False):
+        """ Feed the preprocessed dataset to the model and get the actual predictions"""
         samples = [s for b in baskets for s in b.samples]
 
         data_loader = NamedDataLoader(
@@ -294,9 +315,17 @@ class Inferencer:
             batch = {key: batch[key].to(self.device) for key in batch}
             if not aggregate_preds:
                 batch_samples = samples[i * self.batch_size : (i + 1) * self.batch_size]
+
+            # get logits
             with torch.no_grad():
                 logits = self.model.forward(**batch)[0]
-                if not aggregate_preds:
+
+                # either just stack the logits (and convert later to readable predictions)
+                if aggregate_preds:
+                    logits_all += [l for l in logits]
+
+                # or convert directly
+                else:
                     preds = self.model.formatted_preds(
                         logits=[logits],
                         samples=batch_samples,
@@ -305,8 +334,11 @@ class Inferencer:
                         rest_api_schema=rest_api_schema,
                         **batch)
                     preds_all += preds
-                else:
-                    logits_all += [l for l in logits]
+
+        # In some use cases we want to aggregate the individual predictions.
+        # This is mostly useful, if the input text is longer than the max_seq_len that the model can process.
+        # In QA we can use this to get answers from long input texts by first getting predictions for smaller passages
+        # and then aggregating them here.
         if aggregate_preds:
             # can assume that we have only complete docs i.e. all the samples of one doc are in the current chunk
             # TODO is there a better way than having to wrap logits all in list?
@@ -321,6 +353,10 @@ class Inferencer:
     ):
         """
         Converts a text into vector(s) using the language model only (no prediction head involved).
+
+        Example:
+            basic_texts = [{"text": "Some text we want to embed"}, {"text": "And a second one"}]
+            result = inferencer.extract_vectors(dicts=basic_texts)
 
         :param dicts: Samples to run inference on provided as a list of dicts. One dict per sample.
         :type dicts: [dict]
