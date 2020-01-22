@@ -210,6 +210,31 @@ def test_bert_custom_vocab(caplog):
     assert tokenized_meta["offsets"] == [0, 5, 10, 15, 31, 36, 37, 40, 41, 42, 44, 48, 50, 58, 59, 64, 65, 69, 70, 72]
     assert tokenized_meta["start_of_word"] == [True, True, True, True, True, True, False, False, False, False, True, True, True, False, False, False, False, False, False, False]
 
+def test_fast_bert_custom_vocab(caplog):
+    caplog.set_level(logging.CRITICAL)
+
+    lang_model = "bert-base-cased"
+
+    tokenizer = Tokenizer.load(
+        pretrained_model_name_or_path=lang_model,
+        do_lower_case=False, fast=True
+        )
+
+    #deprecated: tokenizer.add_custom_vocab("samples/tokenizer/custom_vocab.txt")
+    tokenizer.add_tokens(new_tokens=["neverseentokens"])
+
+    basic_text = "Some Text with neverseentokens plus !215?#. and a combined-token_with/chars"
+
+    # original tokenizer from transformer repo
+    tokenized = tokenizer.tokenize(basic_text)
+    assert tokenized == ['Some', 'Text', 'with', 'neverseentokens', 'plus', '!', '215', '?', '#', '.', 'and', 'a', 'combined', '-', 'token', '_', 'with', '/', 'ch', '##ars']
+
+    # ours with metadata
+    tokenized_meta = tokenize_with_metadata(text=basic_text, tokenizer=tokenizer)
+    assert tokenized_meta["tokens"] == tokenized
+    assert tokenized_meta["offsets"] == [0, 5, 10, 15, 31, 36, 37, 40, 41, 42, 44, 48, 50, 58, 59, 64, 65, 69, 70, 72]
+    assert tokenized_meta["start_of_word"] == [True, True, True, True, True, True, False, False, False, False, True, True, True, False, False, False, False, False, False, False]
+
 
 if __name__ == "__main__":
     test_all_tokenizer_on_special_cases()
