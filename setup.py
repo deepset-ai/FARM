@@ -11,7 +11,7 @@ parsed_requirements = [
     if ((x.strip()[0] != "#") and (len(x.strip()) > 3) and "-e git://" not in x)
 ]
 
-parsed_requirements.append('transformers @ git+https://github.com/huggingface/transformers.git@23c6998bf46e43092fc59543ea7795074a720f08#egg=transformers@v2.3.0#egg=transformers')
+parsed_requirements.append('transformers @ git+https://github.com/huggingface/transformers.git@1a8e87be4e2a1b551175bd6f0f749f3d2289010f#egg=transformers@v2.3.0#egg=transformers')
 
 setup(
     name="farm",
