@@ -240,7 +240,7 @@ class RegressionHead(PredictionHead):
 class TextClassificationHead(PredictionHead):
     def __init__(
         self,
-        layer_dims=[768,1],
+        layer_dims=None,
         num_labels=None,
         class_weights=None,
         loss_ignore_index=-100,
@@ -261,10 +261,14 @@ class TextClassificationHead(PredictionHead):
         """
         super(TextClassificationHead, self).__init__()
         # num_labels could in most cases also be automatically retrieved from the data processor
-        self.layer_dims = layer_dims
-        self.num_labels = num_labels
-        if self.num_labels:
-            self.layer_dims = self.layer_dims[:-1] + [self.num_labels]
+        if num_labels:
+            self.layer_dims = [768, num_labels]
+        elif layer_dims:
+            self.layer_dims = layer_dims
+            logger.warning("`layer_dims` will be deprecated in future releases")
+        else:
+            raise ValueError("Please supply `num_labels` to define output dim of prediction head")
+        self.num_labels = self.layer_dims[-1]
         self.feed_forward = FeedForwardBlock(self.layer_dims)
         logger.info(f"Prediction head initialized with size {self.layer_dims}")
         self.num_labels = self.layer_dims[-1]
@@ -381,7 +385,7 @@ class TextClassificationHead(PredictionHead):
 class MultiLabelTextClassificationHead(PredictionHead):
     def __init__(
         self,
-        layer_dims=[768,1],
+        layer_dims=None,
         num_labels=None,
         class_weights=None,
         loss_reduction="none",
@@ -402,10 +406,14 @@ class MultiLabelTextClassificationHead(PredictionHead):
         """
         super(MultiLabelTextClassificationHead, self).__init__()
         # num_labels could in most cases also be automatically retrieved from the data processor
-        self.layer_dims = layer_dims
-        self.num_labels = num_labels
-        if self.num_labels:
-            self.layer_dims = self.layer_dims[:-1] + [self.num_labels]
+        if num_labels:
+            self.layer_dims = [768, num_labels]
+        elif layer_dims:
+            self.layer_dims = layer_dims
+            logger.warning("`layer_dims` will be deprecated in future releases")
+        else:
+            raise ValueError("Please supply `num_labels` to define output dim of prediction head")
+        self.num_labels = self.layer_dims[-1]
         logger.info(f"Prediction head initialized with size {self.layer_dims}")
         self.feed_forward = FeedForwardBlock(self.layer_dims)
         self.ph_output_type = "per_sequence"
@@ -485,7 +493,7 @@ class MultiLabelTextClassificationHead(PredictionHead):
 
 class TokenClassificationHead(PredictionHead):
     def __init__(self,
-                 layer_dims=[768,1],
+                 layer_dims=None,
                  num_labels=None,
                  task_name="ner",
                  **kwargs):
@@ -498,9 +506,14 @@ class TokenClassificationHead(PredictionHead):
         :param kwargs:
         """
         super(TokenClassificationHead, self).__init__()
-        self.layer_dims = layer_dims
         if num_labels:
-            self.layer_dims = self.layer_dims[:-1] + [num_labels]
+            self.layer_dims = [768, num_labels]
+        elif layer_dims:
+            self.layer_dims = layer_dims
+            logger.warning("`layer_dims` will be deprecated in future releases")
+        else:
+            raise ValueError("Please supply `num_labels` to define output dim of prediction head")
+        self.num_labels = self.layer_dims[-1]
         logger.info(f"Prediction head initialized with size {self.layer_dims}")
         self.feed_forward = FeedForwardBlock(self.layer_dims)
         self.num_labels = self.layer_dims[-1]
