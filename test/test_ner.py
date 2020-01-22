@@ -25,7 +25,7 @@ def test_ner(caplog=None):
     n_epochs = 5
     batch_size = 2
     evaluate_every = 1
-    lang_model = "bert-base-german-cased"
+    lang_model = "distilbert-base-german-cased"
 
     tokenizer = Tokenizer.load(
         pretrained_model_name_or_path=lang_model, do_lower_case=False
@@ -46,7 +46,7 @@ def test_ner(caplog=None):
         metric="seq_f1"
     )
 
-    data_silo = DataSilo(processor=processor, batch_size=batch_size)
+    data_silo = DataSilo(processor=processor, batch_size=batch_size, max_processes=1)
     language_model = LanguageModel.load(lang_model)
     prediction_head = TokenClassificationHead()
 

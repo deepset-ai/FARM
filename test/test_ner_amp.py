@@ -48,7 +48,7 @@ def test_ner():
         metric="seq_f1"
     )
 
-    data_silo = DataSilo(processor=processor, batch_size=batch_size)
+    data_silo = DataSilo(processor=processor, batch_size=batch_size, max_processes=1)
     language_model = LanguageModel.load(lang_model)
     prediction_head = TokenClassificationHead()
 

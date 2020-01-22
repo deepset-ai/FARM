@@ -20,10 +20,10 @@ def test_qa(caplog):
     batch_size = 2
     n_epochs = 1
     evaluate_every = 4
-    base_LM_model = "bert-base-cased"
+    base_LM_model = "distilbert-base-uncased"
 
     tokenizer = Tokenizer.load(
-        pretrained_model_name_or_path=base_LM_model, do_lower_case=False
+        pretrained_model_name_or_path=base_LM_model, do_lower_case=True
     )
     label_list = ["start_token", "end_token"]
     processor = SquadProcessor(
