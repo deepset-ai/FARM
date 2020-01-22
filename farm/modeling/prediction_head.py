@@ -167,23 +167,6 @@ class PredictionHead(nn.Module):
             self.layer_dims[0] = input_dim
             self.feed_forward.layer_dims[0] = input_dim
 
-    def resize_output(self, output_dim):
-        """ This function compares the number of labels against the output dimensionality
-        of the prediction head. If there is a mismatch, the prediction head will be resized to fit."""
-        if "feed_forward" not in dir(self):
-            return
-        else:
-            old_dims = self.feed_forward.layer_dims
-            if output_dim == old_dims[-1]:
-                return
-            new_dims = old_dims[:-1] + [output_dim]
-            logger.info(f"Resizing output dimensions of {type(self).__name__} ({self.task_name}) "
-                  f"from {old_dims} to {new_dims} to match number of labels")
-            self.feed_forward = FeedForwardBlock(new_dims)
-            self.layer_dims[-1] = output_dim
-            self.feed_forward.layer_dims[-1] = output_dim
-            self.num_labels = output_dim
-
     @classmethod
     def _get_model_file(cls, config_file):
         if "config.json" in str(config_file) and "prediction_head" in str(config_file):
@@ -258,6 +241,7 @@ class TextClassificationHead(PredictionHead):
     def __init__(
         self,
         layer_dims=[768,1],
+        num_labels=None,
         class_weights=None,
         loss_ignore_index=-100,
         loss_reduction="none",
@@ -267,6 +251,9 @@ class TextClassificationHead(PredictionHead):
         super(TextClassificationHead, self).__init__()
         # num_labels could in most cases also be automatically retrieved from the data processor
         self.layer_dims = layer_dims
+        self.num_labels = num_labels
+        if self.num_labels:
+            self.layer_dims = self.layer_dims[:-1] + [self.num_labels]
         self.feed_forward = FeedForwardBlock(self.layer_dims)
         self.num_labels = self.layer_dims[-1]
         self.ph_output_type = "per_sequence"
@@ -383,6 +370,7 @@ class MultiLabelTextClassificationHead(PredictionHead):
     def __init__(
         self,
         layer_dims=[768,1],
+        num_labels=None,
         class_weights=None,
         loss_reduction="none",
         task_name="text_classification",
@@ -392,8 +380,10 @@ class MultiLabelTextClassificationHead(PredictionHead):
         super(MultiLabelTextClassificationHead, self).__init__()
         # num_labels could in most cases also be automatically retrieved from the data processor
         self.layer_dims = layer_dims
+        self.num_labels = num_labels
+        if self.num_labels:
+            self.layer_dims = self.layer_dims[:-1] + [self.num_labels]
         self.feed_forward = FeedForwardBlock(self.layer_dims)
-        self.num_labels = self.layer_dims[-1]
         self.ph_output_type = "per_sequence"
         self.model_type = "multilabel_text_classification"
         self.task_name = task_name #used for connecting with the right output of the processor
@@ -470,9 +460,15 @@ class MultiLabelTextClassificationHead(PredictionHead):
 
 
 class TokenClassificationHead(PredictionHead):
-    def __init__(self, layer_dims=[768,1], task_name="ner", **kwargs):
+    def __init__(self,
+                 layer_dims=[768,1],
+                 num_labels=None,
+                 task_name="ner",
+                 **kwargs):
         super(TokenClassificationHead, self).__init__()
         self.layer_dims = layer_dims
+        if num_labels:
+            self.layer_dims = self.layer_dims[:-1] + [num_labels]
         self.feed_forward = FeedForwardBlock(self.layer_dims)
         self.num_labels = self.layer_dims[-1]
         self.loss_fct = CrossEntropyLoss(reduction="none")
@@ -818,7 +814,7 @@ class QuestionAnsweringHead(PredictionHead):
     A question answering head predicts the start and end of the answer on token level.
     """
 
-    def __init__(self, layer_dims=[768,1], task_name="question_answering", no_ans_threshold=0.0, context_window_size=100, n_best=5, **kwargs):
+    def __init__(self, layer_dims=[768,2], task_name="question_answering", no_ans_threshold=0.0, context_window_size=100, n_best=5, **kwargs):
         """
         :param layer_dims: dimensions of Feed Forward block, e.g. [768,2], for adjusting to BERT embedding. Output should be always 2
         :type layer_dims: List[Int]

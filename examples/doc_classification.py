@@ -31,7 +31,7 @@ def doc_classifcation():
     evaluate_every = 100
     lang_model = "bert-base-german-cased"
     # or a local path:
-    lang_model = "../saved_models/farm-bert-base-cased-squad2"
+    # lang_model = Path("../saved_models/farm-bert-base-cased")
     use_amp = None
 
     device, n_gpu = initialize_device_settings(use_cuda=False, use_amp=use_amp)
@@ -66,7 +66,8 @@ def doc_classifcation():
     language_model = LanguageModel.load(lang_model)
     # b) and a prediction head on top that is suited for our task => Text classification
     prediction_head = TextClassificationHead(
-        class_weights=data_silo.calculate_class_weights(task_name="text_classification"))
+        class_weights=data_silo.calculate_class_weights(task_name="text_classification"),
+        num_labels=len(label_list))
 
     model = AdaptiveModel(
         language_model=language_model,
@@ -78,7 +79,7 @@ def doc_classifcation():
     # 5. Create an optimizer
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
-        learning_rate=2e-5,
+        learning_rate=5e-3,
         device=device,
         n_batches=len(data_silo.loaders["train"]),
         n_epochs=n_epochs,

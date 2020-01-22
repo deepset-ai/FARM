@@ -55,7 +55,7 @@ def lm_finetuning():
 
     model = AdaptiveModel(
         language_model=language_model,
-        prediction_heads=[lm_prediction_head, next_sentence_head],
+        prediction_heads=[lm_prediction_head],
         embeds_dropout_prob=0.1,
         lm_output_types=["per_token", "per_sequence"],
         device=device,
