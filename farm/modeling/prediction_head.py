@@ -248,6 +248,17 @@ class TextClassificationHead(PredictionHead):
         task_name="text_classification",
         **kwargs,
     ):
+        """
+        :param layer_dims: The size of the layers in the feed forward component. The feed forward will have as many layers as there are ints in this list. This param will be deprecated in future
+        :type layer_dims: list
+        :param num_labels: The numbers of labels. Use to set the size of the final layer in the feed forward component. It is recommended to only set num_labels or layer_dims, not both.
+        :type num_labels: int
+        :param class_weights:
+        :param loss_ignore_index:
+        :param loss_reduction:
+        :param task_name:
+        :param kwargs:
+        """
         super(TextClassificationHead, self).__init__()
         # num_labels could in most cases also be automatically retrieved from the data processor
         self.layer_dims = layer_dims
@@ -255,6 +266,7 @@ class TextClassificationHead(PredictionHead):
         if self.num_labels:
             self.layer_dims = self.layer_dims[:-1] + [self.num_labels]
         self.feed_forward = FeedForwardBlock(self.layer_dims)
+        logger.info(f"Prediction head initialized with size {self.layer_dims}")
         self.num_labels = self.layer_dims[-1]
         self.ph_output_type = "per_sequence"
         self.model_type = "text_classification"
@@ -377,12 +389,24 @@ class MultiLabelTextClassificationHead(PredictionHead):
         pred_threshold=0.5,
         **kwargs,
     ):
+        """
+        :param layer_dims: The size of the layers in the feed forward component. The feed forward will have as many layers as there are ints in this list. This param will be deprecated in future
+        :type layer_dims: list
+        :param num_labels: The numbers of labels. Use to set the size of the final layer in the feed forward component. It is recommended to only set num_labels or layer_dims, not both.
+        :type num_labels: int
+        :param class_weights:
+        :param loss_reduction:
+        :param task_name:
+        :param pred_threshold:
+        :param kwargs:
+        """
         super(MultiLabelTextClassificationHead, self).__init__()
         # num_labels could in most cases also be automatically retrieved from the data processor
         self.layer_dims = layer_dims
         self.num_labels = num_labels
         if self.num_labels:
             self.layer_dims = self.layer_dims[:-1] + [self.num_labels]
+        logger.info(f"Prediction head initialized with size {self.layer_dims}")
         self.feed_forward = FeedForwardBlock(self.layer_dims)
         self.ph_output_type = "per_sequence"
         self.model_type = "multilabel_text_classification"
@@ -465,10 +489,19 @@ class TokenClassificationHead(PredictionHead):
                  num_labels=None,
                  task_name="ner",
                  **kwargs):
+        """
+        :param layer_dims: The size of the layers in the feed forward component. The feed forward will have as many layers as there are ints in this list. This param will be deprecated in future
+        :type layer_dims: list
+        :param num_labels: The numbers of labels. Use to set the size of the final layer in the feed forward component. It is recommended to only set num_labels or layer_dims, not both.
+        :type num_labels: int
+        :param task_name:
+        :param kwargs:
+        """
         super(TokenClassificationHead, self).__init__()
         self.layer_dims = layer_dims
         if num_labels:
             self.layer_dims = self.layer_dims[:-1] + [num_labels]
+        logger.info(f"Prediction head initialized with size {self.layer_dims}")
         self.feed_forward = FeedForwardBlock(self.layer_dims)
         self.num_labels = self.layer_dims[-1]
         self.loss_fct = CrossEntropyLoss(reduction="none")
@@ -829,7 +862,9 @@ class QuestionAnsweringHead(PredictionHead):
         """
         super(QuestionAnsweringHead, self).__init__()
         self.layer_dims = layer_dims
+        assert self.layer_dims[-1] == 2
         self.feed_forward = FeedForwardBlock(self.layer_dims)
+        logger.info(f"Prediction head initialized with size {self.layer_dims}")
         self.num_labels = self.layer_dims[-1]
         self.ph_output_type = "per_token_squad"
         self.model_type = (
