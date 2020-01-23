@@ -316,9 +316,9 @@ class Processor(ABC):
         self._featurize_samples()
         if indices:
             if 0 in indices:
-                self._log_samples(3)
+                self._log_samples(2)
         else:
-            self._log_samples(3)
+            self._log_samples(2)
         if return_baskets:
             dataset, tensor_names = self._create_dataset(keep_baskets=True)
             return dataset, tensor_names, self.baskets
