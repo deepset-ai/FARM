@@ -17,7 +17,7 @@ seqeval
 mlflow==1.0.0
 # huggingface repository
 # until next transformers release (2.3.1) we take this recent version from master branch, as it includes important fixes for loading tokenizer from remote & XLM-R
--e git://github.com/huggingface/transformers.git@1a8e87be4e2a1b551175bd6f0f749f3d2289010f#egg=transformers
+-e git://github.com/huggingface/transformers.git@90b7df444fc30d5f476e5ab32d1f89340998a28d#egg=transformers
 # accessing dictionary elements with dot notation
 dotmap==1.3.0
 # for inference-rest-apis
