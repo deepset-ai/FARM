@@ -109,6 +109,7 @@ def run_experiment(args):
     )
 
     trainer = Trainer(
+        model=model,
         optimizer=optimizer,
         data_silo=data_silo,
         epochs=args.parameter.epochs,
@@ -121,7 +122,7 @@ def run_experiment(args):
         device=device,
     )
 
-    model = trainer.train(model)
+    model = trainer.train()
 
     model_name = (
         f"{model.language_model.name}-{model.language_model.language}-{args.task.name}"
