@@ -56,9 +56,9 @@ Core features
 ##############
 - **Easy fine-tuning of language models** to your task and domain language
 - **Speed**: AMP optimizers (~35% faster) and parallel preprocessing (16 CPU cores => ~16x faster)
-- **Modular design** of language model and prediction heads
-- Switch between heads or just combine them for **multitask learning**
-- **Full Compatibility** with transformers' models and model hub
+- **Modular design** of language models and prediction heads
+- Switch between heads or combine them for **multitask learning**
+- **Full Compatibility** with HuggingFace Transformers' models and model hub
 - **Smooth upgrading** to newer language models
 - Integration of **custom datasets** via Processor class
 - Powerful **experiment tracking** & execution
@@ -175,16 +175,16 @@ Let's highlight a few of them ...
 ****************************************
 While FARM provides decent defaults for both, you can easily configure many other optimizers & LR schedules:
 
-- any optimizer from pytorch, apex or transformers
-- any learning rate schedule from pytorch or transformers
+- any optimizer from PyTorch, Apex or Transformers
+- any learning rate schedule from PyTorch or Transformers
 
-You can configure them by passing a dict to :code:`initialize_optimizer()` (see `example <https://github.com/deepset-ai/FARM/blob/master/examples/doc_classification_custom_optimizer>`__).
+You can configure them by passing a dict to :code:`initialize_optimizer()` (see `example <https://github.com/deepset-ai/FARM/blob/master/examples/doc_classification_custom_optimizer.py>`__).
 
 
 2. Early Stopping
 ******************
-With early stopping, you stop once a metric is not improving any further and take the best model that you found until then.
-This is helpful to prevent overfitting on small datasets and to reduce training time if your model doesn't improve any further (see `example <https://github.com/deepset-ai/FARM/blob/master/examples/doc_classification_with_earlystopping>`__).
+With early stopping, the run stops once a chosen metric is not improving any further and you take the best model up to this point.
+This helps prevent overfitting on small datasets and reduces training time if your model doesn't improve any further (see `example <https://github.com/deepset-ai/FARM/blob/master/examples/doc_classification_with_earlystopping.py>`__).
 
 3. Imbalanced classes
 *********************
@@ -198,7 +198,7 @@ You can set them when you init a prediction head::
 
 4. Cross Validation
 *******************
-Get more reliable eval metrics on small datasets (see `example <https://github.com/deepset-ai/FARM/blob/master/examples/doc_classification_crossvalidation>`__)
+Get more reliable eval metrics on small datasets (see `example <https://github.com/deepset-ai/FARM/blob/master/examples/doc_classification_crossvalidation.py>`__)
 
 
 5. Caching & Checkpointing
@@ -265,19 +265,19 @@ We found that this can boost performance especially if your down-stream tasks ar
 In contrast, if you have huge downstream datasets, the model can often adapt to the domain "on-the-fly" during downstream training.
 
 **4. How can I adapt a language model to a domain corpus?**
-Two main options: extend the vocabulary by :code:`Tokenizer.add_tokens(["term_a", "term_b"...])` and fine-tune your model on a domain text corpus (see `example <https://github.com/deepset-ai/FARM/blob/master/examples/lm_finetuning.py>`__)
+There are two main methods: you can extend the vocabulary by :code:`Tokenizer.add_tokens(["term_a", "term_b"...])` or fine-tune your model on a domain text corpus (see `example <https://github.com/deepset-ai/FARM/blob/master/examples/lm_finetuning.py>`__).
 
-**5. How can I convert from / to huggingface's models?**
+**5. How can I convert from / to HuggingFace's models?**
 We support conversion in both directions (see `example <https://github.com/deepset-ai/FARM/blob/master/examples/conversion_huggingface_models.py>`__)
-You can also load any language model from huggingface's model hub by just specifying the name, e.g. :code:`LanguageModel.load("deepset/bert-base-cased-squad2")`
+You can also load any language model from HuggingFace's model hub by just specifying the name, e.g. :code:`LanguageModel.load("deepset/bert-base-cased-squad2")`
 
 **6. How can you scale Question Answering to larger collections of documents?**
 It's currently most common to put a fast "retriever" in front of the QA model.
 Checkout `haystack <https://github.com/deepset-ai/haystack/>`__ for such an implementation and more features you need to really run QA in production.
 
 **7. How can you tailor Question Answering to your own domain?**
-We made good experience by training a model on public datasets first (e.g. SQuAD, Natural Questions ...) and then fine-tune it on a few custom QA labels from the domain.
-Even ~ 2000 domain labels often give you the essential boost.
+We attained high performance by training a model first on public datasets (e.g. SQuAD, Natural Questions ...) and then fine-tuning it on a few custom QA labels from the domain.
+Even ~2000 domain labels can give you the essential performance boost you need.
 Checkout `haystack <https://github.com/deepset-ai/haystack/>`__ for more details and a QA labeling tool.
 
 
@@ -292,7 +292,7 @@ Upcoming features
 
 Acknowledgements
 ###################
-- FARM is built upon parts of the great `transformers <https://github.com/huggingface/pytorch-transformers>`_  repository from Huggingface. It utilizes their implementations of models and tokenizers.
+- FARM is built upon parts of the great `Transformers <https://github.com/huggingface/pytorch-transformers>`_  repository from HuggingFace. It utilizes their implementations of models and tokenizers.
 - FARM is a community effort! Essential pieces of it have been implemented by our FARMers out there. Thanks to all contributors!
 - The original BERT model and `paper <https://arxiv.org/abs/1810.04805>`_  was published by Jacob Devlin, Ming-Wei Chang, Kenton Lee and Kristina Toutanova.
 
