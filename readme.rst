@@ -200,7 +200,27 @@ You can set them when you init a prediction head::
 *******************
 Get more reliable eval metrics on small datasets (see `example <https://github.com/deepset-ai/FARM/blob/master/examples/doc_classification_crossvalidation>`__)
 
-5. Training on AWS SageMaker (incl. Spot instances)
+
+5. Caching & Checkpointing
+***************************
+Save time if you run similar pipelines (e.g. only experimenting with model params): Store your preprocessed dataset & load it next time from cache::
+
+    data_silo = DataSilo(processor=processor, batch_size=batch_size, caching=True)
+
+Start & stop training by saving checkpoints of the trainer::
+
+    trainer = Trainer.create_or_load_checkpoint(
+                ...
+                checkpoint_on_sigterm=True,
+                checkpoint_every=200,
+                checkpoint_root_dir=Path(“/opt/ml/checkpoints/training”),
+                resume_from_checkpoint=“latest”)
+
+The checkpoints include the state of everything that matters (model, optimizer, lr_schedule ...) to resume training.
+This is particularly useful, if your training crashes (e.g. because your are using spot cloud instances).
+You can either save checkpoints every X steps or when a SIGTERM signal is received.
+
+6. Training on AWS SageMaker (incl. Spot instances)
 ***************************************************
 (Coming soon)
 
@@ -273,6 +293,7 @@ Upcoming features
 Acknowledgements
 ###################
 - FARM is built upon parts of the great `transformers <https://github.com/huggingface/pytorch-transformers>`_  repository from Huggingface. It utilizes their implementations of models and tokenizers.
+- FARM is a community effort! Essential pieces of it have been implemented by our FARMers out there. Thanks to all contributors!
 - The original BERT model and `paper <https://arxiv.org/abs/1810.04805>`_  was published by Jacob Devlin, Ming-Wei Chang, Kenton Lee and Kristina Toutanova.
 
 Citation
