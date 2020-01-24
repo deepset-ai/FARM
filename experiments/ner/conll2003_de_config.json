@@ -5,8 +5,8 @@
     "output_dir": {"value": null, "default": "saved_models",    "desc": "Output directory where model predictions and checkpoints will be saved."},
     "cuda":        {"value": null, "default": true,  "desc": "CUDA flag,  uses CUDA if available."},
     "local_rank":  {"value": null, "default": -1,    "desc": "If local_rank == -1 -> multiGPU mode on one machine,  other values signal distributed computation across several nodes (apex install required)."},
-    "use_amp":     {"value": [null,"O0","O1"], "default": null, "desc": "Automatic mixed precision with APEX. Must be set to null to disable or to any optimisation level (see apex documentation). 'O1' is recommended."},
-    "seed":        {"value": null, "default": 42, "desc": "Random seed for initializations."},
+    "use_amp":     {"value": [null,"O1"], "default": null, "desc": "Automatic mixed precision with APEX. Must be set to null to disable or to any optimisation level (see apex documentation). 'O1' is recommended."},
+    "seed":        {"value": null, "default": 42, "desc": "Random seed for initializations."}
   }, 
 
   "task": {
