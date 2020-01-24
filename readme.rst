@@ -58,7 +58,7 @@ Core features
 - **Speed**: AMP optimizers (~35% faster) and parallel preprocessing (16 CPU cores => ~16x faster)
 - **Modular design** of language models and prediction heads
 - Switch between heads or combine them for **multitask learning**
-- **Full Compatibility** with huggingface/Transformers' models and model hub
+- **Full Compatibility** with HuggingFace Transformers' models and model hub
 - **Smooth upgrading** to newer language models
 - Integration of **custom datasets** via Processor class
 - Powerful **experiment tracking** & execution
