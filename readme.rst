@@ -178,13 +178,13 @@ While FARM provides decent defaults for both, you can easily configure many othe
 - any optimizer from pytorch, apex or transformers
 - any learning rate schedule from pytorch or transformers
 
-You can configure them by passing a dict to :code:`initialize_optimizer()` (see `example <https://github.com/deepset-ai/FARM/blob/master/examples/doc_classification_custom_optimizer>`__).
+You can configure them by passing a dict to :code:`initialize_optimizer()` (see `example <https://github.com/deepset-ai/FARM/blob/master/examples/doc_classification_custom_optimizer.py>`__).
 
 
 2. Early Stopping
 ******************
 With early stopping, you stop once a metric is not improving any further and take the best model that you found until then.
-This is helpful to prevent overfitting on small datasets and to reduce training time if your model doesn't improve any further (see `example <https://github.com/deepset-ai/FARM/blob/master/examples/doc_classification_with_earlystopping>`__).
+This is helpful to prevent overfitting on small datasets and to reduce training time if your model doesn't improve any further (see `example <https://github.com/deepset-ai/FARM/blob/master/examples/doc_classification_with_earlystopping.py>`__).
 
 3. Imbalanced classes
 *********************
@@ -198,7 +198,7 @@ You can set them when you init a prediction head::
 
 4. Cross Validation
 *******************
-Get more reliable eval metrics on small datasets (see `example <https://github.com/deepset-ai/FARM/blob/master/examples/doc_classification_crossvalidation>`__)
+Get more reliable eval metrics on small datasets (see `example <https://github.com/deepset-ai/FARM/blob/master/examples/doc_classification_crossvalidation.py>`__)
 
 5. Training on AWS SageMaker (incl. Spot instances)
 ***************************************************
