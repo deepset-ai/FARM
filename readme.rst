@@ -168,6 +168,9 @@ You can use both of them individually and mount your own models. Check out the d
 
 Advanced Usage
 ##############
+Once you got started with FARM, there's plenty of options to customize your pipeline and boost your models.
+Let's highlight a few of them ...
+
 1. Optimizers & Learning rate schedules
 ****************************************
 While FARM provides decent defaults for both, you can easily configure many other optimizers & LR schedules:
@@ -186,7 +189,7 @@ This is helpful to prevent overfitting on small datasets and to reduce training 
 3. Imbalanced classes
 *********************
 If you do classification on imbalanced classes, consider using class weights. They change the loss function to down-weight frequent classes.
-You can set them when you initi a prediction head::
+You can set them when you init a prediction head::
 
     prediction_head = TextClassificationHead(
     class_weights=data_silo.calculate_class_weights(task_name="text_classification"),
