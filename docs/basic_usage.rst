@@ -60,7 +60,7 @@ Use a `public model  <https://huggingface.co/models>`__  or your own to get pred
     result = nlp.inference_from_dicts(dicts=QA_input)
 
 3. Showcase your model (API + UI)
-****************************
+**********************************
 
 Quick start
 ===============
