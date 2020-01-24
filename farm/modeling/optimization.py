@@ -285,7 +285,7 @@ def _optimize_model(model, device, local_rank, optimizer=None, distributed=False
                                         output_device=device_ids[0],
                                         find_unused_parameters=True)
 
-    elif torch.cuda.device_count() > 1:
+    elif torch.cuda.device_count() > 1 and device.type == "cuda":
         model = WrappedDataParallel(model)
 
     return model, optimizer
