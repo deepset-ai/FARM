@@ -10,38 +10,56 @@ Welcome to the FARM!
 
 What is it?
 ############
-FARM makes cutting edge **Transfer Learning** for NLP simple.
-Building upon `transformers <https://github.com/huggingface/pytorch-transformers>`_, FARM is a home for all species of pretrained language models (e.g. BERT) that can be adapted to different
-**domain languages** or **down-stream tasks**.
-With FARM you can easily create SOTA NLP models for tasks like document classification, NER or question answering.
-The **standardized interfaces** for language models and prediction heads allow flexible extension by researchers and easy application for practitioners.
-Additional experiment tracking and visualizations support you along the way to adapt a SOTA model to your own NLP problem and have a **fast proof-of-concept**.
+FARM makes **Transfer Learning** with BERT & Co **simple, fast and enterprise-ready**.
+It's build upon `transformers <https://github.com/huggingface/pytorch-transformers>`_ and provides additional features to simplify the life of developers:
+Parallelized preprocessing, highly modular design, multi-task learning, experiment tracking, easy debugging and close integration with AWS SageMaker.
+
+With FARM you can build **fast proof-of-concepts** for tasks like text classification, NER or question answering and **transfer them easily into production**.
+
+
+- `What is it? <https://github.com/deepset-ai/FARM#what-is-it>`_
+- `Core Features <https://github.com/deepset-ai/FARM#core-features>`_
+- `Resources <https://github.com/deepset-ai/FARM#resources>`_
+- `Installation <https://github.com/deepset-ai/FARM#installation>`_
+- `Basic Usage <https://github.com/deepset-ai/FARM#basic-usage>`_
+- `Advanced Usage <https://github.com/deepset-ai/FARM#advanced-usage>`_
+- `Core Concepts <https://github.com/deepset-ai/FARM#core-concepts>`_
+- `FAQ <https://github.com/deepset-ai/FARM#faq>`_
+- `Upcoming features <https://github.com/deepset-ai/FARM#upcoming-features>`_
+
 
 Core features
 ##############
-- **Easy adaptation of language models** (e.g. BERT) to your own use case
-- Fast integration of **custom datasets** via Processor class
+- **Easy fine-tuning of language models** to your task and domain language
+- **Speed**: AMP optimizers (~35% faster) and parallel preprocessing (16 CPU cores => ~16x faster)
 - **Modular design** of language model and prediction heads
-- Switch between heads or just combine them for  **multitask learning**
-- **Smooth upgrading** to new language models
+- Switch between heads or just combine them for **multitask learning**
+- **Full Compatibility** with transformers' models and model hub
+- **Smooth upgrading** to newer language models
+- Integration of **custom datasets** via Processor class
 - Powerful **experiment tracking** & execution
+- **Checkpointing & Caching** to resume training and reduce costs with spot instances
 - Simple **deployment** and **visualization** to showcase your model
 
-+------------------------------+-------------------+-------------------+-------------------+
-| Task                         |      BERT         |  RoBERTa          |  XLNet            |
-+==============================+===================+===================+===================+
-| Text classification          | x                 |  x                |  x                |
-+------------------------------+-------------------+-------------------+-------------------+
-| NER                          | x                 |  x                |  x                |
-+------------------------------+-------------------+-------------------+-------------------+
-| Question Answering           | x                 |                   |                   |
-+------------------------------+-------------------+-------------------+-------------------+
-| Language Model Fine-tuning   | x                 |                   |                   |
-+------------------------------+-------------------+-------------------+-------------------+
-| Text Regression              | x                 |  x                |  x                |
-+------------------------------+-------------------+-------------------+-------------------+
-| Multilabel Text classif.     | x                 |  x                |  x                |
-+------------------------------+-------------------+-------------------+-------------------+
++------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
+| Task                         |      BERT         |  RoBERTa          |  XLNet            |  ALBERT           |  DistilBERT       |  XLMRoBERTa       |
++==============================+===================+===================+===================+===================+===================+===================+
+| Text classification          | x                 |  x                |  x                |  x                |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
+| NER                          | x                 |  x                |  x                |  x                |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
+| Question Answering           | x                 |  x                |  x                |  x                |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
+| Language Model Fine-tuning   | x                 |                   |                   |                   |                   |                   |
++------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
+| Text Regression              | x                 |  x                |  x                |  x                |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
+| Multilabel Text classif.     | x                 |  x                |  x                |  x                |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
+| Extracting embeddings        | x                 |  x                |  x                |  x                |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
+| LM from scratch (beta)       | x                 |                   |                   |                   |                   |                   |
++------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
 
 
 .. toctree::

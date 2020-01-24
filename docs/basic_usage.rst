@@ -8,42 +8,58 @@ FARM offers two modes for model training:
 **Option 1: Run experiment(s) from config**::
 
     from farm.experiment import run_experiment, load_experiments
-    experiments = load_experiments("experiments/ner/conll2003_de_config.json")
+    experiments = load_experiments(Path("experiments/ner/conll2003_de_config.json")
     run_experiment(experiments[0])
 
 *Use cases:* Training your first model, hyperparameter optimization, evaluating a language model on multiple down-stream tasks.
 
 **Option 2: Stick together your own building blocks**::
 
+    # Choose a language model (e.g. from transformers' model hub: https://huggingface.co/models)
+    language_model = "bert-base-german-cased"
+
     # Basic building blocks for data handling
-    tokenizer = Tokenizer.load(pretrained_model_name_or_path=lang_model)
-    processor = NERProcessor(tokenizer=tokenizer, data_dir="../data/conll03-de", max_seq_len=128)
+    tokenizer = Tokenizer.load(pretrained_model_name_or_path=language_model)
+    processor = NERProcessor(tokenizer=tokenizer, data_dir=Path("../data/conll03-de"), max_seq_len=128)
     ...
 
     # AdaptiveModel = LanguageModel + PredictionHead(s)
-    language_model = LanguageModel.load(lang_model)
-    prediction_head = TokenClassificationHead(layer_dims=[768, num_labels])
+    language_model = LanguageModel.load(language_model)
+    prediction_head = TokenClassificationHead(num_labels=13)
     model = AdaptiveModel(language_model=language_model, prediction_heads=[prediction_head], ...)
     ...
 
     # Feed it to a Trainer, which keeps care of growing our model
-    trainer = Trainer(optimizer=optimizer, data_silo=data_silo,
+    trainer = Trainer(
+        model=model,
+        optimizer=optimizer,
+        data_silo=data_silo,
         epochs=n_epochs,
-        n_gpu=1,
-        warmup_linear=warmup_linear,
+        lr_schedule=lr_schedule,
         evaluate_every=evaluate_every,
-        device=device,
-    )
+        n_gpu=n_gpu,
+        device=device)
 
     # 7. Let it grow
-    model = trainer.train(model)
+    model = trainer.train()
 
 See this `tutorial <https://github.com/deepset-ai/FARM/blob/master/tutorials/1_farm_building_blocks.ipynb>`_ for details
 
 *Usecases:* Custom datasets, language models, prediction heads ...
 
+2. Run Inference
+*****************
+Use a `public model  <https://huggingface.co/models>`__  or your own to get predictions::
 
-2. Run Inference (API + UI)
+    # Load model, tokenizer & processor (local or any from https://huggingface.co/models)
+    nlp = Inferencer.load("deepset/bert-large-uncased-whole-word-masking-squad2", task_type="question_answering")
+
+    # Run predictions
+    QA_input = [{"qas": ["Why is model conversion important?"],
+                 "context": "Model conversion lets people easily switch between frameworks."}]
+    result = nlp.inference_from_dicts(dicts=QA_input)
+
+3. Showcase your model (API + UI)
 ****************************
 
 Quick start
