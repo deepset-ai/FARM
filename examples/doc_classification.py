@@ -34,7 +34,7 @@ def doc_classifcation():
     # lang_model = Path("../saved_models/farm-bert-base-cased")
     use_amp = None
 
-    device, n_gpu = initialize_device_settings(use_cuda=False, use_amp=use_amp)
+    device, n_gpu = initialize_device_settings(use_cuda=True, use_amp=use_amp)
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
