@@ -11,11 +11,11 @@ parsed_requirements = [
     if ((x.strip()[0] != "#") and (len(x.strip()) > 3) and "-e git://" not in x)
 ]
 
-parsed_requirements.append('transformers @ git+https://github.com/huggingface/transformers.git@90b7df444fc30d5f476e5ab32d1f89340998a28d#egg=transformers@v2.3.0#egg=transformers')
+parsed_requirements.append('transformers @ git+https://github.com/huggingface/transformers.git@90b7df444fc30d5f476e5ab32d1f89340998a28d#egg=transformers@v2.3.0')
 
 setup(
     name="farm",
-    version="0.3.2",
+    version="0.4.0",
     author="Malte Pietsch, Timo Moeller, Branden Chan, Tanay Soni, Huggingface Team Authors, Google AI Language Team Authors, Open AI team Authors",
     author_email="malte.pietsch@deepset.ai",
     description="Toolkit for finetuning and evaluating transformer based language models",
@@ -24,7 +24,7 @@ setup(
     keywords="BERT NLP deep learning language-model transformer qa question-answering transfer-learning",
     license="Apache",
     url="https://gitlab.com/deepset-ai/ml/lm/farm",
-    download_url="https://github.com/deepset-ai/FARM/archive/0.3.2.tar.gz",
+    download_url="https://github.com/deepset-ai/FARM/archive/0.4.0.tar.gz",
     packages=find_packages(exclude=["*.tests", "*.tests.*", "tests.*", "tests"]),
     install_requires=parsed_requirements,
     python_requires=">=3.5.0",

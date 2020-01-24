@@ -31,7 +31,7 @@
 .. image:: https://pepy.tech/badge/farm
 	:target: https://pepy.tech/project/farm
 	:alt: Downloads
-	
+
 What is it?
 ############
 FARM makes **Transfer Learning** with BERT & Co **simple, fast and enterprise-ready**.
@@ -39,6 +39,18 @@ It's build upon `transformers <https://github.com/huggingface/pytorch-transforme
 Parallelized preprocessing, highly modular design, multi-task learning, experiment tracking, easy debugging and close integration with AWS SageMaker.
 
 With FARM you can build **fast proof-of-concepts** for tasks like text classification, NER or question answering and **transfer them easily into production**.
+
+
+- `What is it? <https://github.com/deepset-ai/FARM#what-is-it>`_
+- `Core Features <https://github.com/deepset-ai/FARM#core-features>`_
+- `Resources <https://github.com/deepset-ai/FARM#resources>`_
+- `Installation <https://github.com/deepset-ai/FARM#installation>`_
+- `Basic Usage <https://github.com/deepset-ai/FARM#basic-usage>`_
+- `Advanced Usage <https://github.com/deepset-ai/FARM#advanced-usage>`_
+- `Core Concepts <https://github.com/deepset-ai/FARM#core-concepts>`_
+- `FAQ <https://github.com/deepset-ai/FARM#faq>`_
+- `Upcoming features <https://github.com/deepset-ai/FARM#upcoming-features>`_
+
 
 Core features
 ##############
@@ -73,14 +85,13 @@ Core features
 | LM from scratch (beta)       | x                 |                   |                   |                   |                   |                   |
 +------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
 
-Example scripts for each task: `FARM/examples/ <https://github.com/deepset-ai/FARM/tree/master/examples>`_
+
 
 Resources
-##############
+##########
 **Docs**
 
 `Full documentation <https://farm.deepset.ai>`_
-
 
 **Tutorials**
 
@@ -136,10 +147,15 @@ FARM offers two modes for model training:
 
 Metrics and parameters of your model training get automatically logged via MLflow. We provide a `public MLflow server <https://public-mlflow.deepset.ai/>`_ for testing and learning purposes. Check it out to see your own experiment results! Just be aware: We will start deleting all experiments on a regular schedule to ensure decent server performance for everybody!
 
-2. Run Inference (API + UI)
-****************************
+2. Run Inference
+*******************************
+Use a `public model  <https://huggingface.co/models>`__  or your own to get predictions:
 
-a) within python
+.. image:: https://raw.githubusercontent.com/deepset-ai/FARM/master/docs/img/code_snippet_inference.png
+
+
+3. Showcase your models (API + UI)
+**********************************
 
 * Run :code:`docker-compose up`
 * Open http://localhost:3000 in your browser
@@ -149,26 +165,6 @@ a) within python
 
 One docker container exposes a REST API (localhost:5000) and another one runs a simple demo UI (localhost:3000).
 You can use both of them individually and mount your own models. Check out the docs for details.
-
-Core concepts
-#########################
-Model
-************
-AdaptiveModel = Language Model + Prediction Head(s)
-With this modular approach you can easily add prediction heads (multitask learning) and re-use them for different types of language models.
-`(Learn more) <https://farm.deepset.ai/modeling.html>`__
-
-
-.. image:: https://raw.githubusercontent.com/deepset-ai/FARM/master/docs/img/adaptive_model_no_bg_small.jpg
-
-
-Data Processing
-********************
-Custom Datasets can be loaded by customizing the Processor. It converts "raw data" into PyTorch Datasets.
-Much of the heavy lifting is then handled behind the scenes to make it fast & simple to debug.
-`(Learn more) <https://farm.deepset.ai/data_handling.html>`__
-
-.. image:: https://raw.githubusercontent.com/deepset-ai/FARM/master/docs/img/data_silo_no_bg_small.jpg
 
 Advanced Usage
 ##############
@@ -204,6 +200,26 @@ Get more reliable eval metrics on small datasets (see `example <https://github.c
 5. Training on AWS SageMaker (incl. Spot instances)
 ***************************************************
 (Coming soon)
+
+Core concepts
+#########################
+Model
+************
+AdaptiveModel = Language Model + Prediction Head(s)
+With this modular approach you can easily add prediction heads (multitask learning) and re-use them for different types of language models.
+`(Learn more) <https://farm.deepset.ai/modeling.html>`__
+
+
+.. image:: https://raw.githubusercontent.com/deepset-ai/FARM/master/docs/img/adaptive_model_no_bg_small.jpg
+
+
+Data Processing
+********************
+Custom Datasets can be loaded by customizing the Processor. It converts "raw data" into PyTorch Datasets.
+Much of the heavy lifting is then handled behind the scenes to make it fast & simple to debug.
+`(Learn more) <https://farm.deepset.ai/data_handling.html>`__
+
+.. image:: https://raw.githubusercontent.com/deepset-ai/FARM/master/docs/img/data_silo_no_bg_small.jpg
 
 FAQ
 ####
