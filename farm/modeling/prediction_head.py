@@ -261,11 +261,11 @@ class TextClassificationHead(PredictionHead):
         """
         super(TextClassificationHead, self).__init__()
         # num_labels could in most cases also be automatically retrieved from the data processor
-        if num_labels:
-            self.layer_dims = [768, num_labels]
-        elif layer_dims:
+        if layer_dims:
             self.layer_dims = layer_dims
             logger.warning("`layer_dims` will be deprecated in future releases")
+        elif num_labels:
+            self.layer_dims = [768, num_labels]
         else:
             raise ValueError("Please supply `num_labels` to define output dim of prediction head")
         self.num_labels = self.layer_dims[-1]
@@ -406,11 +406,11 @@ class MultiLabelTextClassificationHead(PredictionHead):
         """
         super(MultiLabelTextClassificationHead, self).__init__()
         # num_labels could in most cases also be automatically retrieved from the data processor
-        if num_labels:
-            self.layer_dims = [768, num_labels]
-        elif layer_dims:
+        if layer_dims:
             self.layer_dims = layer_dims
             logger.warning("`layer_dims` will be deprecated in future releases")
+        elif num_labels:
+            self.layer_dims = [768, num_labels]
         else:
             raise ValueError("Please supply `num_labels` to define output dim of prediction head")
         self.num_labels = self.layer_dims[-1]
@@ -506,11 +506,11 @@ class TokenClassificationHead(PredictionHead):
         :param kwargs:
         """
         super(TokenClassificationHead, self).__init__()
-        if num_labels:
-            self.layer_dims = [768, num_labels]
-        elif layer_dims:
+        if layer_dims:
             self.layer_dims = layer_dims
             logger.warning("`layer_dims` will be deprecated in future releases")
+        elif num_labels:
+            self.layer_dims = [768, num_labels]
         else:
             raise ValueError("Please supply `num_labels` to define output dim of prediction head")
         self.num_labels = self.layer_dims[-1]
