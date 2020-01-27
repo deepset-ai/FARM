@@ -4,6 +4,7 @@ import torch
 from pathlib import Path
 from tqdm import tqdm
 import numpy
+import shutil
 
 from farm.utils import MLFlowLogger as MlLogger
 from farm.utils import GracefulKiller
@@ -120,6 +121,7 @@ class Trainer:
         checkpoint_on_sigterm=False,
         checkpoint_every=None,
         checkpoint_root_dir=None,
+        checkpoints_to_keep=3,
         from_epoch=0,
         from_step=0,
     ):
@@ -165,6 +167,8 @@ class Trainer:
         :param checkpoint_root_dir: the Path of directory where all train checkpoints are saved. For each individual
                checkpoint, a subdirectory with the name epoch_{epoch_num}_step_{step_num} is created.
         :type checkpoint_root_dir: Path
+        :param checkpoints_to_keep: maximum number of train checkpoints to save.
+        :type checkpoints_to_keep: int
         :param from_epoch: the epoch number to start the training from. In the case when training resumes from a saved
                checkpoint, it is used to fast-forward training to the last epoch in the checkpoint.
         :type from_epoch: int
@@ -199,6 +203,7 @@ class Trainer:
         else:
             self.sigterm_handler = None
         self.checkpoint_root_dir = checkpoint_root_dir
+        self.checkpoints_to_keep = checkpoints_to_keep
         self.checkpoint_every = checkpoint_every
         if self.checkpoint_every and not checkpoint_root_dir:
             raise Exception("checkpoint_path needs to be supplied when using checkpoint_every.")
@@ -241,20 +246,20 @@ class Trainer:
                defaults to "latest", using the checkpoint with the highest train steps.
         :type resume_from_checkpoint: str
         """
+        checkpoint_to_load = None
         if checkpoint_root_dir.exists():
             if resume_from_checkpoint == "latest":
-                dirs = [d for d in checkpoint_root_dir.iterdir() if d.is_dir()]
-                total_steps_at_checkpoints = []
-                for d in dirs:
-                    epoch, step = [int(s) for s in str(d).split("_") if s.isdigit()]
-                    total_steps_at_checkpoints.append((d, (epoch + 1) * (step + 1)))
-                total_steps_at_checkpoints.sort(key=lambda tup: tup[1], reverse=True)
-                checkpoint_to_load = total_steps_at_checkpoints[0][0]
+                saved_checkpoints = cls._get_checkpoints(checkpoint_root_dir)
+                if saved_checkpoints:
+                    checkpoint_to_load = saved_checkpoints[0][0]  # latest checkpoint
+                else:
+                    checkpoint_to_load = None
             else:
                 checkpoint_to_load = checkpoint_root_dir / resume_from_checkpoint
 
+        if checkpoint_to_load:
             trainer = cls._load_checkpoint(path=checkpoint_to_load, data_silo=data_silo)
-            logging.info(f"Resuming training from the latest train checkpoint at {checkpoint_to_load} ...")
+            logging.info(f"Resuming training from the train checkpoint at {checkpoint_to_load} ...")
         else:
             logging.info(f"No train checkpoints found. Starting a new training ...")
             trainer = Trainer(data_silo=data_silo, checkpoint_root_dir=checkpoint_root_dir, **kwargs)
@@ -308,6 +313,21 @@ class Trainer:
         logger.info(f"Loaded a train checkpoint from {path}")
         return trainer
 
+    @classmethod
+    def _get_checkpoints(cls, checkpoint_root_dir):
+        """
+        Get a list of checkpoints sorted by the number of training steps.
+        """
+        dirs = [d for d in checkpoint_root_dir.iterdir() if d.is_dir() and d.name.startswith("epoch")]
+
+        checkpoints_with_total_steps = []
+        for d in dirs:
+            epoch, step = [int(s) for s in str(d).split("_") if s.isdigit()]
+            checkpoints_with_total_steps.append((d, (epoch + 1) * (step + 1)))
+        checkpoints_with_total_steps.sort(key=lambda tup: tup[1], reverse=True)
+
+        return checkpoints_with_total_steps
+
     def _save(self):
         """
         Save a train checkpoint at the Trainer's checkpoint_path.
@@ -319,8 +339,10 @@ class Trainer:
         #TODO The model is currently saved as a whole serialized object. The disadvantage of this approach is that it is
         bound to specifics Python version, FARM version, directory structures etc. A more modular and reusable approach
         is to save using AdaptiveModel's save() method where the model and the state_dict are stored separately.
+
+        # TODO custom defined evaluators are not saved in the checkpoint.
         """
-        checkpoint_path = self.checkpoint_root_dir / f"epoch_{self.from_epoch}_step_{self.from_step}"
+        checkpoint_path = self.checkpoint_root_dir / "checkpoint_in_progress"
         checkpoint_path.mkdir(parents=True, exist_ok=True)
 
         trainer_state_dict = self._get_state_dict()
@@ -340,8 +362,15 @@ class Trainer:
             checkpoint_path / "trainer",
         )
 
-        # TODO custom defined evaluators are not saved in the checkpoint.
-        logger.info(f"Saved a training checkpoint at {checkpoint_path}")
+        checkpoint_name = f"epoch_{self.from_epoch}_step_{self.from_step}"
+        checkpoint_path.replace(Path(checkpoint_path.parent) / checkpoint_name)
+
+        saved_checkpoints = self._get_checkpoints(self.checkpoint_root_dir)
+        if len(saved_checkpoints) > self.checkpoints_to_keep:
+            for cp, _ in saved_checkpoints[self.checkpoints_to_keep:]:
+                shutil.rmtree(cp)
+
+        logger.info(f"Saved a training checkpoint at {checkpoint_name}")
 
     def _get_state_dict(self):
         """
