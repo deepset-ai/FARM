@@ -72,7 +72,7 @@ class Tokenizer:
             logger.info(f"Loading tokenizer of type '{tokenizer_class}'")
         # return appropriate tokenizer object
         if tokenizer_class == "AlbertTokenizer":
-            ret = AlbertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            ret = AlbertTokenizer.from_pretrained(pretrained_model_name_or_path, keep_accents=True,  **kwargs)
         elif tokenizer_class == "XLMRobertaTokenizer":
             ret = XLMRobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "RobertaTokenizer":
@@ -82,10 +82,9 @@ class Tokenizer:
         elif tokenizer_class == "BertTokenizer":
             ret = BertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "XLNetTokenizer":
-            ret = XLNetTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            ret = XLNetTokenizer.from_pretrained(pretrained_model_name_or_path, keep_accents=True, **kwargs)
         if ret is None:
             raise Exception("Unable to load tokenizer")
-
         else:
             return ret
 
