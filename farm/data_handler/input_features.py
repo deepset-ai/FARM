@@ -355,7 +355,10 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
     segment_ids = encoded["token_type_ids"]
 
     # seq_2_start_t is the index of the first token in the second text sequence (e.g. passage)
-    seq_2_start_t = segment_ids.index(1)
+    if tokenizer.__class__.__name__ == "RobertaTokenizer":
+        seq_2_start_t = get_roberta_seq_2_start(input_ids)
+    else:
+        seq_2_start_t = segment_ids.index(1)
 
     # The mask has 1 for real tokens and 0 for padding tokens. Only real
     # tokens are attended to.
@@ -371,11 +374,11 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
     segment_ids += zero_padding
     start_of_word += zero_padding
 
-    # The Roberta tokenizer generates a segment_ids vector that separates the first sequence from the second.
+    # The XLM-Roberta tokenizer generates a segment_ids vector that separates the first sequence from the second.
     # However, when this is passed in to the forward fn of the Roberta model, it throws an error since
     # Roberta has only a single token embedding (!!!). To get around this, we want to have a segment_ids
     # vec that is only 0s
-    if tokenizer.__class__.__name__ in ["RobertaTokenizer", "XLMRobertaTokenizer"]:
+    if tokenizer.__class__.__name__ == "XLMRobertaTokenizer":
         segment_ids = np.zeros_like(segment_ids)
 
     # Todo: explain how only the first of labels will be used in train, and the full array will be used in eval
@@ -488,6 +491,16 @@ def answer_in_passage(start_idx, end_idx, passage_len):
         return True
     return False
 
+def get_roberta_seq_2_start(input_ids):
+    # This commit (https://github.com/huggingface/transformers/commit/dfe012ad9d6b6f0c9d30bc508b9f1e4c42280c07)from
+    # huggingface transformers now means that RobertaTokenizer.encode_plus returns only zeros in token_type_ids. Therefore, we need
+    # another way to infer the start of the second input sequence in RoBERTa. Roberta input sequences have the following
+    # format: <s> P1 </s> </s> P2 </s>
+    # <s> has index 0 and </s> has index 2. To find the beginning of the second sequence, this function first finds
+    # the index of the second </s>
+    first_backslash_s = input_ids.index(2)
+    second_backslash_s = input_ids.index(2, first_backslash_s + 1)
+    return second_backslash_s + 1
 
 def sample_to_features_squadOLD(
     sample, tokenizer, max_seq_len, doc_stride, max_query_length, tasks,
