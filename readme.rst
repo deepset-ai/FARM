@@ -280,6 +280,8 @@ We attained high performance by training a model first on public datasets (e.g. 
 Even ~2000 domain labels can give you the essential performance boost you need.
 Checkout `haystack <https://github.com/deepset-ai/haystack/>`__ for more details and a QA labeling tool.
 
+**8. My GPU runs out of memory. How can I train with decent batch sizes?**
+Use gradient accumulation! It combines multiple batches before applying backprop. In FARM, just set the param `grad_acc_steps` in `initialize_optimizer()` and `Trainer()` to the number of batches you want to combine (i.e. `grad_acc_steps=2`and `batch_size=16` results in an effective batch size of 32).
 
 Upcoming features
 ###################
