@@ -184,15 +184,13 @@ class Inferencer:
             #                                             quote_char='"',
             #                                             multilabel=True,
             #                                             )
-            # TODO NER style in FARM differs because we have the "X" label for subword tokens
-            # elif task_type == "ner":
-            #     label_list = list(config.label2id.keys())
-            #     # label_list = ["[PAD]", "X", "O", "B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC",
-            #     #               "I-LOC", "B-OTH", "I-OTH"]
-            #     processor = NERProcessor(
-            #         tokenizer=tokenizer, max_seq_len=256, data_dir=None, metric="seq_f1",
-            #         label_list=label_list
-            #     )
+
+            elif task_type == "ner":
+                label_list = list(config.label2id.keys())
+                processor = NERProcessor(
+                    tokenizer=tokenizer, max_seq_len=max_seq_len, data_dir=None, metric="seq_f1",
+                    label_list=label_list
+                )
             else:
                 raise ValueError(f"`task_type` {task_type} is not supported yet. "
                                  f"Valid options for arg `task_type`: 'question_answering', 'embeddings', 'text_classification'")

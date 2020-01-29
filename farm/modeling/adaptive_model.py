@@ -362,8 +362,7 @@ class AdaptiveModel(nn.Module):
             self.language_model.model.config.label2id = {label: id for id, label in enumerate(self.prediction_heads[0].label_list)}
             self.language_model.model.config.finetuning_task = "text_classification"
             self.language_model.model.config.language = self.language_model.language
-            # TODO This line might be needed for cases where we are doing text classification with more than 2 classes
-            # self.language_model.model.config.num_labels = self.prediction_heads[0].num_labels
+            self.language_model.model.config.num_labels = self.prediction_heads[0].num_labels
 
             # init model
             transformers_model = AutoModelForSequenceClassification.from_config(self.language_model.model.config)
