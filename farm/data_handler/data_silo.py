@@ -42,6 +42,7 @@ class DataSilo:
         max_multiprocessing_chunksize=2000,
         max_processes=128,
         caching=False,
+        cache_path=Path("cache/data_silo"),
     ):
         """
         :param processor: A dataset specific Processor object which will turn input (file or dict) into a Pytorch Dataset.
@@ -56,7 +57,15 @@ class DataSilo:
             in `farm.utils`. For certain cases like lm_finetuning, a smaller value can be set, as the default chunksize
             values are rather large that might cause memory issues.
         :type max_multiprocessing_chunksize: int
-
+        :param max_processes: the maximum number of processes to spawn in the multiprocessing.Pool used in DataSilo.
+                              It can be set to 1 to disable the use of multiprocessing ot make debugging easier.
+        :type max_processes: int
+        :param caching: save the processed datasets on disk to save time/compute if the same train data is used to run
+                        multiple experiments. Each cache has a checksum based on the train_filename of the Processor
+                        and the batch size.
+        :type caching bool
+        :param cache_path: root dir for storing the datasets' cache.
+        :type cache_path: Path
         """
         self.distributed = distributed
         self.processor = processor
@@ -65,14 +74,15 @@ class DataSilo:
         self.class_weights = None
         self.max_processes = max_processes
         self.max_multiprocessing_chunksize = max_multiprocessing_chunksize
+        self.caching = caching
+        self.cache_path = cache_path
 
         loaded_from_cache = False
-        if caching:  # Check if DataSets are present in cache
+        if self.caching:  # Check if DataSets are present in cache
             checksum = self._get_checksum()
-            dataset_path = Path(f"cache/data_silo/{checksum}")
+            dataset_path = self.cache_path / checksum
 
             if dataset_path.exists():
-                logger.info("Loading datasets from cache ...")
                 self._load_dataset_from_cache(dataset_path)
                 loaded_from_cache = True
 
@@ -210,7 +220,8 @@ class DataSilo:
             logger.info("No test set is being loaded")
             self.data["test"] = None
 
-        self._save_dataset_to_cache()
+        if self.caching:
+            self._save_dataset_to_cache()
 
         # derive stats and meta data
         self._calculate_statistics()
@@ -218,21 +229,11 @@ class DataSilo:
 
         self._initialize_data_loaders()
 
-    def _get_checksum(self):
-        """
-        Get checksum based on a dict to ensure validity of cached DataSilo
-        """
-        # keys in the dict identifies uniqueness for a given DataSilo.
-        payload_dict = {
-            "train_filename": str(Path(self.processor.train_filename).absolute())
-        }
-        checksum = get_dict_checksum(payload_dict)
-        return checksum
-
     def _load_dataset_from_cache(self, cache_dir):
         """
         Load serialized dataset from a cache.
         """
+        logger.info(f"Loading datasets from cache at {cache_dir}")
         self.data["train"] = torch.load(cache_dir / "train_dataset")
 
         dev_dataset_path = cache_dir / "dev_dataset"
@@ -265,32 +266,6 @@ class DataSilo:
         }
         checksum = get_dict_checksum(payload_dict)
         return checksum
-
-    def _load_dataset_from_cache(self, cache_dir):
-        """
-        Load serialized dataset from a cache.
-        """
-        self.data["train"] = torch.load(cache_dir / "train_dataset")
-
-        dev_dataset_path = cache_dir / "dev_dataset"
-        if dev_dataset_path.exists():
-            self.data["dev"] = torch.load(dev_dataset_path)
-        else:
-            self.data["dev"] = None
-
-        test_dataset_path = cache_dir / "test_dataset"
-        if test_dataset_path.exists():
-            self.data["test"] = torch.load(test_dataset_path)
-        else:
-            self.data["test"] = None
-
-        self.tensor_names = torch.load(cache_dir / "tensor_names")
-
-        # derive stats and meta data
-        self._calculate_statistics()
-        # self.calculate_class_weights()
-
-        self._initialize_data_loaders()
 
     def _save_dataset_to_cache(self):
         """
@@ -298,7 +273,7 @@ class DataSilo:
         """
         checksum = self._get_checksum()
 
-        cache_dir = Path(f"cache/data_silo/{checksum}")
+        cache_dir = self.cache_path / checksum
         cache_dir.mkdir(parents=True, exist_ok=True)
 
         torch.save(self.data["train"], cache_dir / "train_dataset")
@@ -310,6 +285,7 @@ class DataSilo:
             torch.save(self.data["test"], cache_dir / "test_dataset")
 
         torch.save(self.tensor_names, cache_dir / "tensor_names")
+        logger.info(f"Cached the datasets at {cache_dir}")
 
     def _initialize_data_loaders(self):
         """ Initializing train, dev and test data loaders for the already loaded datasets """
