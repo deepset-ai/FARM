@@ -426,7 +426,8 @@ class Trainer:
                     self._save()
                     sys.exit(0)
 
-                if self.checkpoint_every and step % self.checkpoint_every == 0 and self.from_step + 1 != step:  # save a checkpoint and continue training
+                # save a checkpoint and continue train (do not create a new checkpoint if just resumed from a checkpoint)
+                if self.checkpoint_every and step % self.checkpoint_every == 0 and resume_from_step + 1 != step:
                     self._save()
 
                 progress_bar.set_description(f"Train epoch {epoch}/{self.epochs} (Cur. train loss: {loss:.4f})")
