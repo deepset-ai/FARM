@@ -44,7 +44,7 @@ class AdaptiveModel(nn.Module):
                                     Note: The loss at this stage is per sample,
                                     i.e one tensor of shape (batchsize) per prediction head.
                                     Default is sum(), but you can configure any fn that takes
-                                    [Tensor, Tensor ...] and returns [Tensor].
+                                    [Tensor, Tensor ...] and returns a single Tensor.
         :type loss_aggregation_fn: function
         """
 
