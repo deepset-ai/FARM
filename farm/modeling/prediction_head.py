@@ -542,15 +542,15 @@ class TokenClassificationHead(PredictionHead):
             # a) FARM style
             return super(TokenClassificationHead, cls).load(pretrained_model_name_or_path)
         else:
-            raise NotImplementedError("Loading prediction head from transformers format is not supported yet.")
-            # # b) transformers style
-            # # load all weights from model
-            # full_model = AutoModelForTokenClassification.from_pretrained(pretrained_model_name_or_path)
-            # # init empty head
-            # head = cls(layer_dims=[full_model.config.hidden_size, len(full_model.config.label2id)])
-            # # transfer weights for head from full model
-            # head.feed_forward.feed_forward[0].load_state_dict(full_model.classifier.state_dict())
-            # del full_model
+            # b) transformers style
+            # load all weights from model
+            full_model = AutoModelForTokenClassification.from_pretrained(pretrained_model_name_or_path)
+            # init empty head
+            head = cls(layer_dims=[full_model.config.hidden_size, len(full_model.config.label2id)])
+            # transfer weights for head from full model
+            head.feed_forward.feed_forward[0].load_state_dict(full_model.classifier.state_dict())
+            del full_model
+            return head
 
 
     def forward(self, X):
