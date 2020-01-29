@@ -22,7 +22,8 @@ class AdaptiveModel(nn.Module):
         prediction_heads,
         embeds_dropout_prob,
         lm_output_types,
-        device
+        device,
+        loss_aggregation_fn=sum
     ):
         """
         :param language_model: Any model that turns token ids into vector representations
@@ -39,7 +40,14 @@ class AdaptiveModel(nn.Module):
                                 one for each prediction head.
         :type lm_output_types: list or str
         :param device: The device on which this model will operate. Either "cpu" or "cuda".
+        :param loss_aggregation_fn: Function to aggregate the loss of multiple prediction heads.
+                                    Note: The loss at this stage is per sample,
+                                    i.e one tensor of shape (batchsize) per prediction head.
+                                    Default is sum(), but you can configure any fn that takes
+                                    [Tensor, Tensor ...] and returns [Tensor].
+        :type loss_aggregation_fn: function
         """
+
         super(AdaptiveModel, self).__init__()
         self.device = device
         self.language_model = language_model.to(device)
@@ -55,6 +63,7 @@ class AdaptiveModel(nn.Module):
             [lm_output_types] if isinstance(lm_output_types, str) else lm_output_types
         )
         self.log_params()
+        self.loss_aggregation_fn = loss_aggregation_fn
 
     def fit_heads_to_lm(self):
         """This iterates over each prediction head and ensures that its input dimensionality matches the output
@@ -146,10 +155,9 @@ class AdaptiveModel(nn.Module):
         :return loss: torch.tensor that is the per sample loss (len: batch_size)
         """
         all_losses = self.logits_to_loss_per_head(logits, **kwargs)
-        # this sums up loss per sample across multiple prediction heads
-        # TODO, check if we should take mean here.
-        # Otherwise we have to scale the learning rate in relation to how many Prediction Heads we have
-        loss = sum(all_losses)
+        # This aggregates the loss per sample across multiple prediction heads
+        # Default is sum(), but you can configure any fn that takes [Tensor, Tensor ...] and returns [Tensor]
+        loss = self.loss_aggregation_fn(all_losses)
         return loss
 
     def logits_to_preds(self, logits, **kwargs):
