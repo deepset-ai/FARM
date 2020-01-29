@@ -63,7 +63,7 @@ class DataSilo:
         :param caching: save the processed datasets on disk to save time/compute if the same train data is used to run
                         multiple experiments. Each cache has a checksum based on the train_filename of the Processor
                         and the batch size.
-        :type caching bool
+        :type caching: bool
         :param cache_path: root dir for storing the datasets' cache.
         :type cache_path: Path
         """
@@ -262,7 +262,11 @@ class DataSilo:
         """
         # keys in the dict identifies uniqueness for a given DataSilo.
         payload_dict = {
-            "train_filename": str(Path(self.processor.train_filename).absolute())
+            "train_filename": str(Path(self.processor.train_filename).absolute()),
+            "data_dir": str(self.processor.data_dir.absolute()),
+            "max_seq_len": self.processor.max_seq_len,
+            "dev_split": self.processor.dev_split,
+            "tasks": self.processor.tasks
         }
         checksum = get_dict_checksum(payload_dict)
         return checksum
