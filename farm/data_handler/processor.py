@@ -268,14 +268,22 @@ class Processor(ABC):
     def _init_samples_in_baskets(self):
         for basket in self.baskets:
             all_dicts = [b.raw for b in self.baskets]
-            basket.samples = self._dict_to_samples(dictionary=basket.raw, all_dicts=all_dicts)
-            for num, sample in enumerate(basket.samples):
-                 sample.id = f"{basket.id}-{num}"
+            try:
+                basket.samples = self._dict_to_samples(dictionary=basket.raw, all_dicts=all_dicts)
+                for num, sample in enumerate(basket.samples):
+                     sample.id = f"{basket.id}-{num}"
+            except:
+                logger.error(f"Could not create sample(s) from this dict: \n {basket.raw}")
+                raise
 
     def _featurize_samples(self):
         for basket in self.baskets:
             for sample in basket.samples:
-                sample.features = self._sample_to_features(sample=sample)
+                try:
+                    sample.features = self._sample_to_features(sample=sample)
+                except:
+                    logger.error(f"Could not convert this sample to features: \n {sample}")
+                    raise
 
     def _create_dataset(self, keep_baskets=False):
         features_flat = []
