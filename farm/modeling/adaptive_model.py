@@ -6,7 +6,7 @@ from pathlib import Path
 
 from farm.modeling.language_model import LanguageModel
 from farm.modeling.prediction_head import PredictionHead, BertLMHead, QuestionAnsweringHead, TokenClassificationHead, TextClassificationHead
-from transformers.modeling_auto import AutoModelForQuestionAnswering, AutoModelForSequenceClassification
+from transformers.modeling_auto import AutoModelForQuestionAnswering, AutoModelForSequenceClassification, AutoModelForTokenClassification
 from farm.utils import MLFlowLogger as MlLogger
 
 logger = logging.getLogger(__name__)
@@ -362,6 +362,7 @@ class AdaptiveModel(nn.Module):
             self.language_model.model.config.label2id = {label: id for id, label in enumerate(self.prediction_heads[0].label_list)}
             self.language_model.model.config.finetuning_task = "text_classification"
             self.language_model.model.config.language = self.language_model.language
+            self.language_model.model.config.num_labels = self.prediction_heads[0].num_labels
 
             # init model
             transformers_model = AutoModelForSequenceClassification.from_config(self.language_model.model.config)
@@ -369,7 +370,20 @@ class AdaptiveModel(nn.Module):
             setattr(transformers_model, transformers_model.base_model_prefix, self.language_model.model)
             transformers_model.classifier.load_state_dict(
                 self.prediction_heads[0].feed_forward.feed_forward[0].state_dict())
+        elif self.prediction_heads[0].model_type == "token_classification":
+            # add more info to config
+            self.language_model.model.config.id2label = {id: label for id, label in enumerate(self.prediction_heads[0].label_list)}
+            self.language_model.model.config.label2id = {label: id for id, label in enumerate(self.prediction_heads[0].label_list)}
+            self.language_model.model.config.finetuning_task = "token_classification"
+            self.language_model.model.config.language = self.language_model.language
+            self.language_model.model.config.num_labels = self.prediction_heads[0].num_labels
 
+            # init model
+            transformers_model = AutoModelForTokenClassification.from_config(self.language_model.model.config)
+            # transfer weights for language model + prediction head
+            setattr(transformers_model, transformers_model.base_model_prefix, self.language_model.model)
+            transformers_model.classifier.load_state_dict(
+                self.prediction_heads[0].feed_forward.feed_forward[0].state_dict())
         else:
             raise NotImplementedError(f"FARM -> Transformers conversion is not supported yet for"
                                       f" prediction heads of type {self.prediction_heads[0].model_type}")
@@ -407,15 +421,14 @@ class AdaptiveModel(nn.Module):
             ph = QuestionAnsweringHead.load(model_name_or_path)
             adaptive_model = cls(language_model=lm, prediction_heads=[ph], embeds_dropout_prob=0.1,
                                lm_output_types="per_token", device=device)
-
         elif task_type == "text_classification":
             ph = TextClassificationHead.load(model_name_or_path)
             adaptive_model = cls(language_model=lm, prediction_heads=[ph], embeds_dropout_prob=0.1,
                                  lm_output_types="per_sequence", device=device)
-        # elif task_type == "ner":
-        #     ph = TokenClassificationHead.load(model_name_or_path)
-        #     adaptive_model = cls(language_model=lm, prediction_heads=[ph], embeds_dropout_prob=0.1,
-        #                        lm_output_types="per_token", device=device)
+        elif task_type == "ner":
+            ph = TokenClassificationHead.load(model_name_or_path)
+            adaptive_model = cls(language_model=lm, prediction_heads=[ph], embeds_dropout_prob=0.1,
+                               lm_output_types="per_token", device=device)
         elif task_type == "embeddings":
             adaptive_model = cls(language_model=lm, prediction_heads=[], embeds_dropout_prob=0.1,
                                  lm_output_types=["per_token", "per_sequence"], device=device)
