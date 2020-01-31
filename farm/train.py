@@ -437,7 +437,7 @@ class Trainer:
 
                 # Forward pass through model
                 logits = self.model.forward(**batch)
-                per_sample_loss = self.model.logits_to_loss(logits=logits, **batch)
+                per_sample_loss = self.model.logits_to_loss(logits=logits, global_step=self.global_step, **batch)
 
                 loss = self.backward_propagate(per_sample_loss, step)
 
