@@ -23,7 +23,7 @@ class AdaptiveModel(nn.Module):
         embeds_dropout_prob,
         lm_output_types,
         device,
-        loss_aggregation_fn=sum
+        loss_aggregation_fn=None
     ):
         """
         :param language_model: Any model that turns token ids into vector representations
@@ -41,10 +41,15 @@ class AdaptiveModel(nn.Module):
         :type lm_output_types: list or str
         :param device: The device on which this model will operate. Either "cpu" or "cuda".
         :param loss_aggregation_fn: Function to aggregate the loss of multiple prediction heads.
-                                    Note: The loss at this stage is per sample,
-                                    i.e one tensor of shape (batchsize) per prediction head.
-                                    Default is sum(), but you can configure any fn that takes
-                                    [Tensor, Tensor ...] and returns a single Tensor.
+                                    Input: loss_per_head (list of tensors), global_step (int), batch (dict)
+                                    Output: aggregated loss (tensor)
+                                    Default is a simple sum:
+                                            lambda loss_per_head, global_step=None, batch=None: sum(tensors)
+                                    However, you can pass more complex functions that depend on the
+                                    current step (e.g. for round-robin style multitask learning) or the actual
+                                    content of the batch (e.g. certain labels)
+                                    Note: The loss at this stage is per sample, i.e one tensor of
+                                    shape (batchsize) per prediction head.
         :type loss_aggregation_fn: function
         """
 
@@ -63,6 +68,9 @@ class AdaptiveModel(nn.Module):
             [lm_output_types] if isinstance(lm_output_types, str) else lm_output_types
         )
         self.log_params()
+        # default loss aggregation function is a simple sum (without using any of the optional params)
+        if not loss_aggregation_fn:
+            loss_aggregation_fn = lambda loss_per_head, global_step=None, batch=None: sum(loss_per_head)
         self.loss_aggregation_fn = loss_aggregation_fn
 
     def fit_heads_to_lm(self):
@@ -144,20 +152,23 @@ class AdaptiveModel(nn.Module):
             all_losses.append(head.logits_to_loss(logits=logits_for_one_head, **kwargs))
         return all_losses
 
-    def logits_to_loss(self, logits, **kwargs):
+    def logits_to_loss(self, logits, global_step=None, **kwargs):
         """
         Get losses from all prediction heads & reduce to single loss *per sample*.
 
         :param logits: logits, can vary in shape and type, depending on task
         :type logits: object
-        :param kwargs: placeholder for passing generic parameters
+        :param global_step: number of current training step
+        :type global_step: int
+        :param kwargs: placeholder for passing generic parameters.
+                       Note: Contains the batch (as dict of tensors), when called from Trainer.train().
         :type kwargs: object
         :return loss: torch.tensor that is the per sample loss (len: batch_size)
         """
         all_losses = self.logits_to_loss_per_head(logits, **kwargs)
         # This aggregates the loss per sample across multiple prediction heads
         # Default is sum(), but you can configure any fn that takes [Tensor, Tensor ...] and returns [Tensor]
-        loss = self.loss_aggregation_fn(all_losses)
+        loss = self.loss_aggregation_fn(all_losses, global_step=global_step, batch=kwargs)
         return loss
 
     def logits_to_preds(self, logits, **kwargs):
