@@ -44,7 +44,7 @@ class AdaptiveModel(nn.Module):
                                     Input: loss_per_head (list of tensors), global_step (int), batch (dict)
                                     Output: aggregated loss (tensor)
                                     Default is a simple sum:
-                                            lambda loss_per_head, global_step=None, batch=None: sum(tensors)
+                                    `lambda loss_per_head, global_step=None, batch=None: sum(tensors)`
                                     However, you can pass more complex functions that depend on the
                                     current step (e.g. for round-robin style multitask learning) or the actual
                                     content of the batch (e.g. certain labels)
