@@ -204,9 +204,8 @@ class RegressionHead(PredictionHead):
         return logits
 
     def logits_to_loss(self, logits, **kwargs):
-        # Squeeze the logits to obtain a coherent output size
         label_ids = kwargs.get(self.label_tensor_name)
-        return self.loss_fct(logits.squeeze(), label_ids.float())
+        return self.loss_fct(logits, label_ids.float())
 
     def logits_to_preds(self, logits, **kwargs):
         preds = logits.cpu().numpy()
