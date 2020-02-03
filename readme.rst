@@ -220,9 +220,12 @@ The checkpoints include the state of everything that matters (model, optimizer, 
 This is particularly useful, if your training crashes (e.g. because your are using spot cloud instances).
 You can either save checkpoints every X steps or when a SIGTERM signal is received.
 
-6. Training on AWS SageMaker (incl. Spot instances)
+6. Training on AWS SageMaker (incl. Spot Instances)
 ***************************************************
-(Coming soon)
+We are currently working a lot on simplifying large scale training and deployment. As a first step, we are adding support for training on AWS SageMaker. The interesting part
+here is the option to use Managed Spot Instances and save about 70% on costs compared to the regular EC2 instances. This is particularly relevant for training models from scratch, which we
+introduce in a basic version in this release and will improve over the next weeks.
+See this `(tutorial) <https://github.com/deepset-ai/FARM/blob/master/tutorials/sagemaker/3_train_with_sagemaker.ipynb>`__ to get started with using SageMaker for training on down-stream tasks.
 
 Core concepts
 #########################
