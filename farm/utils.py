@@ -8,6 +8,7 @@ import signal
 
 import numpy as np
 import torch
+from requests.exceptions import ConnectionError
 from torch import multiprocessing as mp
 import mlflow
 from copy import deepcopy
@@ -117,21 +118,37 @@ class MLFlowLogger(BaseMLLogger):
     """
 
     def init_experiment(self, experiment_name, run_name=None, nested=True):
-        mlflow.set_tracking_uri(self.tracking_uri)
-        mlflow.set_experiment(experiment_name)
-        mlflow.start_run(run_name=run_name, nested=nested)
+        try:
+            mlflow.set_tracking_uri(self.tracking_uri)
+            mlflow.set_experiment(experiment_name)
+            mlflow.start_run(run_name=run_name, nested=nested)
+        except ConnectionError:
+            raise Exception(
+                f"MLFlow cannot connect to the remote server at {self.tracking_uri}.\n"
+                f"MLFlow also supports logging runs locally to files. Set the MLFlowLogger "
+                f"tracking_uri to an empty string to use that."
+            )
 
     @classmethod
     def log_metrics(cls, metrics, step):
-        mlflow.log_metrics(metrics, step=step)
+        try:
+            mlflow.log_metrics(metrics, step=step)
+        except ConnectionError:
+            logger.warning(f"ConnectionError in logging metrics to MLFlow.")
 
     @classmethod
     def log_params(cls, params):
-        mlflow.log_params(params)
+        try:
+            mlflow.log_params(params)
+        except ConnectionError:
+            logger.warning("ConnectionError in logging params to MLFlow")
 
     @classmethod
     def log_artifacts(cls, dir_path, artifact_path=None):
-        mlflow.log_artifacts(dir_path, artifact_path)
+        try:
+            mlflow.log_artifacts(dir_path, artifact_path)
+        except ConnectionError:
+            logger.warning(f"ConnectionError in logging artifacts to MLFlow")
 
     @classmethod
     def end_run(cls):
