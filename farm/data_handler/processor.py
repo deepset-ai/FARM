@@ -25,6 +25,7 @@ from farm.data_handler.samples import (
 )
 from farm.data_handler.utils import (
     read_tsv,
+    read_tsv_sentence_pair,
     read_docs_from_txt,
     read_ner_file,
     read_squad_file,
@@ -490,6 +491,36 @@ class TextClassificationProcessor(Processor):
             tokenizer=self.tokenizer,
         )
         return features
+
+class TextPairClassificationProcessor(TextClassificationProcessor):
+    def __init__(self, **kwargs):
+        super(TextPairClassificationProcessor, self).__init__(name="text_classification",
+                                                              metric="f1_macro",
+                                                              label_column_name="label",
+                                                              task_type="classification",
+                                                              **kwargs)
+
+    def file_to_dicts(self, file: str) -> [dict]:
+        column_mapping = {task["label_column_name"]: task["label_name"] for task in self.tasks.values()}
+        dicts = read_tsv_sentence_pair(
+            rename_columns=column_mapping,
+            filename=file,
+            delimiter=self.delimiter,
+            skiprows=self.skiprows,
+            proxies=self.proxies,
+        )
+        return dicts
+
+    def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
+        tokenized_question = tokenize_with_metadata(dictionary["text"], self.tokenizer)
+        tokenized_context = tokenize_with_metadata(dictionary["text_b"], self.tokenizer)
+        tokenized = {"tokens": tokenized_question["tokens"],
+                     "tokens_b": tokenized_context["tokens"]}
+        tokenized["tokens"], tokenized["tokens_b"], _ = truncate_sequences(seq_a=tokenized["tokens"],
+                                                                           seq_b=tokenized["tokens_b"],
+                                                                           tokenizer=self.tokenizer,
+                                                                           max_seq_len=self.max_seq_len)
+        return [Sample(id=None, clear_text=dictionary, tokenized=tokenized)]
 
 
 #########################################
@@ -1000,6 +1031,7 @@ class SquadProcessor(Processor):
                                             max_seq_len=self.max_seq_len)
         return features
 
+
 class RegressionProcessor(Processor):
     """
     Used to handle a regression dataset in tab separated text + label
@@ -1021,6 +1053,7 @@ class RegressionProcessor(Processor):
         scaler_mean=None,
         scaler_scale=None,
         proxies=None,
+        label_remapping=None,
         **kwargs
     ):
         """
@@ -1069,6 +1102,7 @@ class RegressionProcessor(Processor):
         self.delimiter = delimiter
         self.quote_char = quote_char
         self.skiprows = skiprows
+        self.label_remapping = label_remapping
 
         super(RegressionProcessor, self).__init__(
             tokenizer=tokenizer,
@@ -1094,7 +1128,7 @@ class RegressionProcessor(Processor):
             quotechar=self.quote_char,
             proxies=self.proxies
         )
-        
+
         # collect all labels and compute scaling stats
         train_labels = []
         for d in dicts:

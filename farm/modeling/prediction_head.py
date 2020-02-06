@@ -355,6 +355,9 @@ class TextClassificationHead(PredictionHead):
         preds = self.logits_to_preds(logits)
         probs = self.logits_to_probs(logits, return_class_probs)
         contexts = [sample.clear_text["text"] for sample in samples]
+        contexts_b = [sample.clear_text["text_b"] for sample in samples if "text_b" in  sample.clear_text]
+        if len(contexts_b) != 0:
+            contexts = ["|".join([a, b]) for a,b in zip(contexts, contexts_b)]
 
         assert len(preds) == len(probs) == len(contexts)
 
