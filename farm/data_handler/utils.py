@@ -192,7 +192,7 @@ def read_docs_from_txt(filename, delimiter="", encoding="utf-8", max_docs=None, 
             line = line.strip()
             if line == delimiter:
                 if len(doc) > 0:
-                    all_docs.append({"doc": doc})
+                    yield {"doc": doc}
                     doc = []
                     if max_docs:
                         if len(all_docs) >= max_docs:
@@ -210,16 +210,15 @@ def read_docs_from_txt(filename, delimiter="", encoding="utf-8", max_docs=None, 
         if len(doc) > 0:
             if len(all_docs) > 0:
                 if all_docs[-1] != doc:
-                    all_docs.append({"doc": doc})
+                    yield {"doc": doc}
             else:
-                all_docs.append({"doc": doc})
+                yield {"doc": doc}
 
         if len(all_docs) < 2:
             raise ValueError(f"Found only {len(all_docs)} docs in {filename}). You need at least 2! \n"
                            f"Make sure that you comply with the format: \n"
                            f"-> One sentence per line and exactly *one* empty line between docs. \n"
                            f"You might have a single block of text without empty lines inbetween.")
-    return all_docs
 
 
 def pad(seq, max_seq_len, pad_token, pad_on_left=False):
