@@ -4,7 +4,7 @@ from pathlib import Path
 
 from transformers.tokenization_bert import BertTokenizer
 
-from farm.data_handler.data_silo import DataSilo
+from farm.data_handler.data_silo import LazyDataSilo
 from farm.data_handler.processor import BertStyleLMProcessor
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import LanguageModel
@@ -12,6 +12,8 @@ from farm.modeling.optimization import initialize_optimizer
 from farm.modeling.prediction_head import BertLMHead, NextSentenceHead
 from farm.train import Trainer
 from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
+
+from farm.data_handler.dataloader import NamedDataLoader
 
 
 def train_from_scratch():
@@ -55,7 +57,7 @@ def train_from_scratch():
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and
     #    calculates a few descriptive statistics of our datasets
-    data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=False)
+    data_silo = LazyDataSilo(processor=processor, batch_size=batch_size)
 
     # 4. Create an AdaptiveModel
     # a) which consists of a pretrained language model as a basis
@@ -78,17 +80,22 @@ def train_from_scratch():
         model=model,
         learning_rate=learning_rate,
         schedule_opts={"name": "LinearWarmup", "warmup_proportion": warmup_proportion},
-        n_batches=len(data_silo.loaders["train"]),
+        n_batches=5,  # TODO calculate n_batches
         n_epochs=n_epochs,
         device=device,
         grad_acc_steps=8,
     )
 
+    data_loaders = {
+        "train": NamedDataLoader(dataset=data_silo, sampler=None, batch_size=batch_size)
+    }
+
     # 6. Feed everything to the Trainer, which keeps care of growing our model and evaluates it from time to time
     trainer = Trainer.create_or_load_checkpoint(
         model=model,
+        processor=processor,
         optimizer=optimizer,
-        data_silo=data_silo,
+        data_loaders=data_loaders,
         epochs=n_epochs,
         n_gpu=n_gpu,
         lr_schedule=lr_schedule,

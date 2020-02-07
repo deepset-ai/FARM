@@ -8,7 +8,7 @@ class NamedDataLoader(DataLoader):
     the name of the tensor and the value is the tensor itself.
     """
 
-    def __init__(self, dataset, sampler, batch_size, tensor_names):
+    def __init__(self, dataset, sampler, batch_size):
         """
         :param dataset: The dataset that will be wrapped by this NamedDataLoader
         :type dataset: Dataset
@@ -25,6 +25,7 @@ class NamedDataLoader(DataLoader):
             A custom collate function that formats the batch as a dictionary where the key is
             the name of the tensor and the value is the tensor itself
             """
+            tensor_names = ['input_ids', 'padding_mask', 'segment_ids', 'lm_label_ids', 'nextsentence_label_ids']
             assert len(batch[0]) == len(
                 tensor_names
             ), "Dataset contains {} tensors while there are {} tensor names supplied: {}".format(

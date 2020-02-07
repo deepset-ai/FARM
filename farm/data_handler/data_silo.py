@@ -24,7 +24,51 @@ from farm.utils import log_ascii_workers, calc_chunksize
 from farm.utils import get_dict_checksum
 from farm.visual.ascii.images import TRACTOR_SMALL
 
+from torch.utils.data import IterableDataset
+
 logger = logging.getLogger(__name__)
+
+
+class LazyDataSilo(IterableDataset):
+    def __init__(
+        self,
+        processor,
+        batch_size,
+    ):
+        """
+        :param processor: A dataset specific Processor object which will turn input (file or dict) into a Pytorch Dataset.
+        :type processor: Processor
+        :param batch_size: The size of batch that should be returned by the DataLoaders.
+        :type batch_size: int
+        """
+        self.processor = processor
+
+        file_to_dicts_generator = self.processor.file_to_dicts(self.processor.data_dir / self.processor.train_filename)
+        self.dicts = grouper(file_to_dicts_generator, n=batch_size)
+
+    def __iter__(self):
+        dataset, _ = self._dataset_from_chunk(next(self.dicts), processor=self.processor)
+        return iter(dataset)
+
+    @classmethod
+    def _dataset_from_chunk(cls, chunk, processor):
+        """
+        Creating a dataset for a chunk (= subset) of dicts. In multiprocessing:
+          * we read in all dicts from a file
+          * split all dicts into chunks
+          * feed *one chunk* to *one process*
+          => the *one chunk*  gets converted to *one dataset* (that's what we do here)
+          * all datasets get collected and concatenated
+        :param chunk: Instead of only having a list of dicts here we also supply an index (ascending int) for each.
+            => [(0, dict), (1, dict) ...]
+        :type chunk: list of tuples
+        :param processor: FARM Processor (e.g. TextClassificationProcessor)
+        :return: PyTorch Dataset
+        """
+        dicts = [d[1] for d in chunk]
+        indices = [x[0] for x in chunk]
+        dataset = processor.dataset_from_dicts(dicts=dicts, indices=indices)
+        return dataset
 
 
 class DataSilo:

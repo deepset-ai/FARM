@@ -9,7 +9,6 @@ import shutil
 from farm.utils import MLFlowLogger as MlLogger
 from farm.utils import GracefulKiller
 from farm.eval import Evaluator
-from farm.data_handler.data_silo import DataSilo
 from farm.visual.ascii.images import GROWING_TREE
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.optimization import get_scheduler
@@ -104,8 +103,9 @@ class Trainer:
     def __init__(
         self,
         model,
+        processor,
         optimizer,
-        data_silo,
+        data_loaders,
         epochs,
         n_gpu,
         device,
@@ -178,7 +178,8 @@ class Trainer:
         """
 
         self.model = model
-        self.data_silo = data_silo
+        self.processor = processor
+        self.data_loaders = data_loaders
         self.epochs = int(epochs)
         self.optimizer = optimizer
         self.evaluate_every = evaluate_every
@@ -186,7 +187,7 @@ class Trainer:
         self.grad_acc_steps = grad_acc_steps
         self.use_amp = use_amp
         self.lr_schedule = lr_schedule
-        self.data_loader_train = data_silo.get_data_loader("train")
+        self.data_loader_train = data_loaders["train"]
         self.device = device
         self.local_rank = local_rank
         self.log_params()
@@ -215,25 +216,25 @@ class Trainer:
         self.global_step = (from_epoch * from_step) - 1
 
         # evaluator on dev set
-        if evaluator_dev is None and self.data_silo.get_data_loader("dev"):
+        if evaluator_dev is None and "dev" in self.data_loaders:
             evaluator_dev = Evaluator(
-                data_loader=self.data_silo.get_data_loader("dev"),
-                tasks=self.data_silo.processor.tasks,
+                data_loader=self.data_loaders["dev"],
+                tasks=self.processor.tasks,
                 device=device,
             )
         self.evaluator_dev = evaluator_dev
 
         # evaluator on test set
-        if evaluator_test is None and self.data_silo.get_data_loader("test"):
+        if evaluator_test is None and "test" in self.data_loaders:
             evaluator_test = Evaluator(
-                data_loader=self.data_silo.get_data_loader("test"),
-                tasks=self.data_silo.processor.tasks,
+                data_loader=self.data_loaders["test"],
+                tasks=self.processor.tasks,
                 device=device
             )
         self.evaluator_test = evaluator_test
 
     @classmethod
-    def create_or_load_checkpoint(cls, data_silo, checkpoint_root_dir, resume_from_checkpoint="latest", **kwargs):
+    def create_or_load_checkpoint(cls, data_loaders, checkpoint_root_dir, resume_from_checkpoint="latest", **kwargs):
         """
         Try loading a saved Trainer checkpoint. If no checkpoint found, it creates a new instance of Trainer.
 
@@ -258,15 +259,15 @@ class Trainer:
                 checkpoint_to_load = checkpoint_root_dir / resume_from_checkpoint
 
         if checkpoint_to_load:
-            trainer = cls._load_checkpoint(path=checkpoint_to_load, data_silo=data_silo)
+            trainer = cls._load_checkpoint(path=checkpoint_to_load, data_loaders=data_loaders)
             logging.info(f"Resuming training from the train checkpoint at {checkpoint_to_load} ...")
         else:
             logging.info(f"No train checkpoints found. Starting a new training ...")
-            trainer = Trainer(data_silo=data_silo, checkpoint_root_dir=checkpoint_root_dir, **kwargs)
+            trainer = Trainer(data_loaders=data_loaders, checkpoint_root_dir=checkpoint_root_dir, **kwargs)
         return trainer
 
     @classmethod
-    def _load_checkpoint(cls, path, data_silo):
+    def _load_checkpoint(cls, path, data_loaders):
         """
         Load the train checkpoint at given path.
 
@@ -303,7 +304,7 @@ class Trainer:
         scheduler.load_state_dict(scheduler_state_dict)
 
         trainer = Trainer(
-            data_silo=data_silo,
+            data_loaders=data_loaders,
             model=model,
             optimizer=optimizer,
             lr_schedule=scheduler,
@@ -398,10 +399,10 @@ class Trainer:
         """ Perform the training procedure. """
 
         # connect the prediction heads with the right output from processor
-        self.model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
+        self.model.connect_heads_with_processor(self.processor.tasks, require_labels=True)
 
         # Check that the tokenizer fits the language model
-        self.model.verify_vocab_size(vocab_size=len(self.data_silo.processor.tokenizer))
+        self.model.verify_vocab_size(vocab_size=len(self.processor.tokenizer))
 
         logger.info(f"\n {GROWING_TREE}")
         self.model.train()
@@ -473,7 +474,7 @@ class Trainer:
             logger.info("Restoring best model so far from {}".format(self.early_stopping.save_dir))
             lm_name = self.model.language_model.name
             model = AdaptiveModel.load(self.early_stopping.save_dir, self.device, lm_name=lm_name)
-            model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
+            model.connect_heads_with_processor(self.processor.tasks, require_labels=True)
 
         # Eval on test set
         if self.evaluator_test:
