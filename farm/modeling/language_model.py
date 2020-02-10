@@ -110,9 +110,9 @@ class LanguageModel(nn.Module):
             # it's transformers format (either from model hub or local)
             pretrained_model_name_or_path = str(pretrained_model_name_or_path)
             if "xlm" in pretrained_model_name_or_path and "roberta" in pretrained_model_name_or_path:
+                language_model = cls.subclasses["XLMRoberta"].load(pretrained_model_name_or_path, **kwargs)
                 # TODO: for some reason, the pretrained XLMRoberta has different vocab size in the tokenizer compared to the model this is a hack to resolve that
                 n_added_tokens = 3
-                language_model = cls.subclasses["XLMRoberta"].load(pretrained_model_name_or_path, **kwargs)
             elif 'roberta' in pretrained_model_name_or_path:
                 language_model = cls.subclasses["Roberta"].load(pretrained_model_name_or_path, **kwargs)
             elif 'albert' in pretrained_model_name_or_path:
@@ -139,7 +139,7 @@ class LanguageModel(nn.Module):
             model_emb_size = language_model.model.resize_token_embeddings(new_num_tokens=None).num_embeddings
             vocab_size = model_emb_size + n_added_tokens
             logger.info(
-                f"Resizing embedding layer of LM from {model_emb_size} to {vocab_size} to cope for custom vocab.")
+                f"Resizing embedding layer of LM from {model_emb_size} to {vocab_size} to cope with custom vocab.")
             language_model.model.resize_token_embeddings(vocab_size)
             # verify
             model_emb_size = language_model.model.resize_token_embeddings(new_num_tokens=None).num_embeddings
