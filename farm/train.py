@@ -9,6 +9,7 @@ import shutil
 from farm.utils import MLFlowLogger as MlLogger
 from farm.utils import GracefulKiller
 from farm.eval import Evaluator
+from farm.data_handler.data_silo import DataSilo
 from farm.visual.ascii.images import GROWING_TREE
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.optimization import get_scheduler
@@ -103,9 +104,8 @@ class Trainer:
     def __init__(
         self,
         model,
-        processor,
         optimizer,
-        data_loaders,
+        data_silo,
         epochs,
         n_gpu,
         device,
@@ -178,8 +178,7 @@ class Trainer:
         """
 
         self.model = model
-        self.processor = processor
-        self.data_loaders = data_loaders
+        self.data_silo = data_silo
         self.epochs = int(epochs)
         self.optimizer = optimizer
         self.evaluate_every = evaluate_every
@@ -187,7 +186,7 @@ class Trainer:
         self.grad_acc_steps = grad_acc_steps
         self.use_amp = use_amp
         self.lr_schedule = lr_schedule
-        self.data_loader_train = data_loaders["train"]
+        self.data_loader_train = data_silo.get_data_loader("train")
         self.device = device
         self.local_rank = local_rank
         self.log_params()
@@ -216,25 +215,25 @@ class Trainer:
         self.global_step = (from_epoch * from_step) - 1
 
         # evaluator on dev set
-        if evaluator_dev is None and "dev" in self.data_loaders:
+        if evaluator_dev is None and self.data_silo.get_data_loader("dev"):
             evaluator_dev = Evaluator(
-                data_loader=self.data_loaders["dev"],
-                tasks=self.processor.tasks,
+                data_loader=self.data_silo.get_data_loader("dev"),
+                tasks=self.data_silo.processor.tasks,
                 device=device,
             )
         self.evaluator_dev = evaluator_dev
 
         # evaluator on test set
-        if evaluator_test is None and "test" in self.data_loaders:
+        if evaluator_test is None and self.data_silo.get_data_loader("test"):
             evaluator_test = Evaluator(
-                data_loader=self.data_loaders["test"],
-                tasks=self.processor.tasks,
+                data_loader=self.data_silo.get_data_loader("test"),
+                tasks=self.data_silo.processor.tasks,
                 device=device
             )
         self.evaluator_test = evaluator_test
 
     @classmethod
-    def create_or_load_checkpoint(cls, data_loaders, checkpoint_root_dir, resume_from_checkpoint="latest", **kwargs):
+    def create_or_load_checkpoint(cls, data_silo, checkpoint_root_dir, resume_from_checkpoint="latest", **kwargs):
         """
         Try loading a saved Trainer checkpoint. If no checkpoint found, it creates a new instance of Trainer.
 
@@ -259,15 +258,15 @@ class Trainer:
                 checkpoint_to_load = checkpoint_root_dir / resume_from_checkpoint
 
         if checkpoint_to_load:
-            trainer = cls._load_checkpoint(path=checkpoint_to_load, data_loaders=data_loaders)
+            trainer = cls._load_checkpoint(path=checkpoint_to_load, data_silo=data_silo)
             logging.info(f"Resuming training from the train checkpoint at {checkpoint_to_load} ...")
         else:
             logging.info(f"No train checkpoints found. Starting a new training ...")
-            trainer = Trainer(data_loaders=data_loaders, checkpoint_root_dir=checkpoint_root_dir, **kwargs)
+            trainer = Trainer(data_silo=data_silo, checkpoint_root_dir=checkpoint_root_dir, **kwargs)
         return trainer
 
     @classmethod
-    def _load_checkpoint(cls, path, data_loaders):
+    def _load_checkpoint(cls, path, data_silo):
         """
         Load the train checkpoint at given path.
 
@@ -304,7 +303,7 @@ class Trainer:
         scheduler.load_state_dict(scheduler_state_dict)
 
         trainer = Trainer(
-            data_loaders=data_loaders,
+            data_silo=data_silo,
             model=model,
             optimizer=optimizer,
             lr_schedule=scheduler,
@@ -399,10 +398,10 @@ class Trainer:
         """ Perform the training procedure. """
 
         # connect the prediction heads with the right output from processor
-        self.model.connect_heads_with_processor(self.processor.tasks, require_labels=True)
+        self.model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
 
         # Check that the tokenizer fits the language model
-        self.model.verify_vocab_size(vocab_size=len(self.processor.tokenizer))
+        self.model.verify_vocab_size(vocab_size=len(self.data_silo.processor.tokenizer))
 
         logger.info(f"\n {GROWING_TREE}")
         self.model.train()
@@ -417,52 +416,52 @@ class Trainer:
             progress_bar = tqdm(self.data_loader_train)
             for step, batch in enumerate(progress_bar, start=1):
                 # when resuming training from a checkpoint, we want to fast forward to the step of the checkpoint
-                if resume_from_step and step <= resume_from_step:
-                    if resume_from_step == step:
-                        resume_from_step = None
-                    continue
-
-                if self.sigterm_handler and self.sigterm_handler.kill_now:  # save the current state as a checkpoint
-                    logger.info("Received a SIGTERM signal. Saving the current train state as a checkpoint ...")
-                    self._save()
-                    sys.exit(0)
-
-                # save a checkpoint and continue train (do not create a new checkpoint if just resumed from a checkpoint)
-                if self.checkpoint_every and step % self.checkpoint_every == 0 and resume_from_step + 1 != step:
-                    self._save()
-
-                progress_bar.set_description(f"Train epoch {epoch}/{self.epochs} (Cur. train loss: {loss:.4f})")
-
-                # Move batch of samples to device
-                batch = {key: batch[key].to(self.device) for key in batch}
-
-                # Forward pass through model
-                logits = self.model.forward(**batch)
-                per_sample_loss = self.model.logits_to_loss(logits=logits, global_step=self.global_step, **batch)
-
-                loss = self.backward_propagate(per_sample_loss, step)
-
-                # Perform  evaluation
-                if self.evaluator_dev:
-                    if self.global_step != 0 and (
-                        self.global_step % self.evaluate_every == 0
-                    ):
-                        evalnr += 1
-                        result = self.evaluator_dev.eval(self.model)
-                        self.evaluator_dev.log_results(result, "Dev", self.global_step)
-                        if self.early_stopping:
-                            do_stopping, save_model, eval_value = self.early_stopping.check_stopping(result)
-                            if save_model:
-                                logger.info(
-                                    "Saving current best model to {}, eval={}".format(
-                                        self.early_stopping.save_dir, eval_value))
-                                self.model.save(self.early_stopping.save_dir)
-                                self.data_silo.processor.save(self.early_stopping.save_dir)
-                            if do_stopping:
-                                # log the stopping
-                                logger.info("STOPPING EARLY AT EPOCH {}, STEP {}, EVALUATION {}".format(epoch, step, evalnr))
-                if do_stopping:
-                    break
+                # if resume_from_step and step <= resume_from_step:
+                #     if resume_from_step == step:
+                #         resume_from_step = None
+                #     continue
+                #
+                # if self.sigterm_handler and self.sigterm_handler.kill_now:  # save the current state as a checkpoint
+                #     logger.info("Received a SIGTERM signal. Saving the current train state as a checkpoint ...")
+                #     self._save()
+                #     sys.exit(0)
+                #
+                # # save a checkpoint and continue train (do not create a new checkpoint if just resumed from a checkpoint)
+                # if self.checkpoint_every and step % self.checkpoint_every == 0 and resume_from_step + 1 != step:
+                #     self._save()
+                #
+                # progress_bar.set_description(f"Train epoch {epoch}/{self.epochs} (Cur. train loss: {loss:.4f})")
+                #
+                # # Move batch of samples to device
+                # batch = {key: batch[key].to(self.device) for key in batch}
+                #
+                # # Forward pass through model
+                # logits = self.model.forward(**batch)
+                # per_sample_loss = self.model.logits_to_loss(logits=logits, global_step=self.global_step, **batch)
+                #
+                # loss = self.backward_propagate(per_sample_loss, step)
+                #
+                # # Perform  evaluation
+                # if self.evaluator_dev:
+                #     if self.global_step != 0 and (
+                #         self.global_step % self.evaluate_every == 0
+                #     ):
+                #         evalnr += 1
+                #         result = self.evaluator_dev.eval(self.model)
+                #         self.evaluator_dev.log_results(result, "Dev", self.global_step)
+                #         if self.early_stopping:
+                #             do_stopping, save_model, eval_value = self.early_stopping.check_stopping(result)
+                #             if save_model:
+                #                 logger.info(
+                #                     "Saving current best model to {}, eval={}".format(
+                #                         self.early_stopping.save_dir, eval_value))
+                #                 self.model.save(self.early_stopping.save_dir)
+                #                 self.data_silo.processor.save(self.early_stopping.save_dir)
+                #             if do_stopping:
+                #                 # log the stopping
+                #                 logger.info("STOPPING EARLY AT EPOCH {}, STEP {}, EVALUATION {}".format(epoch, step, evalnr))
+                # if do_stopping:
+                #     break
                 self.global_step += 1
                 self.from_step = step
             self.from_epoch = epoch
@@ -474,7 +473,7 @@ class Trainer:
             logger.info("Restoring best model so far from {}".format(self.early_stopping.save_dir))
             lm_name = self.model.language_model.name
             model = AdaptiveModel.load(self.early_stopping.save_dir, self.device, lm_name=lm_name)
-            model.connect_heads_with_processor(self.processor.tasks, require_labels=True)
+            model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
 
         # Eval on test set
         if self.evaluator_test:
