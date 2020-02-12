@@ -215,7 +215,7 @@ class Trainer:
         self.global_step = (from_epoch * from_step) - 1
 
         # evaluator on dev set
-        if evaluator_dev is None and self.data_silo.get_data_loader("dev"):
+        if evaluator_dev is None and self.data_silo.get_data_loader("dev") is not None:
             evaluator_dev = Evaluator(
                 data_loader=self.data_silo.get_data_loader("dev"),
                 tasks=self.data_silo.processor.tasks,
@@ -224,7 +224,7 @@ class Trainer:
         self.evaluator_dev = evaluator_dev
 
         # evaluator on test set
-        if evaluator_test is None and self.data_silo.get_data_loader("test"):
+        if evaluator_test is None and self.data_silo.get_data_loader("test") is not None:
             evaluator_test = Evaluator(
                 data_loader=self.data_silo.get_data_loader("test"),
                 tasks=self.data_silo.processor.tasks,
@@ -416,52 +416,52 @@ class Trainer:
             progress_bar = tqdm(self.data_loader_train)
             for step, batch in enumerate(progress_bar, start=1):
                 # when resuming training from a checkpoint, we want to fast forward to the step of the checkpoint
-                # if resume_from_step and step <= resume_from_step:
-                #     if resume_from_step == step:
-                #         resume_from_step = None
-                #     continue
-                #
-                # if self.sigterm_handler and self.sigterm_handler.kill_now:  # save the current state as a checkpoint
-                #     logger.info("Received a SIGTERM signal. Saving the current train state as a checkpoint ...")
-                #     self._save()
-                #     sys.exit(0)
-                #
-                # # save a checkpoint and continue train (do not create a new checkpoint if just resumed from a checkpoint)
-                # if self.checkpoint_every and step % self.checkpoint_every == 0 and resume_from_step + 1 != step:
-                #     self._save()
-                #
-                # progress_bar.set_description(f"Train epoch {epoch}/{self.epochs} (Cur. train loss: {loss:.4f})")
-                #
-                # # Move batch of samples to device
-                # batch = {key: batch[key].to(self.device) for key in batch}
-                #
-                # # Forward pass through model
-                # logits = self.model.forward(**batch)
-                # per_sample_loss = self.model.logits_to_loss(logits=logits, global_step=self.global_step, **batch)
-                #
-                # loss = self.backward_propagate(per_sample_loss, step)
-                #
-                # # Perform  evaluation
-                # if self.evaluator_dev:
-                #     if self.global_step != 0 and (
-                #         self.global_step % self.evaluate_every == 0
-                #     ):
-                #         evalnr += 1
-                #         result = self.evaluator_dev.eval(self.model)
-                #         self.evaluator_dev.log_results(result, "Dev", self.global_step)
-                #         if self.early_stopping:
-                #             do_stopping, save_model, eval_value = self.early_stopping.check_stopping(result)
-                #             if save_model:
-                #                 logger.info(
-                #                     "Saving current best model to {}, eval={}".format(
-                #                         self.early_stopping.save_dir, eval_value))
-                #                 self.model.save(self.early_stopping.save_dir)
-                #                 self.data_silo.processor.save(self.early_stopping.save_dir)
-                #             if do_stopping:
-                #                 # log the stopping
-                #                 logger.info("STOPPING EARLY AT EPOCH {}, STEP {}, EVALUATION {}".format(epoch, step, evalnr))
-                # if do_stopping:
-                #     break
+                if resume_from_step and step <= resume_from_step:
+                    if resume_from_step == step:
+                        resume_from_step = None
+                    continue
+
+                if self.sigterm_handler and self.sigterm_handler.kill_now:  # save the current state as a checkpoint
+                    logger.info("Received a SIGTERM signal. Saving the current train state as a checkpoint ...")
+                    self._save()
+                    sys.exit(0)
+
+                # save a checkpoint and continue train (do not create a new checkpoint if just resumed from a checkpoint)
+                if self.checkpoint_every and step % self.checkpoint_every == 0 and resume_from_step + 1 != step:
+                    self._save()
+
+                progress_bar.set_description(f"Train epoch {epoch}/{self.epochs} (Cur. train loss: {loss:.4f})")
+
+                # Move batch of samples to device
+                batch = {key: batch[key].to(self.device) for key in batch}
+
+                # Forward pass through model
+                logits = self.model.forward(**batch)
+                per_sample_loss = self.model.logits_to_loss(logits=logits, global_step=self.global_step, **batch)
+
+                loss = self.backward_propagate(per_sample_loss, step)
+
+                # Perform  evaluation
+                if self.evaluator_dev:
+                    if self.global_step != 0 and (
+                        self.global_step % self.evaluate_every == 0
+                    ):
+                        evalnr += 1
+                        result = self.evaluator_dev.eval(self.model)
+                        self.evaluator_dev.log_results(result, "Dev", self.global_step)
+                        if self.early_stopping:
+                            do_stopping, save_model, eval_value = self.early_stopping.check_stopping(result)
+                            if save_model:
+                                logger.info(
+                                    "Saving current best model to {}, eval={}".format(
+                                        self.early_stopping.save_dir, eval_value))
+                                self.model.save(self.early_stopping.save_dir)
+                                self.data_silo.processor.save(self.early_stopping.save_dir)
+                            if do_stopping:
+                                # log the stopping
+                                logger.info("STOPPING EARLY AT EPOCH {}, STEP {}, EVALUATION {}".format(epoch, step, evalnr))
+                if do_stopping:
+                    break
                 self.global_step += 1
                 self.from_step = step
             self.from_epoch = epoch

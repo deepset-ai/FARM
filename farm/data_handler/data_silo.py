@@ -2,6 +2,7 @@ import copy
 import logging
 import torch.multiprocessing as mp
 import os
+from collections import defaultdict
 from contextlib import ExitStack
 from functools import partial
 import random
@@ -9,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 from sklearn.utils.class_weight import compute_class_weight
-from torch.utils.data import ConcatDataset, Dataset, Subset
+from torch.utils.data import ConcatDataset, Dataset, Subset, IterableDataset
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
 import torch
@@ -24,15 +25,55 @@ from farm.utils import log_ascii_workers, calc_chunksize
 from farm.utils import get_dict_checksum
 from farm.visual.ascii.images import TRACTOR_SMALL
 
-from torch.utils.data import IterableDataset
 
 logger = logging.getLogger(__name__)
 
 
-class LazyDataSilo(IterableDataset):
+class StreamingDataSilo:
+    def __init__(self, processor, batch_size):
+
+        self.loaders = defaultdict(lambda: None)
+
+        # Train data
+        data_set = _LazyDataSet(
+            processor=processor,
+            filepath=processor.data_dir / processor.train_filename,
+            batch_size=batch_size
+        )
+        self.loaders["train"] = NamedDataLoader(dataset=data_set, batch_size=batch_size, sampler=None)
+
+        # Dev data
+        if processor.dev_filename:
+            data_set = _LazyDataSet(
+                processor=processor,
+                filepath=processor.data_dir / processor.dev_filename,
+                batch_size=batch_size
+            )
+            self.loaders["dev"] = NamedDataLoader(dataset=data_set, batch_size=batch_size, sampler=None)
+        elif processor.dev_split > 0.0:
+            raise NotImplemented("StreamingDataSilo does not have dev_split implemented. "
+                                 "To use dev data, supply a separate dev filename.")
+
+        # Test data
+        if processor.test_filename:
+            data_set = _LazyDataSet(
+                processor=processor,
+                filepath=processor.data_dir / processor.test_filename,
+                batch_size=batch_size
+            )
+            self.loaders["test"] = NamedDataLoader(dataset=data_set, batch_size=batch_size, sampler=None)
+
+        self.processor = processor
+
+    def get_data_loader(self, dataset):
+        return self.loaders[dataset]
+
+
+class _LazyDataSet(IterableDataset):
     def __init__(
         self,
         processor,
+        filepath,
         batch_size,
     ):
         """
@@ -40,18 +81,20 @@ class LazyDataSilo(IterableDataset):
         :type processor: Processor
         :param batch_size: The size of batch that should be returned by the DataLoaders.
         :type batch_size: int
+        :param filepath: input filename to load the dataset from
+        :type filepath: Path
         """
+
+        file_to_dicts_generator = processor.file_to_dicts(filepath)
+        self.dicts = grouper(file_to_dicts_generator, n=batch_size)
         self.processor = processor
 
-        file_to_dicts_generator = self.processor.file_to_dicts(self.processor.data_dir / self.processor.train_filename)
-        self.dicts = grouper(file_to_dicts_generator, n=batch_size)
-
     def __iter__(self):
-        dataset, _ = self._dataset_from_chunk(next(self.dicts), processor=self.processor)
+        dataset, tensor_names = self._dataset_from_chunk(next(self.dicts))
+        self.tensor_names = tensor_names
         return iter(dataset)
 
-    @classmethod
-    def _dataset_from_chunk(cls, chunk, processor):
+    def _dataset_from_chunk(self, chunk):
         """
         Creating a dataset for a chunk (= subset) of dicts. In multiprocessing:
           * we read in all dicts from a file
@@ -62,12 +105,11 @@ class LazyDataSilo(IterableDataset):
         :param chunk: Instead of only having a list of dicts here we also supply an index (ascending int) for each.
             => [(0, dict), (1, dict) ...]
         :type chunk: list of tuples
-        :param processor: FARM Processor (e.g. TextClassificationProcessor)
         :return: PyTorch Dataset
         """
         dicts = [d[1] for d in chunk]
         indices = [x[0] for x in chunk]
-        dataset = processor.dataset_from_dicts(dicts=dicts, indices=indices)
+        dataset = self.processor.dataset_from_dicts(dicts=dicts, indices=indices)
         return dataset
 
 
@@ -161,7 +203,7 @@ class DataSilo:
 
         # loading dicts from file (default)
         if dicts is None:
-            dicts = self.processor.file_to_dicts(filename)
+            dicts = list(self.processor.file_to_dicts(filename))
             #shuffle list of dicts here if we later want to have a random dev set splitted from train set
             if str(self.processor.train_filename) in str(filename):
                 if not self.processor.dev_filename:

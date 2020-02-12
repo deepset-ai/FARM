@@ -184,18 +184,23 @@ def read_docs_from_txt(filename, delimiter="", encoding="utf-8", max_docs=None, 
     """Reads a text file with one sentence per line and a delimiter between docs (default: empty lines) ."""
     if not (os.path.exists(filename)):
         _download_extract_downstream_data(filename, proxies)
-    all_docs = []
+
+    doc_count = 0
     doc = []
+    prev_doc = None
     corpus_lines = 0
+
     with open(filename, "r", encoding=encoding) as f:
         for line_num, line in enumerate(tqdm(f, desc="Loading Dataset", total=corpus_lines)):
             line = line.strip()
             if line == delimiter:
                 if len(doc) > 0:
                     yield {"doc": doc}
+                    doc_count += 1
+                    prev_doc = doc
                     doc = []
                     if max_docs:
-                        if len(all_docs) >= max_docs:
+                        if doc_count >= max_docs:
                             logger.info(f"Reached number of max_docs ({max_docs}). Skipping rest of file ...")
                             break
                 else:
@@ -208,14 +213,16 @@ def read_docs_from_txt(filename, delimiter="", encoding="utf-8", max_docs=None, 
 
         # if last row in file is not empty, we add the last parsed doc manually to all_docs
         if len(doc) > 0:
-            if len(all_docs) > 0:
-                if all_docs[-1] != doc:
+            if doc_count > 0:
+                if doc != prev_doc:
                     yield {"doc": doc}
+                    doc_count += 1
             else:
                 yield {"doc": doc}
+                doc_count += 1
 
-        if len(all_docs) < 2:
-            raise ValueError(f"Found only {len(all_docs)} docs in {filename}). You need at least 2! \n"
+        if doc_count < 2:
+            raise ValueError(f"Found only {doc_count} docs in {filename}). You need at least 2! \n"
                            f"Make sure that you comply with the format: \n"
                            f"-> One sentence per line and exactly *one* empty line between docs. \n"
                            f"You might have a single block of text without empty lines inbetween.")

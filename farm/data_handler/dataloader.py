@@ -8,7 +8,7 @@ class NamedDataLoader(DataLoader):
     the name of the tensor and the value is the tensor itself.
     """
 
-    def __init__(self, dataset, sampler, batch_size):
+    def __init__(self, dataset, sampler, batch_size, tensor_names=None):
         """
         :param dataset: The dataset that will be wrapped by this NamedDataLoader
         :type dataset: Dataset
@@ -25,17 +25,21 @@ class NamedDataLoader(DataLoader):
             A custom collate function that formats the batch as a dictionary where the key is
             the name of the tensor and the value is the tensor itself
             """
-            tensor_names = ['input_ids', 'padding_mask', 'segment_ids', 'lm_label_ids', 'nextsentence_label_ids']
+            if hasattr(dataset, "tensor_names"):
+                _tensor_names = dataset.tensor_names
+            else:
+                _tensor_names = tensor_names
+
             assert len(batch[0]) == len(
-                tensor_names
+                _tensor_names
             ), "Dataset contains {} tensors while there are {} tensor names supplied: {}".format(
-                len(batch[0]), len(tensor_names), tensor_names
+                len(batch[0]), len(_tensor_names), _tensor_names
             )
-            lists_temp = [[] for _ in range(len(tensor_names))]
-            ret = dict(zip(tensor_names, lists_temp))
+            lists_temp = [[] for _ in range(len(_tensor_names))]
+            ret = dict(zip(_tensor_names, lists_temp))
 
             for example in batch:
-                for name, tensor in zip(tensor_names, example):
+                for name, tensor in zip(_tensor_names, example):
                     ret[name].append(tensor)
 
             for key in ret:
