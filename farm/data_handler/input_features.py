@@ -355,7 +355,7 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
     segment_ids = encoded["token_type_ids"]
 
     # seq_2_start_t is the index of the first token in the second text sequence (e.g. passage)
-    if tokenizer.__class__.__name__ == "RobertaTokenizer":
+    if tokenizer.__class__.__name__ in ["RobertaTokenizer", "XLMRobertaTokenizer"]:
         seq_2_start_t = get_roberta_seq_2_start(input_ids)
     else:
         seq_2_start_t = segment_ids.index(1)
