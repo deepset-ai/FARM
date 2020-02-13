@@ -960,23 +960,16 @@ class SquadProcessor(Processor):
         return raw_baskets
 
     def _convert_rest_api_dict(self, infer_dict):
-        # convert input coming from inferencer to SQuAD format
-        if len(infer_dict.get("questions")) > 1:
-            raise ValueError("Inferencer currently does not support answering multiple questions on a text."
-                                "As a workaround, multiple input dicts with text and question pairs can be "
-                                "supplied in a single API request.")
-        converted = {
-            "qas": [
-                {
-                    "question": infer_dict.get("questions", ["Missing?"])[0],
-                    "id": None,
-                    "answers": [],
-                    "is_impossible": False
-                }
-            ],
-            "context": infer_dict.get("text", "Missing!"),
-            "document_id": infer_dict.get("document_id", None),
-        }
+        questions = infer_dict.get("questions", ["[Missing]"])
+        text = infer_dict.get("text", "Missing!")
+        doc_id = infer_dict.get("document_id", None)
+        qas = [{"question": q,
+                "id": i,
+                "answers": [],
+                "is_impossible": False} for i, q in enumerate(questions)]
+        converted = {"qas": qas,
+                     "context": text,
+                     "document_id": doc_id}
         return converted
 
     def file_to_dicts(self, file: str) -> [dict]:
