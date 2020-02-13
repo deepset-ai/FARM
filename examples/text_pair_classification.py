@@ -29,10 +29,10 @@ def text_pair_classification():
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)
     n_epochs = 2
-    batch_size = 128
-    evaluate_every = 100
+    batch_size = 256
+    evaluate_every = 500
     lang_model = "bert-base-cased"
-    label_list = ["1","2","3","4"]
+    label_list = ["0", "1"]
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
@@ -43,11 +43,11 @@ def text_pair_classification():
     #    We do not have a sample dataset for regression yet, add your own dataset to run the example
     processor = TextPairClassificationProcessor(tokenizer=tokenizer,
                                                 label_list=label_list,
-                                                train_filename="train_balanced.tsv",
-                                                dev_filename="dev_balanced.tsv",
+                                                train_filename="train.tsv",
+                                                dev_split=0.01,
                                                 test_filename=None,
                                                 max_seq_len=128,
-                                                data_dir=Path("../data/asnq"),
+                                                data_dir=Path("../data/msmarco_passage"),
                                                 delimiter="\t")
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
