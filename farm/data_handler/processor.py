@@ -920,7 +920,12 @@ class SquadProcessor(Processor):
         where each entry is a dictionary for one document-question pair (potentially mutliple answers). """
 
         raw_baskets = []
+        if "text" in dictionary and "context" not in dictionary:
+            raise Exception("It seems that your input is in rest API format. Try setting rest_api_schema=True "
+                            "when calling inference from dicts")
         document_text = dictionary["context"]
+        document_id = dictionary.get("document_id", None)
+
         document_tokenized = tokenize_with_metadata(document_text, self.tokenizer)
         document_start_of_word = [int(x) for x in document_tokenized["start_of_word"]]
         questions = dictionary["qas"]
@@ -949,6 +954,7 @@ class SquadProcessor(Processor):
                    "document_tokens": document_tokenized["tokens"],
                    "document_offsets": document_tokenized["offsets"],
                    "document_start_of_word": document_start_of_word,
+                   "document_id": document_id,
                    "question_text": question_text,
                    "question_tokens": question_tokenized["tokens"],
                    "question_offsets": question_tokenized["offsets"],
@@ -1075,7 +1081,7 @@ class RegressionProcessor(Processor):
         )
 
         # Note that label_list is being hijacked to store the scaling mean and scale
-        self.add_task(name="regression", metric="mse", label_list= [scaler_mean, scaler_scale], label_column_name=label_column_name, task_type="regression", label_name=label_name)
+        self.add_task(name="regression", metric="mse", label_list=[scaler_mean, scaler_scale], label_column_name=label_column_name, task_type="regression", label_name=label_name)
 
     def file_to_dicts(self, file: str) -> [dict]:
         column_mapping = {task["label_column_name"]: task["label_name"] for task in self.tasks.values()}
