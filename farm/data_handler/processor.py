@@ -924,7 +924,6 @@ class SquadProcessor(Processor):
             raise Exception("It seems that your input is in rest API format. Try setting rest_api_schema=True "
                             "when calling inference from dicts")
         document_text = dictionary["context"]
-        document_id = dictionary.get("document_id", None)
 
         document_tokenized = tokenize_with_metadata(document_text, self.tokenizer)
         document_start_of_word = [int(x) for x in document_tokenized["start_of_word"]]
@@ -954,7 +953,6 @@ class SquadProcessor(Processor):
                    "document_tokens": document_tokenized["tokens"],
                    "document_offsets": document_tokenized["offsets"],
                    "document_start_of_word": document_start_of_word,
-                   "document_id": document_id,
                    "question_text": question_text,
                    "question_tokens": question_tokenized["tokens"],
                    "question_offsets": question_tokenized["offsets"],
@@ -968,14 +966,12 @@ class SquadProcessor(Processor):
     def _convert_rest_api_dict(self, infer_dict):
         questions = infer_dict.get("questions", ["[Missing]"])
         text = infer_dict.get("text", "Missing!")
-        doc_id = infer_dict.get("document_id", None)
         qas = [{"question": q,
                 "id": i,
                 "answers": [],
                 "is_impossible": False} for i, q in enumerate(questions)]
         converted = {"qas": qas,
-                     "context": text,
-                     "document_id": doc_id}
+                     "context": text}
         return converted
 
     def file_to_dicts(self, file: str) -> [dict]:

@@ -252,11 +252,9 @@ class Inferencer:
             )
 
         # Assign a sequential doc_id to each dictionary
-        old_dicts = dicts
-        dicts = []
-        for i, d in enumerate(old_dicts):
-            d["document_id"] = i
-            dicts.append(d)
+        if rest_api_schema:
+            for i, d in enumerate(dicts):
+                d["document_id"] = i
 
         # Using multiprocessing
         if max_processes > 1:  # use multiprocessing if max_processes > 1

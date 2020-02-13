@@ -1164,7 +1164,7 @@ class QuestionAnsweringHead(PredictionHead):
         ret = []
         token_offsets = basket.raw["document_offsets"]
         clear_text = basket.raw["document_text"]
-        document_id = basket.raw["document_id"]
+        document_id = basket.id.split("-")[0]
 
         # iterate over the top_n predictions of the one document
         for string, start_t, end_t, score in top_preds:
