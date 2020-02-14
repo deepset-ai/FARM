@@ -612,7 +612,7 @@ class NERProcessor(Processor):
         :type test_filename: str
         :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
         :type dev_split: float
-        :param delimiter: Separator used in the input tsv / csv file
+        :param delimiter: Separator used in the input tsv / csv file. German version of Conll03 uses a whitespace. GermEval 2014 is tab separated \t
         :type delimiter: str
         :param proxies: proxy configuration to allow downloads of remote datasets.
                         Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
