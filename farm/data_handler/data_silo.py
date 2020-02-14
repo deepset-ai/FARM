@@ -85,23 +85,25 @@ class _LazyDataSet(IterableDataset):
         :type filepath: Path
         """
 
-        file_to_dicts_generator = processor.file_to_dicts(filepath)
-        self.dicts = grouper(file_to_dicts_generator, n=batch_size)
+        self.batch_size = batch_size
         self.processor = processor
+        self.filepath = filepath
+
+        self.file_to_dicts_generator = processor.file_to_dicts(filepath)
 
     def __iter__(self):
-        dataset, tensor_names = self._dataset_from_chunk(next(self.dicts))
-        self.tensor_names = tensor_names
-        return iter(dataset)
+        dicts = grouper(self.file_to_dicts_generator, 4)
+
+        results = map(self._dataset_from_chunk, dicts)
+
+        for datasets, tensor_names in results:
+            self.tensor_names = tensor_names
+            for ds in datasets:
+                yield ds
 
     def _dataset_from_chunk(self, chunk):
         """
-        Creating a dataset for a chunk (= subset) of dicts. In multiprocessing:
-          * we read in all dicts from a file
-          * split all dicts into chunks
-          * feed *one chunk* to *one process*
-          => the *one chunk*  gets converted to *one dataset* (that's what we do here)
-          * all datasets get collected and concatenated
+        Creating a dataset for a chunk (= subset) of dicts.
         :param chunk: Instead of only having a list of dicts here we also supply an index (ascending int) for each.
             => [(0, dict), (1, dict) ...]
         :type chunk: list of tuples
@@ -109,8 +111,8 @@ class _LazyDataSet(IterableDataset):
         """
         dicts = [d[1] for d in chunk]
         indices = [x[0] for x in chunk]
-        dataset = self.processor.dataset_from_dicts(dicts=dicts, indices=indices)
-        return dataset
+        datasets, tensor_names = self.processor.dataset_from_dicts(dicts=dicts, indices=indices)
+        return datasets, tensor_names
 
 
 class DataSilo:
