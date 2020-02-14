@@ -32,11 +32,12 @@ def doc_regression():
     batch_size = 32
     evaluate_every = 30
     lang_model = "bert-base-cased"
+    do_lower_case = False
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
         pretrained_model_name_or_path=lang_model,
-        do_lower_case=False)
+        do_lower_case=do_lower_case)
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
     #    We do not have a sample dataset for regression yet, add your own dataset to run the example

@@ -30,6 +30,7 @@ def doc_classifcation():
     batch_size = 32
     evaluate_every = 100
     lang_model = "bert-base-german-cased"
+    do_lower_case = False
     # or a local path:
     # lang_model = Path("../saved_models/farm-bert-base-cased")
     use_amp = None
@@ -63,7 +64,7 @@ def doc_classifcation():
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
         pretrained_model_name_or_path=lang_model,
-        do_lower_case=False)
+        do_lower_case=do_lower_case)
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
     # Here we load GermEval 2018 Data.

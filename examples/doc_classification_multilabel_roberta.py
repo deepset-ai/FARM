@@ -9,7 +9,7 @@ from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Roberta
 from farm.modeling.prediction_head import MultiLabelTextClassificationHead
-from farm.modeling.tokenization import RobertaTokenizer
+from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer
 from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
 
@@ -33,10 +33,12 @@ def doc_classification_multilabel_roberta():
 
     evaluate_every = 500
     lang_model = "roberta-base"
+    do_lower_case = False # roberta is a cased model
 
     # 1.Create a tokenizer
-    tokenizer = RobertaTokenizer.from_pretrained(
-        pretrained_model_name_or_path=lang_model)
+    tokenizer = Tokenizer.load(
+        pretrained_model_name_or_path=lang_model, do_lower_case=do_lower_case
+    )
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
     # Here we load GermEval 2018 Data.
