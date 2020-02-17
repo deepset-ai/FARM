@@ -191,7 +191,8 @@ class Processor(ABC):
         processor = cls.load(tokenizer=tokenizer, processor_name=config["processor"], **config)
 
         for task_name, task in config["tasks"].items():
-            processor.add_task(name=task_name, metric=task["metric"], label_list=task["label_list"])
+            processor.add_task(name=task_name, metric=task["metric"], label_list=task["label_list"],
+                               label_column_name=task["label_column_name"], task_type=task["task_type"])
 
         if processor is None:
             raise Exception
