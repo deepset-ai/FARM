@@ -45,12 +45,13 @@ def doc_classification_crossvalidation():
     batch_size = 32
     evaluate_every = 100
     lang_model = "bert-base-german-cased"
+    do_lower_case = False
     use_amp = None
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
         pretrained_model_name_or_path=lang_model,
-        do_lower_case=False)
+        do_lower_case=do_lower_case)
 
     # The evaluation on the dev-set can be done with one of the predefined metrics or with a
     # metric defined as a function from (preds, labels) to a dict that contains all the actual
