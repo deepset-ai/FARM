@@ -282,82 +282,54 @@ def get_file_extension(path, dot=True, lower=True):
     return ext.lower() if lower else ext
 
 
-def read_config(path, flattend=False):
+def read_config(path):
     if path:
         with open(path) as json_data_file:
             conf_args = json.load(json_data_file)
     else:
         raise ValueError("No config provided for classifier")
 
-    def getArgValue(arg):
-        if "value" not in arg:
-            logger.error(
-                "Only depth 2 config files supported. Failed to convert: %s" % str(arg)
-            )
-        return arg["value"] if (arg["value"] is not None) else arg["default"]
-
     # flatten last part of config, take either value or default as value
     for gk, gv in conf_args.items():
         for k, v in gv.items():
-            if isinstance(getArgValue(v), dict):
-                logger.error("Config is too deeply nested, at %s" % str(v))
-            conf_args[gk][k] = getArgValue(v)
+            conf_args[gk][k] = v["value"] if (v["value"] is not None) else v["default"]
 
     # DotMap for making nested dictionary accessible through dot notation
-    flat_args = dict(
-        conf_args["general"],
-        **conf_args["task"],
-        **conf_args["parameter"],
-        **conf_args["logging"],
-    )
-    if flattend:
-        args = DotMap(flat_args, _dynamic=False)
-    else:
-        args = DotMap(conf_args, _dynamic=False)
+    args = DotMap(conf_args, _dynamic=False)
 
     return args
 
 
-def unnestConfig(config, flattened=False):
+def unnestConfig(config):
     """
     This function creates a list of config files for evaluating parameters with different values. If a config parameter
     is of type list this list is iterated over and a config object without lists is returned. Can handle lists inside any
     number of parameters.
 
-    Can handle shallow or nested (one level) configs
+    Can handle nested (one level) configs
     """
     nestedKeys = []
     nestedVals = []
-    if flattened:
-        for k, v in config.items():
-            if isinstance(v, list):
-                if k != "layer_dims":  # exclude layer dims, since it is already a list
-                    nestedKeys.append(k)
-                    nestedVals.append(v)
-    else:
-        for gk, gv in config.items():
-            if(gk != "task"):
-                for k, v in gv.items():
-                    if isinstance(v, list):
-                        if isinstance(v, list):
-                            if (
-                                k != "layer_dims"
-                            ):  # exclude layer dims, since it is already a list
-                                nestedKeys.append([gk, k])
-                                nestedVals.append(v)
-                        elif isinstance(v, dict):
-                            logger.error("Config too deep!")
+
+    for gk, gv in config.items():
+        if(gk != "task"):
+            for k, v in gv.items():
+                if isinstance(v, list):
+                    if (
+                        k != "layer_dims"
+                    ):  # exclude layer dims, since it is already a list
+                        nestedKeys.append([gk, k])
+                        nestedVals.append(v)
+                elif isinstance(v, dict):
+                    logger.warning("Config too deep! Working on %s" %(str(v)))
 
     if len(nestedKeys) == 0:
         unnestedConfig = [config]
     else:
-        if flattened:
-            logger.info("Nested config at parameters: %s" % (", ".join(nestedKeys)))
-        else:
-            logger.info(
-                "Nested config at parameters: %s"
-                % (", ".join(".".join(x) for x in nestedKeys))
-            )
+        logger.info(
+            "Nested config at parameters: %s"
+            % (", ".join(".".join(x) for x in nestedKeys))
+        )
         unnestedConfig = []
         mesh = np.meshgrid(
             *nestedVals
@@ -376,7 +348,7 @@ def unnestConfig(config, flattened=False):
                 elif len(k) == 2:
                     tempconfig[k[0]][k[1]] = mesh[j][i]  # set nested dictionary keys
                 else:
-                    logger.error("Config too deep!")
+                    logger.warning("Config too deep! Working on %s" %(str(k)))
             unnestedConfig.append(tempconfig)
 
     return unnestedConfig

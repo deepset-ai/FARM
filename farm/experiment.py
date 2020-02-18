@@ -23,8 +23,8 @@ logging.basicConfig(
 
 
 def load_experiments(file):
-    args = read_config(file, flattend=False)
-    experiments = unnestConfig(args, flattened=False)
+    args = read_config(file)
+    experiments = unnestConfig(args)
     return experiments
 
 
@@ -54,8 +54,7 @@ def run_experiment(args):
     args.parameter.batch_size = int(
         args.parameter.batch_size // args.parameter.gradient_accumulation_steps
     )
-    # if n_gpu > 1:
-    #     args.parameter.batch_size = args.parameter.batch_size * n_gpu
+
     set_all_seeds(args.general.seed)
 
     # Prepare Data
@@ -94,8 +93,8 @@ def run_experiment(args):
     )
 
     # Init optimizer
-    optimizer_opts = dict(args.optimizer.optimizer_opts) if args.optimizer.optimizer_opts else None
-    schedule_opts = dict(args.optimizer.schedule_opts) if args.optimizer.schedule_opts else None
+    optimizer_opts = args.optimizer.optimizer_opts.toDict() if args.optimizer.optimizer_opts else None
+    schedule_opts = args.optimizer.schedule_opts.toDict() if args.optimizer.schedule_opts else None
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
         learning_rate=args.optimizer.learning_rate,
