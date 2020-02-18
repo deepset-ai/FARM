@@ -49,7 +49,7 @@
     "schedule_opts":      {"value": null, "default":  {"name": "LinearWarmup", "warmup_proportion":  0.2}, "desc":  "opts for lr schedule"}
  },
   "logging": {
-    "eval_every":     {"value": null,                                "default": 30,   "desc": "Steps per training loop (batches) required for evaluation on dev set. Set to 0 when you do not want to do evaluation on dev set during training."},
+    "eval_every":     {"value": null,                                "default": 50,   "desc": "Steps per training loop (batches) required for evaluation on dev set. Set to 0 when you do not want to do evaluation on dev set during training."},
     "mlflow_url":     {"value": "https://public-mlflow.deepset.ai/", "default": null, "desc": "Mlflow server for tracking experiments (e.g. http://80.123.45.167:5000/)"},
     "mlflow_nested":  {"value": null,                                "default": true, "desc": "Nesting mlflow experiments. For doing multiple runs across a set of hyperparameters."},
 
