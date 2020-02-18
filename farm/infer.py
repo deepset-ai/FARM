@@ -251,11 +251,6 @@ class Inferencer:
                 f"b) ... run inference on a downstream task: make sure your model path {self.name} contains a saved prediction head"
             )
 
-        # Assign a sequential doc_id to each dictionary
-        if rest_api_schema:
-            for i, d in enumerate(dicts):
-                d["document_id"] = i
-
         # Using multiprocessing
         if max_processes > 1:  # use multiprocessing if max_processes > 1
             multiprocessing_chunk_size, num_cpus_used = calc_chunksize(len(dicts), max_processes)
