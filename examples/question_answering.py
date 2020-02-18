@@ -34,13 +34,14 @@ def question_answering():
     batch_size = 24
     n_epochs = 2
     evaluate_every = 2000
-    base_LM_model = "roberta-base"
+    lang_model = "roberta-base"
+    do_lower_case = False # roberta is a cased model
     train_filename = "train-v2.0.json"
     dev_filename = "dev-v2.0.json"
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
-        pretrained_model_name_or_path=base_LM_model, do_lower_case=False
+        pretrained_model_name_or_path=lang_model, do_lower_case=do_lower_case
     )
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
     label_list = ["start_token", "end_token"]
@@ -62,7 +63,7 @@ def question_answering():
 
     # 4. Create an AdaptiveModel
     # a) which consists of a pretrained language model as a basis
-    language_model = LanguageModel.load(base_LM_model)
+    language_model = LanguageModel.load(lang_model)
     # b) and a prediction head on top that is suited for our task => Question Answering
     prediction_head = QuestionAnsweringHead()
 

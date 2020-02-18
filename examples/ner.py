@@ -30,19 +30,20 @@ def ner():
     device, n_gpu = initialize_device_settings(use_cuda=True)
     n_epochs = 4
     batch_size = 32
-    evaluate_every = 750
-    lang_model =  "xlm-roberta-large"
+    evaluate_every = 400
+    lang_model =  "bert-base-german-cased"
+    do_lower_case = False
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
-        pretrained_model_name_or_path=lang_model,
-        do_lower_case=False)
+        pretrained_model_name_or_path=lang_model, do_lower_case=do_lower_case
+    )
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
     ner_labels = ["[PAD]", "X", "O", "B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-OTH", "I-OTH"]
 
     processor = NERProcessor(
-        tokenizer=tokenizer, max_seq_len=128, data_dir=Path("../data/conll03-de"), metric="seq_f1", label_list=ner_labels
+        tokenizer=tokenizer, max_seq_len=128, data_dir=Path("../data/conll03-de"), delimiter=" ", metric="seq_f1", label_list=ner_labels
     )
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets

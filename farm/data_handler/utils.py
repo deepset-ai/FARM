@@ -10,6 +10,7 @@ from pathlib import Path
 import pandas as pd
 from requests import get
 from tqdm import tqdm
+from typing import List
 
 from farm.file_utils import http_get
 
@@ -20,9 +21,9 @@ DOWNSTREAM_TASK_MAP = {
     "germeval14": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/germeval14.tar.gz",
     "germeval18": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/germeval18.tar.gz",
     "squad20": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/squad20.tar.gz",
-    "conll03detrain": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/training_data_for_Stanford_NER/NER-de-train-conll-formated.txt",
-    "conll03dedev": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/training_data_for_Stanford_NER/NER-de-dev-conll-formated.txt",
-    "conll03detest": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/training_data_for_Stanford_NER/NER-de-test-conll-formated.txt",
+    "conll03detrain": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/conll2003/deu.train",
+    "conll03dedev": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/conll2003/deu.testa", #https://www.clips.uantwerpen.be/conll2003/ner/000README says testa is dev data
+    "conll03detest": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/conll2003/deu.testb",
     "conll03entrain": "https://raw.githubusercontent.com/synalp/NER/master/corpus/CoNLL-2003/eng.train",
     "conll03endev": "https://raw.githubusercontent.com/synalp/NER/master/corpus/CoNLL-2003/eng.testa",
     "conll03entest": "https://raw.githubusercontent.com/synalp/NER/master/corpus/CoNLL-2003/eng.testb",
@@ -74,8 +75,10 @@ def read_ner_file(filename, sep="\t", proxies=None):
     if not (os.path.exists(filename)):
         logger.info(f" Couldn't find {filename} locally. Trying to download ...")
         _download_extract_downstream_data(filename, proxies)
-
-    f = open(filename, encoding='utf-8')
+    if "conll03-de" in str(filename):
+        f = open(filename, encoding='cp1252')
+    else:
+        f = open(filename, encoding='utf-8')
 
     data = []
     sentence = []
@@ -83,6 +86,8 @@ def read_ner_file(filename, sep="\t", proxies=None):
     for line in f:
         if len(line) == 0 or line.startswith("-DOCSTART") or line[0] == "\n":
             if len(sentence) > 0:
+                if "conll03-de" in str(filename):
+                    _convertIOB1_to_IOB2(label)
                 data.append({"text": " ".join(sentence), "ner_label": label})
                 sentence = []
                 label = []
@@ -97,6 +102,31 @@ def read_ner_file(filename, sep="\t", proxies=None):
             label[-1] = "O"
         data.append({"text": " ".join(sentence), "ner_label": label})
     return data
+
+
+def _convertIOB1_to_IOB2(tags: List[str]):
+    """
+    script taken from: https://gist.github.com/allanj/b9bd448dc9b70d71eb7c2b6dd33fe4ef
+    IOB1:  O I I B I
+    IOB2:  O B I B I
+    Check that tags have a valid IOB format.
+    Tags in IOB1 format are converted to IOB2.
+    """
+    for i, tag in enumerate(tags):
+        if tag == 'O':
+            continue
+        split = tag.split('-')
+        if len(split) != 2 or split[0] not in ['I', 'B']:
+            return False
+        if split[0] == 'B':
+            continue
+        elif i == 0 or tags[i - 1] == 'O':  # conversion IOB1 to IOB2
+            tags[i] = 'B' + tag[1:]
+        elif tags[i - 1][1:] == tag[1:]:
+            continue
+        else:  # conversion IOB1 to IOB2
+            tags[i] = 'B' + tag[1:]
+    return True
 
 
 def read_squad_file(filename, proxies=None):
