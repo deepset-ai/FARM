@@ -8,7 +8,7 @@ from farm.modeling.optimization import initialize_optimizer
 from farm.modeling.prediction_head import PredictionHead
 from farm.modeling.tokenization import Tokenizer
 from farm.data_handler.processor import Processor
-from farm.train import Trainer
+from farm.train import Trainer, EarlyStopping
 from farm.utils import set_all_seeds, initialize_device_settings
 from farm.utils import MLFlowLogger as MlLogger
 from farm.file_utils import read_config, unnestConfig
@@ -107,6 +107,22 @@ def run_experiment(args):
         device=device
     )
 
+    model_name = (
+        f"{model.language_model.name}-{model.language_model.language}-{args.task.name}"
+    )
+
+    # An early stopping instance can be used to save the model that performs best on the dev set
+    # according to some metric and stop training when no improvement is happening for some iterations.
+    if "early_stopping" in args:
+        early_stopping = EarlyStopping(
+            metric=args.task.metric,
+            mode=args.early_stopping.mode,
+            save_dir=Path(f"{args.general.output_dir}/{model_name}_early_stopping"),  # where to save the best model
+            patience=args.early_stopping.patience    # number of evaluations to wait for improvement before terminating the training
+        )
+    else:
+        early_stopping = None
+
     trainer = Trainer(
         model=model,
         optimizer=optimizer,
@@ -119,13 +135,11 @@ def run_experiment(args):
         lr_schedule=lr_schedule,
         evaluate_every=args.logging.eval_every,
         device=device,
+        early_stopping=early_stopping
     )
 
     model = trainer.train()
 
-    model_name = (
-        f"{model.language_model.name}-{model.language_model.language}-{args.task.name}"
-    )
     processor.save(Path(f"{args.general.output_dir}/{model_name}"))
     model.save(Path(f"{args.general.output_dir}/{model_name}"))
 
