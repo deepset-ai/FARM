@@ -56,6 +56,10 @@
 
     "mlflow_experiment": {"value": "Public_FARM",             "default": null, "desc": "Experiment name used for mlflow"},
     "mlflow_run_name":   {"value": "germeval fine by config", "default": null, "desc": "Name of the particular run for mlflow"}
+  },
+  "early_stopping": {
+    "mode": {"value": "max", "default": "max", "desc": "Stop when a maximum or minimum metric value is encountered"},
+    "patience": {"value": 2, "default": 2, "desc": "Number of evaluations to wait for improvement before terminating the training"}
   }
 }
 
