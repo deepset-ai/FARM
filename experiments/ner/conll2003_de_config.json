@@ -21,7 +21,7 @@
     "train_filename":   {"value": null, "default": "train.txt",      "desc": "Filename for training."},
     "dev_filename":     {"value": null, "default": "dev.txt",        "desc": "Filename for development. Missing in case of GermEval2018."},
     "test_filename":    {"value": null, "default": "test.txt",       "desc": "Filename for testing. It is the submission file from competition."},
-    "delimiter":        {"value": null, "default": " ",             "desc": "Delimiter used to seprate columns in input data."},
+    "delimiter":        {"value": null, "default": "\t",             "desc": "Delimiter used to seprate columns in input data."},
     "label_list":       {"value": null, "default": ["[PAD]", "X", "O", "B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-OTH", "I-OTH"], "desc": ""},
     "metric":           {"value": null, "default": "seq_f1",       "desc": "Metric used. A f1 scored tailored to sequences of labels."}
   }, 
