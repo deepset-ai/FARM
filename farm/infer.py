@@ -253,7 +253,7 @@ class Inferencer:
 
         # Using multiprocessing
         if max_processes > 1:  # use multiprocessing if max_processes > 1
-            multiprocessing_chunk_size, num_cpus_used = calc_chunksize(len(dicts), max_processes)
+            multiprocessing_chunk_size, num_cpus_used = calc_chunksize(len(dicts), max_processes=max_processes)
             with ExitStack() as stack:
 
                 # Get us some workers (i.e. processes)
