@@ -920,7 +920,11 @@ class SquadProcessor(Processor):
         where each entry is a dictionary for one document-question pair (potentially mutliple answers). """
 
         raw_baskets = []
+        if "text" in dictionary and "context" not in dictionary:
+            raise Exception("It seems that your input is in rest API format. Try setting rest_api_schema=True "
+                            "when calling inference from dicts")
         document_text = dictionary["context"]
+
         document_tokenized = tokenize_with_metadata(document_text, self.tokenizer)
         document_start_of_word = [int(x) for x in document_tokenized["start_of_word"]]
         questions = dictionary["qas"]
@@ -960,23 +964,14 @@ class SquadProcessor(Processor):
         return raw_baskets
 
     def _convert_rest_api_dict(self, infer_dict):
-        # convert input coming from inferencer to SQuAD format
-        if len(infer_dict.get("questions")) > 1:
-            raise ValueError("Inferencer currently does not support answering multiple questions on a text."
-                                "As a workaround, multiple input dicts with text and question pairs can be "
-                                "supplied in a single API request.")
-        converted = {
-            "qas": [
-                {
-                    "question": infer_dict.get("questions", ["Missing?"])[0],
-                    "id": None,
-                    "answers": [],
-                    "is_impossible": False
-                }
-            ],
-            "context": infer_dict.get("text", "Missing!"),
-            "document_id": infer_dict.get("document_id", None),
-        }
+        questions = infer_dict.get("questions", ["[Missing]"])
+        text = infer_dict.get("text", "Missing!")
+        qas = [{"question": q,
+                "id": i,
+                "answers": [],
+                "is_impossible": False} for i, q in enumerate(questions)]
+        converted = {"qas": qas,
+                     "context": text}
         return converted
 
     def file_to_dicts(self, file: str) -> [dict]:
@@ -1082,7 +1077,7 @@ class RegressionProcessor(Processor):
         )
 
         # Note that label_list is being hijacked to store the scaling mean and scale
-        self.add_task(name="regression", metric="mse", label_list= [scaler_mean, scaler_scale], label_column_name=label_column_name, task_type="regression", label_name=label_name)
+        self.add_task(name="regression", metric="mse", label_list=[scaler_mean, scaler_scale], label_column_name=label_column_name, task_type="regression", label_name=label_name)
 
     def file_to_dicts(self, file: str) -> [dict]:
         column_mapping = {task["label_column_name"]: task["label_name"] for task in self.tasks.values()}
