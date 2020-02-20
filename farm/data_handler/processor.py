@@ -495,11 +495,7 @@ class TextClassificationProcessor(Processor):
 
 class TextPairClassificationProcessor(TextClassificationProcessor):
     def __init__(self, **kwargs):
-        super(TextPairClassificationProcessor, self).__init__(name="text_classification",
-                                                              metric="f1_macro",
-                                                              label_column_name="label",
-                                                              task_type="classification",
-                                                              **kwargs)
+        super(TextPairClassificationProcessor, self).__init__(**kwargs)
 
     def file_to_dicts(self, file: str) -> [dict]:
         column_mapping = {task["label_column_name"]: task["label_name"] for task in self.tasks.values()}

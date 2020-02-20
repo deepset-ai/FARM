@@ -13,8 +13,8 @@ from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer, EarlyStopping
 from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
 from farm.eval import Evaluator
-from sklearn.metrics import matthews_corrcoef, recall_score, precision_score, f1_score, mean_squared_error, r2_score
-from farm.metrics import simple_accuracy, register_metrics
+from sklearn.metrics import matthews_corrcoef, f1_score
+from farm.evaluation.metrics import simple_accuracy, register_metrics
 
 def doc_classification_crossvalidation():
     ##########################

@@ -11,7 +11,8 @@ from farm.modeling.language_model import LanguageModel
 from farm.modeling.prediction_head import RegressionHead, TextClassificationHead
 from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer
-from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
+from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings, reformat_msmarco_train, reformat_msmarco_dev, write_msmarco_results
+from farm.evaluation.msmarco_passage_farm import msmarco_evaluation
 
 
 def text_pair_classification():
@@ -24,7 +25,7 @@ def text_pair_classification():
     ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_text_pair_classification")
 
     ##########################
-    ########## Settings ######
+    ########## Settings
     ##########################
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)
@@ -33,6 +34,28 @@ def text_pair_classification():
     evaluate_every = 500
     lang_model = "bert-base-cased"
     label_list = ["0", "1"]
+    train_filename = "train.tsv"
+    dev_filename = "dev.tsv"
+    generate_data = True
+    data_dir = Path("../data/msmarco_passage")
+    predictions_raw_filename = "predictions_raw.txt"
+    predictions_filename = "predictions.txt"
+    train_source_filename = "triples.train.small.tsv"
+    qrels_filename = "qrels.dev.tsv"
+    queries_filename = "queries.dev.tsv"
+    passages_filename = "collection.tsv"
+    top1000_filename = "top1000.dev"
+
+
+    # 0. Preprocess and save MSMarco data in a format that can be ingested by FARM models. Only needs to be done once!
+    if generate_data:
+        reformat_msmarco_train(data_dir / train_source_filename,
+                               data_dir / train_filename)
+        reformat_msmarco_dev(data_dir / queries_filename,
+                             data_dir / passages_filename,
+                             data_dir / qrels_filename,
+                             data_dir / top1000_filename,
+                             data_dir / dev_filename)
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
@@ -40,13 +63,15 @@ def text_pair_classification():
         do_lower_case=False)
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
-    #    We do not have a sample dataset for regression yet, add your own dataset to run the example
+    #    Evaluation during training will be performed on a slice of the train set
+    #    We will be using the msmarco dev set as our final evaluation set
     processor = TextPairClassificationProcessor(tokenizer=tokenizer,
                                                 label_list=label_list,
-                                                max_seq_len=128,
-                                                dev_filename="dev.tsv",
+                                                train_filename=train_filename,
                                                 test_filename=None,
-                                                data_dir=Path("../data/asnq_binary"),
+                                                dev_split=0.001,
+                                                max_seq_len=128,
+                                                data_dir=data_dir,
                                                 delimiter="\t")
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
@@ -73,7 +98,7 @@ def text_pair_classification():
     # 5. Create an optimizer
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
-        learning_rate=5e-6,
+        learning_rate=1e-5,
         device=device,
         n_batches=len(data_silo.loaders["train"]),
         n_epochs=n_epochs)
@@ -93,21 +118,22 @@ def text_pair_classification():
     trainer.train()
 
     # 8. Hooray! You have a model. Store it:
-    save_dir = Path("saved_models/text_pair_classification_model")
+    save_dir = Path("saved_models/passage_ranking_model")
     model.save(save_dir)
     processor.save(save_dir)
 
     # 9. Load it & harvest your fruits (Inference)
     #    Add your own text adapted to the dataset you provide
-    basic_texts = [
-        {"text": "how many times have real madrid won the champions league in a row", "text_b": "They have also won the competition the most times in a row, winning it five times from 1956 to 1960"},
-        {"text": "how many seasons of the blacklist are there on netflix", "text_b": "Retrieved March 27 , 2018 ."},
-    ]
+    model = Inferencer.load(save_dir, gpu=True, max_seq_len=128, batch_size=128)
+    result = model.inference_from_file(data_dir / dev_filename)
 
-    model = Inferencer.load(save_dir)
-    result = model.inference_from_dicts(dicts=basic_texts)
+    write_msmarco_results(result, save_dir / predictions_raw_filename)
 
-    print(result)
+    msmarco_evaluation(preds_file=save_dir / predictions_raw_filename,
+                       dev_file=data_dir / dev_filename,
+                       qrels_file=data_dir / qrels_filename,
+                       output_file=save_dir / predictions_filename)
+
 
 if __name__ == "__main__":
     text_pair_classification()
