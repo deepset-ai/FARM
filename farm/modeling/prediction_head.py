@@ -1104,14 +1104,14 @@ class QuestionAnsweringHead(PredictionHead):
         preds_d = self.aggregate_preds(preds_p, passage_start_t, ids, seq_2_start_t)
         assert len(preds_d) == len(baskets)
 
-        # Separate top_preds list from the no_ans_gap float
-        top_preds, no_ans_gaps = zip(*preds_d)
+        # Separate top_preds list from the max_no_ans_diff float. max_no_ans_diff = max([no_ans_i - pos_ans_i])
+        top_preds, max_no_ans_diffs = zip(*preds_d)
 
         # Takes document level prediction spans and returns string predictions
         formatted = self.stringify(top_preds, baskets)
 
         if rest_api_schema:
-            formatted = self.to_rest_api_schema(formatted, no_ans_gaps, baskets)
+            formatted = self.to_rest_api_schema(formatted, max_no_ans_diffs, baskets)
 
         return formatted
 
@@ -1138,12 +1138,12 @@ class QuestionAnsweringHead(PredictionHead):
         return ret
 
 
-    def to_rest_api_schema(self, formatted_preds, no_ans_gaps, baskets):
+    def to_rest_api_schema(self, formatted_preds, max_no_ans_diffs, baskets):
         ret = []
         ids = [fp["id"] for fp in formatted_preds]
         preds = [fp["preds"] for fp in formatted_preds]
 
-        for preds, id, no_ans_gap, basket in zip(preds, ids, no_ans_gaps, baskets):
+        for preds, id, max_no_ans_diff, basket in zip(preds, ids, max_no_ans_diffs, baskets):
             question = basket.raw["question_text"]
             answers = self.answer_for_api(preds, basket)
             curr = {
@@ -1154,7 +1154,7 @@ class QuestionAnsweringHead(PredictionHead):
                         "question_id": id,
                         "ground_truth": None,
                         "answers": answers,
-                        "no_ans_gap": no_ans_gap
+                        "max_no_ans_diff": max_no_ans_diff
                     }
                 ],
             }
