@@ -1104,14 +1104,14 @@ class QuestionAnsweringHead(PredictionHead):
         preds_d = self.aggregate_preds(preds_p, passage_start_t, ids, seq_2_start_t)
         assert len(preds_d) == len(baskets)
 
-        # Separate top_preds list from the change_boost float. Add change_boost to current boost for switching
-        top_preds, change_boosts = zip(*preds_d)
+        # Separate top_preds list from the no_ans_gap float. Add no_ans_gap to current boost for switching
+        top_preds, no_ans_gaps = zip(*preds_d)
 
         # Takes document level prediction spans and returns string predictions
         formatted = self.stringify(top_preds, baskets)
 
         if rest_api_schema:
-            formatted = self.to_rest_api_schema(formatted, change_boosts, baskets)
+            formatted = self.to_rest_api_schema(formatted, no_ans_gaps, baskets)
 
         return formatted
 
@@ -1138,12 +1138,12 @@ class QuestionAnsweringHead(PredictionHead):
         return ret
 
 
-    def to_rest_api_schema(self, formatted_preds, change_boosts, baskets):
+    def to_rest_api_schema(self, formatted_preds, no_ans_gaps, baskets):
         ret = []
         ids = [fp["id"] for fp in formatted_preds]
         preds = [fp["preds"] for fp in formatted_preds]
 
-        for preds, id, change_boost, basket in zip(preds, ids, change_boosts, baskets):
+        for preds, id, no_ans_gap, basket in zip(preds, ids, no_ans_gaps, baskets):
             question = basket.raw["question_text"]
             answers = self.answer_for_api(preds, basket)
             curr = {
@@ -1154,7 +1154,7 @@ class QuestionAnsweringHead(PredictionHead):
                         "question_id": id,
                         "ground_truth": None,
                         "answers": answers,
-                        "change_no_ans_boost": change_boost
+                        "no_ans_gap": no_ans_gap
                     }
                 ],
             }
@@ -1186,8 +1186,7 @@ class QuestionAnsweringHead(PredictionHead):
 
     def create_context(self, ans_start_ch, ans_end_ch, clear_text):
         if ans_start_ch == 0 and ans_end_ch == 0:
-            context_start_ch = 0
-            context_end_ch = 0
+            return None, 0, 0
         else:
             len_text = len(clear_text)
             midpoint = int((ans_end_ch - ans_start_ch) / 2) + ans_start_ch
@@ -1210,7 +1209,7 @@ class QuestionAnsweringHead(PredictionHead):
 
         # If it is a no_answer prediction
         if start_t == -1 and end_t == -1:
-            return "", 0, 0
+            return None, 0, 0
 
         n_tokens = len(token_offsets)
 
@@ -1332,7 +1331,7 @@ class QuestionAnsweringHead(PredictionHead):
         pos_answer_dedup = self.deduplicate(pos_answers_flat)
 
         # This is how much no_answer_boost needs to change to turn a no_answer to a positive answer (or vice versa)
-        change_boost = -min([nas - pbs for nas, pbs in zip(no_answer_scores, passage_best_score)])
+        no_ans_gap = -min([nas - pbs for nas, pbs in zip(no_answer_scores, passage_best_score)])
 
         # "no answer" scores and positive answers scores are difficult to compare, because
         # + a positive answer score is related to a specific text span
@@ -1341,14 +1340,14 @@ class QuestionAnsweringHead(PredictionHead):
         # the most significant difference between scores.
         # Most significant difference: change top prediction from "no answer" to answer (or vice versa)
         best_overall_positive_score = max(x[2] for x in pos_answer_dedup)
-        no_answer_pred = [-1, -1, best_overall_positive_score - change_boost]
+        no_answer_pred = [-1, -1, best_overall_positive_score - no_ans_gap]
 
 
         # Add no answer to positive answers, sort the order and return the n_best
         n_preds = [no_answer_pred] + pos_answer_dedup
         n_preds_sorted = sorted(n_preds, key=lambda x: x[2], reverse=True)
         n_preds_reduced = n_preds_sorted[:self.n_best]
-        return n_preds_reduced, change_boost
+        return n_preds_reduced, no_ans_gap
 
     @staticmethod
     def deduplicate(flat_pos_answers):
