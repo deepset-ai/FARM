@@ -808,7 +808,7 @@ class NextSentenceHead(TextClassificationHead):
                 and "config.json" in pretrained_model_name_or_path \
                 and "prediction_head" in pretrained_model_name_or_path:
             # a) FARM style
-            head = super(BertLMHead, cls).load(pretrained_model_name_or_path)
+            head = super(NextSentenceHead, cls).load(pretrained_model_name_or_path)
         else:
             # b) pytorch-transformers style
             # load weights from bert model
