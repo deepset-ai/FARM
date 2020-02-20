@@ -19,7 +19,7 @@ from tqdm import tqdm
 
 from farm.data_handler.dataloader import NamedDataLoader
 from farm.data_handler.processor import Processor
-from farm.data_handler.utils import grouper
+from farm.data_handler.utils import grouper, stream_grouper
 from farm.utils import MLFlowLogger as MlLogger
 from farm.utils import log_ascii_workers, calc_chunksize
 from farm.utils import get_dict_checksum
@@ -30,38 +30,84 @@ logger = logging.getLogger(__name__)
 
 
 class StreamingDataSilo:
-    def __init__(self, processor, batch_size):
+    """
+    Streaming Data Silo computes and loads datasets in parallel to the model training.
+
+    The datasets are lazily yielded on-the-fly as required by the training and gets transferred
+    to the GPU. This eliminates the need of loading large entire datasets in memory.
+
+    For optimal training performance and efficient utilization of shiny GPUs, the pipeline should
+    remain saturated with pre-computed datasets to avoid incurring waiting time during training.
+
+    To make the computation of datasets parallel, PyTorch DataLoader provide an option to use
+    multiple workers that utilize the available CPU cores.
+    """
+
+    def __init__(self, processor, batch_size, dataloader_workers=8):
+        """
+        :param processor: A dataset specific Processor object which will turn input file into a Pytorch Dataset.
+        :type processor: Processor
+        :param batch_size: The size of batch to use for model training.
+        :type batch_size: int
+        :param dataloader_workers: number of workers for PyTorch DataLoader
+        :type dataloader_workers: int
+        """
 
         self.loaders = defaultdict(lambda: None)
 
-        # Train data
-        data_set = _LazyDataSet(
+        #  Batching:
+        #
+        #  The model Trainer is passed a PyTorch DataLoader instance that yields dataset batches for training.
+        #
+        #  By default, the PyTorch DataLoader prefetch (2 * num_workers) samples. However, given the higher
+        #  batch sizes(usually >64) for model training, the default prefetch is not sufficient to keep the
+        #  model Training saturated with datasets.
+        #
+        #  As a workaround, we yield batches of samples instead of yielding individual samples. The DataLoader
+        #  can then prefetch (2 * num_workers) number of batches of samples.
+        #
+        #  Since the batching is now handled within _StreamingDataSet, we disable the batching on DataLoader side
+        #  by initializing the data loader with batch_size as 1.
+
+        # Create train DataLoader
+        data_set = _StreamingDataSet(
             processor=processor,
             filepath=processor.data_dir / processor.train_filename,
-            batch_size=batch_size
+            batch_size=batch_size,
+            dataloader_workers=dataloader_workers,
         )
-        self.loaders["train"] = NamedDataLoader(dataset=data_set, batch_size=batch_size, sampler=None)
+        self.loaders["train"] = NamedDataLoader(
+            dataset=data_set, batch_size=1, num_workers=dataloader_workers, pin_memory=True
+        )
 
-        # Dev data
+        # Create dev DataLoader
         if processor.dev_filename:
-            data_set = _LazyDataSet(
+            data_set = _StreamingDataSet(
                 processor=processor,
                 filepath=processor.data_dir / processor.dev_filename,
-                batch_size=batch_size
+                batch_size=batch_size,
+                dataloader_workers=dataloader_workers,
             )
-            self.loaders["dev"] = NamedDataLoader(dataset=data_set, batch_size=batch_size, sampler=None)
+            self.loaders["dev"] = NamedDataLoader(
+                dataset=data_set, batch_size=1, num_workers=dataloader_workers, pin_memory=True
+            )
         elif processor.dev_split > 0.0:
-            raise NotImplemented("StreamingDataSilo does not have dev_split implemented. "
-                                 "To use dev data, supply a separate dev filename.")
+            raise NotImplemented(
+                "StreamingDataSilo does not have dev_split implemented. "
+                "To use dev data, supply a separate dev filename."
+            )
 
-        # Test data
+        # Create test DataLoader
         if processor.test_filename:
-            data_set = _LazyDataSet(
+            data_set = _StreamingDataSet(
                 processor=processor,
                 filepath=processor.data_dir / processor.test_filename,
-                batch_size=batch_size
+                batch_size=batch_size,
+                dataloader_workers=dataloader_workers,
             )
-            self.loaders["test"] = NamedDataLoader(dataset=data_set, batch_size=batch_size, sampler=None)
+            self.loaders["test"] = NamedDataLoader(
+                dataset=data_set, batch_size=1, num_workers=dataloader_workers, pin_memory=True
+            )
 
         self.processor = processor
 
@@ -69,37 +115,60 @@ class StreamingDataSilo:
         return self.loaders[dataset]
 
 
-class _LazyDataSet(IterableDataset):
-    def __init__(
-        self,
-        processor,
-        filepath,
-        batch_size,
-    ):
+class _StreamingDataSet(IterableDataset):
+    def __init__(self, processor, filepath, batch_size, dataloader_workers):
         """
-        :param processor: A dataset specific Processor object which will turn input (file or dict) into a Pytorch Dataset.
+        :param processor: A dataset specific Processor object which will turn input file into a Pytorch Dataset.
         :type processor: Processor
         :param batch_size: The size of batch that should be returned by the DataLoaders.
         :type batch_size: int
         :param filepath: input filename to load the dataset from
         :type filepath: Path
+        :param dataloader_workers: number of workers for PyTorch Dataloader
+        :type dataloader_workers: int
         """
 
         self.batch_size = batch_size
         self.processor = processor
         self.filepath = filepath
+        self.dataloader_workers = dataloader_workers
 
         self.file_to_dicts_generator = processor.file_to_dicts(filepath)
 
     def __iter__(self):
-        dicts = grouper(self.file_to_dicts_generator, 4)
+        #  With IterableDataset, the same __iter__ is copied over to the multiple workers of
+        #  a Dataloader. Hence, we need to configure the __iter__ to not yield duplicated data
+        #  when more than 1 workers are used.
+        #
+        #  To avoid duplicates, we need to split the input dicts between the workers. The
+        #  stream_grouper() converts a dict generator given as input and yields only the
+        #  dicts that are to be processed by the given worker_id.
+        #
+        #  For instance, consider input as [dictA, dictB, dictC, ...], then the stream_grouper
+        #  (with n=2) will return, [[dictA, dictB], [dictE, dictF] ...] for worker 1 and
+        #  [[dictC, dictD], [dictG, dictH] ...] for worker 2.
+
+        if self.dataloader_workers > 1:
+            worker_info = torch.utils.data.get_worker_info()
+            worker_id = worker_info.id
+            dicts = stream_grouper(
+                self.file_to_dicts_generator, n=4, worker_id=worker_id, total_workers=self.dataloader_workers
+            )
+        else:
+            dicts = grouper(self.file_to_dicts_generator, n=4)
 
         results = map(self._dataset_from_chunk, dicts)
 
+        batch = []
         for datasets, tensor_names in results:
             self.tensor_names = tensor_names
             for ds in datasets:
-                yield ds
+                batch.append(ds)
+                if len(batch) == self.batch_size:
+                    yield batch
+                    batch = []
+        if batch:
+            yield batch
 
     def _dataset_from_chunk(self, chunk):
         """

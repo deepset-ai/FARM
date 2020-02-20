@@ -745,7 +745,7 @@ class BertStyleLMProcessor(Processor):
         return [x[1] for x in sorted_tuples]
 
     def file_to_dicts(self, file: str) -> list:
-        dicts = list(read_docs_from_txt(filename=file, delimiter=self.delimiter, max_docs=self.max_docs, proxies=self.proxies))
+        dicts = read_docs_from_txt(filename=file, delimiter=self.delimiter, max_docs=self.max_docs, proxies=self.proxies)
         return dicts
 
     def _dict_to_samples(self, dictionary, all_dicts=None):

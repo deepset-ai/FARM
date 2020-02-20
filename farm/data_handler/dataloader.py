@@ -8,7 +8,7 @@ class NamedDataLoader(DataLoader):
     the name of the tensor and the value is the tensor itself.
     """
 
-    def __init__(self, dataset, sampler, batch_size, tensor_names=None):
+    def __init__(self, dataset, batch_size, sampler=None, tensor_names=None, num_workers=0, pin_memory=False):
         """
         :param dataset: The dataset that will be wrapped by this NamedDataLoader
         :type dataset: Dataset
@@ -18,6 +18,10 @@ class NamedDataLoader(DataLoader):
         :type batch_size: int
         :param tensor_names: The names of the tensor, in the order that the dataset returns them in.
         :type tensor_names: list
+        :param num_workers: number of workers to use for the DataLoader
+        :type num_workers: int
+        :param pin_memory: argument for Data Loader to use page-locked memory for faster transfer of data to GPU
+        :type pin_memory: bool
         """
 
         def collate_fn(batch):
@@ -25,10 +29,14 @@ class NamedDataLoader(DataLoader):
             A custom collate function that formats the batch as a dictionary where the key is
             the name of the tensor and the value is the tensor itself
             """
-            if hasattr(dataset, "tensor_names"):
+
+            if type(dataset).__name__ == "_StreamingDataSet":
                 _tensor_names = dataset.tensor_names
             else:
                 _tensor_names = tensor_names
+
+            if type(batch[0]) == list:
+                batch = batch[0]
 
             assert len(batch[0]) == len(
                 _tensor_names
@@ -52,6 +60,8 @@ class NamedDataLoader(DataLoader):
             sampler=sampler,
             batch_size=batch_size,
             collate_fn=collate_fn,
+            pin_memory=pin_memory,
+            num_workers=num_workers,
         )
 
 
