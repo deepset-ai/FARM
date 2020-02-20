@@ -1012,7 +1012,7 @@ class QuestionAnsweringHead(PredictionHead):
         return all_top_n
 
     def get_top_candidates(self, sorted_candidates, start_end_matrix,
-                           n_non_padding, max_answer_length, seq_2_start_t, n_best=5):
+                           n_non_padding, max_answer_length, seq_2_start_t):
         """ Returns top candidate answers. Operates on a matrix of summed start and end logits. This matrix corresponds
         to a single sample (includes special tokens, question tokens, passage tokens). This method always returns a
         list of len n_best + 1 (it is comprised of the n_best positive answers along with the one no_answer)"""
@@ -1023,7 +1023,7 @@ class QuestionAnsweringHead(PredictionHead):
 
         # Iterate over all candidates and break when we have all our n_best candidates
         for candidate_idx in range(n_candidates):
-            if len(top_candidates) == n_best:
+            if len(top_candidates) == self.n_best:
                 break
             else:
                 # Retrieve candidate's indices
@@ -1104,14 +1104,14 @@ class QuestionAnsweringHead(PredictionHead):
         preds_d = self.aggregate_preds(preds_p, passage_start_t, ids, seq_2_start_t)
         assert len(preds_d) == len(baskets)
 
-        # Separate top_preds list from the max_no_ans_diff float. max_no_ans_diff = max([no_ans_i - pos_ans_i])
-        top_preds, max_no_ans_diffs = zip(*preds_d)
+        # Separate top_preds list from the change_boost float. Add change_boost to current boost for switching
+        top_preds, change_boosts = zip(*preds_d)
 
         # Takes document level prediction spans and returns string predictions
         formatted = self.stringify(top_preds, baskets)
 
         if rest_api_schema:
-            formatted = self.to_rest_api_schema(formatted, max_no_ans_diffs, baskets)
+            formatted = self.to_rest_api_schema(formatted, change_boosts, baskets)
 
         return formatted
 
@@ -1138,12 +1138,12 @@ class QuestionAnsweringHead(PredictionHead):
         return ret
 
 
-    def to_rest_api_schema(self, formatted_preds, max_no_ans_diffs, baskets):
+    def to_rest_api_schema(self, formatted_preds, change_boosts, baskets):
         ret = []
         ids = [fp["id"] for fp in formatted_preds]
         preds = [fp["preds"] for fp in formatted_preds]
 
-        for preds, id, max_no_ans_diff, basket in zip(preds, ids, max_no_ans_diffs, baskets):
+        for preds, id, change_boost, basket in zip(preds, ids, change_boosts, baskets):
             question = basket.raw["question_text"]
             answers = self.answer_for_api(preds, basket)
             curr = {
@@ -1154,7 +1154,7 @@ class QuestionAnsweringHead(PredictionHead):
                         "question_id": id,
                         "ground_truth": None,
                         "answers": answers,
-                        "max_no_ans_diff": max_no_ans_diff
+                        "change_no_ans_boost": change_boost
                     }
                 ],
             }
@@ -1307,8 +1307,7 @@ class QuestionAnsweringHead(PredictionHead):
         """ This function contains the logic for choosing the best answers from each passage. In the end, it
         returns the n_best predictions on the document level. """
 
-        # Initialize some variables
-        document_no_answer = True
+        # Initialize variables
         passage_no_answer = []
         passage_best_score = []
         no_answer_scores = []
@@ -1323,11 +1322,6 @@ class QuestionAnsweringHead(PredictionHead):
             no_answer_scores.append(no_answer_score)
             passage_best_score.append(best_pred_score)
 
-        # If a positive prediction is higher than the no_answer score in one of the passages then the top
-        # document prediction should be a positive answer
-        if False in passage_no_answer:
-            document_no_answer = False
-
         # Get all predictions in flattened list and sort by score
         pos_answers_flat = [(start, end, score)
                             for passage_preds in preds
@@ -1336,31 +1330,25 @@ class QuestionAnsweringHead(PredictionHead):
 
         # TODO add switch for more variation in answers, e.g. if varied_ans then never return overlapping answers
         pos_answer_dedup = self.deduplicate(pos_answers_flat)
-        pos_answers_sorted = sorted(pos_answer_dedup, key=lambda x: x[2], reverse=True)
-        pos_answers_reduced = pos_answers_sorted[:self.n_best]
 
-
-        # This is how big the no_answer boost needs to be to change a no_answer to a pos answer
-        #  (or vice versa). This can be used to set the boosting value depending on your application
-        no_ans_diff = [nas - pbs for nas, pbs in zip(no_answer_scores, passage_best_score)]
-        min_no_ans_diff = min(no_ans_diff)
-        max_no_ans_diff = max(no_ans_diff)
+        # This is how much no_answer_boost needs to change to turn a no_answer to a positive answer (or vice versa)
+        change_boost = min([nas - pbs for nas, pbs in zip(no_answer_scores, passage_best_score)])
 
         # "no answer" scores and positive answers scores are difficult to compare, because
         # + a positive answer score is related to a specific text span
         # - a "no answer" score is related to all input texts
-        # We therefor compute the "no answer" score relative to the best possible answer and adjust it by
-        # the most significant difference between positive and no answers.
+        # Thus we compute the "no answer" score relative to the best possible answer and adjust it by
+        # the most significant difference between scores.
         # Most significant difference: a model switching from predicting an answer to "no answer" (or vice versa).
-        # This happens to be the minimum value of all no_ans_diff scores.
-        best_overall_positive_score = pos_answers_reduced[0][2]
-        no_answer_pred = [-1, -1, best_overall_positive_score + min_no_ans_diff]
+        best_overall_positive_score = max(x[2] for x in pos_answer_dedup)
+        no_answer_pred = [-1, -1, best_overall_positive_score + change_boost]
 
-        # Add no answer to positive answers and sort the order
-        n_preds = [no_answer_pred] + pos_answers_reduced
+
+        # Add no answer to positive answers, sort the order and return the n_best
+        n_preds = [no_answer_pred] + pos_answer_dedup
         n_preds_sorted = sorted(n_preds, key=lambda x: x[2], reverse=True)
         n_preds_reduced = n_preds_sorted[:self.n_best]
-        return n_preds_reduced, max_no_ans_diff
+        return n_preds_reduced, change_boost
 
     @staticmethod
     def deduplicate(flat_pos_answers):
