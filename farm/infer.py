@@ -217,7 +217,7 @@ class Inferencer:
         :param file: path of the input file for Inference
         :type file: str
         :param max_processes: the maximum size of `multiprocessing.Pool`. Set to value of 1 to disable multiprocessing.
-                              If you want to debug, you need to disable multiprocessing!
+                              If you want to debug the Language Model, you might need to disable multiprocessing!
         :type max_processes: int
         """
         dicts = self.processor.file_to_dicts(file)
@@ -241,7 +241,7 @@ class Inferencer:
         :type rest_api_schema: bool
         :return: dict of predictions
         :param max_processes: The maximum size of `multiprocessing.Pool`. Set to value of 1 to disable multiprocessing.
-                              If you want to debug, you need to disable multiprocessing!
+                              If you want to debug the Language Model, you might need to disable multiprocessing!
                               For very small number of dicts, time incurred in spawning processes could outweigh
                               performance boost, eg, in the case of HTTP APIs for Inference. For such cases
                               multiprocessing should be disabled.
