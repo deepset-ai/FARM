@@ -2,6 +2,7 @@ import copy
 import logging
 import torch.multiprocessing as mp
 import os
+from collections import defaultdict
 from contextlib import ExitStack
 from functools import partial
 import random
@@ -9,7 +10,7 @@ from pathlib import Path
 
 import numpy as np
 from sklearn.utils.class_weight import compute_class_weight
-from torch.utils.data import ConcatDataset, Dataset, Subset
+from torch.utils.data import ConcatDataset, Dataset, Subset, IterableDataset
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
 import torch
@@ -18,13 +19,15 @@ from tqdm import tqdm
 
 from farm.data_handler.dataloader import NamedDataLoader
 from farm.data_handler.processor import Processor
-from farm.data_handler.utils import grouper
+from farm.data_handler.utils import grouper, stream_grouper
 from farm.utils import MLFlowLogger as MlLogger
 from farm.utils import log_ascii_workers, calc_chunksize
 from farm.utils import get_dict_checksum
 from farm.visual.ascii.images import TRACTOR_SMALL
 
+
 logger = logging.getLogger(__name__)
+
 
 
 class DataSilo:
@@ -117,7 +120,7 @@ class DataSilo:
 
         # loading dicts from file (default)
         if dicts is None:
-            dicts = self.processor.file_to_dicts(filename)
+            dicts = list(self.processor.file_to_dicts(filename))
             #shuffle list of dicts here if we later want to have a random dev set splitted from train set
             if str(self.processor.train_filename) in str(filename):
                 if not self.processor.dev_filename:
@@ -462,6 +465,163 @@ class DataSilo:
         :param dataset: Choose from train, dev or test
         """
         return self.counts[dataset]
+
+
+class StreamingDataSilo:
+    """
+    Streaming Data Silo loads and preprocesses datasets in parallel to the model training.
+
+    The samples are lazily created from the input file and batches are yielded on-the-fly when required during training.
+    This is useful if you:
+    - work with large datasets that don't fit in memory
+    - want to save time (by not preprocessing the entire dataset before starting training)
+
+    For optimal training performance and efficient utilization of shiny GPUs, the pipeline always keeps a few
+    pre-computed batches ready to avoid any waiting time when a batch is requested during training.
+
+    To parallelize the creation of batches, PyTorch DataLoader provide an option to use
+    multiple workers that utilize the available CPU cores and ensure enough pre-computed batches.
+    """
+
+    def __init__(self, processor, batch_size, dataloader_workers=8):
+        """
+        :param processor: A dataset specific Processor object which will turn input file into a Pytorch Dataset.
+        :type processor: Processor
+        :param batch_size: The size of batch to use for model training.
+        :type batch_size: int
+        :param dataloader_workers: number of workers for PyTorch DataLoader to create batches in parallel
+        :type dataloader_workers: int
+        """
+
+        self.loaders = defaultdict(lambda: None)
+
+        #  Batching:
+        #
+        #  The model Trainer is passed a PyTorch DataLoader instance that yields dataset batches for training.
+        #
+        #  By default, the PyTorch DataLoader prefetch (2 * num_workers) samples. However, given the higher
+        #  batch sizes(usually >64) for model training, the default prefetch is not sufficient to keep the
+        #  model Training saturated with datasets.
+        #
+        #  As a workaround, we yield batches of samples instead of yielding individual samples. The DataLoader
+        #  can then prefetch (2 * num_workers) number of batches of samples.
+        #
+        #  Since the batching is now handled within _StreamingDataSet, we disable the batching on DataLoader side
+        #  by initializing the data loader with batch_size as 1.
+
+        # Create train DataLoader
+        data_set = _StreamingDataSet(
+            processor=processor,
+            filepath=processor.data_dir / processor.train_filename,
+            batch_size=batch_size,
+            dataloader_workers=dataloader_workers,
+        )
+        self.loaders["train"] = NamedDataLoader(
+            dataset=data_set, batch_size=1, num_workers=dataloader_workers, pin_memory=True
+        )
+
+        # Create dev DataLoader
+        if processor.dev_filename:
+            data_set = _StreamingDataSet(
+                processor=processor,
+                filepath=processor.data_dir / processor.dev_filename,
+                batch_size=batch_size,
+                dataloader_workers=dataloader_workers,
+            )
+            self.loaders["dev"] = NamedDataLoader(
+                dataset=data_set, batch_size=1, num_workers=dataloader_workers, pin_memory=True
+            )
+        elif processor.dev_split > 0.0:
+            raise NotImplemented(
+                "StreamingDataSilo does not have dev_split implemented. "
+                "To use dev data, supply a separate dev filename."
+            )
+
+        # Create test DataLoader
+        if processor.test_filename:
+            data_set = _StreamingDataSet(
+                processor=processor,
+                filepath=processor.data_dir / processor.test_filename,
+                batch_size=batch_size,
+                dataloader_workers=dataloader_workers,
+            )
+            self.loaders["test"] = NamedDataLoader(
+                dataset=data_set, batch_size=1, num_workers=dataloader_workers, pin_memory=True
+            )
+
+        self.processor = processor
+
+    def get_data_loader(self, dataset):
+        return self.loaders[dataset]
+
+
+class _StreamingDataSet(IterableDataset):
+    def __init__(self, processor, filepath, batch_size, dataloader_workers):
+        """
+        :param processor: A dataset specific Processor object which will turn input file into a Pytorch Dataset.
+        :type processor: Processor
+        :param batch_size: The size of batch that should be returned by the DataLoaders.
+        :type batch_size: int
+        :param filepath: input filename to load the dataset from
+        :type filepath: Path
+        :param dataloader_workers: number of workers for PyTorch Dataloader
+        :type dataloader_workers: int
+        """
+
+        self.batch_size = batch_size
+        self.processor = processor
+        self.filepath = filepath
+        self.dataloader_workers = dataloader_workers
+
+        self.file_to_dicts_generator = processor.file_to_dicts(filepath)
+
+    def __iter__(self):
+        #  With IterableDataset, the same __iter__ is copied over to the multiple workers of
+        #  a Dataloader. Hence, we need to configure the __iter__ to not yield duplicated data
+        #  when more than 1 workers are used.
+        #
+        #  To avoid duplicates, we need to split the input dicts between the workers. The
+        #  stream_grouper() converts a dict generator given as input and yields only the
+        #  dicts that are to be processed by the given worker_id.
+        #
+        #  For instance, consider input as [dictA, dictB, dictC, ...], then the stream_grouper
+        #  (with n=2) will return, [[dictA, dictB], [dictE, dictF] ...] for worker 1 and
+        #  [[dictC, dictD], [dictG, dictH] ...] for worker 2.
+
+        if self.dataloader_workers > 1:
+            worker_info = torch.utils.data.get_worker_info()
+            worker_id = worker_info.id
+            dicts = stream_grouper(
+                self.file_to_dicts_generator, n=10, worker_id=worker_id, total_workers=self.dataloader_workers
+            )
+        else:
+            dicts = grouper(self.file_to_dicts_generator, n=10)
+
+        results = map(self._dataset_from_chunk, dicts)
+
+        batch = []
+        for datasets, tensor_names in results:
+            self.tensor_names = tensor_names
+            for ds in datasets:
+                batch.append(ds)
+                if len(batch) == self.batch_size:
+                    yield batch
+                    batch = []
+        if batch:
+            yield batch
+
+    def _dataset_from_chunk(self, chunk):
+        """
+        Creating a dataset for a chunk (= subset) of dicts.
+        :param chunk: Instead of only having a list of dicts here we also supply an index (ascending int) for each.
+            => [(0, dict), (1, dict) ...]
+        :type chunk: list of tuples
+        :return: PyTorch Dataset
+        """
+        dicts = [d[1] for d in chunk]
+        indices = [x[0] for x in chunk]
+        datasets, tensor_names = self.processor.dataset_from_dicts(dicts=dicts, indices=indices)
+        return datasets, tensor_names
 
 
 class DataSiloForCrossVal:
