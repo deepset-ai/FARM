@@ -592,10 +592,10 @@ class _StreamingDataSet(IterableDataset):
             worker_info = torch.utils.data.get_worker_info()
             worker_id = worker_info.id
             dicts = stream_grouper(
-                self.file_to_dicts_generator, n=4, worker_id=worker_id, total_workers=self.dataloader_workers
+                self.file_to_dicts_generator, n=10, worker_id=worker_id, total_workers=self.dataloader_workers
             )
         else:
-            dicts = grouper(self.file_to_dicts_generator, n=4)
+            dicts = grouper(self.file_to_dicts_generator, n=10)
 
         results = map(self._dataset_from_chunk, dicts)
 
