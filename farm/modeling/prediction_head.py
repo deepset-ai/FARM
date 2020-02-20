@@ -859,14 +859,15 @@ class QuestionAnsweringHead(PredictionHead):
     A question answering head predicts the start and end of the answer on token level.
     """
 
-    def __init__(self, layer_dims=[768,2], task_name="question_answering", no_ans_threshold=0.0, context_window_size=100, n_best=5, **kwargs):
+    def __init__(self, layer_dims=[768,2], task_name="question_answering", no_ans_boost=0.0, context_window_size=100, n_best=5, **kwargs):
         """
         :param layer_dims: dimensions of Feed Forward block, e.g. [768,2], for adjusting to BERT embedding. Output should be always 2
         :type layer_dims: List[Int]
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
-        :param no_ans_threshold: no_ans_threshold is how much greater the no_answer logit needs to be over the pos_answer in order to be chosen
-        :type no_ans_threshold: float
+        :param no_ans_boost: How much the no_answer logit is boosted/increased.
+                             The higher the value, the more likely a "no answer possible given the input text" is returned by the model
+        :type no_ans_boost: float
         :param context_window_size: The size, in characters, of the window around the answer span that is used when displaying the context around the answer.
         :type context_window_size: int
         :param n_best: The number of candidate positive answer spans to consider from each passage. Same value used as the number of candidates to be considered on document level.
@@ -884,7 +885,7 @@ class QuestionAnsweringHead(PredictionHead):
         )  # predicts start and end token of answer
         self.task_name = task_name
         self.generate_config()
-        self.no_ans_threshold = no_ans_threshold
+        self.no_ans_boost = no_ans_boost
         self.context_window_size = context_window_size
         self.n_best = n_best
 
@@ -1316,8 +1317,8 @@ class QuestionAnsweringHead(PredictionHead):
         for sample_idx, sample_preds in enumerate(preds):
             best_pred = sample_preds[0]
             best_pred_score = best_pred[2]
-            no_answer_score = self.get_no_answer_score(sample_preds)
-            no_answer = no_answer_score - self.no_ans_threshold > best_pred_score
+            no_answer_score = self.get_no_answer_score(sample_preds) + self.no_ans_boost
+            no_answer = no_answer_score > best_pred_score
             passage_no_answer.append(no_answer)
             no_answer_scores.append(no_answer_score)
             passage_best_score.append(best_pred_score)
@@ -1333,20 +1334,33 @@ class QuestionAnsweringHead(PredictionHead):
                             for start, end, score in passage_preds
                             if not (start == -1 and end == -1)]
 
+        # TODO add switch for more variation in answers, e.g. if varied_ans then never return overlapping answers
         pos_answer_dedup = self.deduplicate(pos_answers_flat)
         pos_answers_sorted = sorted(pos_answer_dedup, key=lambda x: x[2], reverse=True)
         pos_answers_reduced = pos_answers_sorted[:self.n_best]
-        no_answer_pred = [-1, -1, max(no_answer_scores)]
 
-        # This is how big the no_answer threshold needs to be to change a no_answer to a pos answer
-        #  (or vice versa). This can in future be used to train the threshold value
-        no_ans_gap = max([nas - pbs for nas, pbs in zip(no_answer_scores, passage_best_score)])
 
-        if document_no_answer:
-            n_preds = [no_answer_pred] + pos_answers_reduced[:-1]
-        else:
-            n_preds = pos_answers_reduced
-        return n_preds, no_ans_gap
+        # This is how big the no_answer boost needs to be to change a no_answer to a pos answer
+        #  (or vice versa). This can be used to set the boosting value depending on your application
+        no_ans_diff = [nas - pbs for nas, pbs in zip(no_answer_scores, passage_best_score)]
+        min_no_ans_diff = min(no_ans_diff)
+        max_no_ans_diff = max(no_ans_diff)
+
+        # "no answer" scores and positive answers scores are difficult to compare, because
+        # + a positive answer score is related to a specific text span
+        # - a "no answer" score is related to all input texts
+        # We therefor compute the "no answer" score relative to the best possible answer and adjust it by
+        # the most significant difference between positive and no answers.
+        # Most significant difference: a model switching from predicting an answer to "no answer" (or vice versa).
+        # This happens to be the minimum value of all no_ans_diff scores.
+        best_overall_positive_score = pos_answers_reduced[0][2]
+        no_answer_pred = [-1, -1, best_overall_positive_score + min_no_ans_diff]
+
+        # Add no answer to positive answers and sort the order
+        n_preds = [no_answer_pred] + pos_answers_reduced
+        n_preds_sorted = sorted(n_preds, key=lambda x: x[2], reverse=True)
+        n_preds_reduced = n_preds_sorted[:self.n_best]
+        return n_preds_reduced, max_no_ans_diff
 
     @staticmethod
     def deduplicate(flat_pos_answers):
