@@ -1104,7 +1104,7 @@ class QuestionAnsweringHead(PredictionHead):
         preds_d = self.aggregate_preds(preds_p, passage_start_t, ids, seq_2_start_t)
         assert len(preds_d) == len(baskets)
 
-        # Separate top_preds list from the no_ans_gap float. Add no_ans_gap to current boost for switching
+        # Separate top_preds list from the no_ans_gap float.
         top_preds, no_ans_gaps = zip(*preds_d)
 
         # Takes document level prediction spans and returns string predictions
@@ -1154,7 +1154,7 @@ class QuestionAnsweringHead(PredictionHead):
                         "question_id": id,
                         "ground_truth": None,
                         "answers": answers,
-                        "no_ans_gap": no_ans_gap
+                        "no_ans_gap": no_ans_gap # Add no_ans_gap to current no_ans_boost for switching top prediction
                     }
                 ],
             }
