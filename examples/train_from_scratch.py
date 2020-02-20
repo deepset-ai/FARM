@@ -4,7 +4,7 @@ from pathlib import Path
 
 from transformers.tokenization_bert import BertTokenizer
 
-from farm.data_handler.data_silo import DataSilo
+from farm.data_handler.data_silo import StreamingDataSilo
 from farm.data_handler.processor import BertStyleLMProcessor
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import LanguageModel
@@ -40,22 +40,25 @@ def train_from_scratch():
     batch_size = 16  # (probably only possible via gradient accumulation steps)
     max_seq_len = 64
 
+    data_dir = Path("data/lm_finetune_nips")
+    train_filename = "train.txt"
+    dev_filename = "dev.txt"
+
     # 1.Create a tokenizer
     tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
     processor = BertStyleLMProcessor(
-        data_dir=Path("data/lm_finetune_nips"),
+        data_dir=data_dir,
         tokenizer=tokenizer, max_seq_len=max_seq_len,
-        train_filename="train.txt",
-        dev_split=2000 / 8_000_000,
-        dev_filename=None,
+        train_filename=train_filename,
+        dev_filename=dev_filename,
         test_filename=None,
     )
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and
     #    calculates a few descriptive statistics of our datasets
-    data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=False)
+    stream_data_silo = StreamingDataSilo(processor=processor, batch_size=batch_size)
 
     # 4. Create an AdaptiveModel
     # a) which consists of a pretrained language model as a basis
@@ -74,11 +77,17 @@ def train_from_scratch():
     )
 
     # 5. Create an optimizer
+
+    # calculate approx number of training batches for streaming data silo
+    total_lines = sum(1 for line in open(data_dir/train_filename))
+    empty_lines = sum(1 if line == "\n" else 0 for line in open(data_dir/train_filename))
+    n_batches = int((total_lines - (2 * empty_lines)) / batch_size)
+
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
         learning_rate=learning_rate,
         schedule_opts={"name": "LinearWarmup", "warmup_proportion": warmup_proportion},
-        n_batches=len(data_silo.loaders["train"]),
+        n_batches=n_batches,
         n_epochs=n_epochs,
         device=device,
         grad_acc_steps=8,
@@ -88,7 +97,7 @@ def train_from_scratch():
     trainer = Trainer.create_or_load_checkpoint(
         model=model,
         optimizer=optimizer,
-        data_silo=data_silo,
+        data_silo=stream_data_silo,
         epochs=n_epochs,
         n_gpu=n_gpu,
         lr_schedule=lr_schedule,

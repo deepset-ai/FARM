@@ -215,7 +215,7 @@ class Trainer:
         self.global_step = (from_epoch * from_step) - 1
 
         # evaluator on dev set
-        if evaluator_dev is None and self.data_silo.get_data_loader("dev"):
+        if evaluator_dev is None and self.data_silo.get_data_loader("dev") is not None:
             evaluator_dev = Evaluator(
                 data_loader=self.data_silo.get_data_loader("dev"),
                 tasks=self.data_silo.processor.tasks,
@@ -224,13 +224,134 @@ class Trainer:
         self.evaluator_dev = evaluator_dev
 
         # evaluator on test set
-        if evaluator_test is None and self.data_silo.get_data_loader("test"):
+        if evaluator_test is None and self.data_silo.get_data_loader("test") is not None:
             evaluator_test = Evaluator(
                 data_loader=self.data_silo.get_data_loader("test"),
                 tasks=self.data_silo.processor.tasks,
                 device=device
             )
         self.evaluator_test = evaluator_test
+
+    def train(self):
+        """ Perform the training procedure. """
+
+        # connect the prediction heads with the right output from processor
+        self.model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
+
+        # Check that the tokenizer fits the language model
+        self.model.verify_vocab_size(vocab_size=len(self.data_silo.processor.tokenizer))
+
+        logger.info(f"\n {GROWING_TREE}")
+        self.model.train()
+
+        do_stopping = False
+        evalnr = 0
+        loss = 0
+
+        resume_from_step = self.from_step
+
+        for epoch in range(self.from_epoch + 1, self.epochs + 1):
+            progress_bar = tqdm(self.data_loader_train)
+            for step, batch in enumerate(progress_bar, start=1):
+                # when resuming training from a checkpoint, we want to fast forward to the step of the checkpoint
+                if resume_from_step and step <= resume_from_step:
+                    if resume_from_step == step:
+                        resume_from_step = None
+                    continue
+
+                if self.sigterm_handler and self.sigterm_handler.kill_now:  # save the current state as a checkpoint
+                    logger.info("Received a SIGTERM signal. Saving the current train state as a checkpoint ...")
+                    self._save()
+                    sys.exit(0)
+
+                # save a checkpoint and continue train (do not create a new checkpoint if just resumed from a checkpoint)
+                if self.checkpoint_every and step % self.checkpoint_every == 0 and resume_from_step + 1 != step:
+                    self._save()
+
+                progress_bar.set_description(f"Train epoch {epoch}/{self.epochs} (Cur. train loss: {loss:.4f})")
+
+                # Move batch of samples to device
+                batch = {key: batch[key].to(self.device) for key in batch}
+
+                # Forward pass through model
+                logits = self.model.forward(**batch)
+                per_sample_loss = self.model.logits_to_loss(logits=logits, global_step=self.global_step, **batch)
+
+                loss = self.backward_propagate(per_sample_loss, step)
+
+                # Perform  evaluation
+                if self.evaluator_dev:
+                    if self.global_step != 0 and (
+                        self.global_step % self.evaluate_every == 0
+                    ):
+                        evalnr += 1
+                        result = self.evaluator_dev.eval(self.model)
+                        self.evaluator_dev.log_results(result, "Dev", self.global_step)
+                        if self.early_stopping:
+                            do_stopping, save_model, eval_value = self.early_stopping.check_stopping(result)
+                            if save_model:
+                                logger.info(
+                                    "Saving current best model to {}, eval={}".format(
+                                        self.early_stopping.save_dir, eval_value))
+                                self.model.save(self.early_stopping.save_dir)
+                                self.data_silo.processor.save(self.early_stopping.save_dir)
+                            if do_stopping:
+                                # log the stopping
+                                logger.info("STOPPING EARLY AT EPOCH {}, STEP {}, EVALUATION {}".format(epoch, step, evalnr))
+                if do_stopping:
+                    break
+                self.global_step += 1
+                self.from_step = step
+            self.from_epoch = epoch
+            if do_stopping:
+                break
+
+        # With early stopping we want to restore the best model
+        if self.early_stopping and self.early_stopping.save_dir:
+            logger.info("Restoring best model so far from {}".format(self.early_stopping.save_dir))
+            lm_name = self.model.language_model.name
+            model = AdaptiveModel.load(self.early_stopping.save_dir, self.device, lm_name=lm_name)
+            model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
+
+        # Eval on test set
+        if self.evaluator_test:
+            result = self.evaluator_test.eval(self.model)
+            self.evaluator_test.log_results(result, "Test", self.global_step)
+        return self.model
+
+    def backward_propagate(self, loss, step):
+        loss = self.adjust_loss(loss)
+        if self.global_step % 10 == 1:
+            MlLogger.log_metrics(
+                {"Train_loss_total": float(loss.detach().cpu().numpy())},
+                step=self.global_step,
+            )
+        if self.use_amp:
+            with amp.scale_loss(loss, self.optimizer) as scaled_loss:
+                scaled_loss.backward()
+        else:
+            loss.backward()
+
+        if self.log_learning_rate:
+            MlLogger.log_metrics({"learning_rate": self.lr_schedule.get_lr()[0]}, step=self.global_step)
+
+        if step % self.grad_acc_steps == 0:
+            # TODO We might wanna add gradient clipping here
+            self.optimizer.step()
+            self.optimizer.zero_grad()
+            if self.lr_schedule:
+                self.lr_schedule.step()
+        return loss
+
+    def adjust_loss(self, loss):
+        loss = loss.mean()
+        if self.grad_acc_steps > 1:
+            loss = loss / self.grad_acc_steps
+        return loss
+
+    def log_params(self):
+        params = {"epochs": self.epochs, "n_gpu": self.n_gpu, "device": self.device}
+        MlLogger.log_params(params)
 
     @classmethod
     def create_or_load_checkpoint(cls, data_silo, checkpoint_root_dir, resume_from_checkpoint="latest", **kwargs):
@@ -394,123 +515,3 @@ class Trainer:
 
         return state_dict
 
-    def train(self):
-        """ Perform the training procedure. """
-
-        # connect the prediction heads with the right output from processor
-        self.model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
-
-        # Check that the tokenizer fits the language model
-        self.model.verify_vocab_size(vocab_size=len(self.data_silo.processor.tokenizer))
-
-        logger.info(f"\n {GROWING_TREE}")
-        self.model.train()
-
-        do_stopping = False
-        evalnr = 0
-        loss = 0
-
-        resume_from_step = self.from_step
-
-        for epoch in range(self.from_epoch + 1, self.epochs + 1):
-            progress_bar = tqdm(self.data_loader_train)
-            for step, batch in enumerate(progress_bar, start=1):
-                # when resuming training from a checkpoint, we want to fast forward to the step of the checkpoint
-                if resume_from_step and step <= resume_from_step:
-                    if resume_from_step == step:
-                        resume_from_step = None
-                    continue
-
-                if self.sigterm_handler and self.sigterm_handler.kill_now:  # save the current state as a checkpoint
-                    logger.info("Received a SIGTERM signal. Saving the current train state as a checkpoint ...")
-                    self._save()
-                    sys.exit(0)
-
-                # save a checkpoint and continue train (do not create a new checkpoint if just resumed from a checkpoint)
-                if self.checkpoint_every and step % self.checkpoint_every == 0 and resume_from_step + 1 != step:
-                    self._save()
-
-                progress_bar.set_description(f"Train epoch {epoch}/{self.epochs} (Cur. train loss: {loss:.4f})")
-
-                # Move batch of samples to device
-                batch = {key: batch[key].to(self.device) for key in batch}
-
-                # Forward pass through model
-                logits = self.model.forward(**batch)
-                per_sample_loss = self.model.logits_to_loss(logits=logits, global_step=self.global_step, **batch)
-
-                loss = self.backward_propagate(per_sample_loss, step)
-
-                # Perform  evaluation
-                if self.evaluator_dev:
-                    if self.global_step != 0 and (
-                        self.global_step % self.evaluate_every == 0
-                    ):
-                        evalnr += 1
-                        result = self.evaluator_dev.eval(self.model)
-                        self.evaluator_dev.log_results(result, "Dev", self.global_step)
-                        if self.early_stopping:
-                            do_stopping, save_model, eval_value = self.early_stopping.check_stopping(result)
-                            if save_model:
-                                logger.info(
-                                    "Saving current best model to {}, eval={}".format(
-                                        self.early_stopping.save_dir, eval_value))
-                                self.model.save(self.early_stopping.save_dir)
-                                self.data_silo.processor.save(self.early_stopping.save_dir)
-                            if do_stopping:
-                                # log the stopping
-                                logger.info("STOPPING EARLY AT EPOCH {}, STEP {}, EVALUATION {}".format(epoch, step, evalnr))
-                if do_stopping:
-                    break
-                self.global_step += 1
-                self.from_step = step
-            self.from_epoch = epoch
-            if do_stopping:
-                break
-
-        # With early stopping we want to restore the best model
-        if self.early_stopping and self.early_stopping.save_dir:
-            logger.info("Restoring best model so far from {}".format(self.early_stopping.save_dir))
-            lm_name = self.model.language_model.name
-            model = AdaptiveModel.load(self.early_stopping.save_dir, self.device, lm_name=lm_name)
-            model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
-
-        # Eval on test set
-        if self.evaluator_test:
-            result = self.evaluator_test.eval(self.model)
-            self.evaluator_test.log_results(result, "Test", self.global_step)
-        return self.model
-
-    def backward_propagate(self, loss, step):
-        loss = self.adjust_loss(loss)
-        if self.global_step % 10 == 1:
-            MlLogger.log_metrics(
-                {"Train_loss_total": float(loss.detach().cpu().numpy())},
-                step=self.global_step,
-            )
-        if self.use_amp:
-            with amp.scale_loss(loss, self.optimizer) as scaled_loss:
-                scaled_loss.backward()
-        else:
-            loss.backward()
-
-        if self.log_learning_rate:
-            MlLogger.log_metrics({"learning_rate": self.lr_schedule.get_lr()[0]}, step=self.global_step)
-
-        if step % self.grad_acc_steps == 0:
-            # TODO We might wanna add gradient clipping here
-            self.optimizer.step()
-            self.optimizer.zero_grad()
-            if self.lr_schedule:
-                self.lr_schedule.step()
-        return loss
-
-    def adjust_loss(self, loss):
-        loss = loss.mean()
-        if self.grad_acc_steps > 1:
-            loss = loss / self.grad_acc_steps
-        return loss
-
-    def log_params(self):
-        params = {"epochs": self.epochs, "n_gpu": self.n_gpu, "device": self.device}
-        MlLogger.log_params(params)
