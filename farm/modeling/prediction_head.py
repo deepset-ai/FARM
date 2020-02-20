@@ -1332,16 +1332,16 @@ class QuestionAnsweringHead(PredictionHead):
         pos_answer_dedup = self.deduplicate(pos_answers_flat)
 
         # This is how much no_answer_boost needs to change to turn a no_answer to a positive answer (or vice versa)
-        change_boost = min([nas - pbs for nas, pbs in zip(no_answer_scores, passage_best_score)])
+        change_boost = -min([nas - pbs for nas, pbs in zip(no_answer_scores, passage_best_score)])
 
         # "no answer" scores and positive answers scores are difficult to compare, because
         # + a positive answer score is related to a specific text span
         # - a "no answer" score is related to all input texts
         # Thus we compute the "no answer" score relative to the best possible answer and adjust it by
         # the most significant difference between scores.
-        # Most significant difference: a model switching from predicting an answer to "no answer" (or vice versa).
+        # Most significant difference: change top prediction from "no answer" to answer (or vice versa)
         best_overall_positive_score = max(x[2] for x in pos_answer_dedup)
-        no_answer_pred = [-1, -1, best_overall_positive_score + change_boost]
+        no_answer_pred = [-1, -1, best_overall_positive_score - change_boost]
 
 
         # Add no answer to positive answers, sort the order and return the n_best
