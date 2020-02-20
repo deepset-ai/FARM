@@ -1330,7 +1330,7 @@ class QuestionAnsweringHead(PredictionHead):
         # TODO add switch for more variation in answers, e.g. if varied_ans then never return overlapping answers
         pos_answer_dedup = self.deduplicate(pos_answers_flat)
 
-        # This is how much no_answer_boost needs to change to turn a no_answer to a positive answer (or vice versa)
+        # This is how much no_ans_boost needs to change to turn a no_answer to a positive answer (or vice versa)
         no_ans_gap = -min([nas - pbs for nas, pbs in zip(no_answer_scores, passage_best_score)])
 
         # "no answer" scores and positive answers scores are difficult to compare, because
