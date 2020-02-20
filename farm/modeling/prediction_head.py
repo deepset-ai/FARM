@@ -309,7 +309,7 @@ class TextClassificationHead(PredictionHead):
                 and "config.json" in pretrained_model_name_or_path \
                 and "prediction_head" in pretrained_model_name_or_path:
             # a) FARM style
-            super(TextClassificationHead, cls).load(pretrained_model_name_or_path)
+            head = super(TextClassificationHead, cls).load(pretrained_model_name_or_path)
         else:
             # b) transformers style
             # load all weights from model
@@ -321,6 +321,7 @@ class TextClassificationHead(PredictionHead):
             del full_model
 
         return head
+
     def forward(self, X):
         logits = self.feed_forward(X)
         return logits
@@ -539,7 +540,7 @@ class TokenClassificationHead(PredictionHead):
                 and "config.json" in pretrained_model_name_or_path \
                 and "prediction_head" in pretrained_model_name_or_path:
             # a) FARM style
-            return super(TokenClassificationHead, cls).load(pretrained_model_name_or_path)
+            head = super(TokenClassificationHead, cls).load(pretrained_model_name_or_path)
         else:
             # b) transformers style
             # load all weights from model
@@ -549,7 +550,7 @@ class TokenClassificationHead(PredictionHead):
             # transfer weights for head from full model
             head.feed_forward.feed_forward[0].load_state_dict(full_model.classifier.state_dict())
             del full_model
-            return head
+        return head
 
 
     def forward(self, X):
@@ -717,7 +718,7 @@ class BertLMHead(PredictionHead):
                 #TODO resize prediction head decoder for custom vocab
                 raise NotImplementedError("Custom vocab not yet supported for model loading from FARM files")
 
-            super(BertLMHead, cls).load(pretrained_model_name_or_path)
+            head = super(BertLMHead, cls).load(pretrained_model_name_or_path)
         else:
             # b) pytorch-transformers style
             # load weights from bert model
@@ -798,7 +799,7 @@ class BertLMHead(PredictionHead):
 class NextSentenceHead(TextClassificationHead):
     """
     Almost identical to a TextClassificationHead. Only difference: we can load the weights from
-     a pretrained language model that was saved in the pytorch-transformers style (all in one model).
+     a pretrained language model that was saved in the Transformers style (all in one model).
     """
     @classmethod
     def load(cls, pretrained_model_name_or_path):
@@ -806,14 +807,8 @@ class NextSentenceHead(TextClassificationHead):
         if os.path.exists(pretrained_model_name_or_path) \
                 and "config.json" in pretrained_model_name_or_path \
                 and "prediction_head" in pretrained_model_name_or_path:
-            config_file = os.path.exists(pretrained_model_name_or_path)
             # a) FARM style
-            #TODO validate saving/loading after switching to processor.tasks
-            model_file = cls._get_model_file(config_file)
-            config = json.load(open(config_file))
-            prediction_head = cls(**config)
-            logger.info("Loading prediction head from {}".format(model_file))
-            prediction_head.load_state_dict(torch.load(model_file, map_location=torch.device("cpu")))
+            head = super(BertLMHead, cls).load(pretrained_model_name_or_path)
         else:
             # b) pytorch-transformers style
             # load weights from bert model
