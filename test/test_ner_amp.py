@@ -15,8 +15,8 @@ from farm.utils import set_all_seeds, initialize_device_settings
 import logging
 
 
-def test_ner():
-    #caplog.set_level(logging.CRITICAL)
+def test_ner(caplog):
+    caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)

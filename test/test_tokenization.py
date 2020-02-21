@@ -5,7 +5,7 @@ import re
 
 
 def test_basic_loading(caplog):
-
+    caplog.set_level(logging.CRITICAL)
     tokenizer = Tokenizer.load(
         pretrained_model_name_or_path="bert-base-cased",
         do_lower_case=True
