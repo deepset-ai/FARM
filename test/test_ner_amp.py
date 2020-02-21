@@ -15,7 +15,7 @@ from farm.utils import set_all_seeds, initialize_device_settings
 import logging
 
 
-def test_ner(caplog):
+def test_ner_amp(caplog):
     caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
@@ -90,10 +90,10 @@ def test_ner(caplog):
     ]
     model = Inferencer.load(save_dir, gpu=True)
     result = model.inference_from_dicts(dicts=basic_texts, max_processes=1)
-    print(result)
+    #print(result)
     assert result[0]["predictions"][0]["context"] == "Crown"
     assert isinstance(result[0]["predictions"][0]["probability"], np.float32)
 
 
 if __name__ == "__main__":
-    test_ner()
+    test_ner_amp()
