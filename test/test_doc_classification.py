@@ -15,9 +15,8 @@ from farm.train import Trainer
 from farm.utils import set_all_seeds, initialize_device_settings
 
 
-def test_doc_classification(caplog=None):
-    if caplog:
-        caplog.set_level(logging.CRITICAL)
+def test_doc_classification(caplog):
+    caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=False)
