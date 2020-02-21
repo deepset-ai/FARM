@@ -187,6 +187,13 @@ class LanguageModel(nn.Module):
         self.save_config(save_dir)
 
     @classmethod
+    def _get_or_infer_language_from_name(cls, language, name):
+        if language is not None:
+            return language
+        else:
+            return cls._infer_language_from_name(name)
+
+    @classmethod
     def _infer_language_from_name(cls, name):
         known_languages = (
             "german",
@@ -325,7 +332,7 @@ class Bert(LanguageModel):
         else:
             # Pytorch-transformer Style
             bert.model = BertModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
-            bert.language = cls._infer_language_from_name(pretrained_model_name_or_path)
+            bert.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
         return bert
 
     def forward(
@@ -411,7 +418,7 @@ class Albert(LanguageModel):
         else:
             # Huggingface transformer Style
             albert.model = AlbertModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
-            albert.language = cls._infer_language_from_name(pretrained_model_name_or_path)
+            albert.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
         return albert
 
     def forward(
@@ -498,7 +505,7 @@ class Roberta(LanguageModel):
         else:
             # Huggingface transformer Style
             roberta.model = RobertaModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
-            roberta.language = cls._infer_language_from_name(pretrained_model_name_or_path)
+            roberta.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
         return roberta
 
     def forward(
@@ -585,7 +592,7 @@ class XLMRoberta(LanguageModel):
         else:
             # Huggingface transformer Style
             xlm_roberta.model = XLMRobertaModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
-            xlm_roberta.language = cls._infer_language_from_name(pretrained_model_name_or_path)
+            xlm_roberta.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
         return xlm_roberta
 
     def forward(
@@ -678,7 +685,7 @@ class DistilBert(LanguageModel):
         else:
             # Pytorch-transformer Style
             distilbert.model = DistilBertModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
-            distilbert.language = cls._infer_language_from_name(pretrained_model_name_or_path)
+            distilbert.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
         config = distilbert.model.config
 
         # DistilBERT does not provide a pooled_output by default. Therefore, we need to initialize an extra pooler.
@@ -772,7 +779,7 @@ class XLNet(LanguageModel):
         else:
             # Pytorch-transformer Style
             xlnet.model = XLNetModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
-            xlnet.language = cls._infer_language_from_name(pretrained_model_name_or_path)
+            xlnet.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
             config = xlnet.model.config
         # XLNet does not provide a pooled_output by default. Therefore, we need to initialize an extra pooler.
         # The pooler takes the last hidden representation & feeds it to a dense layer of (hidden_dim x hidden_dim).
