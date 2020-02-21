@@ -16,9 +16,8 @@ from farm.utils import set_all_seeds, initialize_device_settings
 import logging
 
 
-def test_ner(caplog=None):
-    if caplog:
-        caplog.set_level(logging.CRITICAL)
+def test_ner(caplog):
+    caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=False)
@@ -88,7 +87,7 @@ def test_ner(caplog=None):
     ]
     model = Inferencer.load(save_dir)
     result = model.inference_from_dicts(dicts=basic_texts, max_processes=1)
-    print(result)
+    #print(result)
     #assert result[0]["predictions"][0]["context"] == "sagte"
     #assert isinstance(result[0]["predictions"][0]["probability"], np.float32)
     result2 = model.inference_from_dicts(dicts=basic_texts, rest_api_schema=True)
