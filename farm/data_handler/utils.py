@@ -218,7 +218,7 @@ def _download_extract_downstream_data(input_file, proxies=None):
     logger.info(
         "downloading and extracting file {} to dir {}".format(taskname, datadir)
     )
-    if "conll03" in taskname:
+    if "conll03-" in taskname:
         # conll03 is copyrighted, but luckily somebody put it on github. Kudos!
         if not os.path.exists(directory):
             os.makedirs(directory)
