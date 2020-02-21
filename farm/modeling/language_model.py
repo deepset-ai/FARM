@@ -67,7 +67,7 @@ class LanguageModel(nn.Module):
         return model.from_scratch(vocab_size)
 
     @classmethod
-    def load(cls, pretrained_model_name_or_path, n_added_tokens=0, **kwargs):
+    def load(cls, pretrained_model_name_or_path, n_added_tokens=0, language_model_class=None, **kwargs):
         """
         Load a pretrained language model either by
 
@@ -97,8 +97,13 @@ class LanguageModel(nn.Module):
 
         See all supported model variations here: https://huggingface.co/models
 
+        The appropriate language model class is inferred automatically from `pretrained_model_name_or_path`
+        or can be manually supplied via `language_model_class`.
+
         :param pretrained_model_name_or_path: The path of the saved pretrained model or its name.
         :type pretrained_model_name_or_path: str
+        :param language_model_class: (Optional) Name of the language model class to load (e.g. `Bert`)
+        :type language_model_class: str
 
         """
         config_file = Path(pretrained_model_name_or_path) / "language_model_config.json"
@@ -107,24 +112,26 @@ class LanguageModel(nn.Module):
             config = json.load(open(config_file))
             language_model = cls.subclasses[config["name"]].load(pretrained_model_name_or_path)
         else:
-            # it's transformers format (either from model hub or local)
-            pretrained_model_name_or_path = str(pretrained_model_name_or_path)
-            if "xlm" in pretrained_model_name_or_path and "roberta" in pretrained_model_name_or_path:
-                language_model = cls.subclasses["XLMRoberta"].load(pretrained_model_name_or_path, **kwargs)
+            if language_model_class is None:
+                # it's transformers format (either from model hub or local)
+                pretrained_model_name_or_path = str(pretrained_model_name_or_path)
+                if "xlm" in pretrained_model_name_or_path and "roberta" in pretrained_model_name_or_path:
+                    language_model_class = 'XLMRoberta'
+                elif 'roberta' in pretrained_model_name_or_path:
+                    language_model_class = 'Roberta'
+                elif 'albert' in pretrained_model_name_or_path:
+                    language_model_class = 'Albert'
+                elif 'distilbert' in pretrained_model_name_or_path:
+                    language_model_class = 'DistilBert'
+                elif 'bert' in pretrained_model_name_or_path:
+                    language_model_class = 'Bert'
+                elif 'xlnet' in pretrained_model_name_or_path:
+                    language_model_class = 'XLNet'
+
+            language_model = cls.subclasses[language_model_class].load(pretrained_model_name_or_path, **kwargs)
+            if language_model_class == 'XLMRoberta':
                 # TODO: for some reason, the pretrained XLMRoberta has different vocab size in the tokenizer compared to the model this is a hack to resolve that
                 n_added_tokens = 3
-            elif 'roberta' in pretrained_model_name_or_path:
-                language_model = cls.subclasses["Roberta"].load(pretrained_model_name_or_path, **kwargs)
-            elif 'albert' in pretrained_model_name_or_path:
-                language_model = cls.subclasses["Albert"].load(pretrained_model_name_or_path, **kwargs)
-            elif 'distilbert' in pretrained_model_name_or_path:
-                language_model = cls.subclasses["DistilBert"].load(pretrained_model_name_or_path, **kwargs)
-            elif 'bert' in pretrained_model_name_or_path:
-                language_model = cls.subclasses["Bert"].load(pretrained_model_name_or_path, **kwargs)
-            elif 'xlnet' in pretrained_model_name_or_path:
-                language_model = cls.subclasses["XLNet"].load(pretrained_model_name_or_path, **kwargs)
-            else:
-                language_model = None
 
         if not language_model:
             raise Exception(
