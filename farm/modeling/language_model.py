@@ -97,8 +97,8 @@ class LanguageModel(nn.Module):
 
         See all supported model variations here: https://huggingface.co/models
 
-        It infer the language model class from `pretrained_model_name_or_path`
-        or define it manually via `language_model_class`.
+        The appropriate language model class is inferred automatically from `pretrained_model_name_or_path`
+        or can be manually supplied via `language_model_class`.
 
         :param pretrained_model_name_or_path: The path of the saved pretrained model or its name.
         :type pretrained_model_name_or_path: str
