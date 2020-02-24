@@ -178,7 +178,10 @@ def read_squad_file(filename, proxies=None):
 def write_squad_predictions(predictions, out_filename, predictions_filename=None):
     predictions_json = {}
     for p in predictions:
-        predictions_json[p["id"]] = p["preds"][0][0]
+        if p["preds"][0][0] is not None:
+            predictions_json[p["id"]] = p["preds"][0][0]
+        else:
+            predictions_json[p["id"]] = "" #convert No answer = None to format understood by the SQuAD eval script
 
     if predictions_filename:
         dev_labels = {}
