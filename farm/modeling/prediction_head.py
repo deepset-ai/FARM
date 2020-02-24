@@ -859,14 +859,15 @@ class QuestionAnsweringHead(PredictionHead):
     A question answering head predicts the start and end of the answer on token level.
     """
 
-    def __init__(self, layer_dims=[768,2], task_name="question_answering", no_ans_threshold=0.0, context_window_size=100, n_best=5, **kwargs):
+    def __init__(self, layer_dims=[768,2], task_name="question_answering", no_ans_boost=0.0, context_window_size=100, n_best=5, **kwargs):
         """
         :param layer_dims: dimensions of Feed Forward block, e.g. [768,2], for adjusting to BERT embedding. Output should be always 2
         :type layer_dims: List[Int]
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
-        :param no_ans_threshold: no_ans_threshold is how much greater the no_answer logit needs to be over the pos_answer in order to be chosen
-        :type no_ans_threshold: float
+        :param no_ans_boost: How much the no_answer logit is boosted/increased.
+                             The higher the value, the more likely a "no answer possible given the input text" is returned by the model
+        :type no_ans_boost: float
         :param context_window_size: The size, in characters, of the window around the answer span that is used when displaying the context around the answer.
         :type context_window_size: int
         :param n_best: The number of candidate positive answer spans to consider from each passage. Same value used as the number of candidates to be considered on document level.
@@ -884,7 +885,7 @@ class QuestionAnsweringHead(PredictionHead):
         )  # predicts start and end token of answer
         self.task_name = task_name
         self.generate_config()
-        self.no_ans_threshold = no_ans_threshold
+        self.no_ans_boost = no_ans_boost
         self.context_window_size = context_window_size
         self.n_best = n_best
 
@@ -1011,7 +1012,7 @@ class QuestionAnsweringHead(PredictionHead):
         return all_top_n
 
     def get_top_candidates(self, sorted_candidates, start_end_matrix,
-                           n_non_padding, max_answer_length, seq_2_start_t, n_best=5):
+                           n_non_padding, max_answer_length, seq_2_start_t):
         """ Returns top candidate answers. Operates on a matrix of summed start and end logits. This matrix corresponds
         to a single sample (includes special tokens, question tokens, passage tokens). This method always returns a
         list of len n_best + 1 (it is comprised of the n_best positive answers along with the one no_answer)"""
@@ -1022,7 +1023,7 @@ class QuestionAnsweringHead(PredictionHead):
 
         # Iterate over all candidates and break when we have all our n_best candidates
         for candidate_idx in range(n_candidates):
-            if len(top_candidates) == n_best:
+            if len(top_candidates) == self.n_best:
                 break
             else:
                 # Retrieve candidate's indices
@@ -1103,7 +1104,7 @@ class QuestionAnsweringHead(PredictionHead):
         preds_d = self.aggregate_preds(preds_p, passage_start_t, ids, seq_2_start_t)
         assert len(preds_d) == len(baskets)
 
-        # Separate top_preds list from the no_ans_gap float
+        # Separate top_preds list from the no_ans_gap float.
         top_preds, no_ans_gaps = zip(*preds_d)
 
         # Takes document level prediction spans and returns string predictions
@@ -1153,7 +1154,7 @@ class QuestionAnsweringHead(PredictionHead):
                         "question_id": id,
                         "ground_truth": None,
                         "answers": answers,
-                        "no_ans_gap": no_ans_gap
+                        "no_ans_gap": no_ans_gap # Add no_ans_gap to current no_ans_boost for switching top prediction
                     }
                 ],
             }
@@ -1185,8 +1186,7 @@ class QuestionAnsweringHead(PredictionHead):
 
     def create_context(self, ans_start_ch, ans_end_ch, clear_text):
         if ans_start_ch == 0 and ans_end_ch == 0:
-            context_start_ch = 0
-            context_end_ch = 0
+            return None, 0, 0
         else:
             len_text = len(clear_text)
             midpoint = int((ans_end_ch - ans_start_ch) / 2) + ans_start_ch
@@ -1209,7 +1209,7 @@ class QuestionAnsweringHead(PredictionHead):
 
         # If it is a no_answer prediction
         if start_t == -1 and end_t == -1:
-            return "", 0, 0
+            return None, 0, 0
 
         n_tokens = len(token_offsets)
 
@@ -1306,8 +1306,7 @@ class QuestionAnsweringHead(PredictionHead):
         """ This function contains the logic for choosing the best answers from each passage. In the end, it
         returns the n_best predictions on the document level. """
 
-        # Initialize some variables
-        document_no_answer = True
+        # Initialize variables
         passage_no_answer = []
         passage_best_score = []
         no_answer_scores = []
@@ -1316,16 +1315,11 @@ class QuestionAnsweringHead(PredictionHead):
         for sample_idx, sample_preds in enumerate(preds):
             best_pred = sample_preds[0]
             best_pred_score = best_pred[2]
-            no_answer_score = self.get_no_answer_score(sample_preds)
-            no_answer = no_answer_score - self.no_ans_threshold > best_pred_score
+            no_answer_score = self.get_no_answer_score(sample_preds) + self.no_ans_boost
+            no_answer = no_answer_score > best_pred_score
             passage_no_answer.append(no_answer)
             no_answer_scores.append(no_answer_score)
             passage_best_score.append(best_pred_score)
-
-        # If a positive prediction is higher than the no_answer score in one of the passages then the top
-        # document prediction should be a positive answer
-        if False in passage_no_answer:
-            document_no_answer = False
 
         # Get all predictions in flattened list and sort by score
         pos_answers_flat = [(start, end, score)
@@ -1333,20 +1327,27 @@ class QuestionAnsweringHead(PredictionHead):
                             for start, end, score in passage_preds
                             if not (start == -1 and end == -1)]
 
+        # TODO add switch for more variation in answers, e.g. if varied_ans then never return overlapping answers
         pos_answer_dedup = self.deduplicate(pos_answers_flat)
-        pos_answers_sorted = sorted(pos_answer_dedup, key=lambda x: x[2], reverse=True)
-        pos_answers_reduced = pos_answers_sorted[:self.n_best]
-        no_answer_pred = [-1, -1, max(no_answer_scores)]
 
-        # This is how big the no_answer threshold needs to be to change a no_answer to a pos answer
-        #  (or vice versa). This can in future be used to train the threshold value
-        no_ans_gap = max([nas - pbs for nas, pbs in zip(no_answer_scores, passage_best_score)])
+        # This is how much no_ans_boost needs to change to turn a no_answer to a positive answer (or vice versa)
+        no_ans_gap = -min([nas - pbs for nas, pbs in zip(no_answer_scores, passage_best_score)])
 
-        if document_no_answer:
-            n_preds = [no_answer_pred] + pos_answers_reduced[:-1]
-        else:
-            n_preds = pos_answers_reduced
-        return n_preds, no_ans_gap
+        # "no answer" scores and positive answers scores are difficult to compare, because
+        # + a positive answer score is related to a specific text span
+        # - a "no answer" score is related to all input texts
+        # Thus we compute the "no answer" score relative to the best possible answer and adjust it by
+        # the most significant difference between scores.
+        # Most significant difference: change top prediction from "no answer" to answer (or vice versa)
+        best_overall_positive_score = max(x[2] for x in pos_answer_dedup)
+        no_answer_pred = [-1, -1, best_overall_positive_score - no_ans_gap]
+
+
+        # Add no answer to positive answers, sort the order and return the n_best
+        n_preds = [no_answer_pred] + pos_answer_dedup
+        n_preds_sorted = sorted(n_preds, key=lambda x: x[2], reverse=True)
+        n_preds_reduced = n_preds_sorted[:self.n_best]
+        return n_preds_reduced, no_ans_gap
 
     @staticmethod
     def deduplicate(flat_pos_answers):
