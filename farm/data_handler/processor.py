@@ -910,7 +910,8 @@ class SquadProcessor(Processor):
         baskets = []
         for index, document in zip(indices, dicts_tokenized):
             for q_idx, raw in enumerate(document):
-                basket = SampleBasket(raw=raw, id=f"{index}-{q_idx}")
+                # In case of Question Answering the external ID is used for document IDs
+                basket = SampleBasket(raw=raw, id=f"{index}-{q_idx}", external_id=raw.get("document_id",None))
                 baskets.append(basket)
         return baskets
 
@@ -924,6 +925,7 @@ class SquadProcessor(Processor):
             raise Exception("It seems that your input is in rest API format. Try setting rest_api_schema=True "
                             "when calling inference from dicts")
         document_text = dictionary["context"]
+        document_id = dictionary.get("document_id",None)
 
         document_tokenized = tokenize_with_metadata(document_text, self.tokenizer)
         document_start_of_word = [int(x) for x in document_tokenized["start_of_word"]]
@@ -953,6 +955,7 @@ class SquadProcessor(Processor):
                    "document_tokens": document_tokenized["tokens"],
                    "document_offsets": document_tokenized["offsets"],
                    "document_start_of_word": document_start_of_word,
+                   "document_id":document_id,
                    "question_text": question_text,
                    "question_tokens": question_tokenized["tokens"],
                    "question_offsets": question_tokenized["offsets"],
@@ -964,14 +967,17 @@ class SquadProcessor(Processor):
         return raw_baskets
 
     def _convert_rest_api_dict(self, infer_dict):
-        questions = infer_dict.get("questions", ["[Missing]"])
-        text = infer_dict.get("text", "Missing!")
+        # converts dicts from inference mode to data structure used in FARM
+        questions = infer_dict.get("questions", None)
+        text = infer_dict.get("text", None)
+        document_id = infer_dict.get("document_id", None)
         qas = [{"question": q,
                 "id": i,
                 "answers": [],
                 "is_impossible": False} for i, q in enumerate(questions)]
         converted = {"qas": qas,
-                     "context": text}
+                     "context": text,
+                     "document_id":document_id}
         return converted
 
     def file_to_dicts(self, file: str) -> [dict]:
