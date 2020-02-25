@@ -5,6 +5,10 @@ import pandas as pd
 
 def msmarco_evaluation(preds_file, dev_file, qrels_file, output_file):
     """
+    Performs official msmarco passage ranking evaluation (https://github.com/microsoft/MSMARCO-Passage-Ranking)
+    on a file containing the is_relevent prediction scores. It will convert the input file (qid, pid, score)
+    into the format expected by the official eval function (compute_metrics_from_files)
+
     :param predictions_filename: File where each line is the is_relevant prediction score
     :param dev_filename: File in format qid, query, pid, passage, label
     :param qrels_filename: File in the format qid, pid when is_relevant=1

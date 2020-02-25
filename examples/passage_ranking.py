@@ -35,19 +35,21 @@ def text_pair_classification():
     lang_model = "bert-base-cased"
     label_list = ["0", "1"]
     train_filename = "train.tsv"
-    dev_filename = "dev.tsv"
-    generate_data = True
+    dev_filename = "dev_200k.tsv"
+
+    # The source data can be found here https://github.com/microsoft/MSMARCO-Passage-Ranking
+    generate_data = False
     data_dir = Path("../data/msmarco_passage")
     predictions_raw_filename = "predictions_raw.txt"
     predictions_filename = "predictions.txt"
-    train_source_filename = "triples.train.small.tsv"
+    train_source_filename = "triples.train.1m.tsv"
     qrels_filename = "qrels.dev.tsv"
     queries_filename = "queries.dev.tsv"
     passages_filename = "collection.tsv"
     top1000_filename = "top1000.dev"
 
-
     # 0. Preprocess and save MSMarco data in a format that can be ingested by FARM models. Only needs to be done once!
+    # The final format is a tsv file with 3 columns (text, text_b and label)
     if generate_data:
         reformat_msmarco_train(data_dir / train_source_filename,
                                data_dir / train_filename)

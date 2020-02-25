@@ -494,6 +494,10 @@ class TextClassificationProcessor(Processor):
         return features
 
 class TextPairClassificationProcessor(TextClassificationProcessor):
+    """
+    Used to handle text pair classification datasets (e.g. Answer Selection or Natural Inference) that come in
+    tsv format. The columns should be called text, text_b and label.
+    """
     def __init__(self, **kwargs):
         super(TextPairClassificationProcessor, self).__init__(**kwargs)
 
@@ -509,10 +513,10 @@ class TextPairClassificationProcessor(TextClassificationProcessor):
         return dicts
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
-        tokenized_question = tokenize_with_metadata(dictionary["text"], self.tokenizer)
-        tokenized_context = tokenize_with_metadata(dictionary["text_b"], self.tokenizer)
-        tokenized = {"tokens": tokenized_question["tokens"],
-                     "tokens_b": tokenized_context["tokens"]}
+        tokenized_a = tokenize_with_metadata(dictionary["text"], self.tokenizer)
+        tokenized_b = tokenize_with_metadata(dictionary["text_b"], self.tokenizer)
+        tokenized = {"tokens": tokenized_a["tokens"],
+                     "tokens_b": tokenized_b["tokens"]}
         tokenized["tokens"], tokenized["tokens_b"], _ = truncate_sequences(seq_a=tokenized["tokens"],
                                                                            seq_b=tokenized["tokens_b"],
                                                                            tokenizer=self.tokenizer,
@@ -1050,7 +1054,6 @@ class RegressionProcessor(Processor):
         scaler_mean=None,
         scaler_scale=None,
         proxies=None,
-        label_remapping=None,
         **kwargs
     ):
         """
@@ -1099,7 +1102,6 @@ class RegressionProcessor(Processor):
         self.delimiter = delimiter
         self.quote_char = quote_char
         self.skiprows = skiprows
-        self.label_remapping = label_remapping
 
         super(RegressionProcessor, self).__init__(
             tokenizer=tokenizer,
