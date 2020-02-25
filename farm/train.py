@@ -255,7 +255,7 @@ class Trainer:
                     # dev_data_loader. In cases like training from scratch, this could cause
                     # some variance across evaluators due to the randomness in work masking.
                     dev_data_loader = self.data_silo.get_data_loader("dev")
-                    if dev_data_loader:
+                    if dev_data_loader is not None:
                         evaluator_dev = Evaluator(
                             data_loader=dev_data_loader, tasks=self.data_silo.processor.tasks, device=self.device
                         )
@@ -290,7 +290,7 @@ class Trainer:
 
         # Eval on test set
         test_data_loader = self.data_silo.get_data_loader("test")
-        if test_data_loader:
+        if test_data_loader is not None:
             evaluator_test = Evaluator(
                 data_loader=test_data_loader, tasks=self.data_silo.processor.tasks, device=self.device
             )
