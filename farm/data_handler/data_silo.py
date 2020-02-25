@@ -500,6 +500,10 @@ class StreamingDataSilo:
         """
         Returns a new instance of dataloader for the given dataset.
 
+        The dataloader lazily yields from Iterable DataSets. After a complete iteration 
+        of dataloader, the generators gets exhausted. So, for instance, in the case of
+        model training, a new train dataloader must be used for each train epoch.
+
         :param dataset_name: 'train', 'dev', or 'test' set.
         :type dataset_name: str
         """
