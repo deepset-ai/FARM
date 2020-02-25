@@ -1165,7 +1165,8 @@ class QuestionAnsweringHead(PredictionHead):
         ret = []
         token_offsets = basket.raw["document_offsets"]
         clear_text = basket.raw["document_text"]
-        document_id = basket.id.split("-")[0]
+        # In the context of QA, the external ID of our general Basket becomes a document ID again
+        document_id = basket.external_id
 
         # iterate over the top_n predictions of the one document
         for string, start_t, end_t, score in top_preds:

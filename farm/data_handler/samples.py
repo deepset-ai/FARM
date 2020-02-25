@@ -13,13 +13,17 @@ class SampleBasket:
 
     def __init__(self, id: str, raw: dict, external_id=None, samples=None):
         """
-        :param id: A unique identifying id.
+        :param id: A unique identifying id. Used for identification within FARM.
         :type id: str
+        :param external_id: Used for identification outside of FARM. E.g. if another framework wants to pass along its own id with the results.
+        :type external_id: str
         :param raw: Contains the various data needed to form a sample. It is ideally in human readable form.
         :type raw: dict
         :param samples: An optional list of Samples used to populate the basket at initialization.
+        :type samples: Sample
         """
         self.id = id
+        self.external_id = external_id
         self.raw = raw
         self.samples = samples
 
