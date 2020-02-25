@@ -1,8 +1,6 @@
 import copy
 import logging
 import torch.multiprocessing as mp
-import os
-from collections import defaultdict
 from contextlib import ExitStack
 from functools import partial
 import random
@@ -455,16 +453,17 @@ class DataSilo:
         class_weights = list(compute_class_weight("balanced", np.asarray(label_list), observed_labels))
         return class_weights
 
-    def get_data_loader(self, dataset):
-        return self.loaders[dataset]
+    def get_data_loader(self, dataset_name):
+        return self.loaders[dataset_name]
 
-    def n_samples(self, dataset):
+    def n_samples(self, dataset_name):
         """
         Returns the number of samples in a given dataset.
 
-        :param dataset: Choose from train, dev or test
+        :param dataset_name: Choose from train, dev or test
+        :type dataset_name: str
         """
-        return self.counts[dataset]
+        return self.counts[dataset_name]
 
 
 class StreamingDataSilo:
@@ -493,7 +492,38 @@ class StreamingDataSilo:
         :type dataloader_workers: int
         """
 
-        self.loaders = defaultdict(lambda: None)
+        self.processor = processor
+        self.batch_size = batch_size
+        self.dataloader_workers = dataloader_workers
+
+    def get_data_loader(self, dataset_name):
+        """
+        Returns a new instance of dataloader for the given dataset.
+
+        The dataloader lazily yields from Iterable DataSets. After a complete iteration
+        over the input data, the generators gets exhausted. So, for instance, in the 
+        case of model training, a new train dataloader must be used for each train epoch.
+
+        :param dataset_name: 'train', 'dev', or 'test' set.
+        :type dataset_name: str
+        """
+        filename = None
+        if dataset_name == "train":
+            filename = self.processor.train_filename
+        elif dataset_name == "dev":
+            if self.processor.dev_split > 0.0:
+                raise NotImplemented(
+                            "StreamingDataSilo does not have dev_split implemented. "
+                            "To use dev data, supply a dev filename when creating the Processor."
+                )
+            elif self.processor.dev_filename:
+                filename = self.processor.dev_filename
+        elif dataset_name == "test":
+            if self.processor.test_filename:
+                filename = self.processor.test_filename
+
+        if not filename:
+            return None
 
         #  Batching:
         #
@@ -509,50 +539,16 @@ class StreamingDataSilo:
         #  Since the batching is now handled within _StreamingDataSet, we disable the batching on DataLoader side
         #  by initializing the data loader with batch_size as 1.
 
-        # Create train DataLoader
         data_set = _StreamingDataSet(
-            processor=processor,
-            filepath=processor.data_dir / processor.train_filename,
-            batch_size=batch_size,
-            dataloader_workers=dataloader_workers,
+            processor=self.processor,
+            filepath=self.processor.data_dir / filename,
+            batch_size=self.batch_size,
+            dataloader_workers=self.dataloader_workers,
         )
-        self.loaders["train"] = NamedDataLoader(
-            dataset=data_set, batch_size=1, num_workers=dataloader_workers, pin_memory=True
+        data_loader = NamedDataLoader(
+            dataset=data_set, batch_size=1, num_workers=self.dataloader_workers, pin_memory=True
         )
-
-        # Create dev DataLoader
-        if processor.dev_filename:
-            data_set = _StreamingDataSet(
-                processor=processor,
-                filepath=processor.data_dir / processor.dev_filename,
-                batch_size=batch_size,
-                dataloader_workers=dataloader_workers,
-            )
-            self.loaders["dev"] = NamedDataLoader(
-                dataset=data_set, batch_size=1, num_workers=dataloader_workers, pin_memory=True
-            )
-        elif processor.dev_split > 0.0:
-            raise NotImplemented(
-                "StreamingDataSilo does not have dev_split implemented. "
-                "To use dev data, supply a separate dev filename."
-            )
-
-        # Create test DataLoader
-        if processor.test_filename:
-            data_set = _StreamingDataSet(
-                processor=processor,
-                filepath=processor.data_dir / processor.test_filename,
-                batch_size=batch_size,
-                dataloader_workers=dataloader_workers,
-            )
-            self.loaders["test"] = NamedDataLoader(
-                dataset=data_set, batch_size=1, num_workers=dataloader_workers, pin_memory=True
-            )
-
-        self.processor = processor
-
-    def get_data_loader(self, dataset):
-        return self.loaders[dataset]
+        return data_loader
 
 
 class _StreamingDataSet(IterableDataset):
