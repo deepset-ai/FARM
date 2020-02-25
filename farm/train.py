@@ -111,8 +111,6 @@ class Trainer:
         device,
         lr_schedule=None,
         evaluate_every=100,
-        evaluator_dev=None,
-        evaluator_test=None,
         use_amp=None,
         grad_acc_steps=1,
         local_rank=-1,
@@ -137,16 +135,6 @@ class Trainer:
         :param lr_schedule: An optional scheduler object that can regulate the learning rate of the optimizer
         :param evaluate_every: Perform dev set evaluation after this many steps of training.
         :type evaluate_every: int
-        :param evaluator_dev: Evaluator for dev set. Options:
-                              `None` (Default) => will init a new evaluator, if there's a dev set in the DataSilo
-                              `Evaluator Object` => use the manually supplied evaluator
-                              `False` => Don't use any evaluator
-        :type evaluator_dev: Evaluator, None or False
-        :param evaluator_test: Evaluator for test set. Options:
-                              `None` (Default) => will init a new evaluator, if there's a test set in the DataSilo
-                              `Evaluator Object` => use the manually supplied evaluator
-                              `False` => Don't use any evaluator
-        :type evaluator_test: Evaluator, None or False
         :param use_amp: Whether to use automatic mixed precision with Apex. One of the optimization levels must be chosen.
                         "O1" is recommended in almost all cases.
         :type use_amp: str
@@ -186,7 +174,6 @@ class Trainer:
         self.grad_acc_steps = grad_acc_steps
         self.use_amp = use_amp
         self.lr_schedule = lr_schedule
-        self.data_loader_train = data_silo.get_data_loader("train")
         self.device = device
         self.local_rank = local_rank
         self.log_params()
@@ -214,24 +201,6 @@ class Trainer:
         self.from_step = from_step
         self.global_step = (from_epoch * from_step) - 1
 
-        # evaluator on dev set
-        if evaluator_dev is None and self.data_silo.get_data_loader("dev") is not None:
-            evaluator_dev = Evaluator(
-                data_loader=self.data_silo.get_data_loader("dev"),
-                tasks=self.data_silo.processor.tasks,
-                device=device,
-            )
-        self.evaluator_dev = evaluator_dev
-
-        # evaluator on test set
-        if evaluator_test is None and self.data_silo.get_data_loader("test") is not None:
-            evaluator_test = Evaluator(
-                data_loader=self.data_silo.get_data_loader("test"),
-                tasks=self.data_silo.processor.tasks,
-                device=device
-            )
-        self.evaluator_test = evaluator_test
-
     def train(self):
         """ Perform the training procedure. """
 
@@ -251,7 +220,8 @@ class Trainer:
         resume_from_step = self.from_step
 
         for epoch in range(self.from_epoch + 1, self.epochs + 1):
-            progress_bar = tqdm(self.data_loader_train)
+            train_data_loader = self.data_silo.get_data_loader("train")
+            progress_bar = tqdm(train_data_loader)
             for step, batch in enumerate(progress_bar, start=1):
                 # when resuming training from a checkpoint, we want to fast forward to the step of the checkpoint
                 if resume_from_step and step <= resume_from_step:
@@ -280,13 +250,18 @@ class Trainer:
                 loss = self.backward_propagate(per_sample_loss, step)
 
                 # Perform  evaluation
-                if self.evaluator_dev:
-                    if self.global_step != 0 and (
-                        self.global_step % self.evaluate_every == 0
-                    ):
+                if self.global_step % self.evaluate_every == 0 and self.global_step != 0:
+                    # When using StreamingDataSilo, each evaluation creates a new instance of
+                    # dev_data_loader. In cases like training from scratch, this could cause
+                    # some variance across evaluators due to the randomness in work masking.
+                    dev_data_loader = self.data_silo.get_data_loader("dev")
+                    if dev_data_loader:
+                        evaluator_dev = Evaluator(
+                            data_loader=dev_data_loader, tasks=self.data_silo.processor.tasks, device=self.device
+                        )
                         evalnr += 1
-                        result = self.evaluator_dev.eval(self.model)
-                        self.evaluator_dev.log_results(result, "Dev", self.global_step)
+                        result = evaluator_dev.eval(self.model)
+                        evaluator_dev.log_results(result, "Dev", self.global_step)
                         if self.early_stopping:
                             do_stopping, save_model, eval_value = self.early_stopping.check_stopping(result)
                             if save_model:
@@ -314,9 +289,13 @@ class Trainer:
             model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
 
         # Eval on test set
-        if self.evaluator_test:
-            result = self.evaluator_test.eval(self.model)
-            self.evaluator_test.log_results(result, "Test", self.global_step)
+        test_data_loader = self.data_silo.get_data_loader("test")
+        if test_data_loader:
+            evaluator_test = Evaluator(
+                data_loader=test_data_loader, tasks=self.data_silo.processor.tasks, device=self.device
+            )
+            result = evaluator_test.eval(self.model)
+            evaluator_test.log_results(result, "Test", self.global_step)
         return self.model
 
     def backward_propagate(self, loss, step):
