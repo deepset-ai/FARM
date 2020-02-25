@@ -25,6 +25,7 @@ from farm.data_handler.samples import (
 )
 from farm.data_handler.utils import (
     read_tsv,
+    read_tsv_sentence_pair,
     read_docs_from_txt,
     read_ner_file,
     read_squad_file,
@@ -190,7 +191,8 @@ class Processor(ABC):
         processor = cls.load(tokenizer=tokenizer, processor_name=config["processor"], **config)
 
         for task_name, task in config["tasks"].items():
-            processor.add_task(name=task_name, metric=task["metric"], label_list=task["label_list"])
+            processor.add_task(name=task_name, metric=task["metric"], label_list=task["label_list"],
+                               label_column_name=task["label_column_name"], task_type=task["task_type"])
 
         if processor is None:
             raise Exception
@@ -490,6 +492,36 @@ class TextClassificationProcessor(Processor):
             tokenizer=self.tokenizer,
         )
         return features
+
+class TextPairClassificationProcessor(TextClassificationProcessor):
+    """
+    Used to handle text pair classification datasets (e.g. Answer Selection or Natural Inference) that come in
+    tsv format. The columns should be called text, text_b and label.
+    """
+    def __init__(self, **kwargs):
+        super(TextPairClassificationProcessor, self).__init__(**kwargs)
+
+    def file_to_dicts(self, file: str) -> [dict]:
+        column_mapping = {task["label_column_name"]: task["label_name"] for task in self.tasks.values()}
+        dicts = read_tsv_sentence_pair(
+            rename_columns=column_mapping,
+            filename=file,
+            delimiter=self.delimiter,
+            skiprows=self.skiprows,
+            proxies=self.proxies,
+        )
+        return dicts
+
+    def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
+        tokenized_a = tokenize_with_metadata(dictionary["text"], self.tokenizer)
+        tokenized_b = tokenize_with_metadata(dictionary["text_b"], self.tokenizer)
+        tokenized = {"tokens": tokenized_a["tokens"],
+                     "tokens_b": tokenized_b["tokens"]}
+        tokenized["tokens"], tokenized["tokens_b"], _ = truncate_sequences(seq_a=tokenized["tokens"],
+                                                                           seq_b=tokenized["tokens_b"],
+                                                                           tokenizer=self.tokenizer,
+                                                                           max_seq_len=self.max_seq_len)
+        return [Sample(id=None, clear_text=dictionary, tokenized=tokenized)]
 
 
 #########################################
@@ -1001,6 +1033,7 @@ class SquadProcessor(Processor):
                                             max_seq_len=self.max_seq_len)
         return features
 
+
 class RegressionProcessor(Processor):
     """
     Used to handle a regression dataset in tab separated text + label
@@ -1095,7 +1128,7 @@ class RegressionProcessor(Processor):
             quotechar=self.quote_char,
             proxies=self.proxies
         )
-        
+
         # collect all labels and compute scaling stats
         train_labels = []
         for d in dicts:

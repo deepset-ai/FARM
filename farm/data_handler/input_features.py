@@ -47,7 +47,7 @@ def sample_to_features_text(
         tokens_b,
         add_special_tokens=True,
         max_length=max_seq_len,
-        truncation_strategy='do_not_truncate' # We've already truncated our tokens before
+        truncation_strategy='do_not_truncate'
     )
 
     input_ids, segment_ids = inputs["input_ids"], inputs["token_type_ids"]

@@ -8,8 +8,8 @@ from sklearn.metrics import classification_report
 from sklearn.metrics import r2_score
 from torch.utils.data import DataLoader
 
-from farm.metrics import compute_metrics
-from farm.utils import to_numpy, format_log
+from farm.evaluation.metrics import compute_metrics
+from farm.utils import to_numpy
 from farm.utils import MLFlowLogger as MlLogger
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.visual.ascii.images import BUSH_SEP

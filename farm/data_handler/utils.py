@@ -31,6 +31,7 @@ DOWNSTREAM_TASK_MAP = {
     "lm_finetune_nips": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/lm_finetune_nips.tar.gz",
     "toxic-comments": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/toxic-comments.tar.gz",
     'cola': "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/cola.tar.gz",
+    "asnq_binary": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/asnq_binary.tar.gz",
 }
 
 def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=None, header=0, proxies=None, max_samples=None):
@@ -66,6 +67,37 @@ def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=N
     raw_dict = df.to_dict(orient="records")
     return raw_dict
 
+def read_tsv_sentence_pair(filename, rename_columns, delimiter="\t", skiprows=None, header=0, proxies=None, max_samples=None):
+    """Reads a tab separated value file. Tries to download the data if filename is not found"""
+
+    # get remote dataset if needed
+    if not (os.path.exists(filename)):
+        logger.info(f" Couldn't find {filename} locally. Trying to download ...")
+        _download_extract_downstream_data(filename, proxies=proxies)
+
+    # TODO quote_char was causing trouble for the asnq dataset so it has been removed - see if there's a better solution
+    df = pd.read_csv(
+        filename,
+        sep=delimiter,
+        encoding="utf-8",
+        dtype=str,
+        skiprows=skiprows,
+        header=header
+    )
+    if max_samples:
+        df = df.sample(max_samples)
+
+    # let's rename our target columns to the default names FARM expects:
+    # "text": contains the text
+    # "text_classification_label": contains a label for text classification
+    columns = ["text"] + ["text_b"] + list(rename_columns.keys())
+    df = df[columns]
+    for source_column, label_name in rename_columns.items():
+        df[label_name] = df[source_column].fillna("")
+        df.drop(columns=[source_column], inplace=True)
+    # convert df to one dict per row
+    raw_dict = df.to_dict(orient="records")
+    return raw_dict
 
 def read_ner_file(filename, sep="\t", proxies=None):
     """
