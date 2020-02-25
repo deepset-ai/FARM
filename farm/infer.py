@@ -217,6 +217,7 @@ class Inferencer:
         :param file: path of the input file for Inference
         :type file: str
         :param max_processes: the maximum size of `multiprocessing.Pool`. Set to value of 1 to disable multiprocessing.
+                              If you want to debug the Language Model, you might need to disable multiprocessing!
         :type max_processes: int
         """
         dicts = self.processor.file_to_dicts(file)
@@ -239,9 +240,11 @@ class Inferencer:
                                 While input is almost the same, output contains additional meta data(offset, context..)
         :type rest_api_schema: bool
         :return: dict of predictions
-        :param max_processes: the maximum size of `multiprocessing.Pool`. Set to value of 1 to disable multiprocessing.
-            For very small number of dicts, time incurred in spawning processes could outweigh performance boost, eg,
-            in the case of HTTP APIs for Inference. For such cases, multiprocessing can be disabled using this param.
+        :param max_processes: The maximum size of `multiprocessing.Pool`. Set to value of 1 to disable multiprocessing.
+                              If you want to debug the Language Model, you might need to disable multiprocessing!
+                              For very small number of dicts, time incurred in spawning processes could outweigh
+                              performance boost, eg, in the case of HTTP APIs for Inference. For such cases
+                              multiprocessing should be disabled.
         """
         if self.prediction_type == "embedder":
             raise TypeError(
@@ -276,7 +279,7 @@ class Inferencer:
                 preds_all = []
                 with tqdm(total=len(dicts), unit=" Dicts") as pbar:
                     for dataset, tensor_names, baskets in results:
-                        # TODO change formot of formatted_preds in QA (list of dicts)
+                        # TODO change format of formatted_preds in QA (list of dicts)
                         preds_all.extend(self._get_predictions(dataset, tensor_names, baskets, rest_api_schema))
                         pbar.update(multiprocessing_chunk_size)
 

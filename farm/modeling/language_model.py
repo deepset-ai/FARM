@@ -67,7 +67,7 @@ class LanguageModel(nn.Module):
         return model.from_scratch(vocab_size)
 
     @classmethod
-    def load(cls, pretrained_model_name_or_path, n_added_tokens=0, **kwargs):
+    def load(cls, pretrained_model_name_or_path, n_added_tokens=0, language_model_class=None, **kwargs):
         """
         Load a pretrained language model either by
 
@@ -97,8 +97,13 @@ class LanguageModel(nn.Module):
 
         See all supported model variations here: https://huggingface.co/models
 
+        The appropriate language model class is inferred automatically from `pretrained_model_name_or_path`
+        or can be manually supplied via `language_model_class`.
+
         :param pretrained_model_name_or_path: The path of the saved pretrained model or its name.
         :type pretrained_model_name_or_path: str
+        :param language_model_class: (Optional) Name of the language model class to load (e.g. `Bert`)
+        :type language_model_class: str
 
         """
         config_file = Path(pretrained_model_name_or_path) / "language_model_config.json"
@@ -107,24 +112,26 @@ class LanguageModel(nn.Module):
             config = json.load(open(config_file))
             language_model = cls.subclasses[config["name"]].load(pretrained_model_name_or_path)
         else:
-            # it's transformers format (either from model hub or local)
-            pretrained_model_name_or_path = str(pretrained_model_name_or_path)
-            if "xlm" in pretrained_model_name_or_path and "roberta" in pretrained_model_name_or_path:
-                language_model = cls.subclasses["XLMRoberta"].load(pretrained_model_name_or_path, **kwargs)
+            if language_model_class is None:
+                # it's transformers format (either from model hub or local)
+                pretrained_model_name_or_path = str(pretrained_model_name_or_path)
+                if "xlm" in pretrained_model_name_or_path and "roberta" in pretrained_model_name_or_path:
+                    language_model_class = 'XLMRoberta'
+                elif 'roberta' in pretrained_model_name_or_path:
+                    language_model_class = 'Roberta'
+                elif 'albert' in pretrained_model_name_or_path:
+                    language_model_class = 'Albert'
+                elif 'distilbert' in pretrained_model_name_or_path:
+                    language_model_class = 'DistilBert'
+                elif 'bert' in pretrained_model_name_or_path:
+                    language_model_class = 'Bert'
+                elif 'xlnet' in pretrained_model_name_or_path:
+                    language_model_class = 'XLNet'
+
+            language_model = cls.subclasses[language_model_class].load(pretrained_model_name_or_path, **kwargs)
+            if language_model_class == 'XLMRoberta':
                 # TODO: for some reason, the pretrained XLMRoberta has different vocab size in the tokenizer compared to the model this is a hack to resolve that
                 n_added_tokens = 3
-            elif 'roberta' in pretrained_model_name_or_path:
-                language_model = cls.subclasses["Roberta"].load(pretrained_model_name_or_path, **kwargs)
-            elif 'albert' in pretrained_model_name_or_path:
-                language_model = cls.subclasses["Albert"].load(pretrained_model_name_or_path, **kwargs)
-            elif 'distilbert' in pretrained_model_name_or_path:
-                language_model = cls.subclasses["DistilBert"].load(pretrained_model_name_or_path, **kwargs)
-            elif 'bert' in pretrained_model_name_or_path:
-                language_model = cls.subclasses["Bert"].load(pretrained_model_name_or_path, **kwargs)
-            elif 'xlnet' in pretrained_model_name_or_path:
-                language_model = cls.subclasses["XLNet"].load(pretrained_model_name_or_path, **kwargs)
-            else:
-                language_model = None
 
         if not language_model:
             raise Exception(
@@ -185,6 +192,13 @@ class LanguageModel(nn.Module):
         )  # Only save the model it-self
         torch.save(model_to_save.state_dict(), save_name)
         self.save_config(save_dir)
+
+    @classmethod
+    def _get_or_infer_language_from_name(cls, language, name):
+        if language is not None:
+            return language
+        else:
+            return cls._infer_language_from_name(name)
 
     @classmethod
     def _infer_language_from_name(cls, name):
@@ -325,7 +339,7 @@ class Bert(LanguageModel):
         else:
             # Pytorch-transformer Style
             bert.model = BertModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
-            bert.language = cls._infer_language_from_name(pretrained_model_name_or_path)
+            bert.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
         return bert
 
     def forward(
@@ -411,7 +425,7 @@ class Albert(LanguageModel):
         else:
             # Huggingface transformer Style
             albert.model = AlbertModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
-            albert.language = cls._infer_language_from_name(pretrained_model_name_or_path)
+            albert.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
         return albert
 
     def forward(
@@ -498,7 +512,7 @@ class Roberta(LanguageModel):
         else:
             # Huggingface transformer Style
             roberta.model = RobertaModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
-            roberta.language = cls._infer_language_from_name(pretrained_model_name_or_path)
+            roberta.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
         return roberta
 
     def forward(
@@ -585,7 +599,7 @@ class XLMRoberta(LanguageModel):
         else:
             # Huggingface transformer Style
             xlm_roberta.model = XLMRobertaModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
-            xlm_roberta.language = cls._infer_language_from_name(pretrained_model_name_or_path)
+            xlm_roberta.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
         return xlm_roberta
 
     def forward(
@@ -678,7 +692,7 @@ class DistilBert(LanguageModel):
         else:
             # Pytorch-transformer Style
             distilbert.model = DistilBertModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
-            distilbert.language = cls._infer_language_from_name(pretrained_model_name_or_path)
+            distilbert.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
         config = distilbert.model.config
 
         # DistilBERT does not provide a pooled_output by default. Therefore, we need to initialize an extra pooler.
@@ -772,7 +786,7 @@ class XLNet(LanguageModel):
         else:
             # Pytorch-transformer Style
             xlnet.model = XLNetModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
-            xlnet.language = cls._infer_language_from_name(pretrained_model_name_or_path)
+            xlnet.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
             config = xlnet.model.config
         # XLNet does not provide a pooled_output by default. Therefore, we need to initialize an extra pooler.
         # The pooler takes the last hidden representation & feeds it to a dense layer of (hidden_dim x hidden_dim).

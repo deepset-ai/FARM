@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import os
@@ -30,6 +31,7 @@ DOWNSTREAM_TASK_MAP = {
     "lm_finetune_nips": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/lm_finetune_nips.tar.gz",
     "toxic-comments": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/toxic-comments.tar.gz",
     'cola': "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/cola.tar.gz",
+    "asnq_binary": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/asnq_binary.tar.gz",
 }
 
 def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=None, header=0, proxies=None, max_samples=None):
@@ -65,6 +67,37 @@ def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=N
     raw_dict = df.to_dict(orient="records")
     return raw_dict
 
+def read_tsv_sentence_pair(filename, rename_columns, delimiter="\t", skiprows=None, header=0, proxies=None, max_samples=None):
+    """Reads a tab separated value file. Tries to download the data if filename is not found"""
+
+    # get remote dataset if needed
+    if not (os.path.exists(filename)):
+        logger.info(f" Couldn't find {filename} locally. Trying to download ...")
+        _download_extract_downstream_data(filename, proxies=proxies)
+
+    # TODO quote_char was causing trouble for the asnq dataset so it has been removed - see if there's a better solution
+    df = pd.read_csv(
+        filename,
+        sep=delimiter,
+        encoding="utf-8",
+        dtype=str,
+        skiprows=skiprows,
+        header=header
+    )
+    if max_samples:
+        df = df.sample(max_samples)
+
+    # let's rename our target columns to the default names FARM expects:
+    # "text": contains the text
+    # "text_classification_label": contains a label for text classification
+    columns = ["text"] + ["text_b"] + list(rename_columns.keys())
+    df = df[columns]
+    for source_column, label_name in rename_columns.items():
+        df[label_name] = df[source_column].fillna("")
+        df.drop(columns=[source_column], inplace=True)
+    # convert df to one dict per row
+    raw_dict = df.to_dict(orient="records")
+    return raw_dict
 
 def read_ner_file(filename, sep="\t", proxies=None):
     """
@@ -72,6 +105,16 @@ def read_ner_file(filename, sep="\t", proxies=None):
     return format :
     [ ['EU', 'B-ORG'], ['rejects', 'O'], ['German', 'B-MISC'], ['call', 'O'], ['to', 'O'], ['boycott', 'O'], ['British', 'B-MISC'], ['lamb', 'O'], ['.', 'O'] ]
     """
+    # checks for correct separator
+    if "conll03-de" in str(filename):
+        if sep != " ":
+            logger.error(f"Separator {sep} for dataset German CONLL03 does not match the requirements. Setting seperator to whitespace")
+            sep = " "
+    if "germeval14" in str(filename):
+        if sep != "\t":
+            logger.error(f"Separator {sep} for dataset GermEval14 de does not match the requirements. Setting seperator to tab")
+            sep = "\t"
+
     if not (os.path.exists(filename)):
         logger.info(f" Couldn't find {filename} locally. Trying to download ...")
         _download_extract_downstream_data(filename, proxies)
@@ -84,24 +127,50 @@ def read_ner_file(filename, sep="\t", proxies=None):
     sentence = []
     label = []
     for line in f:
-        if len(line) == 0 or line.startswith("-DOCSTART") or line[0] == "\n":
+        if line.startswith("#"):
+            continue
+        if len(line) == 0 or "-DOCSTART-" in line or line[0] == "\n":
             if len(sentence) > 0:
                 if "conll03-de" in str(filename):
                     _convertIOB1_to_IOB2(label)
+                if "germeval14" in str(filename):
+                    label = _convert_germeval14_labels(label)
                 data.append({"text": " ".join(sentence), "ner_label": label})
                 sentence = []
                 label = []
             continue
         splits = line.split(sep)
-        sentence.append(splits[0])
-        label.append(splits[-1][:-1])
 
+        # adjusting to data format in Germeval14
+        # Germeval14 has two levels of annotation. E.g. "Univerität Berlin" is both ORG and LOC. We only take the first level.
+        if "germeval14" in str(filename):
+            sentence.append(splits[1])
+            label.append(splits[-2])
+        else:
+            sentence.append(splits[0])
+            label.append(splits[-1][:-1])
+
+    # handling end of file, adding the last sentence to data
     if len(sentence) > 0:
         if(label[-1] == ""):
             logger.error(f"The last NER label: '{splits[-1]}'  in your dataset might have been converted incorrectly. Please insert a newline at the end of the file.")
             label[-1] = "O"
+
+        if "conll03-de" in str(filename):
+            _convertIOB1_to_IOB2(label)
+        if "germeval14" in str(filename):
+            label = _convert_germeval14_labels(label)
         data.append({"text": " ".join(sentence), "ner_label": label})
     return data
+
+def _convert_germeval14_labels(tags: List[str]):
+    newtags = []
+    for tag in tags:
+        tag = tag.replace("part","")
+        tag = tag.replace("deriv","")
+        newtags.append(tag)
+    return newtags
+
 
 
 def _convertIOB1_to_IOB2(tags: List[str]):
@@ -141,7 +210,10 @@ def read_squad_file(filename, proxies=None):
 def write_squad_predictions(predictions, out_filename, predictions_filename=None):
     predictions_json = {}
     for p in predictions:
-        predictions_json[p["id"]] = p["preds"][0][0]
+        if p["preds"][0][0] is not None:
+            predictions_json[p["id"]] = p["preds"][0][0]
+        else:
+            predictions_json[p["id"]] = "" #convert No answer = None to format understood by the SQuAD eval script
 
     if predictions_filename:
         dev_labels = {}
@@ -164,6 +236,13 @@ def write_squad_predictions(predictions, out_filename, predictions_filename=None
     json.dump(predictions_json, open(filepath, "w"))
     logger.info(f"Written Squad predictions to: {filepath}")
 
+def _get_md5checksum(fname):
+    # solution from stackoverflow: https://stackoverflow.com/a/3431838
+    hash_md5 = hashlib.md5()
+    with open(fname, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            hash_md5.update(chunk)
+    return hash_md5.hexdigest()
 
 def _download_extract_downstream_data(input_file, proxies=None):
     # download archive to temp dir and extract to correct position
@@ -174,7 +253,7 @@ def _download_extract_downstream_data(input_file, proxies=None):
     logger.info(
         "downloading and extracting file {} to dir {}".format(taskname, datadir)
     )
-    if "conll03" in taskname:
+    if "conll03-" in taskname:
         # conll03 is copyrighted, but luckily somebody put it on github. Kudos!
         if not os.path.exists(directory):
             os.makedirs(directory)
@@ -196,6 +275,17 @@ def _download_extract_downstream_data(input_file, proxies=None):
             http_get(DOWNSTREAM_TASK_MAP[taskname], temp_file, proxies=proxies)
             temp_file.flush()
             temp_file.seek(0)  # making tempfile accessible
+
+            # checking files for correctness with md5sum.
+            if("germeval14" in taskname):
+                if "2c9d5337d7a25b9a4bf6f5672dd091bc" != _get_md5checksum(temp_file.name):
+                    logger.error(f"Someone has changed the file for {taskname}. Please make sure the correct file is used and update the md5sum in farm/data_handler/utils.py")
+            elif "germeval18" in taskname:
+                if "23244fa042dcc39e844635285c455205" != _get_md5checksum(temp_file.name):
+                    logger.error(f"Someone has changed the file for {taskname}. Please make sure the correct file is used and update the md5sum in farm/data_handler/utils.py")
+            elif "gnad" in taskname:
+                if "ef62fe3f59c1ad54cf0271d8532b8f22" != _get_md5checksum(temp_file.name):
+                    logger.error(f"Someone has changed the file for {taskname}. Please make sure the correct file is used and update the md5sum in farm/data_handler/utils.py")
             tfile = tarfile.open(temp_file.name)
             tfile.extractall(datadir)
         # temp_file gets deleted here
@@ -208,6 +298,24 @@ def _conll03get(dataset, directory, language):
         response = get(DOWNSTREAM_TASK_MAP[f"conll03{language}{dataset}"])
         # write to file
         file.write(response.content)
+
+    # checking files for correctness with md5sum.
+    if f"conll03{language}{dataset}" == "conll03detrain":
+        if "ae4be68b11dc94e0001568a9095eb391" != _get_md5checksum(str(directory / f"{dataset}.txt")):
+            logger.error(
+                f"Someone has changed the file for conll03detrain. This data was collected from an external github repository.\n"
+                f"Please make sure the correct file is used and update the md5sum in farm/data_handler/utils.py")
+    elif f"conll03{language}{dataset}" == "conll03detest":
+        if "b8514f44366feae8f317e767cf425f28" != _get_md5checksum(str(directory / f"{dataset}.txt")):
+            logger.error(
+                f"Someone has changed the file for conll03detest. This data was collected from an external github repository.\n"
+                f"Please make sure the correct file is used and update the md5sum in farm/data_handler/utils.py")
+    elif f"conll03{language}{dataset}" == "conll03entrain":
+        if "11a942ce9db6cc64270372825e964d26" != _get_md5checksum(str(directory / f"{dataset}.txt")):
+            logger.error(
+                f"Someone has changed the file for conll03entrain. This data was collected from an external github repository.\n"
+                f"Please make sure the correct file is used and update the md5sum in farm/data_handler/utils.py")
+
 
 
 def read_docs_from_txt(filename, delimiter="", encoding="utf-8", max_docs=None, proxies=None):
