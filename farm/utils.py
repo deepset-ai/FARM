@@ -13,6 +13,8 @@ from torch import multiprocessing as mp
 import mlflow
 from copy import deepcopy
 from farm.visual.ascii.images import WELCOME_BARN, WORKER_M, WORKER_F, WORKER_X
+import pandas as pd
+from tqdm import tqdm
 
 
 logger = logging.getLogger(__name__)
@@ -289,4 +291,94 @@ def get_dict_checksum(payload_dict):
     """
     checksum = hashlib.md5(json.dumps(payload_dict, sort_keys=True).encode("utf-8")).hexdigest()
     return checksum
+
+def reformat_msmarco_train(filename, output_filename):
+    """
+    Given a df of structure [query, pos_passage, neg_passage], this function converts it to [query, passage, label]
+    """
+    print("Reformatting MSMarco train data...")
+    df = pd.read_csv(filename, header=None, sep="\t")
+    samples = []
+    for i, row in tqdm(df.iterrows()):
+       query = row[0]
+       pos = row[1]
+       neg = row[2]
+       samples.append([query, pos, 1])
+       samples.append([query, neg, 0])
+    with open(output_filename, "w") as f:
+        f.write("text\ttext_b\tlabel\n")
+        for (query, passage, label) in samples:
+            f.write(f"{query}\t{passage}\t{label}\n")
+    print(f"MSMarco train data saved at {output_filename}")
+
+def reformat_msmarco_dev(queries_filename, passages_filename, qrels_filename, top1000_filename, output_filename):
+    print("Reformatting MSMarco dev data...")
+    top1000_file = open(top1000_filename)
+    qrels_file = open(qrels_filename)
+    queries_file = open(queries_filename)
+    passages_file = open(passages_filename)
+
+    # Generate a top1000 dict
+    top1000 = dict()
+    for l in tqdm(top1000_file):
+        qid, pid, _, _ = l.split("\t")
+        if qid not in top1000:
+            top1000[qid] = []
+        top1000[qid].append(pid)
+
+    # Generate a qrels dict
+    qrels = dict()
+    for l in qrels_file:
+        qid, _, pid, _ = l.split("\t")
+        if qid not in qrels:
+            qrels[qid] = []
+        qrels[qid].append(pid)
+
+    # Generate a queries dict
+    queries = dict()
+    for l in queries_file:
+        qid, query = l.split("\t")
+        queries[qid] = query[:-1]
+
+    # Generate a passages dict
+    passages = dict()
+    for l in tqdm(passages_file):
+        pid, passage = l.split("\t")
+        passages[pid] = passage[:-1]
+
+    # Generate dict with all needed info
+    final = dict()
+    for qid in tqdm(top1000):
+        if qid not in final:
+            final[qid] = []
+        query = queries[qid]
+        curr_qrel = qrels[qid]
+        curr_top1000 = top1000[qid]
+        for ct in curr_top1000:
+            is_relevant = int(ct in curr_qrel)
+            passage = passages[ct]
+            quad = list([query, ct, passage, is_relevant])
+            final[qid].append(quad)
+
+    # Flatten the structure of final and convert to df
+    records = []
+    for k, v in tqdm(final.items()):
+        for x in v:
+            records.append([k] + x)
+    df = pd.DataFrame(records, columns=["qid", "text", "pid", "text_b", "label"])
+    df.to_csv(output_filename, sep="\t", index=None)
+    print(f"MSMarco train data saved at {output_filename}")
+
+def write_msmarco_results(results, output_filename):
+    out_file = open(output_filename, "w")
+    for dictionary in results:
+        for pred in dictionary["predictions"]:
+            if pred["label"] == "1":
+                score = pred["probability"]
+            elif pred["label"] == "0":
+                score = 1 - pred["probability"]
+            out_file.write(str(score))
+            out_file.write("\n")
+
+
 
