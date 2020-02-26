@@ -6,6 +6,9 @@
 trigger:
 - master
 
+variables:
+- group: s3-access-key
+
 pool:
   vmImage: 'ubuntu-latest'
 strategy:
