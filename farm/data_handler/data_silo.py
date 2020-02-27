@@ -157,11 +157,14 @@ class DataSilo:
 
             datasets = []
 
-            with tqdm(total=len(dicts), unit=' Dicts', desc="Preprocessing Dataset") as pbar:
+            desc = f"Preprocessing Dataset"
+            if filename:
+                desc += f" {filename}"
+            with tqdm(total=len(dicts), unit=' Dicts', desc=desc) as pbar:
                 for dataset, tensor_names in results:
                     datasets.append(dataset)
-                    pbar.update(multiprocessing_chunk_size)
-
+                    # update progress bar (last step can have less dicts than actual chunk_size)
+                    pbar.update(min(multiprocessing_chunk_size, pbar.total-pbar.n))
             concat_datasets = ConcatDataset(datasets)
             return concat_datasets, tensor_names
 
