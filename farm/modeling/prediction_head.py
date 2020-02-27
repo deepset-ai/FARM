@@ -1011,6 +1011,8 @@ class QuestionAnsweringHead(PredictionHead):
         # shape = batch_size x ~top_n
         # Note that ~top_n = n   if no_answer is     within the top_n predictions
         #           ~top_n = n+1 if no_answer is not within the top_n predictions
+        import time
+        t0 = time.time()
         all_top_n = []
 
         # logits is of shape [batch_size, max_seq_len, 2]. The final dimension corresponds to [start, end]
@@ -1027,6 +1029,14 @@ class QuestionAnsweringHead(PredictionHead):
         start_matrix = start_logits.unsqueeze(2).expand(-1, -1, max_seq_len)
         end_matrix = end_logits.unsqueeze(1).expand(-1, max_seq_len, -1)
         start_end_matrix = start_matrix + end_matrix
+
+        # disqualify answers where start > end
+        # (set the lower triangular matrix to low value, incl diagonal, excl item 0,0)
+        indices = torch.tril_indices(max_seq_len, max_seq_len)
+        start_end_matrix[:, indices[0][1:], indices[1][1:]] = -999
+
+        # disqualify answers where start=0, but end != 0
+        start_end_matrix[:, 0, 1:] = -999
 
         # Sort the candidate answers by their score. Sorting happens on the flattened matrix.
         # flat_sorted_indices.shape: (batch_size, max_seq_len^2, 1)
@@ -1046,7 +1056,8 @@ class QuestionAnsweringHead(PredictionHead):
                                                    n_non_padding[sample_idx], max_answer_length,
                                                    seq_2_start_t[sample_idx])
             all_top_n.append(sample_top_n)
-
+        t1 = time.time()
+        logger.info(f"t={t1-t0}")
         return all_top_n
 
     def get_top_candidates(self, sorted_candidates, start_end_matrix,
@@ -1071,9 +1082,9 @@ class QuestionAnsweringHead(PredictionHead):
                 if start_idx == 0 and end_idx == 0:
                     continue
                 # Check that the candidate's indices are valid and save them if they are
-                score = start_end_matrix[start_idx, end_idx].item()
+                # score = start_end_matrix[start_idx, end_idx].item()
                 if self.valid_answer_idxs(start_idx, end_idx, n_non_padding, max_answer_length, seq_2_start_t):
-                    # score = start_end_matrix[start_idx, end_idx].item()
+                    score = start_end_matrix[start_idx, end_idx].item()
                     top_candidates.append([start_idx, end_idx, score])
 
         no_answer_score = start_end_matrix[0, 0].item()
