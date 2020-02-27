@@ -310,24 +310,22 @@ class Inferencer:
         data_loader = NamedDataLoader(
             dataset=dataset, sampler=SequentialSampler(dataset), batch_size=self.batch_size, tensor_names=tensor_names
         )
-        logits_all = []
+        prelim_preds = []
         preds_all = []
         aggregate_preds = hasattr(self.model.prediction_heads[0], "aggregate_preds")
         for i, batch in enumerate(tqdm(data_loader, desc=f"Inferencing")):
             batch = {key: batch[key].to(self.device) for key in batch}
-            if not aggregate_preds:
-                batch_samples = samples[i * self.batch_size : (i + 1) * self.batch_size]
+
+            batch_samples = samples[i * self.batch_size : (i + 1) * self.batch_size]
 
             # get logits
             with torch.no_grad():
-                logits = self.model.forward(**batch)[0]
-
-                # either just stack the logits (and convert later to readable predictions)
                 if aggregate_preds:
-                    logits_all += [l for l in logits]
-
-                # or convert directly
+                    logits = self.model.forward(**batch)
+                    preds = self.model.logits_to_preds(logits, **batch)[0]
+                    prelim_preds += preds
                 else:
+                    logits = self.model.forward(**batch)[0]
                     preds = self.model.formatted_preds(
                         logits=[logits],
                         samples=batch_samples,
@@ -343,11 +341,9 @@ class Inferencer:
         # and then aggregating them here.
         if aggregate_preds:
             # can assume that we have only complete docs i.e. all the samples of one doc are in the current chunk
-            # TODO is there a better way than having to wrap logits all in list?
-            # TODO can QA formatted preds deal with samples?
-            preds_all = self.model.formatted_preds(logits=[logits_all],
+            preds_all = self.model.formatted_preds(logits=[prelim_preds],
                                                    baskets=baskets,
-                                                   rest_api_schema=rest_api_schema)[0]
+                                                   rest_api_schema=rest_api_schema)
         return preds_all
 
     def extract_vectors(

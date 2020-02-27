@@ -1122,18 +1122,19 @@ class QuestionAnsweringHead(PredictionHead):
         # passage_start_t is the token index of the passage relative to the document (usually a multiple of doc_stride)
         # seq_2_start_t is the token index of the first token in passage relative to the input sequence (i.e. number of
         # special tokens and question tokens that come before the passage tokens)
+        preds_p = logits # TODO refactor stupid hack
         samples = [s for b in baskets for s in b.samples]
         ids = [s.id.split("-") for s in samples]
         passage_start_t = [s.features[0]["passage_start_t"] for s in samples]
         seq_2_start_t = [s.features[0]["seq_2_start_t"] for s in samples]
 
         # Prepare tensors
-        logits = torch.stack(logits)
-        padding_mask = torch.tensor([s.features[0]["padding_mask"] for s in samples], dtype=torch.long)
-        start_of_word = torch.tensor([s.features[0]["start_of_word"] for s in samples], dtype=torch.long)
+        #logits = torch.stack(logits)
+        #padding_mask = torch.tensor([s.features[0]["padding_mask"] for s in samples], dtype=torch.long)
+        #start_of_word = torch.tensor([s.features[0]["start_of_word"] for s in samples], dtype=torch.long)
 
         # Return n + 1 predictions per passage / sample
-        preds_p = self.logits_to_preds(logits, padding_mask, start_of_word, seq_2_start_t)
+        #preds_p = self.logits_to_preds(logits, padding_mask, start_of_word, seq_2_start_t)
 
         # Aggregate passage level predictions to create document level predictions.
         # This method assumes that all passages of each document are contained in preds_p
