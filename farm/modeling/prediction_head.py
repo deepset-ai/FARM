@@ -1011,8 +1011,6 @@ class QuestionAnsweringHead(PredictionHead):
         # shape = batch_size x ~top_n
         # Note that ~top_n = n   if no_answer is     within the top_n predictions
         #           ~top_n = n+1 if no_answer is not within the top_n predictions
-        import time
-        t0 = time.time()
         all_top_n = []
 
         # logits is of shape [batch_size, max_seq_len, 2]. The final dimension corresponds to [start, end]
@@ -1056,8 +1054,7 @@ class QuestionAnsweringHead(PredictionHead):
                                                    n_non_padding[sample_idx], max_answer_length,
                                                    seq_2_start_t[sample_idx])
             all_top_n.append(sample_top_n)
-        t1 = time.time()
-        logger.info(f"t={t1-t0}")
+
         return all_top_n
 
     def get_top_candidates(self, sorted_candidates, start_end_matrix,
