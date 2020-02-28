@@ -1079,7 +1079,6 @@ class QuestionAnsweringHead(PredictionHead):
                 if start_idx == 0 and end_idx == 0:
                     continue
                 # Check that the candidate's indices are valid and save them if they are
-                # score = start_end_matrix[start_idx, end_idx].item()
                 if self.valid_answer_idxs(start_idx, end_idx, n_non_padding, max_answer_length, seq_2_start_t):
                     score = start_end_matrix[start_idx, end_idx].item()
                     top_candidates.append([start_idx, end_idx, score])

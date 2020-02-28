@@ -343,7 +343,7 @@ class Inferencer:
             # can assume that we have only complete docs i.e. all the samples of one doc are in the current chunk
             preds_all = self.model.formatted_preds(logits=[prelim_preds],
                                                    baskets=baskets,
-                                                   rest_api_schema=rest_api_schema)
+                                                   rest_api_schema=rest_api_schema)[0]
         return preds_all
 
     def extract_vectors(
