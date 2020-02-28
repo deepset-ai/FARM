@@ -211,14 +211,13 @@ class AdaptiveModel(nn.Module):
 
         :param logits: model logits
         :type logits: torch.tensor
-        :param label_maps: dictionary for mapping ids to label strings
-        :type label_maps: dict[int:str]
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
         :return: predictions in the right format
         """
         all_preds = []
         # collect preds from all heads
+        # TODO add switch between single vs multiple prediction heads
         for head, logits_for_head in zip(
             self.prediction_heads, logits
         ):
