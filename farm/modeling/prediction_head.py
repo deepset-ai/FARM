@@ -1041,7 +1041,7 @@ class QuestionAnsweringHead(PredictionHead):
         # # disqualify where answers < seq_2_start_t and idx != 0
         # # disqualify where answer falls into padding
         # # seq_2_start_t can be different when 2 different questions are handled within one batch
-        # # n_non_padding cam be different on sample level, too
+        # # n_non_padding can be different on sample level, too
         # for i in range(batch_size):
         #     start_end_matrix[i, 1:seq_2_start_t[i], 1:seq_2_start_t[i]] = -888
         #     start_end_matrix[i, n_non_padding[i]-1:, n_non_padding[i]-1:] = -777
@@ -1107,7 +1107,7 @@ class QuestionAnsweringHead(PredictionHead):
         should be on sample/passage level (special tokens + question_tokens + passag_tokens)
         and not document level"""
 
-        # This function can seriously slow down inferencing and eval
+        # This function can seriously slow down inferencing and eval. In the future this function will be completely vectorized
         # Continue if start or end label points to a padding token
         if start_idx < seq_2_start_t and start_idx != 0:
             return False
@@ -1118,9 +1118,6 @@ class QuestionAnsweringHead(PredictionHead):
         if start_idx >= n_non_padding - 1:
             return False
         if end_idx >= n_non_padding - 1:
-            return False
-        # Check if start comes after end
-        if end_idx < start_idx:
             return False
 
         # # Check if start comes after end

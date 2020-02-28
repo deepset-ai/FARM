@@ -310,13 +310,14 @@ class Inferencer:
         data_loader = NamedDataLoader(
             dataset=dataset, sampler=SequentialSampler(dataset), batch_size=self.batch_size, tensor_names=tensor_names
         )
-        batch_preds = []
+        unaggregated_preds_all = []
         preds_all = []
         aggregate_preds = hasattr(self.model.prediction_heads[0], "aggregate_preds")
         for i, batch in enumerate(tqdm(data_loader, desc=f"Inferencing")):
             batch = {key: batch[key].to(self.device) for key in batch}
 
-            batch_samples = samples[i * self.batch_size : (i + 1) * self.batch_size]
+            if not aggregate_preds:
+                batch_samples = samples[i * self.batch_size : (i + 1) * self.batch_size]
 
             # get logits
             with torch.no_grad():
@@ -325,7 +326,7 @@ class Inferencer:
                     # So we transform logits to preds here as well
                     logits = self.model.forward(**batch)
                     preds = self.model.logits_to_preds(logits, **batch)[0]
-                    batch_preds += preds
+                    unaggregated_preds_all += preds
                 else:
                     logits = self.model.forward(**batch)[0]
                     preds = self.model.formatted_preds(
@@ -343,8 +344,8 @@ class Inferencer:
         # and then aggregating them here.
         if aggregate_preds:
             # can assume that we have only complete docs i.e. all the samples of one doc are in the current chunk
-            preds_all = self.model.formatted_preds(logits=[None], # Adaptive model hack
-                                                   preds_p=batch_preds,
+            preds_all = self.model.formatted_preds(logits=[None], # For QA we collected preds per batch and do not want to pass logits
+                                                   preds_p=unaggregated_preds_all,
                                                    baskets=baskets,
                                                    rest_api_schema=rest_api_schema)[0]
         return preds_all
