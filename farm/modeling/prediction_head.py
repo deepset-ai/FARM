@@ -920,7 +920,7 @@ class QuestionAnsweringHead(PredictionHead):
         """
         super(QuestionAnsweringHead, self).__init__()
         if kwargs is not None:
-            logger.warning(f"Some parameters have been parsed to the QuestionAnsweringHead that will not be used. "
+            logger.warning(f"Some unused parameters are passed to the QuestionAnsweringHeadgit commit. "
                            f"Might not be a problem. Params: {json.dumps(kwargs)}")
         self.layer_dims = layer_dims
         assert self.layer_dims[-1] == 2
