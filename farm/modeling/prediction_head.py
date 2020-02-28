@@ -1036,6 +1036,17 @@ class QuestionAnsweringHead(PredictionHead):
         # disqualify answers where start=0, but end != 0
         start_end_matrix[:, 0, 1:] = -999
 
+
+        # TODO continue vectorization of valid_answer_idxs
+        # # disqualify where answers < seq_2_start_t and idx != 0
+        # # disqualify where answer falls into padding
+        # # seq_2_start_t can be different when 2 different questions are handled within one batch
+        # # n_non_padding cam be different on sample level, too
+        # for i in range(batch_size):
+        #     start_end_matrix[i, 1:seq_2_start_t[i], 1:seq_2_start_t[i]] = -888
+        #     start_end_matrix[i, n_non_padding[i]-1:, n_non_padding[i]-1:] = -777
+
+
         # Sort the candidate answers by their score. Sorting happens on the flattened matrix.
         # flat_sorted_indices.shape: (batch_size, max_seq_len^2, 1)
         flat_scores = start_end_matrix.view(batch_size, -1)
@@ -1050,9 +1061,11 @@ class QuestionAnsweringHead(PredictionHead):
 
         # Get the n_best candidate answers for each sample that are valid (via some heuristic checks)
         for sample_idx in range(batch_size):
-            sample_top_n = self.get_top_candidates(sorted_candidates[sample_idx], start_end_matrix[sample_idx],
-                                                   n_non_padding[sample_idx], max_answer_length,
-                                                   seq_2_start_t[sample_idx])
+            sample_top_n = self.get_top_candidates(sorted_candidates[sample_idx],
+                                                           start_end_matrix[sample_idx],
+                                                           n_non_padding[sample_idx].item(),
+                                                           max_answer_length,
+                                                           seq_2_start_t[sample_idx].item())
             all_top_n.append(sample_top_n)
 
         return all_top_n
@@ -1109,39 +1122,40 @@ class QuestionAnsweringHead(PredictionHead):
         # Check if start comes after end
         if end_idx < start_idx:
             return False
-        # If one of the two indices is 0, the other must also be 0
-        if start_idx == 0 and end_idx != 0:
-            return False
-        if start_idx != 0 and end_idx == 0:
-            return False
+
+        # # Check if start comes after end
+        # # Handled on matrix level by: start_end_matrix[:, indices[0][1:], indices[1][1:]] = -999
+        # if end_idx < start_idx:
+        #     return False
+
+        # # If one of the two indices is 0, the other must also be 0
+        # # Handled on matrix level by setting: start_end_matrix[:, 0, 1:] = -999
+        # if start_idx == 0 and end_idx != 0:
+        #     return False
+        # if start_idx != 0 and end_idx == 0:
+        #     return False
 
         length = end_idx - start_idx + 1
         if length > max_answer_length:
             return False
         return True
 
-    def formatted_preds(self, logits, baskets, rest_api_schema=False):
-        """ Takes a list of logits, each corresponding to one sample, and converts them into document level predictions.
-        Leverages information in the SampleBaskets. Assumes that we are being passed logits from ALL samples in the one
-        SampleBasket i.e. all passages of a document. """
+    def formatted_preds(self, logits, preds_p, baskets, rest_api_schema=False):
+        """ Takes a list of predictions, each corresponding to one sample, and converts them into document level predictions.
+                Leverages information in the SampleBaskets. Assumes that we are being passed predictions from ALL samples
+                in the one SampleBasket i.e. all passages of a document.
+            Logits should be None, because we have already converted the logits to predictions before calling formatted_preds
+        """
 
         # Unpack some useful variables
         # passage_start_t is the token index of the passage relative to the document (usually a multiple of doc_stride)
         # seq_2_start_t is the token index of the first token in passage relative to the input sequence (i.e. number of
         # special tokens and question tokens that come before the passage tokens)
-        preds_p = logits # TODO refactor stupid hack
+        assert logits is None, "Logits are not None, something is passed wrongly into formatted_preds() in infer.py"
         samples = [s for b in baskets for s in b.samples]
         ids = [s.id.split("-") for s in samples]
         passage_start_t = [s.features[0]["passage_start_t"] for s in samples]
         seq_2_start_t = [s.features[0]["seq_2_start_t"] for s in samples]
-
-        # Prepare tensors
-        #logits = torch.stack(logits)
-        #padding_mask = torch.tensor([s.features[0]["padding_mask"] for s in samples], dtype=torch.long)
-        #start_of_word = torch.tensor([s.features[0]["start_of_word"] for s in samples], dtype=torch.long)
-
-        # Return n + 1 predictions per passage / sample
-        #preds_p = self.logits_to_preds(logits, padding_mask, start_of_word, seq_2_start_t)
 
         # Aggregate passage level predictions to create document level predictions.
         # This method assumes that all passages of each document are contained in preds_p

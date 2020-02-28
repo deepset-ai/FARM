@@ -310,7 +310,7 @@ class Inferencer:
         data_loader = NamedDataLoader(
             dataset=dataset, sampler=SequentialSampler(dataset), batch_size=self.batch_size, tensor_names=tensor_names
         )
-        prelim_preds = []
+        batch_preds = []
         preds_all = []
         aggregate_preds = hasattr(self.model.prediction_heads[0], "aggregate_preds")
         for i, batch in enumerate(tqdm(data_loader, desc=f"Inferencing")):
@@ -321,9 +321,11 @@ class Inferencer:
             # get logits
             with torch.no_grad():
                 if aggregate_preds:
+                    # Aggregation works on preds, not logits. We want as much processing happening in one batch + on GPU
+                    # So we transform logits to preds here as well
                     logits = self.model.forward(**batch)
                     preds = self.model.logits_to_preds(logits, **batch)[0]
-                    prelim_preds += preds
+                    batch_preds += preds
                 else:
                     logits = self.model.forward(**batch)[0]
                     preds = self.model.formatted_preds(
@@ -341,7 +343,8 @@ class Inferencer:
         # and then aggregating them here.
         if aggregate_preds:
             # can assume that we have only complete docs i.e. all the samples of one doc are in the current chunk
-            preds_all = self.model.formatted_preds(logits=[prelim_preds],
+            preds_all = self.model.formatted_preds(logits=[None], # Adaptive model hack
+                                                   preds_p=batch_preds,
                                                    baskets=baskets,
                                                    rest_api_schema=rest_api_schema)[0]
         return preds_all
