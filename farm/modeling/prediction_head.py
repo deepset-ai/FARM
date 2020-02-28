@@ -894,7 +894,13 @@ class QuestionAnsweringHead(PredictionHead):
     A question answering head predicts the start and end of the answer on token level.
     """
 
-    def __init__(self, layer_dims=[768,2], task_name="question_answering", no_ans_boost=0.0, context_window_size=100, n_best=5, **kwargs):
+    def __init__(self, layer_dims=[768,2],
+                 task_name="question_answering",
+                 no_ans_boost=0.0,
+                 context_window_size=100,
+                 n_best=5,
+                 n_best_per_sample=1,
+                 **kwargs):
         """
         :param layer_dims: dimensions of Feed Forward block, e.g. [768,2], for adjusting to BERT embedding. Output should be always 2
         :type layer_dims: List[Int]
@@ -905,10 +911,17 @@ class QuestionAnsweringHead(PredictionHead):
         :type no_ans_boost: float
         :param context_window_size: The size, in characters, of the window around the answer span that is used when displaying the context around the answer.
         :type context_window_size: int
-        :param n_best: The number of candidate positive answer spans to consider from each passage. Same value used as the number of candidates to be considered on document level.
+        :param n_best: The number of positive answer spans for each document.
         :type n_best: int
+        :param n_best_per_sample: num candidate answer spans to consider from each passage. Each passage also returns "no answer" info.
+                                  This is decoupled from n_best on document level, since predictions on passage level are very similar.
+                                  It should have a low value
+        :type n_best_per_sample: int
         """
         super(QuestionAnsweringHead, self).__init__()
+        if kwargs is not None:
+            logger.warning(f"Some parameters have been parsed to the QuestionAnsweringHead that will not be used. "
+                           f"Might not be a problem. Params: {json.dumps(kwargs)}")
         self.layer_dims = layer_dims
         assert self.layer_dims[-1] == 2
         self.feed_forward = FeedForwardBlock(self.layer_dims)
@@ -919,10 +932,11 @@ class QuestionAnsweringHead(PredictionHead):
             "span_classification"
         )  # predicts start and end token of answer
         self.task_name = task_name
-        self.generate_config()
         self.no_ans_boost = no_ans_boost
         self.context_window_size = context_window_size
         self.n_best = n_best
+        self.n_best_per_sample = n_best_per_sample
+        self.generate_config()
 
 
     @classmethod
@@ -1082,7 +1096,7 @@ class QuestionAnsweringHead(PredictionHead):
 
         # Iterate over all candidates and break when we have all our n_best candidates
         for candidate_idx in range(n_candidates):
-            if len(top_candidates) == self.n_best:
+            if len(top_candidates) == self.n_best_per_sample:
                 break
             else:
                 # Retrieve candidate's indices
