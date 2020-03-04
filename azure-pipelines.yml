@@ -32,6 +32,6 @@ jobs:
       displayName: 'pytest'
 
     - script: |
-        cd ../docs
-        sphinx-build -W -b html -d _build/doctrees . _build/html
+        pip install sphinx==2.1.2 && pip install sphinx-rtd-theme==0.4.3
+        cd docs && sphinx-build -W -b html -d _build/doctrees . _build/html
       displayName: 'Test Documentation'
