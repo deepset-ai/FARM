@@ -26,3 +26,4 @@ flask-restplus
 flask-cors
 # optional: for inference with fasttext
 #fasttext==0.9.1
+dill # pickle extension for (de-)serialization
