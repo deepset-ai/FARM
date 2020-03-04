@@ -6,25 +6,32 @@
 trigger:
 - master
 
-pool:
-  vmImage: 'ubuntu-latest'
-strategy:
-  matrix:
-    Python37:
-      python.version: '3.7'
+jobs:
+  - job: 'Test'
+    pool:
+      vmImage: 'ubuntu-latest'
+    strategy:
+      matrix:
+        Python37:
+          python.version: '3.7'
 
-steps:
-- task: UsePythonVersion@0
-  inputs:
-    versionSpec: '$(python.version)'
-  displayName: 'Use Python $(python.version)'
+    steps:
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '$(python.version)'
+      displayName: 'Use Python $(python.version)'
 
-- script: |
-    python -m pip install --upgrade pip
-    pip install -e .
-  displayName: 'Install dependencies'
+    - script: |
+        python -m pip install --upgrade pip
+        pip install -e .
+      displayName: 'Install dependencies'
 
-- script: |
-    pip install pytest pytest-azurepipelines
-    cd test && pytest
-  displayName: 'pytest'
+    - script: |
+        pip install pytest pytest-azurepipelines
+        cd test && pytest
+      displayName: 'pytest'
+
+    - script: |
+        cd ../docs
+        sphinx-build -W -b html -d _build/doctrees . _build/html
+      displayName: 'Test Documentation'
