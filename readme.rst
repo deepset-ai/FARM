@@ -85,13 +85,13 @@ Core features
 | LM from scratch (beta)       | x                 |                   |                   |                   |                   |                   |
 +------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
 
-
+****NEW**** Interested in doing Question Answering at scale? Checkout `Haystack <https://github.com/deepset-ai/haystack>`_!
 
 Resources
 ##########
 **Docs**
 
-`Full documentation <https://farm.deepset.ai>`_
+`Online documentation <https://farm.deepset.ai>`_
 
 **Tutorials**
 
