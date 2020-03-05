@@ -21,7 +21,7 @@ def lm_finetuning():
     )
 
     set_all_seeds(seed=42)
-        ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
+    ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
     ml_logger.init_experiment(
         experiment_name="Public_FARM", run_name="Run_minimal_example_lm"
     )
