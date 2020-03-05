@@ -5,6 +5,7 @@ from pathlib import Path
 from tqdm import tqdm
 import numpy
 import shutil
+import dill
 
 from farm.utils import MLFlowLogger as MlLogger
 from farm.utils import GracefulKiller
@@ -460,6 +461,7 @@ class Trainer:
                 "cuda_rng_state": torch.cuda.get_rng_state(),
             },
             checkpoint_path / "trainer",
+            pickle_module=dill,
         )
 
         checkpoint_name = f"epoch_{self.from_epoch}_step_{self.from_step}"
