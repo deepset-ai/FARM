@@ -572,7 +572,15 @@ class _StreamingDataSet(IterableDataset):
         self.filepath = filepath
         self.dataloader_workers = dataloader_workers
 
+        # calculate number of samples for __len__()
+        total_lines = sum(1 for line in open(filepath))
+        empty_lines = sum(1 if line == "\n" else 0 for line in open(filepath))
+        self.n_samples = total_lines - (2 * empty_lines)
+
         self.file_to_dicts_generator = processor.file_to_dicts(filepath)
+
+    def __len__(self):
+        return self.n_samples
 
     def __iter__(self):
         #  With IterableDataset, the same __iter__ is copied over to the multiple workers of

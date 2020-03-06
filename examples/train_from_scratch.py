@@ -77,17 +77,11 @@ def train_from_scratch():
     )
 
     # 5. Create an optimizer
-
-    # calculate approx number of training batches for streaming data silo
-    total_lines = sum(1 for line in open(data_dir/train_filename))
-    empty_lines = sum(1 if line == "\n" else 0 for line in open(data_dir/train_filename))
-    n_batches = int((total_lines - (2 * empty_lines)) / batch_size)
-
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
         learning_rate=learning_rate,
         schedule_opts={"name": "LinearWarmup", "warmup_proportion": warmup_proportion},
-        n_batches=n_batches,
+        n_batches=len(stream_data_silo.get_data_loader("train")),
         n_epochs=n_epochs,
         device=device,
         grad_acc_steps=8,
