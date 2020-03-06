@@ -1152,10 +1152,10 @@ class QuestionAnsweringHead(PredictionHead):
         return True
 
     def formatted_preds(self, logits, preds_p, baskets, rest_api_schema=False):
-        """ Takes a list of predictions, each corresponding to one sample, and converts them into document level predictions.
-                Leverages information in the SampleBaskets. Assumes that we are being passed predictions from ALL samples
-                in the one SampleBasket i.e. all passages of a document.
-            Logits should be None, because we have already converted the logits to predictions before calling formatted_preds
+        """ Takes a list of predictions, each corresponding to one sample, and converts them into document level
+        predictions. Leverages information in the SampleBaskets. Assumes that we are being passed predictions from
+        ALL samples in the one SampleBasket i.e. all passages of a document. Logits should be None, because we have
+        already converted the logits to predictions before calling formatted_preds.
         """
 
         # Unpack some useful variables

@@ -37,7 +37,7 @@ Experiment
 Metrics
 -------
 
-.. automodule:: farm.metrics
+.. automodule:: farm.evaluation.metrics
    :members:
    :undoc-members:
    :show-inheritance:
