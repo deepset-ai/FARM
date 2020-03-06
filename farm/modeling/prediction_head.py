@@ -1042,10 +1042,10 @@ class QuestionAnsweringHead(PredictionHead):
         end_matrix = end_logits.unsqueeze(1).expand(-1, max_seq_len, -1)
         start_end_matrix = start_matrix + end_matrix
 
-        # disqualify answers where start > end
-        # (set the lower triangular matrix to low value, incl diagonal, excl item 0,0)
-        indices = torch.tril_indices(max_seq_len, max_seq_len)
-        start_end_matrix[:, indices[0][1:], indices[1][1:]] = -999
+        # disqualify answers where end < start
+        # (set the lower triangular matrix to low value, excluding diagonal)
+        indices = torch.tril_indices(max_seq_len, max_seq_len, offset=-1)
+        start_end_matrix[:, indices[0][:], indices[1][:]] = -999
 
         # disqualify answers where start=0, but end != 0
         start_end_matrix[:, 0, 1:] = -999
