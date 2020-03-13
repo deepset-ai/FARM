@@ -1,3 +1,5 @@
+from math import ceil
+
 from torch.utils.data import DataLoader, Dataset, Sampler
 import torch
 
@@ -63,6 +65,14 @@ class NamedDataLoader(DataLoader):
             pin_memory=pin_memory,
             num_workers=num_workers,
         )
+
+    def __len__(self):
+        if type(self.dataset).__name__ == "_StreamingDataSet":
+            num_samples = len(self.dataset)
+            num_batches = ceil(num_samples / self.dataset.batch_size)
+            return num_batches
+        else:
+            return super().__len__()
 
 
 def covert_dataset_to_dataloader(dataset, sampler, batch_size):
