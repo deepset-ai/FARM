@@ -99,7 +99,8 @@ class Inferencer:
         task_type=None,
         return_class_probs=False,
         strict=True,
-        max_seq_len=256
+        max_seq_len=256,
+        doc_stride=128
     ):
         """
         Load an Inferencer incl. all relevant components (model, tokenizer, processor ...) either by
@@ -120,6 +121,10 @@ class Inferencer:
                        the PredictionHead (see torch.nn.module.load_state_dict()).
                        Set to `False` for backwards compatibility with PHs saved with older version of FARM.
         :type strict: bool
+        :param max_seq_len: maximum length of one text sample
+        :type max_seq_len: int
+        :param doc_stride: Only QA: When input text is longer than max_seq_len it gets split into parts, strided by doc_stride
+        :type doc_stride: int
         :return: An instance of the Inferencer.
 
         """
@@ -155,6 +160,7 @@ class Inferencer:
                     label_list=["start_token", "end_token"],
                     metric="squad",
                     data_dir=None,
+                    doc_stride=doc_stride
                 )
             elif task_type == "embeddings":
                 processor = InferenceProcessor(tokenizer=tokenizer, max_seq_len=max_seq_len)
