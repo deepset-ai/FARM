@@ -4,7 +4,10 @@
 # https://docs.microsoft.com/azure/devops/pipelines/languages/python
 
 trigger:
-- master
+  - pr:
+      branches:
+        - master
+  - master
 
 jobs:
   - job: 'Test'
