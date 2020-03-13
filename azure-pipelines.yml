@@ -4,9 +4,6 @@
 # https://docs.microsoft.com/azure/devops/pipelines/languages/python
 
 trigger:
-  - pr:
-      branches:
-        - master
   - master
 
 jobs:
