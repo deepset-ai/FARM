@@ -1,7 +1,6 @@
 import logging
 import multiprocessing as mp
 import os
-from contextlib import ExitStack
 from functools import partial
 
 import torch
@@ -100,7 +99,8 @@ class Inferencer:
         task_type=None,
         return_class_probs=False,
         strict=True,
-        max_seq_len=256
+        max_seq_len=256,
+        doc_stride=128
     ):
         """
         Load an Inferencer incl. all relevant components (model, tokenizer, processor ...) either by
@@ -121,6 +121,10 @@ class Inferencer:
                        the PredictionHead (see torch.nn.module.load_state_dict()).
                        Set to `False` for backwards compatibility with PHs saved with older version of FARM.
         :type strict: bool
+        :param max_seq_len: maximum length of one text sample
+        :type max_seq_len: int
+        :param doc_stride: Only QA: When input text is longer than max_seq_len it gets split into parts, strided by doc_stride
+        :type doc_stride: int
         :return: An instance of the Inferencer.
 
         """
@@ -156,6 +160,7 @@ class Inferencer:
                     label_list=["start_token", "end_token"],
                     metric="squad",
                     data_dir=None,
+                    doc_stride=doc_stride
                 )
             elif task_type == "embeddings":
                 processor = InferenceProcessor(tokenizer=tokenizer, max_seq_len=max_seq_len)
@@ -224,7 +229,7 @@ class Inferencer:
         preds_all = self.inference_from_dicts(dicts, rest_api_schema=False, max_processes=max_processes)
         return preds_all
 
-    def inference_from_dicts(self, dicts, rest_api_schema=False, max_processes=128):
+    def inference_from_dicts(self, dicts, rest_api_schema=False, max_processes=128, min_chunksize=4):
         """
         Runs down-stream inference on samples created from input dictionaries.
         The format of the input `dicts` depends on the task:
@@ -245,6 +250,9 @@ class Inferencer:
                               For very small number of dicts, time incurred in spawning processes could outweigh
                               performance boost, eg, in the case of HTTP APIs for Inference. For such cases
                               multiprocessing should be disabled.
+        :param min_chunksize: minimum number of dicts to put together in one chunk and feed to one process
+                              (only relevant if you do multiprocessing)
+        :type min_chunksize: int
         """
         if self.prediction_type == "embedder":
             raise TypeError(
@@ -256,33 +264,33 @@ class Inferencer:
 
         # Using multiprocessing
         if max_processes > 1:  # use multiprocessing if max_processes > 1
-            multiprocessing_chunk_size, num_cpus_used = calc_chunksize(len(dicts), max_processes=max_processes)
-            with ExitStack() as stack:
+            multiprocessing_chunk_size, num_cpus_used = calc_chunksize(len(dicts), max_processes=max_processes, min_chunksize=min_chunksize)
 
-                # Get us some workers (i.e. processes)
-                p = stack.enter_context(mp.Pool(processes=num_cpus_used))
-                logger.info(
-                    f"Got ya {num_cpus_used} parallel workers to do inference on {len(dicts)}dicts (chunksize = {multiprocessing_chunk_size})..."
-                )
-                log_ascii_workers(num_cpus_used, logger)
+            # Get us some workers (i.e. processes)
+            p = mp.Pool(processes=num_cpus_used)
+            logger.info(
+                f"Got ya {num_cpus_used} parallel workers to do inference on {len(dicts)}dicts (chunksize = {multiprocessing_chunk_size})..."
+            )
+            log_ascii_workers(num_cpus_used, logger)
 
-                # We group the input dicts into chunks and feed each chunk to a different process,
-                # where it gets converted to a pytorch dataset
-                results = p.imap(
-                    partial(self._create_datasets_chunkwise, processor=self.processor, rest_api_schema=rest_api_schema),
-                    grouper(dicts, multiprocessing_chunk_size),
-                    1,
-                )
+            # We group the input dicts into chunks and feed each chunk to a different process,
+            # where it gets converted to a pytorch dataset
+            results = p.imap(
+                partial(self._create_datasets_chunkwise, processor=self.processor, rest_api_schema=rest_api_schema),
+                grouper(dicts, multiprocessing_chunk_size),
+                1,
+            )
 
-                # Once a process spits out a preprocessed chunk. we feed this dataset directly to the model.
-                # So we don't need to wait until all preprocessing has finished before getting first predictions.
-                preds_all = []
-                with tqdm(total=len(dicts), unit=" Dicts") as pbar:
-                    for dataset, tensor_names, baskets in results:
-                        # TODO change format of formatted_preds in QA (list of dicts)
-                        preds_all.extend(self._get_predictions(dataset, tensor_names, baskets, rest_api_schema))
-                        pbar.update(multiprocessing_chunk_size)
-
+            # Once a process spits out a preprocessed chunk. we feed this dataset directly to the model.
+            # So we don't need to wait until all preprocessing has finished before getting first predictions.
+            preds_all = []
+            with tqdm(total=len(dicts), desc=f"Inferencing Dicts", unit=" Dicts") as pbar:
+                for dataset, tensor_names, baskets in results:
+                    # TODO change format of formatted_preds in QA (list of dicts)
+                    preds_all.extend(self._get_predictions(dataset, tensor_names, baskets, rest_api_schema, disable_tqdm=True))
+                    pbar.update(multiprocessing_chunk_size)
+            p.close()
+            p.join()
         # Using single process (helpful for debugging!)
         else:
             chunk = next(grouper(dicts, len(dicts)))
@@ -297,13 +305,12 @@ class Inferencer:
         """Convert ONE chunk of data (i.e. dictionaries) into ONE pytorch dataset.
         This is usually executed in one of many parallel processes.
         The resulting datasets of the processes are merged together afterwards"""
-
         dicts = [d[1] for d in chunk]
         indices = [d[0] for d in chunk]
         dataset, tensor_names, baskets = processor.dataset_from_dicts(dicts, indices, rest_api_schema, return_baskets=True)
         return dataset, tensor_names, baskets
 
-    def _get_predictions(self, dataset, tensor_names, baskets, rest_api_schema=False):
+    def _get_predictions(self, dataset, tensor_names, baskets, rest_api_schema=False, disable_tqdm=False):
         """ Feed the preprocessed dataset to the model and get the actual predictions"""
         samples = [s for b in baskets for s in b.samples]
 
@@ -313,7 +320,7 @@ class Inferencer:
         unaggregated_preds_all = []
         preds_all = []
         aggregate_preds = hasattr(self.model.prediction_heads[0], "aggregate_preds")
-        for i, batch in enumerate(tqdm(data_loader, desc=f"Inferencing")):
+        for i, batch in enumerate(tqdm(data_loader, desc=f"Inferencing Samples", unit=" Batches", disable=disable_tqdm)):
             batch = {key: batch[key].to(self.device) for key in batch}
 
             if not aggregate_preds:

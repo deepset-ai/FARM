@@ -1044,7 +1044,7 @@ class QuestionAnsweringHead(PredictionHead):
 
         # disqualify answers where end < start
         # (set the lower triangular matrix to low value, excluding diagonal)
-        indices = torch.tril_indices(max_seq_len, max_seq_len, offset=-1)
+        indices = torch.tril_indices(max_seq_len, max_seq_len, offset=-1, device=start_end_matrix.device)
         start_end_matrix[:, indices[0][:], indices[1][:]] = -999
 
         # disqualify answers where start=0, but end != 0
