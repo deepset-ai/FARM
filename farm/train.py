@@ -200,7 +200,7 @@ class Trainer:
 
         self.from_epoch = from_epoch
         self.from_step = from_step
-        self.global_step = (from_epoch * from_step) - 1
+        self.global_step = (from_epoch + 1) * (from_step + 1)
 
     def train(self):
         """ Perform the training procedure. """
@@ -229,15 +229,6 @@ class Trainer:
                     if resume_from_step == step:
                         resume_from_step = None
                     continue
-
-                if self.sigterm_handler and self.sigterm_handler.kill_now:  # save the current state as a checkpoint
-                    logger.info("Received a SIGTERM signal. Saving the current train state as a checkpoint ...")
-                    self._save()
-                    sys.exit(0)
-
-                # save a checkpoint and continue train (do not create a new checkpoint if just resumed from a checkpoint)
-                if self.checkpoint_every and step % self.checkpoint_every == 0 and resume_from_step + 1 != step:
-                    self._save()
 
                 progress_bar.set_description(f"Train epoch {epoch}/{self.epochs} (Cur. train loss: {loss:.4f})")
 
@@ -278,6 +269,17 @@ class Trainer:
                     break
                 self.global_step += 1
                 self.from_step = step
+
+                # save the current state as a checkpoint before exiting if a SIGTERM signal is received
+                if self.sigterm_handler and self.sigterm_handler.kill_now:
+                    logger.info("Received a SIGTERM signal. Saving the current train state as a checkpoint ...")
+                    self._save()
+                    sys.exit(0)
+
+                # save a checkpoint and continue train
+                if self.checkpoint_every and step % self.checkpoint_every == 0:
+                    self._save()
+
             self.from_epoch = epoch
             if do_stopping:
                 break
@@ -443,6 +445,7 @@ class Trainer:
 
         # TODO custom defined evaluators are not saved in the checkpoint.
         """
+        logger.info("Saving a train checkpoint ...")
         checkpoint_path = self.checkpoint_root_dir / "checkpoint_in_progress"
         checkpoint_path.mkdir(parents=True, exist_ok=True)
 
@@ -464,7 +467,7 @@ class Trainer:
             pickle_module=dill,
         )
 
-        checkpoint_name = f"epoch_{self.from_epoch}_step_{self.from_step}"
+        checkpoint_name = f"epoch_{self.from_epoch + 1}_step_{self.from_step}"
         checkpoint_path.replace(Path(checkpoint_path.parent) / checkpoint_name)
 
         saved_checkpoints = self._get_checkpoints(self.checkpoint_root_dir)
