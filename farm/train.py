@@ -123,6 +123,7 @@ class Trainer:
         checkpoints_to_keep=3,
         from_epoch=0,
         from_step=0,
+        global_step=0,
     ):
         """
         :param optimizer: An optimizer object that determines the learning strategy to be used during training
@@ -164,6 +165,8 @@ class Trainer:
         :param from_step: the step number to start the training from. In the case when training resumes from a saved
                checkpoint, it is used to fast-forward training to the last step in the checkpoint.
         :type from_step: int
+        :param global_step: the global step number across the training epochs.
+        :type global_step: int
         """
 
         self.model = model
@@ -200,7 +203,7 @@ class Trainer:
 
         self.from_epoch = from_epoch
         self.from_step = from_step
-        self.global_step = (from_epoch * from_step) - 1
+        self.global_step = global_step
 
     def train(self):
         """ Perform the training procedure. """
@@ -220,24 +223,15 @@ class Trainer:
 
         resume_from_step = self.from_step
 
-        for epoch in range(self.from_epoch + 1, self.epochs + 1):
+        for epoch in range(self.from_epoch, self.epochs):
             train_data_loader = self.data_silo.get_data_loader("train")
             progress_bar = tqdm(train_data_loader)
-            for step, batch in enumerate(progress_bar, start=1):
+            for step, batch in enumerate(progress_bar):
                 # when resuming training from a checkpoint, we want to fast forward to the step of the checkpoint
                 if resume_from_step and step <= resume_from_step:
                     if resume_from_step == step:
                         resume_from_step = None
                     continue
-
-                if self.sigterm_handler and self.sigterm_handler.kill_now:  # save the current state as a checkpoint
-                    logger.info("Received a SIGTERM signal. Saving the current train state as a checkpoint ...")
-                    self._save()
-                    sys.exit(0)
-
-                # save a checkpoint and continue train (do not create a new checkpoint if just resumed from a checkpoint)
-                if self.checkpoint_every and step % self.checkpoint_every == 0 and resume_from_step + 1 != step:
-                    self._save()
 
                 progress_bar.set_description(f"Train epoch {epoch}/{self.epochs} (Cur. train loss: {loss:.4f})")
 
@@ -278,6 +272,17 @@ class Trainer:
                     break
                 self.global_step += 1
                 self.from_step = step
+
+                # save the current state as a checkpoint before exiting if a SIGTERM signal is received
+                if self.sigterm_handler and self.sigterm_handler.kill_now:
+                    logger.info("Received a SIGTERM signal. Saving the current train state as a checkpoint ...")
+                    self._save()
+                    sys.exit(0)
+
+                # save a checkpoint and continue train
+                if self.checkpoint_every and step % self.checkpoint_every == 0:
+                    self._save()
+
             self.from_epoch = epoch
             if do_stopping:
                 break
@@ -443,6 +448,7 @@ class Trainer:
 
         # TODO custom defined evaluators are not saved in the checkpoint.
         """
+        logger.info("Saving a train checkpoint ...")
         checkpoint_path = self.checkpoint_root_dir / "checkpoint_in_progress"
         checkpoint_path.mkdir(parents=True, exist_ok=True)
 
@@ -491,6 +497,7 @@ class Trainer:
             "checkpoint_every": self.checkpoint_every,
             "from_epoch": self.from_epoch,
             "from_step": self.from_step,
+            "global_step": self.global_step,
             "log_learning_rate": self.log_learning_rate,
         }
 
