@@ -123,6 +123,7 @@ class Trainer:
         checkpoints_to_keep=3,
         from_epoch=0,
         from_step=0,
+        global_step=0,
     ):
         """
         :param optimizer: An optimizer object that determines the learning strategy to be used during training
@@ -164,6 +165,8 @@ class Trainer:
         :param from_step: the step number to start the training from. In the case when training resumes from a saved
                checkpoint, it is used to fast-forward training to the last step in the checkpoint.
         :type from_step: int
+        :param global_step: the global step number across the training epochs.
+        :type global_step
         """
 
         self.model = model
@@ -200,7 +203,7 @@ class Trainer:
 
         self.from_epoch = from_epoch
         self.from_step = from_step
-        self.global_step = (from_epoch + 1) * (from_step + 1)
+        self.global_step = global_step
 
     def train(self):
         """ Perform the training procedure. """
@@ -220,10 +223,10 @@ class Trainer:
 
         resume_from_step = self.from_step
 
-        for epoch in range(self.from_epoch + 1, self.epochs + 1):
+        for epoch in range(self.from_epoch, self.epochs):
             train_data_loader = self.data_silo.get_data_loader("train")
             progress_bar = tqdm(train_data_loader)
-            for step, batch in enumerate(progress_bar, start=1):
+            for step, batch in enumerate(progress_bar):
                 # when resuming training from a checkpoint, we want to fast forward to the step of the checkpoint
                 if resume_from_step and step <= resume_from_step:
                     if resume_from_step == step:
@@ -467,7 +470,7 @@ class Trainer:
             pickle_module=dill,
         )
 
-        checkpoint_name = f"epoch_{self.from_epoch + 1}_step_{self.from_step}"
+        checkpoint_name = f"epoch_{self.from_epoch}_step_{self.from_step}"
         checkpoint_path.replace(Path(checkpoint_path.parent) / checkpoint_name)
 
         saved_checkpoints = self._get_checkpoints(self.checkpoint_root_dir)
@@ -494,6 +497,7 @@ class Trainer:
             "checkpoint_every": self.checkpoint_every,
             "from_epoch": self.from_epoch,
             "from_step": self.from_step,
+            "global_step": self.global_step,
             "log_learning_rate": self.log_learning_rate,
         }
 
