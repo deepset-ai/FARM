@@ -166,7 +166,7 @@ class Trainer:
                checkpoint, it is used to fast-forward training to the last step in the checkpoint.
         :type from_step: int
         :param global_step: the global step number across the training epochs.
-        :type global_step
+        :type global_step: int
         """
 
         self.model = model
