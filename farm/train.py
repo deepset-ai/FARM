@@ -224,6 +224,7 @@ class Trainer:
         resume_from_step = self.from_step
 
         for epoch in range(self.from_epoch, self.epochs):
+            self.from_epoch = epoch
             train_data_loader = self.data_silo.get_data_loader("train")
             progress_bar = tqdm(train_data_loader)
             for step, batch in enumerate(progress_bar):
@@ -283,7 +284,6 @@ class Trainer:
                 if self.checkpoint_every and step % self.checkpoint_every == 0:
                     self._save()
 
-            self.from_epoch = epoch
             if do_stopping:
                 break
 
