@@ -5,6 +5,7 @@ import os
 import random
 import tarfile
 import tempfile
+import string
 from itertools import islice
 from pathlib import Path
 
@@ -601,3 +602,25 @@ def stream_grouper(iterable, n, worker_id, total_workers):
     iterable = filter_elements_per_worker(iterable)
 
     return iter(lambda: list(islice(iterable, n)), [])
+
+def generate_tok_to_ch_map(text):
+    """ Generates a mapping from token to character index when a string text is split using .split()
+    TODO e.g."""
+    map = [0]
+    follows_whitespace = False
+    for i, ch in enumerate(text):
+        if follows_whitespace:
+            if ch not in string.whitespace:
+                map.append(i)
+                follows_whitespace = False
+        else:
+            if ch in string.whitespace:
+                follows_whitespace = True
+    return map
+
+def split_with_metadata(text):
+    split_text = text.split()
+    indexes = generate_tok_to_ch_map(text)
+    assert len(split_text) == len(indexes)
+    return split_text, indexes
+

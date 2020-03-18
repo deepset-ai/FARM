@@ -22,9 +22,7 @@ from farm.data_handler.samples import (
     Sample,
     SampleBasket,
     create_samples_squad,
-    chunk_into_passages,
-    process_answers,
-    offset_to_token_idx
+    create_samples_qa
 )
 from farm.data_handler.utils import (
     read_tsv,
@@ -33,7 +31,8 @@ from farm.data_handler.utils import (
     read_ner_file,
     read_squad_file,
     is_json,
-    get_sentence_pair
+    get_sentence_pair,
+    split_with_metadata
 )
 from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
 from farm.utils import MLFlowLogger as MlLogger
@@ -990,7 +989,7 @@ class SquadProcessor(Processor):
                    "document_tokens": document_tokenized["tokens"],
                    "document_offsets": document_tokenized["offsets"],
                    "document_start_of_word": document_start_of_word,
-                   "document_id":document_id,
+                   "document_id": document_id,
                    "question_text": question_text,
                    "question_tokens": question_tokenized["tokens"],
                    "question_offsets": question_tokenized["offsets"],
@@ -1243,115 +1242,230 @@ class NaturalQuestionsProcessor(Processor):
             This method will split question-document pairs from the SampleBasket into question-passage pairs which will
         each form one sample. The "t" and "c" in variables stand for token and character respectively.
         """
-
-        # Initialize some basic variables
-        # question_tokens = dictionary["question_tokens"][:max_query_len]
-        # question_len_t = len(question_tokens)
-        # question_offsets = dictionary["question_offsets"]
-        samples = []
+        dictionary = cls.prepare_dict(dictionary)
+        dictionary_tokenized = cls.apply_tokenization(dictionary)
         n_special_tokens = cls.tokenizer.num_added_tokens(pair=True)
 
+        create_samples_qa(dictionary_tokenized, cls.max_query_len, cls.max_seq_len, cls.doc_stride, n_special_tokens)
+
+    def prepare_dict(self, dictionary):
         doc_text = dictionary["document_text"]
-        document_tokenized = tokenize_with_metadata(doc_text, cls.tokenizer)
-        doc_tokens = document_tokenized["tokens"]
-        doc_start_of_word = [int(x) for x in document_tokenized["start_of_word"]]
-        doc_offsets = document_tokenized["offsets"]
+        doc_tokens, tok_to_ch = split_with_metadata(doc_text)
+        converted_answers = []
+        for annotation in dictionary["annotations"]:
+            short_answer_idxs = []
+            # TODO write comment explaining this
+            for short_answer in annotation["short_answers"]:
+                short_answer_idxs.append(short_answer["start_token"])
+                short_answer_idxs.append(short_answer["end_token"])
+            answer_start_t = min(short_answer_idxs)
+            answer_end_t = max(short_answer_idxs)
+            answer_start_c = tok_to_ch[answer_start_t]
+            # when the end of the answer span is the end of the text
+            if answer_end_t == len(doc_tokens):
+                answer_end_c = len(doc_text)
+            else:
+                next_word_start_c = tok_to_ch[answer_end_t]
+                span = doc_text[:next_word_start_c].strip()
+                answer_end_c = len(span)
+            answer_text = doc_text[answer_start_c: answer_end_c]
+            assert answer_text == " ".join(doc_text.split()[answer_start_t: answer_end_t])
+            converted_answers.append({"text": answer_text,
+                                      "answer_start": answer_start_c,
+                                      "answer_type": annotation["yes_no_answer"]})
+        converted = {"id": dictionary["example_id"],
+                     "context": doc_text,
+                     "qas": [{"question": dictionary["question_text"],
+                              "id": dictionary["example_id"],
+                              "answers": converted_answers}]}
+        return converted
 
-        question_text = dictionary["question_text"]
-        question_tokenized = tokenize_with_metadata(question_text, cls.tokenizer)
-        question_tokens = question_tokenized["tokens"]
-        question_len_t = len(question_tokenized["tokens"])
-        question_offsets = document_tokenized["offsets"]
+    def apply_tokenization(self, dictionary):
+        """ This performs tokenization on all documents and questions. The result is a list (unnested)
+        where each entry is a dictionary for one document-question pair (potentially mutliple answers). """
 
-        # Calculate the number of tokens that can be reserved for the passage. This is calculated by considering
-        # the max_seq_len, the number of tokens in the question and the number of special tokens that will be added
-        # when the question and passage are joined (e.g. [CLS] and [SEP])
-        passage_len_t = cls.max_seq_len - question_len_t - n_special_tokens
+        raw_baskets = []
+        if "text" in dictionary and "context" not in dictionary:
+            raise Exception("It seems that your input is in rest API format. Try setting rest_api_schema=True "
+                            "when calling inference from dicts")
+        document_text = dictionary["context"]
+        document_id = dictionary.get("document_id",None)
 
-        # Perform chunking of document into passages. The sliding window moves in steps of doc_stride.
-        # passage_spans is a list of dictionaries where each defines the start and end of each passage
-        # on both token and character level
-        passage_spans = chunk_into_passages(doc_offsets,
-                                            cls.doc_stride,
-                                            passage_len_t,
-                                            doc_text)
-        for passage_span in passage_spans:
-            # Unpack each variable in the dictionary. The "_t" and "_c" indicate
-            # whether the index is on the token or character level
-            passage_start_t = passage_span["passage_start_t"]
-            passage_end_t = passage_span["passage_end_t"]
-            passage_start_c = passage_span["passage_start_c"]
-            passage_end_c = passage_span["passage_end_c"]
-            passage_id = passage_span["passage_id"]
+        document_tokenized = tokenize_with_metadata(document_text, self.tokenizer)
+        document_start_of_word = [int(x) for x in document_tokenized["start_of_word"]]
+        questions = dictionary["qas"]
+        for question in questions:
+            answers = []
+            # For training and dev where labelled samples are read in from a SQuAD style file
+            try:
+                squad_id = question["id"]
+                question_text = question["question"]
+                for answer in question["answers"]:
+                    a = {"text": answer["text"],
+                         "offset": answer["answer_start"],
+                         "answer_type": answer["answer_type"]}
+                    answers.append(a)
+            # For inference where samples are read in as dicts without an id or answers
+            except TypeError:
+                squad_id = None
+                question_text = question
+            question_tokenized = tokenize_with_metadata(question_text, self.tokenizer)
+            question_start_of_word = [int(x) for x in question_tokenized["start_of_word"]]
 
-            # passage_offsets will be relative to the start of the passage (i.e. they will start at 0)
-            # TODO: Is passage offsets actually needed? At this point, maybe we only care about token level
-            passage_offsets = doc_offsets[passage_start_t: passage_end_t]
-            passage_start_of_word = doc_start_of_word[passage_start_t: passage_end_t]
-            passage_offsets = [x - passage_offsets[0] for x in passage_offsets]
-            passage_tokens = doc_tokens[passage_start_t: passage_end_t]
-            passage_text = dictionary["document_text"][passage_start_c: passage_end_c]
+            if "is_impossible" not in question:
+                is_impossible = False
+            else:
+                is_impossible = question["is_impossible"]
 
-            # Deal with the potentially many answers (e.g. Squad dev set)
-            answers_clear, answers_tokenized = process_answers_nq(dictionary["annotations"],
-                                                                  doc_offsets,
-                                                                  passage_start_c,
-                                                                  passage_start_t)
+            raw = {"document_text": document_text,
+                   "document_tokens": document_tokenized["tokens"],
+                   "document_offsets": document_tokenized["offsets"],
+                   "document_start_of_word": document_start_of_word,
+                   "document_id": document_id,
+                   "question_text": question_text,
+                   "question_tokens": question_tokenized["tokens"],
+                   "question_offsets": question_tokenized["offsets"],
+                   "question_start_of_word": question_start_of_word,
+                   "answers": answers,
+                   "is_impossible": is_impossible,
+                   "squad_id": squad_id}
+            raw_baskets.append(raw)
+        return raw_baskets
 
-            clear_text = {"passage_text": passage_text,
-                          "question_text": dictionary["question_text"],
-                          "passage_id": passage_id,
-                          "answers": answers_clear,
-                          "is_impossible": dictionary["is_impossible"]}
-            tokenized = {"passage_start_t": passage_start_t,
-                         "passage_tokens": passage_tokens,
-                         "passage_offsets": passage_offsets,
-                         "passage_start_of_word": passage_start_of_word,
-                         "question_tokens": question_tokens,
-                         "question_offsets": question_offsets,
-                         "question_start_of_word": dictionary["question_start_of_word"][:cls.max_query_len],
-                         "answers": answers_tokenized}
-            samples.append(Sample(id=passage_id,
-                                  clear_text=clear_text,
-                                  tokenized=tokenized))
-        return samples
+
 
     def _sample_to_features(cls, sample: Sample) -> dict:
-        raise NotImplementedError
-
-def process_answers_nq(answers, doc_offsets, passage_start_c, passage_start_t):
-    answers_clear = []
-    answers_tokenized = []
-    for answer in answers:
-        for sa in answer["short_answers"]:
+        NotImplementedError
 
 
-        #TODO: NQ can have multiple short answers - follow basic implementation of span? https://arxiv.org/pdf/1901.08634.pdf
-
-        # This section calculates start and end relative to document
-        answer_text = answer["annotations"]
-        answer_len_c = len(answer_text)
-        answer_start_c = answer["offset"]
-        answer_end_c = answer_start_c + answer_len_c - 1
-        answer_start_t = offset_to_token_idx(doc_offsets, answer_start_c)
-        answer_end_t = offset_to_token_idx(doc_offsets, answer_end_c)
-
-        # TODO: Perform check that answer can be recovered from document?
-
-        # This section converts start and end so that they are relative to the passage
-        # TODO: Is this actually necessary on character level?
-        answer_start_c -= passage_start_c
-        answer_end_c -= passage_start_c
-        answer_start_t -= passage_start_t
-        answer_end_t -= passage_start_t
-
-        curr_answer_clear = {"text": answer_text,
-                             "start_c": answer_start_c,
-                             "end_c": answer_end_c}
-        curr_answer_tokenized = {"start_t": answer_start_t,
-                                 "end_t": answer_end_t}
-
-        answers_clear.append(curr_answer_clear)
-        answers_tokenized.append(curr_answer_tokenized)
 
 
+
+#     def create_samples_nq(cls, dictionary):
+#         # Initialize some basic variables
+#         # question_tokens = dictionary["question_tokens"][:max_query_len]
+#         # question_len_t = len(question_tokens)
+#         # question_offsets = dictionary["question_offsets"]
+#         samples = []
+#         n_special_tokens = cls.tokenizer.num_added_tokens(pair=True)
+#
+#         doc_text = dictionary["document_text"]
+#         document_tokenized = tokenize_with_metadata(doc_text, cls.tokenizer)
+#         doc_tokens = document_tokenized["tokens"]
+#         doc_start_of_word = [int(x) for x in document_tokenized["start_of_word"]]
+#         doc_offsets = document_tokenized["offsets"]
+#
+#         question_text = dictionary["question_text"]
+#         question_tokenized = tokenize_with_metadata(question_text, cls.tokenizer)
+#         question_tokens = question_tokenized["tokens"]
+#         question_len_t = len(question_tokenized["tokens"])
+#         question_offsets = document_tokenized["offsets"]
+#
+#         # Calculate the number of tokens that can be reserved for the passage. This is calculated by considering
+#         # the max_seq_len, the number of tokens in the question and the number of special tokens that will be added
+#         # when the question and passage are joined (e.g. [CLS] and [SEP])
+#         passage_len_t = cls.max_seq_len - question_len_t - n_special_tokens
+#
+#         # Perform chunking of document into passages. The sliding window moves in steps of doc_stride.
+#         # passage_spans is a list of dictionaries where each defines the start and end of each passage
+#         # on both token and character level
+#         passage_spans = chunk_into_passages(doc_offsets,
+#                                             cls.doc_stride,
+#                                             passage_len_t,
+#                                             doc_text)
+#         for passage_span in passage_spans:
+#             # Unpack each variable in the dictionary. The "_t" and "_c" indicate
+#             # whether the index is on the token or character level
+#             passage_start_t = passage_span["passage_start_t"]
+#             passage_end_t = passage_span["passage_end_t"]
+#             passage_start_c = passage_span["passage_start_c"]
+#             passage_end_c = passage_span["passage_end_c"]
+#             passage_id = passage_span["passage_id"]
+#
+#             # passage_offsets will be relative to the start of the passage (i.e. they will start at 0)
+#             # TODO: Is passage offsets actually needed? At this point, maybe we only care about token level
+#             passage_offsets = doc_offsets[passage_start_t: passage_end_t]
+#             passage_start_of_word = doc_start_of_word[passage_start_t: passage_end_t]
+#             passage_offsets = [x - passage_offsets[0] for x in passage_offsets]
+#             passage_tokens = doc_tokens[passage_start_t: passage_end_t]
+#             passage_text = dictionary["document_text"][passage_start_c: passage_end_c]
+#
+#             # Deal with the potentially many answers (e.g. Squad dev set)
+#             answers_clear, answers_tokenized = process_answers_nq(dictionary["annotations"],
+#                                                                   doc_offsets,
+#                                                                   passage_start_c,
+#                                                                   passage_start_t)
+#
+#             clear_text = {"passage_text": passage_text,
+#                           "question_text": dictionary["question_text"],
+#                           "passage_id": passage_id,
+#                           "answers": answers_clear,
+#                           "is_impossible": dictionary["is_impossible"]}
+#             tokenized = {"passage_start_t": passage_start_t,
+#                          "passage_tokens": passage_tokens,
+#                          "passage_offsets": passage_offsets,
+#                          "passage_start_of_word": passage_start_of_word,
+#                          "question_tokens": question_tokens,
+#                          "question_offsets": question_offsets,
+#                          "question_start_of_word": dictionary["question_start_of_word"][:cls.max_query_len],
+#                          "answers": answers_tokenized}
+#             samples.append(Sample(id=passage_id,
+#                                   clear_text=clear_text,
+#                                   tokenized=tokenized))
+#         return samples
+#
+#     def _sample_to_features(cls, sample: Sample) -> dict:
+#         raise NotImplementedError
+#
+# def process_answers_nq(answers, doc_offsets, passage_start_c, passage_start_t):
+#     answers_clear = []
+#     answers_tokenized = []
+#     for answer in answers:
+#         # NQ samples can have multiple short answers - we follow basic this implementation
+#         # (https://arxiv.org/pdf/1901.08634.pdf)
+#         #       "we set the start and end target indices to point to the smallest span containing all
+#         #       the annotated short answer spans"
+#         all_indices = []
+#         for sa in answer["short_answers"]:
+#             all_indices.append(sa["start_token"])
+#             all_indices.append(sa["end_token"])
+#         start_index = min(all_indices)
+#         end_index = max(all_indices)
+#         print()
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#
+#         # This section calculates start and end relative to document
+#         answer_text = answer["annotations"]
+#         answer_len_c = len(answer_text)
+#         answer_start_c = answer["offset"]
+#         answer_end_c = answer_start_c + answer_len_c - 1
+#         answer_start_t = offset_to_token_idx(doc_offsets, answer_start_c)
+#         answer_end_t = offset_to_token_idx(doc_offsets, answer_end_c)
+#
+#         # TODO: Perform check that answer can be recovered from document?
+#
+#         # This section converts start and end so that they are relative to the passage
+#         # TODO: Is this actually necessary on character level?
+#         answer_start_c -= passage_start_c
+#         answer_end_c -= passage_start_c
+#         answer_start_t -= passage_start_t
+#         answer_end_t -= passage_start_t
+#
+#         curr_answer_clear = {"text": answer_text,
+#                              "start_c": answer_start_c,
+#                              "end_c": answer_end_c}
+#         curr_answer_tokenized = {"start_t": answer_start_t,
+#                                  "end_t": answer_end_t}
+#
+#         answers_clear.append(curr_answer_clear)
+#         answers_tokenized.append(curr_answer_tokenized)
+#
+#
