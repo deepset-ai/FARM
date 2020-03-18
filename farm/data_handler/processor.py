@@ -1237,16 +1237,21 @@ class NaturalQuestionsProcessor(Processor):
         dicts = [json.loads(l) for l in open(file)]
         return dicts
 
-    def _dict_to_samples(cls, dictionary: dict, all_dicts=None) -> [Sample]:
+    def _dict_to_samples(self, dictionary: dict, all_dicts=None) -> [Sample]:
         """
             This method will split question-document pairs from the SampleBasket into question-passage pairs which will
         each form one sample. The "t" and "c" in variables stand for token and character respectively.
         """
-        dictionary = cls.prepare_dict(dictionary)
-        dictionary_tokenized = cls.apply_tokenization(dictionary)
-        n_special_tokens = cls.tokenizer.num_added_tokens(pair=True)
+        dictionary = self.prepare_dict(dictionary)
+        dictionary_tokenized = self.apply_tokenization(dictionary)[0]
+        n_special_tokens = self.tokenizer.num_added_tokens(pair=True)
 
-        create_samples_qa(dictionary_tokenized, cls.max_query_len, cls.max_seq_len, cls.doc_stride, n_special_tokens)
+        samples = create_samples_qa(dictionary_tokenized,
+                                    self.max_query_length,
+                                    self.max_seq_len,
+                                    self.doc_stride,
+                                    n_special_tokens)
+        return samples
 
     def prepare_dict(self, dictionary):
         doc_text = dictionary["document_text"]

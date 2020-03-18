@@ -201,15 +201,7 @@ def create_samples_squad(dictionary, max_query_len, max_seq_len, doc_stride, n_s
 
 
 def process_answers(answers, doc_offsets, passage_start_c, passage_start_t):
-    """ This processes the potentially multiple answers (c.f. Squad dev set) and returns their start and end indices
-    relative to the passage (not the document)
-
-    :param answers:
-    :param doc_offsets:
-    :param passage_start_c:
-    :param passage_start_t:
-    :return:
-    """
+    """TODO Write Comment"""
     answers_clear = []
     answers_tokenized = []
     for answer in answers:
