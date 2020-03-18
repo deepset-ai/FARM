@@ -357,7 +357,7 @@ class Trainer:
             if resume_from_checkpoint == "latest":
                 saved_checkpoints = cls._get_checkpoints(checkpoint_root_dir)
                 if saved_checkpoints:
-                    checkpoint_to_load = saved_checkpoints[0][0]  # latest checkpoint
+                    checkpoint_to_load = saved_checkpoints[0]  # latest checkpoint
                 else:
                     checkpoint_to_load = None
             else:
@@ -422,17 +422,21 @@ class Trainer:
     @classmethod
     def _get_checkpoints(cls, checkpoint_root_dir):
         """
-        Get a list of checkpoints sorted by the number of training steps.
+        Get a list of checkpoint dirs sorted by the number of training steps.
         """
         dirs = [d for d in checkpoint_root_dir.iterdir() if d.is_dir() and d.name.startswith("epoch")]
 
-        checkpoints_with_total_steps = []
+        checkpoints_with_epoch_and_step = []  # list of tuple(checkpoint_dir, epoch, step)
         for d in dirs:
             epoch, step = [int(s) for s in str(d).split("_") if s.isdigit()]
-            checkpoints_with_total_steps.append((d, (epoch + 1) * (step + 1)))
-        checkpoints_with_total_steps.sort(key=lambda tup: tup[1], reverse=True)
+            checkpoints_with_epoch_and_step.append((d, epoch, step))
 
-        return checkpoints_with_total_steps
+        sorted_checkpoints_with_epoch_and_step = sorted(checkpoints_with_epoch_and_step,
+                                                        key=lambda tup: (tup[1], tup[2]),  # sort by epoch and step
+                                                        reverse=True)
+        sorted_checkpoints = [tup[0] for tup in sorted_checkpoints_with_epoch_and_step]
+
+        return sorted_checkpoints
 
     def _save(self):
         """
@@ -475,7 +479,7 @@ class Trainer:
 
         saved_checkpoints = self._get_checkpoints(self.checkpoint_root_dir)
         if len(saved_checkpoints) > self.checkpoints_to_keep:
-            for cp, _ in saved_checkpoints[self.checkpoints_to_keep:]:
+            for cp in saved_checkpoints[self.checkpoints_to_keep:]:
                 shutil.rmtree(cp)
 
         logger.info(f"Saved a training checkpoint at {checkpoint_name}")
