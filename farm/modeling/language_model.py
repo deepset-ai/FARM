@@ -21,8 +21,12 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import json
 import logging
 import os
+import io
 from pathlib import Path
 
+from dotmap import DotMap
+from tqdm import tqdm
+import copy
 import numpy as np
 import torch
 from torch import nn
@@ -36,10 +40,12 @@ from transformers.modeling_albert import AlbertModel, AlbertConfig
 from transformers.modeling_xlm_roberta import XLMRobertaModel, XLMRobertaConfig
 from transformers.modeling_distilbert import DistilBertModel, DistilBertConfig
 from transformers.modeling_utils import SequenceSummary
+from transformers.tokenization_bert import load_vocab
 
 # These are the names of the attributes in various model configs which refer to the number of dimensions
 # in the output vectors
 OUTPUT_DIM_NAMES = ["dim", "hidden_size", "d_model"]
+PRETRAINED_CONFIG_ARCHIVE_MAP = {"glove-german-uncased":"https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/glove-german-uncased/language_model_config.json"}
 
 class LanguageModel(nn.Module):
     """
@@ -127,6 +133,8 @@ class LanguageModel(nn.Module):
                     language_model_class = 'Bert'
                 elif 'xlnet' in pretrained_model_name_or_path:
                     language_model_class = 'XLNet'
+                elif "word2vec" in pretrained_model_name_or_path.lower() or "glove" in pretrained_model_name_or_path.lower():
+                    language_model_class = 'WordEmbedding_LM'
 
             language_model = cls.subclasses[language_model_class].load(pretrained_model_name_or_path, **kwargs)
             if language_model_class == 'XLMRoberta':
@@ -859,3 +867,238 @@ class XLNet(LanguageModel):
 
     def disable_hidden_states_output(self):
         self.model.output_hidden_states = False
+
+class EmbeddingConfig():
+    def __init__(self,
+                 name=None,
+                 embeddings_filename=None,
+                 vocab_filename=None,
+                 vocab_size=None,
+                 hidden_size=None,
+                 language=None,
+                 **kwargs):
+        self.name = name
+        self.embeddings_filename = embeddings_filename
+        self.vocab_filename = vocab_filename
+        self.vocab_size = vocab_size
+        self.hidden_size = hidden_size
+        self.language = language
+
+    def to_dict(self):
+        """
+        Serializes this instance to a Python dictionary.
+
+        Returns:
+            :obj:`Dict[str, any]`: Dictionary of all the attributes that make up this configuration instance,
+        """
+        output = copy.deepcopy(self.__dict__)
+        if hasattr(self.__class__, "model_type"):
+            output["model_type"] = self.__class__.model_type
+        return output
+
+    def to_json_string(self):
+        """
+        Serializes this instance to a JSON string.
+
+        Returns:
+            :obj:`string`: String containing all the attributes that make up this configuration instance in JSON format.
+        """
+        return json.dumps(self.to_dict(), indent=2, sort_keys=True) + "\n"
+
+
+
+
+class EmbeddingModel():
+    def __init__(self, path, config, vocab_filename):
+        super(EmbeddingModel, self).__init__()
+        self.config = EmbeddingConfig(**dict(config))
+        self.vocab = load_vocab(vocab_filename)
+        self.embeddings = self.load_vectors(path=path)
+        assert "[UNK]" in self.vocab, "No [UNK] symbol in Wordembeddingmodel! Aborting"
+        self.unk_idx = self.vocab["[UNK]"]
+
+    def save(self,save_dir):
+        # Save Weights
+        save_name = Path(save_dir) / self.config.embeddings_filename
+        with open(save_name, "w") as f:
+            for w, vec in zip(self.vocab, self.embeddings):
+                f.write(w + " " + " ".join(["%.6f" % v for v in vec]) + "\n")
+        f.close()
+
+    def load_vectors(self,path):
+
+        f = io.open(path, 'rt', encoding='utf-8').readlines()
+
+        words_transformed = set()
+        repetitions = 0
+        embeddings_dimensionality = None
+        vectors = {}
+
+        for line in tqdm(f):
+            line = line.strip()
+            if line:
+                word, vec = line.split(' ', 1)
+                if (word not in words_transformed):  # omit repetitions = speed up + debug
+                    try:
+                        np_vec = np.fromstring(vec, sep=' ')
+                        if embeddings_dimensionality is None:
+                            if len(np_vec) < 4:  # word2vec includes number of vectors and its dimension as header
+                                logger.info("Skipping header")
+                                continue
+                            else:
+                                embeddings_dimensionality = len(np_vec)
+                        if len(np_vec) == embeddings_dimensionality:
+                            vectors[word] = np_vec
+                            words_transformed.add(word)
+                    except:
+                        if logger is not None:
+                            logger.debug("Embeddings reader: Could not convert line: {}".format(line))
+                else:
+                    repetitions += 1
+
+
+        embeddings = torch.zeros((len(self.vocab),embeddings_dimensionality)) # TODO random init of all embeddings, so if it isnt filled it can still learn
+        for i, w in enumerate(self.vocab):
+            current = vectors.get(w,np.zeros(embeddings_dimensionality))
+            if w not in vectors:
+                logger.warning(f"Could not load pretrained embedding for word: {w}")
+            embeddings[i,:] = torch.tensor(current)
+        return embeddings
+
+    def resize_token_embeddings(self, new_num_tokens=None):
+        # hacky way of returning an object with num_embeddings attribute set
+        # TODO add functionality to add words/tokens to a wordembeddingmodel after initialization
+        temp = {}
+        temp["num_embeddings"] = len(self.vocab)
+        temp = DotMap(temp)
+        return temp
+
+
+
+class WordEmbedding_LM(LanguageModel):
+    """
+    A wrapper around facebooks fasttext https://github.com/facebookresearch/fastText/
+     to fit the LanguageModel class.
+
+    NOTE:
+    - since fasttext just maps words to embeddings, we can not apply gradients to fasttext directly
+    - Unlike the other LM variants, fasttext does not output the
+    pooled_output. An additional pooler is initialized.
+
+    """
+
+    def __init__(self):
+        super(WordEmbedding_LM, self).__init__()
+        self.model = None
+        self.name = "WordEmbedding_LM"
+        self.pooler = None
+
+
+    @classmethod
+    def load(cls, pretrained_model_name_or_path, language=None, **kwargs):
+        """
+        Load a language model either by supplying
+
+        * a local path of a model trained via FARM ("some_dir/farm_model")
+        * the name of a remote model on s3
+        * TODO: or a local path of a model trained via transformers (NOT SUPPORTED)
+
+        :param pretrained_model_name_or_path: name or path of a model
+        :param language: (Optional) Name of language the model was trained for (e.g. "german").
+                         If not supplied, FARM will try to infer it from the model name.
+        :return: Language Model
+
+        """
+        import fasttext
+        wordembedding_LM = cls()
+        if "farm_lm_name" in kwargs:
+            wordembedding_LM.name = kwargs["farm_lm_name"]
+        else:
+            wordembedding_LM.name = pretrained_model_name_or_path
+        # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
+        farm_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
+        if os.path.exists(farm_lm_config):
+            # FARM style
+            config = json.load(open(farm_lm_config,"r"))
+            farm_lm_model = Path(pretrained_model_name_or_path) / config["embeddings_filename"]
+            vocab_filename = Path(pretrained_model_name_or_path) / config["vocab_filename"]
+            wordembedding_LM.model = EmbeddingModel(path=str(farm_lm_model), config=config, vocab_filename=str(vocab_filename))
+            wordembedding_LM.language = config.get("language", None)
+        else:
+            raise NotImplementedError
+            #load_config(pretrained_model_name_or_path)
+
+
+        # taking the mean for getting the pooled representation
+        # TODO: extend this to other pooling operations or remove completely
+        wordembedding_LM.pooler = lambda x: torch.mean(x, dim=0)
+        return wordembedding_LM
+
+
+    def load_config(self, pretrained_model_name_or_path):
+
+        from transformers.file_utils import cached_path
+        from transformers import configuration_utils
+        config_file = PRETRAINED_CONFIG_ARCHIVE_MAP[pretrained_model_name_or_path]
+
+        try:
+            # Load from URL or cache if already cached
+            resolved_config_file = cached_path(
+                config_file,
+            )
+            # Load config dict
+            if resolved_config_file is None:
+                raise EnvironmentError
+            config_dict = configuration_utils._dict_from_json_file(resolved_config_file)
+
+        except EnvironmentError:
+            if pretrained_model_name_or_path in PRETRAINED_CONFIG_ARCHIVE_MAP:
+                msg = "Couldn't reach server at '{}' to download pretrained model configuration file.".format(
+                    config_file
+                )
+            else:
+                msg = (
+                    "Model name '{}' was not found in model name list. "
+                    "We assumed '{}' was a path, a model identifier, or url to a configuration file or "
+                    "a directory containing such a file but couldn't find any such file at this path or url.".format(
+                        pretrained_model_name_or_path, config_file,
+                    )
+                )
+            raise EnvironmentError(msg)
+        return config_dict
+
+    def save(self, save_dir):
+        """
+        Save the model embeddings and its config file so that it can be loaded again.
+        #TODO make embeddings trainable and save trained embeddings
+        :param save_dir: The directory in which the model should be saved.
+        :type save_dir: str
+        """
+        #save model
+        self.model.save(save_dir=save_dir)
+        #save config
+        self.save_config(save_dir=save_dir)
+
+
+    def forward(self, input_ids, **kwargs,):
+        """
+        Perform the forward pass of the fasttext model.
+        This is just the mapping of words to their corresponding (and aggregated) n-gram embeddings
+        """
+        sequence_output = []
+        pooled_output = []
+        for sample in input_ids:
+            sample_embeddings = []
+            for index in sample:
+                #if index != self.model.unk_idx:
+                sample_embeddings.append(self.model.embeddings[index])
+            sample_embeddings = torch.stack(sample_embeddings)
+            sequence_output.append(sample_embeddings)
+            pooled_output.append(self.pooler(sample_embeddings))
+
+        #pooled_output = torch.stack([torch.tensor(x) for x in pooled_output])
+        sequence_output = torch.stack(sequence_output)
+        pooled_output = torch.stack(pooled_output)
+        m = nn.BatchNorm1d(pooled_output.shape[1])
+        pooled_output = m(pooled_output)
+        return sequence_output, pooled_output
