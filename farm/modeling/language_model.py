@@ -37,6 +37,8 @@ from transformers.modeling_xlm_roberta import XLMRobertaModel, XLMRobertaConfig
 from transformers.modeling_distilbert import DistilBertModel, DistilBertConfig
 from transformers.modeling_utils import SequenceSummary
 
+from farm.utils import s3e_pooling
+
 # These are the names of the attributes in various model configs which refer to the number of dimensions
 # in the output vectors
 OUTPUT_DIM_NAMES = ["dim", "hidden_size", "d_model"]
@@ -235,7 +237,7 @@ class LanguageModel(nn.Module):
         return language
 
     def formatted_preds(self, input_ids, samples, extraction_strategy="pooled", extraction_layer=-1, ignore_first_token=True,
-                        padding_mask=None, **kwargs):
+                        padding_mask=None, s3e_stats=None, **kwargs):
         # get language model output from last layer
         if extraction_layer == -1:
             sequence_output, pooled_output = self.forward(input_ids, padding_mask=padding_mask, **kwargs)
@@ -258,6 +260,10 @@ class LanguageModel(nn.Module):
             vecs = self._pool_tokens(sequence_output, padding_mask, extraction_strategy, ignore_first_token=ignore_first_token)
         elif extraction_strategy == "cls_token":
             vecs = sequence_output[:, 0, :].cpu().numpy()
+        elif extraction_strategy == "s3e":
+            vecs = self._pool_tokens(sequence_output, padding_mask, extraction_strategy,
+                                     ignore_first_token=ignore_first_token,
+                                     input_ids=input_ids, s3e_stats=s3e_stats)
         else:
             raise NotImplementedError
 
@@ -269,7 +275,7 @@ class LanguageModel(nn.Module):
             preds.append(pred)
         return preds
 
-    def _pool_tokens(self, sequence_output, padding_mask, strategy, ignore_first_token):
+    def _pool_tokens(self, sequence_output, padding_mask, strategy, ignore_first_token, input_ids=None, s3e_stats=None):
 
         token_vecs = sequence_output.cpu().numpy()
         # we only take the aggregated value of non-padding tokens
@@ -284,7 +290,14 @@ class LanguageModel(nn.Module):
             pooled_vecs = np.ma.array(data=token_vecs, mask=ignore_mask_3d).max(axis=1).data
         if strategy == "reduce_mean":
             pooled_vecs = np.ma.array(data=token_vecs, mask=ignore_mask_3d).mean(axis=1).data
+        if strategy == "s3e":
+            input_ids = input_ids.cpu().numpy()
+            pooled_vecs = s3e_pooling(token_embs=token_vecs, token_ids=input_ids,
+                               token_weights=s3e_stats["token_weights"],centroids=s3e_stats["centroids"],
+                               token_to_cluster=s3e_stats["token_to_cluster"])
         return pooled_vecs
+
+
 
 
 class Bert(LanguageModel):

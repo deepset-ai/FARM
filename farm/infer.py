@@ -358,8 +358,7 @@ class Inferencer:
         return preds_all
 
     def extract_vectors(
-        self, dicts, extraction_strategy="cls_token", extraction_layer=-1
-    ):
+        self, dicts, extraction_strategy="cls_token", extraction_layer=-1, s3e_stats=None):
         """
         Converts a text into vector(s) using the language model only (no prediction head involved).
 
@@ -396,6 +395,7 @@ class Inferencer:
                     samples=batch_samples,
                     tokenizer=self.processor.tokenizer,
                     extraction_layer=extraction_layer,
+                    s3e_stats=s3e_stats,
                     **batch,
                 )
                 preds_all += preds
