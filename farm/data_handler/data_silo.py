@@ -16,7 +16,7 @@ from sklearn.model_selection import StratifiedKFold, KFold
 from tqdm import tqdm
 
 from farm.data_handler.dataloader import NamedDataLoader
-from farm.data_handler.processor import Processor
+from farm.data_handler.processor import Processor, BertStyleLMProcessor
 from farm.data_handler.utils import grouper, stream_grouper
 from farm.utils import MLFlowLogger as MlLogger
 from farm.utils import log_ascii_workers, calc_chunksize
@@ -608,6 +608,8 @@ class _StreamingDataSet(IterableDataset):
 
         batch = []
         for datasets, tensor_names in results:
+            if not datasets:
+                continue
             self.tensor_names = tensor_names
             for ds in datasets:
                 batch.append(ds)
@@ -626,6 +628,10 @@ class _StreamingDataSet(IterableDataset):
         :return: PyTorch Dataset
         """
         dicts = [d[1] for d in chunk]
+        # need at least 2 documents to sample random sentences from
+        if len(dicts) < 2 and type(self.processor) == BertStyleLMProcessor:
+            logger.info("Skipping a dict chunk as it contains less than 2 documents ...")
+            return None, None
         indices = [x[0] for x in chunk]
         datasets, tensor_names = self.processor.dataset_from_dicts(dicts=dicts, indices=indices)
         return datasets, tensor_names
