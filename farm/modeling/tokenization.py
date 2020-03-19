@@ -24,7 +24,7 @@ from transformers.tokenization_roberta import RobertaTokenizer
 from transformers.tokenization_xlnet import XLNetTokenizer
 from transformers.tokenization_albert import AlbertTokenizer
 from transformers.tokenization_xlm_roberta import XLMRobertaTokenizer
-from transformers.tokenization_distilbert import DistilBertTokenizer 
+from transformers.tokenization_distilbert import DistilBertTokenizer
 
 
 logger = logging.getLogger(__name__)
@@ -67,6 +67,8 @@ class Tokenizer:
                 tokenizer_class = "BertTokenizer"
             elif "xlnet" in pretrained_model_name_or_path.lower():
                 tokenizer_class = "XLNetTokenizer"
+            elif "word2vec" in pretrained_model_name_or_path.lower() or "glove" in pretrained_model_name_or_path.lower():
+                tokenizer_class = "BertTokenizer"
             else:
                 raise ValueError(f"Could not infer tokenizer_type from name '{pretrained_model_name_or_path}'. Set arg `tokenizer_type` in Tokenizer.load() to one of: 'bert', 'roberta', 'xlnet' ")
             logger.info(f"Loading tokenizer of type '{tokenizer_class}'")
