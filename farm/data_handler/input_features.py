@@ -475,7 +475,7 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, answer_ty
 
     assert np.max(label_idxs) > -1
 
-    return label_idxs, answer_type
+    return label_idxs, answer_types
 
 
 
