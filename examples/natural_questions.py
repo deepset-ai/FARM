@@ -36,7 +36,7 @@ def question_answering():
     evaluate_every = 2000
     lang_model = "roberta-base"
     do_lower_case = False # roberta is a cased model
-    train_filename = "train_sample.jsonl"
+    train_filename = "train_sample_small.jsonl"
     dev_filename = "dev-v2.0.json"
 
     # 1.Create a tokenizer

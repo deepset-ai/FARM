@@ -306,13 +306,12 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
     return [feature_dict]
 
 
-def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
+def sample_to_features_squad(sample, tokenizer, max_seq_len, answer_type_list=None, max_answers=6):
     """ Prepares data for processing by the model. Supports cases where there are
     multiple answers for the one question/document pair. max_answers is by default set to 6 since
     that is the most number of answers in the squad2.0 dev set."""
 
     # Initialize some basic variables
-    is_impossible = sample.clear_text["is_impossible"]
     question_tokens = sample.tokenized["question_tokens"]
     question_start_of_word = sample.tokenized["question_start_of_word"]
     question_len_t = len(question_tokens)
@@ -326,14 +325,15 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
     # converted to base 10 (see utils.encode_squad_id) and the passage_id
     sample_id = [int(x) for x in sample.id.split("-")]
 
-    # Generates a numpy array of shape (max_answers, 2) where (i, 2) indexes into the start and end indixes
+    # Generates a numpy array of shape (max_answers, 2) where (i, 2) indexes into the start and end indices
     # of the ith answer. The array is filled with -1 since the number of answers is often less than max_answers
     # no answer labels are represented by (0,0)
-    labels = generate_labels(answers,
-                             passage_len_t,
-                             question_len_t,
-                             tokenizer,
-                             max_answers)
+    labels, answer_types = generate_labels(answers,
+                                           passage_len_t,
+                                           question_len_t,
+                                           tokenizer,
+                                           answer_type_list=answer_type_list,
+                                           max_answers=max_answers)
 
     # Generate a start of word vector for the full sequence (i.e. question + answer + special tokens).
     # This will allow us to perform evaluation during training without clear text.
@@ -388,7 +388,7 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
     feature_dict = {"input_ids": input_ids,
                     "padding_mask": padding_mask,
                     "segment_ids": segment_ids,
-                    "is_impossible": is_impossible,
+                    "answer_types": answer_types,
                     "id": sample_id,
                     "passage_start_t": passage_start_t,
                     "start_of_word": start_of_word,
@@ -397,7 +397,7 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
     return [feature_dict]
 
 
-def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answers):
+def generate_labels(answers, passage_len_t, question_len_t, tokenizer, answer_type_list, max_answers):
     """
     Creates QA label for each answer in answers. The labels are the index of the start and end token
     relative to the passage. They are contained in an array of size (max_answers, 2).
@@ -408,6 +408,7 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
     (in most models, this is the [CLS] token). """
 
     label_idxs = np.full((max_answers, 2), fill_value=-1)
+    answer_types = np.full((max_answers), fill_value=-1)
 
     # If there are no answers
     if len(answers) == 0:
@@ -415,6 +416,8 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
         return label_idxs
 
     for i, answer in enumerate(answers):
+        # TODO THIS SECTION NEEDS A LOT MORE COMMENTING SO IT IS NOT CONFUSED WITH SQUAD
+        answer_type = answer["answer_type"]
         start_idx = answer["start_t"]
         end_idx = answer["end_t"]
 
@@ -446,11 +449,13 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
 
         start_label_present = 1 in start_vec
         end_label_present = 1 in end_vec
+
         # This is triggered if the answer is not in the passage or the question is_impossible
         # In both cases, the token at idx=0 (in BERT, this is the [CLS] token) is given both the start and end label
         if start_label_present is False and end_label_present is False:
             start_vec[0] = 1
             end_vec[0] = 1
+            answer_type = "is_impossible"
         elif start_label_present is False or end_label_present is False:
             raise Exception("The label vectors are lacking either a start or end label")
 
@@ -458,16 +463,20 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
         assert sum(start_vec) == 1
         assert sum(end_vec) == 1
 
-
         start_idx = start_vec.index(1)
         end_idx = end_vec.index(1)
 
         label_idxs[i, 0] = start_idx
         label_idxs[i, 1] = end_idx
 
+        # TODO COMMENT
+        if answer_type_list:
+            answer_types[i] = answer_type_list.index(answer_type)
+
     assert np.max(label_idxs) > -1
 
-    return label_idxs
+    return label_idxs, answer_type
+
 
 
 def combine_vecs(question_vec, passage_vec, tokenizer, spec_tok_val=-1):

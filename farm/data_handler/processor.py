@@ -1035,137 +1035,6 @@ class SquadProcessor(Processor):
                                             max_seq_len=self.max_seq_len)
         return features
 
-
-class RegressionProcessor(Processor):
-    """
-    Used to handle a regression dataset in tab separated text + label
-    """
-    def __init__(
-        self,
-        tokenizer,
-        max_seq_len,
-        data_dir,
-        train_filename="train.tsv",
-        dev_filename=None,
-        test_filename="test.tsv",
-        dev_split=0.1,
-        delimiter="\t",
-        quote_char="'",
-        skiprows=None,
-        label_column_name="label",
-        label_name="regression_label",
-        scaler_mean=None,
-        scaler_scale=None,
-        proxies=None,
-        **kwargs
-    ):
-        """
-        :param tokenizer: Used to split a sentence (str) into tokens.
-        :param max_seq_len: Samples are truncated after this many tokens.
-        :type max_seq_len: int
-        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
-        :type data_dir: str
-        :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
-        :type label_list: list
-        :param metric: name of metric that shall be used for evaluation, e.g. "acc" or "f1_macro".
-                 Alternatively you can also supply a custom function, that takes preds and labels as args and returns a numerical value.
-                 For using multiple metrics supply them as a list, e.g ["acc", my_custom_metric_fn].
-        :type metric: str, function, or list
-        :param train_filename: The name of the file containing training data.
-        :type train_filename: str
-        :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
-                             will be a slice of the train set.
-        :type dev_filename: str or None
-        :param test_filename: None
-        :type test_filename: str
-        :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
-        :type dev_split: float
-        :param delimiter: Separator used in the input tsv / csv file
-        :type delimiter: str
-        :param quote_char: Character used for quoting strings in the input tsv/ csv file
-        :type quote_char: str
-        :param skiprows: number of rows to skip in the tsvs (e.g. for multirow headers)
-        :type skiprows: int
-        :param label_column_name: name of the column in the input csv/tsv that shall be used as training labels
-        :type label_column_name: str
-        :param label_name: name for the internal label variable in FARM (only needed to adjust in rare cases)
-        :type label_name: str
-        :param scaler_mean: Value to substract from the label for normalization
-        :type scaler_mean: float
-        :param scaler_scale: Value to divide the label by for normalization
-        :type scaler_scale: float
-        :param proxies: proxy configuration to allow downloads of remote datasets.
-                        Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
-        :type proxies: dict
-        :param kwargs: placeholder for passing generic parameters
-        :type kwargs: object
-        """
-
-        # Custom processor attributes
-        self.delimiter = delimiter
-        self.quote_char = quote_char
-        self.skiprows = skiprows
-
-        super(RegressionProcessor, self).__init__(
-            tokenizer=tokenizer,
-            max_seq_len=max_seq_len,
-            train_filename=train_filename,
-            dev_filename=dev_filename,
-            test_filename=test_filename,
-            dev_split=dev_split,
-            data_dir=data_dir,
-            proxies=proxies
-        )
-
-        # Note that label_list is being hijacked to store the scaling mean and scale
-        self.add_task(name="regression", metric="mse", label_list=[scaler_mean, scaler_scale], label_column_name=label_column_name, task_type="regression", label_name=label_name)
-
-    def file_to_dicts(self, file: str) -> [dict]:
-        column_mapping = {task["label_column_name"]: task["label_name"] for task in self.tasks.values()}
-        dicts = read_tsv(
-            rename_columns=column_mapping,
-            filename=file,
-            delimiter=self.delimiter,
-            skiprows=self.skiprows,
-            quotechar=self.quote_char,
-            proxies=self.proxies
-        )
-
-        # collect all labels and compute scaling stats
-        train_labels = []
-        for d in dicts:
-            train_labels.append(float(d[self.tasks["regression"]["label_name"]]))
-        scaler = StandardScaler()
-        scaler.fit(np.reshape(train_labels, (-1, 1)))
-        # add to label list in regression task
-        self.tasks["regression"]["label_list"] = [scaler.mean_.item(), scaler.scale_.item()]
-
-        return dicts
-
-    def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
-        # this tokenization also stores offsets
-        tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer)
-        # truncate tokens, offsets and start_of_word to max_seq_len that can be handled by the model
-        for seq_name in tokenized.keys():
-            tokenized[seq_name], _, _ = truncate_sequences(seq_a=tokenized[seq_name], seq_b=None,
-                                                           tokenizer=self.tokenizer,
-                                                           max_seq_len=self.max_seq_len)
-        # Samples don't have labels during Inference mode
-        if "label" in dictionary:
-            label = float(dictionary["label"])
-            scaled_label = (label - self.tasks["regression"]["label_list"][0]) / self.tasks["regression"]["label_list"][1]
-            dictionary["label"] = scaled_label
-        return [Sample(id=None, clear_text=dictionary, tokenized=tokenized)]
-
-    def _sample_to_features(self, sample) -> dict:
-        features = sample_to_features_text(
-            sample=sample,
-            tasks=self.tasks,
-            max_seq_len=self.max_seq_len,
-            tokenizer=self.tokenizer
-        )
-        return features
-
 class NaturalQuestionsProcessor(Processor):
     def __init__(self,
                  tokenizer,
@@ -1245,7 +1114,6 @@ class NaturalQuestionsProcessor(Processor):
         dictionary = self.prepare_dict(dictionary)
         dictionary_tokenized = self.apply_tokenization(dictionary)[0]
         n_special_tokens = self.tokenizer.num_added_tokens(pair=True)
-
         samples = create_samples_qa(dictionary_tokenized,
                                     self.max_query_length,
                                     self.max_seq_len,
@@ -1254,36 +1122,76 @@ class NaturalQuestionsProcessor(Processor):
         return samples
 
     def prepare_dict(self, dictionary):
+        converted_answers = []
         doc_text = dictionary["document_text"]
         doc_tokens, tok_to_ch = split_with_metadata(doc_text)
-        converted_answers = []
         for annotation in dictionary["annotations"]:
-            short_answer_idxs = []
-            # TODO write comment explaining this
-            for short_answer in annotation["short_answers"]:
-                short_answer_idxs.append(short_answer["start_token"])
-                short_answer_idxs.append(short_answer["end_token"])
-            answer_start_t = min(short_answer_idxs)
-            answer_end_t = max(short_answer_idxs)
-            answer_start_c = tok_to_ch[answer_start_t]
-            # when the end of the answer span is the end of the text
-            if answer_end_t == len(doc_tokens):
-                answer_end_c = len(doc_text)
-            else:
-                next_word_start_c = tok_to_ch[answer_end_t]
-                span = doc_text[:next_word_start_c].strip()
-                answer_end_c = len(span)
-            answer_text = doc_text[answer_start_c: answer_end_c]
-            assert answer_text == " ".join(doc_text.split()[answer_start_t: answer_end_t])
-            converted_answers.append({"text": answer_text,
-                                      "answer_start": answer_start_c,
-                                      "answer_type": annotation["yes_no_answer"]})
+            sa_text, sa_start_c = self.unify_short_answers(annotation["short_answers"], doc_text, tok_to_ch)
+            la_text, la_start_c = self.retrieve_long_answer(annotation["long_answer"]["start_token"],
+                                                            annotation["long_answer"]["end_token"],
+                                                            tok_to_ch,
+                                                            doc_text)
+            text, start_c = self.choose_span(sa_text, sa_start_c, la_text, la_start_c)
+            converted_answers.append({"text": text,
+                                      "answer_start": start_c})
+        if len(dictionary["annotations"]) == 0:
+            answer_type = "is_impossible"
+        else:
+            answer_type = dictionary["annotations"][0]["yes_no_answer"]
+            answer_type = answer_type.lower()
+            if answer_type == "none":
+                answer_type = "span"
         converted = {"id": dictionary["example_id"],
                      "context": doc_text,
                      "qas": [{"question": dictionary["question_text"],
                               "id": dictionary["example_id"],
-                              "answers": converted_answers}]}
+                              "answers": converted_answers,
+                              "answer_type": answer_type}]}
         return converted
+
+    def retrieve_long_answer(self, start_t, end_t, tok_to_ch, doc_text):
+        start_c, end_c = self.convert_tok_to_ch(start_t, end_t, tok_to_ch, doc_text)
+        text = doc_text[start_c: end_c]
+        return text, start_c
+
+    @staticmethod
+    def choose_span(sa_text, sa_start_c, la_text, la_start_c):
+        if sa_text:
+            return sa_text, sa_start_c
+        elif la_text:
+            return la_text, la_start_c
+        else:
+            return "", -1
+
+    def unify_short_answers(self, short_answers, doc_text, tok_to_ch):
+        if not short_answers:
+            return "", -1
+        short_answer_idxs = []
+        # TODO write comment explaining this
+        for short_answer in short_answers:
+            short_answer_idxs.append(short_answer["start_token"])
+            short_answer_idxs.append(short_answer["end_token"])
+        answer_start_t = min(short_answer_idxs)
+        answer_end_t = max(short_answer_idxs)
+        answer_start_c, answer_end_c = self.convert_tok_to_ch(answer_start_t, answer_end_t, tok_to_ch, doc_text)
+        answer_text = doc_text[answer_start_c: answer_end_c]
+        assert answer_text == " ".join(doc_text.split()[answer_start_t: answer_end_t])
+        return answer_text, answer_start_c
+
+    @staticmethod
+    def convert_tok_to_ch(start_t, end_t, tok_to_ch, doc_text):
+        n_tokens = len(tok_to_ch)
+        if start_t == -1 and end_t == -1:
+            return -1, -1
+        start_c = tok_to_ch[start_t]
+        # when the end of the answer span is the end of the text
+        if end_t == n_tokens:
+            end_c = len(doc_text)
+        else:
+            next_word_start_c = tok_to_ch[end_t]
+            span = doc_text[:next_word_start_c].strip()
+            end_c = len(span)
+        return start_c, end_c
 
     def apply_tokenization(self, dictionary):
         """ This performs tokenization on all documents and questions. The result is a list (unnested)
@@ -1308,7 +1216,7 @@ class NaturalQuestionsProcessor(Processor):
                 for answer in question["answers"]:
                     a = {"text": answer["text"],
                          "offset": answer["answer_start"],
-                         "answer_type": answer["answer_type"]}
+                         "answer_type": question["answer_type"]}
                     answers.append(a)
             # For inference where samples are read in as dicts without an id or answers
             except TypeError:
@@ -1317,6 +1225,7 @@ class NaturalQuestionsProcessor(Processor):
             question_tokenized = tokenize_with_metadata(question_text, self.tokenizer)
             question_start_of_word = [int(x) for x in question_tokenized["start_of_word"]]
 
+            # TODO: Get rid of is_impossible key for NQ and SQUAD
             if "is_impossible" not in question:
                 is_impossible = False
             else:
@@ -1337,11 +1246,13 @@ class NaturalQuestionsProcessor(Processor):
             raw_baskets.append(raw)
         return raw_baskets
 
-
-
-    def _sample_to_features(cls, sample: Sample) -> dict:
-        NotImplementedError
-
+    def _sample_to_features(self, sample: Sample) -> dict:
+        answer_type_list = ["is_impossible", "span", "yes", "no"]
+        features = sample_to_features_squad(sample=sample,
+                                            tokenizer=self.tokenizer,
+                                            max_seq_len=self.max_seq_len,
+                                            answer_type_list=answer_type_list)
+        return features
 
 
 
@@ -1474,3 +1385,135 @@ class NaturalQuestionsProcessor(Processor):
 #         answers_tokenized.append(curr_answer_tokenized)
 #
 #
+
+
+
+class RegressionProcessor(Processor):
+    """
+    Used to handle a regression dataset in tab separated text + label
+    """
+    def __init__(
+        self,
+        tokenizer,
+        max_seq_len,
+        data_dir,
+        train_filename="train.tsv",
+        dev_filename=None,
+        test_filename="test.tsv",
+        dev_split=0.1,
+        delimiter="\t",
+        quote_char="'",
+        skiprows=None,
+        label_column_name="label",
+        label_name="regression_label",
+        scaler_mean=None,
+        scaler_scale=None,
+        proxies=None,
+        **kwargs
+    ):
+        """
+        :param tokenizer: Used to split a sentence (str) into tokens.
+        :param max_seq_len: Samples are truncated after this many tokens.
+        :type max_seq_len: int
+        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
+        :type data_dir: str
+        :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
+        :type label_list: list
+        :param metric: name of metric that shall be used for evaluation, e.g. "acc" or "f1_macro".
+                 Alternatively you can also supply a custom function, that takes preds and labels as args and returns a numerical value.
+                 For using multiple metrics supply them as a list, e.g ["acc", my_custom_metric_fn].
+        :type metric: str, function, or list
+        :param train_filename: The name of the file containing training data.
+        :type train_filename: str
+        :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
+                             will be a slice of the train set.
+        :type dev_filename: str or None
+        :param test_filename: None
+        :type test_filename: str
+        :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
+        :type dev_split: float
+        :param delimiter: Separator used in the input tsv / csv file
+        :type delimiter: str
+        :param quote_char: Character used for quoting strings in the input tsv/ csv file
+        :type quote_char: str
+        :param skiprows: number of rows to skip in the tsvs (e.g. for multirow headers)
+        :type skiprows: int
+        :param label_column_name: name of the column in the input csv/tsv that shall be used as training labels
+        :type label_column_name: str
+        :param label_name: name for the internal label variable in FARM (only needed to adjust in rare cases)
+        :type label_name: str
+        :param scaler_mean: Value to substract from the label for normalization
+        :type scaler_mean: float
+        :param scaler_scale: Value to divide the label by for normalization
+        :type scaler_scale: float
+        :param proxies: proxy configuration to allow downloads of remote datasets.
+                        Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
+        :type proxies: dict
+        :param kwargs: placeholder for passing generic parameters
+        :type kwargs: object
+        """
+
+        # Custom processor attributes
+        self.delimiter = delimiter
+        self.quote_char = quote_char
+        self.skiprows = skiprows
+
+        super(RegressionProcessor, self).__init__(
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            train_filename=train_filename,
+            dev_filename=dev_filename,
+            test_filename=test_filename,
+            dev_split=dev_split,
+            data_dir=data_dir,
+            proxies=proxies
+        )
+
+        # Note that label_list is being hijacked to store the scaling mean and scale
+        self.add_task(name="regression", metric="mse", label_list=[scaler_mean, scaler_scale], label_column_name=label_column_name, task_type="regression", label_name=label_name)
+
+    def file_to_dicts(self, file: str) -> [dict]:
+        column_mapping = {task["label_column_name"]: task["label_name"] for task in self.tasks.values()}
+        dicts = read_tsv(
+            rename_columns=column_mapping,
+            filename=file,
+            delimiter=self.delimiter,
+            skiprows=self.skiprows,
+            quotechar=self.quote_char,
+            proxies=self.proxies
+        )
+
+        # collect all labels and compute scaling stats
+        train_labels = []
+        for d in dicts:
+            train_labels.append(float(d[self.tasks["regression"]["label_name"]]))
+        scaler = StandardScaler()
+        scaler.fit(np.reshape(train_labels, (-1, 1)))
+        # add to label list in regression task
+        self.tasks["regression"]["label_list"] = [scaler.mean_.item(), scaler.scale_.item()]
+
+        return dicts
+
+    def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
+        # this tokenization also stores offsets
+        tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer)
+        # truncate tokens, offsets and start_of_word to max_seq_len that can be handled by the model
+        for seq_name in tokenized.keys():
+            tokenized[seq_name], _, _ = truncate_sequences(seq_a=tokenized[seq_name], seq_b=None,
+                                                           tokenizer=self.tokenizer,
+                                                           max_seq_len=self.max_seq_len)
+        # Samples don't have labels during Inference mode
+        if "label" in dictionary:
+            label = float(dictionary["label"])
+            scaled_label = (label - self.tasks["regression"]["label_list"][0]) / self.tasks["regression"]["label_list"][1]
+            dictionary["label"] = scaled_label
+        return [Sample(id=None, clear_text=dictionary, tokenized=tokenized)]
+
+    def _sample_to_features(self, sample) -> dict:
+        features = sample_to_features_text(
+            sample=sample,
+            tasks=self.tasks,
+            max_seq_len=self.max_seq_len,
+            tokenizer=self.tokenizer
+        )
+        return features

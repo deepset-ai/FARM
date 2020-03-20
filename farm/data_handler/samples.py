@@ -226,7 +226,8 @@ def process_answers(answers, doc_offsets, passage_start_c, passage_start_t):
                              "start_c": answer_start_c,
                              "end_c": answer_end_c}
         curr_answer_tokenized = {"start_t": answer_start_t,
-                                 "end_t": answer_end_t}
+                                 "end_t": answer_end_t,
+                                 "answer_type": answer["answer_type"]}
 
         answers_clear.append(curr_answer_clear)
         answers_tokenized.append(curr_answer_tokenized)
@@ -288,8 +289,7 @@ def create_samples_qa(dictionary, max_query_len, max_seq_len, doc_stride, n_spec
         clear_text = {"passage_text": passage_text,
                       "question_text": dictionary["question_text"],
                       "passage_id": passage_id,
-                      "answers": answers_clear,
-                      "is_impossible": dictionary["is_impossible"]}
+                      "answers": answers_clear}
         tokenized = {"passage_start_t": passage_start_t,
                      "passage_tokens": passage_tokens,
                      "passage_offsets": passage_offsets,
