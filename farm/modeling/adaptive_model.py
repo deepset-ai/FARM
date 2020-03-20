@@ -1,18 +1,150 @@
+import copy
 import logging
 import os
-
-from torch import nn
 from pathlib import Path
 
-from farm.modeling.language_model import LanguageModel
-from farm.modeling.prediction_head import PredictionHead, BertLMHead, QuestionAnsweringHead, TokenClassificationHead, TextClassificationHead
+import onnxruntime
+import torch
+from torch import nn
 from transformers.modeling_auto import AutoModelForQuestionAnswering, AutoModelForSequenceClassification, AutoModelForTokenClassification
+
+from farm.data_handler.data_silo import DataSilo
+from farm.data_handler.processor import SquadProcessor
+from farm.modeling.language_model import LanguageModel
+from farm.modeling.prediction_head import PredictionHead, QuestionAnsweringHead, TokenClassificationHead, TextClassificationHead
+from farm.modeling.tokenization import Tokenizer
 from farm.utils import MLFlowLogger as MlLogger
 
 logger = logging.getLogger(__name__)
 
 
-class AdaptiveModel(nn.Module):
+class BaseAdaptiveModel:
+
+    subclasses = {}
+
+    def __init_subclass__(cls, **kwargs):
+        """ This automatically keeps track of all available subclasses.
+        Enables generic load() for all specific PredictionHead implementation.
+        """
+        super().__init_subclass__(**kwargs)
+        cls.subclasses[cls.__name__] = cls
+
+    def __init__(self, prediction_heads):
+        self.prediction_heads = prediction_heads
+
+    @classmethod
+    def load(cls, **kwargs):
+        if (Path(kwargs["load_dir"]) / "model.onnx").is_file():
+            model = cls.subclasses["ONNXAdaptiveModel"].load(**kwargs)
+        else:
+            model = cls.subclasses["AdaptiveModel"].load(**kwargs)
+        return model
+
+    def logits_to_preds(self, logits, **kwargs):
+        """
+        Get predictions from all prediction heads.
+
+        :param logits: logits, can vary in shape and type, depending on task
+        :type logits: object
+        :param label_maps: Maps from label encoding to label string
+        :param label_maps: dict
+        :return: A list of all predictions from all prediction heads
+        """
+        all_preds = []
+        # collect preds from all heads
+        for head, logits_for_head in zip(self.prediction_heads, logits):
+            preds = head.logits_to_preds(logits=logits_for_head, **kwargs)
+            all_preds.append(preds)
+        return all_preds
+
+    def formatted_preds(self, logits, **kwargs):
+        """
+        Format predictions for inference.
+
+        :param logits: model logits
+        :type logits: torch.tensor
+        :param kwargs: placeholder for passing generic parameters
+        :type kwargs: object
+        :return: predictions in the right format
+        """
+        all_preds = []
+        # collect preds from all heads
+        # TODO add switch between single vs multiple prediction heads
+        for head, logits_for_head in zip(
+            self.prediction_heads, logits
+        ):
+            preds = head.formatted_preds(
+                logits=logits_for_head, **kwargs
+            )
+            all_preds.append(preds)
+        return all_preds
+
+    def connect_heads_with_processor(self, tasks, require_labels=True):
+        """
+        Populates prediction head with information coming from tasks.
+
+        :param tasks: A dictionary where the keys are the names of the tasks and the values are the details of the task (e.g. label_list, metric, tensor name)
+        :param require_labels: If True, an error will be thrown when a task is not supplied with labels)
+        :return:
+        """
+
+        # Drop the next sentence prediction head if it does not appear in tasks. This is triggered by the interaction
+        # setting the argument BertStyleLMProcessor(next_sent_pred=False)
+        if "nextsentence" not in tasks:
+            idx = None
+            for i, ph in enumerate(self.prediction_heads):
+                if ph.task_name == "nextsentence":
+                    idx = i
+            if idx is not None:
+                logger.info(
+                "Removing the NextSentenceHead since next_sent_pred is set to False in the BertStyleLMProcessor")
+                del self.prediction_heads[i]
+
+        for head in self.prediction_heads:
+            head.label_tensor_name = tasks[head.task_name]["label_tensor_name"]
+            label_list = tasks[head.task_name]["label_list"]
+            if not label_list and require_labels:
+                raise Exception(f"The task \'{head.task_name}\' is missing a valid set of labels")
+            label_list = tasks[head.task_name]["label_list"]
+            head.label_list = label_list
+            if "RegressionHead" in str(type(head)):
+                # This needs to be explicitly set because the regression label_list is being hijacked to store
+                # the scaling factor and the mean
+                num_labels = 1
+            else:
+                num_labels = len(label_list)
+            head.metric = tasks[head.task_name]["metric"]
+
+    @classmethod
+    def _get_prediction_head_files(cls, load_dir):
+        load_dir = Path(load_dir)
+        files = os.listdir(load_dir)
+        model_files = [
+            load_dir / f
+            for f in files
+            if ".bin" in f and "prediction_head" in f
+        ]
+        config_files = [
+            load_dir / f
+            for f in files
+            if "config.json" in f and "prediction_head" in f
+        ]
+        # sort them to get correct order in case of multiple prediction heads
+        model_files.sort()
+        config_files.sort()
+
+        error_str = (
+            "There is a mismatch in number of model files and config files. "
+            "This might be because the Language Model Prediction Head "
+            "does not currently support saving and loading"
+        )
+        assert len(model_files) == len(config_files), error_str
+        logger.info(f"Found files for loading {len(model_files)} prediction heads")
+
+        return model_files, config_files
+
+
+class AdaptiveModel(nn.Module, BaseAdaptiveModel):
     """ Contains all the modelling needed for your NLP task. Combines a language model and a prediction head.
     Allows for gradient flow back to the language model component."""
 
@@ -262,70 +394,6 @@ class AdaptiveModel(nn.Module):
 
         return all_logits
 
-    def connect_heads_with_processor(self, tasks, require_labels=True):
-        """
-        Populates prediction head with information coming from tasks.
-
-        :param tasks: A dictionary where the keys are the names of the tasks and the values are the details of the task (e.g. label_list, metric, tensor name)
-        :param require_labels: If True, an error will be thrown when a task is not supplied with labels)
-        :return:
-        """
-
-        # Drop the next sentence prediction head if it does not appear in tasks. This is triggered by the interaction
-        # setting the argument BertStyleLMProcessor(next_sent_pred=False)
-        if "nextsentence" not in tasks:
-            idx = None
-            for i, ph in enumerate(self.prediction_heads):
-                if ph.task_name == "nextsentence":
-                    idx = i
-            if idx is not None:
-                logger.info(
-                "Removing the NextSentenceHead since next_sent_pred is set to False in the BertStyleLMProcessor")
-                del self.prediction_heads[i]
-
-        for head in self.prediction_heads:
-            head.label_tensor_name = tasks[head.task_name]["label_tensor_name"]
-            label_list = tasks[head.task_name]["label_list"]
-            if not label_list and require_labels:
-                raise Exception(f"The task \'{head.task_name}\' is missing a valid set of labels")
-            label_list = tasks[head.task_name]["label_list"]
-            head.label_list = label_list
-            if "RegressionHead" in str(type(head)):
-                # This needs to be explicitly set because the regression label_list is being hijacked to store
-                # the scaling factor and the mean
-                num_labels = 1
-            else:
-                num_labels = len(label_list)
-            head.metric = tasks[head.task_name]["metric"]
-
-    @classmethod
-    def _get_prediction_head_files(cls, load_dir):
-        load_dir = Path(load_dir)
-        files = os.listdir(load_dir)
-        model_files = [
-            load_dir / f
-            for f in files
-            if ".bin" in f and "prediction_head" in f
-        ]
-        config_files = [
-            load_dir / f
-            for f in files
-            if "config.json" in f and "prediction_head" in f
-        ]
-        # sort them to get correct order in case of multiple prediction heads
-        model_files.sort()
-        config_files.sort()
-
-        error_str = (
-            "There is a mismatch in number of model files and config files. "
-            "This might be because the Language Model Prediction Head "
-            "does not currently support saving and loading"
-        )
-        assert len(model_files) == len(config_files), error_str
-        logger.info(f"Found files for loading {len(model_files)} prediction heads")
-
-        return model_files, config_files
-
     def log_params(self):
         """
         Logs paramteres to generic logger MlLogger
@@ -358,6 +426,9 @@ class AdaptiveModel(nn.Module):
             if head.model_type == "language_modelling":
                 ph_decoder_len = head.decoder.weight.shape[0]
                 assert vocab_size == ph_decoder_len, msg
+
+    def get_language(self):
+        return self.language_model.language
 
     def convert_to_transformers(self):
         if len(self.prediction_heads) != 1:
@@ -409,7 +480,6 @@ class AdaptiveModel(nn.Module):
 
         return transformers_model
 
-
     @classmethod
     def convert_from_transformers(cls, model_name_or_path, device, task_type):
         """
@@ -454,3 +524,121 @@ class AdaptiveModel(nn.Module):
             raise NotImplementedError(f"Huggingface's transformer models of type {task_type} are not supported yet")
 
         return adaptive_model
+
+    def convert_to_onnx(self, output_path, opset_version=11):
+        if type(self.prediction_heads[0]) is not QuestionAnsweringHead:
+            raise NotImplementedError
+
+        tokenizer = Tokenizer.load(
+            pretrained_model_name_or_path="deepset/bert-base-cased-squad2"
+        )
+
+        label_list = ["start_token", "end_token"]
+        metric = "squad"
+        processor = SquadProcessor(
+            tokenizer=tokenizer,
+            max_seq_len=384,
+            label_list=label_list,
+            metric=metric,
+            train_filename="small.json",
+            dev_filename=None,
+            test_filename=None,
+            data_dir="./pytorch_squad",
+        )
+
+        data_silo = DataSilo(processor=processor, batch_size=1, distributed=False)
+        data_loader = data_silo.get_data_loader("train")
+        data = next(iter(data_loader))
+        data = list(data.values())
+
+        inputs = {
+            'input_ids': data[0].to(self.device).reshape(1, 384),
+            'padding_mask': data[1].to(self.device).reshape(1, 384),
+            'segment_ids': data[2].to(self.device).reshape(1, 384)
+        }
+
+        model = ONNXWrapper.load_from_adaptive_model(self)
+
+        if not os.path.exists(output_path):
+            os.makedirs(output_path)
+
+        with torch.no_grad():
+            symbolic_names = {0: 'batch_size', 1: 'max_seq_len'}
+            torch.onnx.export(model,
+                              args=tuple(inputs.values()),
+                              f=output_path / 'model.onnx'.format(opset_version),
+                              opset_version=opset_version,
+                              do_constant_folding=True,
+                              input_names=['input_ids',
+                                           'padding_mask',
+                                           'segment_ids'],
+                              output_names=['logits'],
+                              dynamic_axes={'input_ids': symbolic_names,
+                                            'padding_mask': symbolic_names,
+                                            'segment_ids': symbolic_names,
+                                            'logits': symbolic_names,
+                                            })
+        for i, ph in enumerate(self.prediction_heads):
+            ph.save(output_path, i)
+        processor.save(output_path)
+        logger.info(f"Model exported at path {output_path}")
+
+
+class ONNXAdaptiveModel(BaseAdaptiveModel):
+    def __init__(self, model, prediction_heads, device):
+        self.model = model
+        self.prediction_heads = prediction_heads
+        self.device = device
+
+    @classmethod
+    def load(cls, load_dir, device, **kwargs):
+        sess_options = onnxruntime.SessionOptions()
+        # Set graph optimization level to ORT_ENABLE_EXTENDED to enable bert optimization.
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
+
+        # To enable model serialization and store the optimized graph to desired location.
+        sess_options.optimized_model_filepath = os.path.join(load_dir, "optimized_model.onnx")
+        onnx_session = onnxruntime.InferenceSession(str(load_dir / "model.onnx"), sess_options)
+
+        # Prediction heads
+        _, ph_config_files = cls._get_prediction_head_files(load_dir)
+        prediction_heads = []
+        ph_output_type = []
+        for config_file in ph_config_files:
+            head = PredictionHead.load(config_file, load_weights=False)
+            # # set shared weights between LM and PH
+            # if type(head) == BertLMHead:
+            #     head.set_shared_weights(language_model)
+            prediction_heads.append(head)
+            ph_output_type.append(head.ph_output_type)
+
+        return cls(onnx_session, prediction_heads, device)
+
+    def forward(self, **kwargs):
+        with torch.no_grad():
+            input_to_onnx = {
+                'input_ids': kwargs['input_ids'].cpu().numpy(),
+                'padding_mask': kwargs['padding_mask'].cpu().numpy(),
+                'segment_ids': kwargs['segment_ids'].cpu().numpy(),
+            }
+            res = self.model.run(None, input_to_onnx)
+            logits = [torch.from_numpy(res[0])]
+
+        return logits
+
+    def eval(self):
+        return True
+
+    def get_language(self):
+        return None
+
+
+class ONNXWrapper(AdaptiveModel):
+    @classmethod
+    def load_from_adaptive_model(cls, adaptive_model):
+        model = copy.deepcopy(adaptive_model)
+        model.__class__ = ONNXWrapper
+        return model
+
+    def forward(self, *batch):
+        return super().forward(input_ids=batch[0], padding_mask=batch[1], segment_ids=batch[2])
