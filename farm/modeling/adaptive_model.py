@@ -1,8 +1,10 @@
 import copy
+import json
 import logging
 import os
 from pathlib import Path
 
+import numpy
 import onnxruntime
 import torch
 from torch import nn
@@ -19,12 +21,15 @@ logger = logging.getLogger(__name__)
 
 
 class BaseAdaptiveModel:
+    """
+    Base Class for implementing AdaptiveModel with frameworks like PyTorch and ONNX.
+    """
 
     subclasses = {}
 
     def __init_subclass__(cls, **kwargs):
         """ This automatically keeps track of all available subclasses.
-        Enables generic load() for all specific PredictionHead implementation.
+        Enables generic load() for all specific AdaptiveModel implementation.
         """
         super().__init_subclass__(**kwargs)
         cls.subclasses[cls.__name__] = cls
@@ -34,6 +39,13 @@ class BaseAdaptiveModel:
 
     @classmethod
     def load(cls, **kwargs):
+        """
+        Load corresponding AdaptiveModel Class(AdaptiveModel/ONNXAdaptiveModel) based on the
+        files in the load_dir.
+
+        :param kwargs: arguments to pass for loading the model.
+        :return: instance of a model
+        """
         if (Path(kwargs["load_dir"]) / "model.onnx").is_file():
             model = cls.subclasses["ONNXAdaptiveModel"].load(**kwargs)
         else:
@@ -145,8 +157,8 @@ class BaseAdaptiveModel:
 
 
 class AdaptiveModel(nn.Module, BaseAdaptiveModel):
-    """ Contains all the modelling needed for your NLP task. Combines a language model and a prediction head.
-    Allows for gradient flow back to the language model component."""
+    """ PyTorch implementation containing all the modelling needed for your NLP task. Combines a language
+    model and a prediction head. Allows for gradient flow back to the language model component."""
 
     def __init__(
         self,
@@ -526,6 +538,17 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         return adaptive_model
 
     def convert_to_onnx(self, output_path, opset_version=11):
+        """
+        Convert a PyTorch AdaptiveModel to ONNX.
+
+        The conversion is trace-based by performing a forward pass on the model with a input batch.
+
+        :param output_path: model dir to write the model and config files
+        :type output_path: Path
+        :param opset_version: ONNX opset version
+        :type opset_version: int
+        :return:
+        """
         if type(self.prediction_heads[0]) is not QuestionAnsweringHead:
             raise NotImplementedError
 
@@ -557,6 +580,8 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
             'segment_ids': data[2].to(self.device).reshape(1, 384)
         }
 
+        # The method argument passing in torch.onnx.export is different to AdaptiveModel's forward().
+        # To resolve that, an ONNXWrapper instance is used.
         model = ONNXWrapper.load_from_adaptive_model(self)
 
         if not os.path.exists(output_path):
@@ -578,17 +603,29 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
                                             'segment_ids': symbolic_names,
                                             'logits': symbolic_names,
                                             })
+        # PredictionHead contains functionalities like logits_to_preds() that would still be needed
+        # for Inference with ONNX models. Only the config of the PredictionHead is stored.
         for i, ph in enumerate(self.prediction_heads):
-            ph.save(output_path, i)
+            ph.save_config(output_path, i)
+
         processor.save(output_path)
+
+        onnx_model_config = {
+            "onnx_opset_version": opset_version,
+            "language": self.get_language(),
+        }
+        with open(output_path / "model_config.json", "w") as f:
+            json.dump(onnx_model_config, f)
+
         logger.info(f"Model exported at path {output_path}")
 
 
 class ONNXAdaptiveModel(BaseAdaptiveModel):
-    def __init__(self, model, prediction_heads, device):
-        self.model = model
+    def __init__(self, onnx_session, prediction_heads, device, language):
+        self.onnx_session = onnx_session
         self.prediction_heads = prediction_heads
         self.device = device
+        self.language = language
 
     @classmethod
     def load(cls, load_dir, device, **kwargs):
@@ -612,28 +649,52 @@ class ONNXAdaptiveModel(BaseAdaptiveModel):
             prediction_heads.append(head)
             ph_output_type.append(head.ph_output_type)
 
-        return cls(onnx_session, prediction_heads, device)
+        with open(load_dir/"model_config.json") as f:
+            model_config = json.load(f)
+            language = model_config["language"]
+
+        return cls(onnx_session, prediction_heads, device, language)
 
     def forward(self, **kwargs):
+        """
+        Perform forward pass on the model and return the logits.
+
+        :param kwargs: all arguments that needs to be passed on to the model
+        :return: all logits as torch.tensor or multiple tensors.
+        """
         with torch.no_grad():
             input_to_onnx = {
-                'input_ids': kwargs['input_ids'].cpu().numpy(),
-                'padding_mask': kwargs['padding_mask'].cpu().numpy(),
-                'segment_ids': kwargs['segment_ids'].cpu().numpy(),
+                'input_ids': numpy.ascontiguousarray(kwargs['input_ids'].cpu().numpy()),
+                'padding_mask': numpy.ascontiguousarray(kwargs['padding_mask'].cpu().numpy()),
+                'segment_ids': numpy.ascontiguousarray(kwargs['segment_ids'].cpu().numpy()),
             }
-            res = self.model.run(None, input_to_onnx)
+            res = self.onnx_session.run(None, input_to_onnx)
             logits = [torch.from_numpy(res[0])]
 
         return logits
 
     def eval(self):
+        """
+        Stub to make ONNXAdaptiveModel compatible with the PyTorch AdaptiveModel.
+        """
         return True
 
     def get_language(self):
-        return None
+        """
+        Get the language(s) the model was trained for.
+        :return: str
+        """
+        return self.language
 
 
 class ONNXWrapper(AdaptiveModel):
+    """
+    Wrapper Class for converting PyTorch models to ONNX.
+
+    As of torch v1.4.0, torch.onnx.export only support passing positional arguments to the forward pass of the model.
+    However, the AdaptiveModel's forward takes keyword arguments. This class circumvents the issue by converting
+    positional arguments to keyword arguments.
+    """
     @classmethod
     def load_from_adaptive_model(cls, adaptive_model):
         model = copy.deepcopy(adaptive_model)
