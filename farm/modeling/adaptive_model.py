@@ -558,26 +558,46 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
 
         label_list = ["start_token", "end_token"]
         metric = "squad"
+        max_seq_len = 384
+        batch_size = 1
         processor = SquadProcessor(
             tokenizer=tokenizer,
-            max_seq_len=384,
+            max_seq_len=max_seq_len,
             label_list=label_list,
             metric=metric,
-            train_filename="small.json",
+            train_filename="stub-file",  # the data is loaded from dicts instead of file.
             dev_filename=None,
             test_filename=None,
-            data_dir="./pytorch_squad",
+            data_dir="stub-dir",
         )
 
-        data_silo = DataSilo(processor=processor, batch_size=1, distributed=False)
+        data_silo = DataSilo(processor=processor, batch_size=1, distributed=False, automatic_loading=False)
+        sample_dict = [
+            {
+                "context": 'The Normans were the people who in the 10th and 11th centuries gave their name to Normandy, '
+                           'a region in France. They were descended from Norse ("Norman" comes from "Norseman") raiders '
+                           'and pirates from Denmark, Iceland and Norway who, under their leader Rollo, agreed to swear '
+                           'fealty to King Charles III of West Francia.',
+                "qas": [
+                    {
+                        "question": "In what country is Normandy located?",
+                        "id": "56ddde6b9a695914005b9628",
+                        "answers": [{"text": "France", "answer_start": 159}],
+                        "is_impossible": False,
+                    }
+                ],
+            }
+        ]
+
+        data_silo._load_data(train_dicts=sample_dict)
         data_loader = data_silo.get_data_loader("train")
         data = next(iter(data_loader))
         data = list(data.values())
 
         inputs = {
-            'input_ids': data[0].to(self.device).reshape(1, 384),
-            'padding_mask': data[1].to(self.device).reshape(1, 384),
-            'segment_ids': data[2].to(self.device).reshape(1, 384)
+            'input_ids': data[0].to(self.device).reshape(batch_size, max_seq_len),
+            'padding_mask': data[1].to(self.device).reshape(batch_size, max_seq_len),
+            'segment_ids': data[2].to(self.device).reshape(batch_size, max_seq_len)
         }
 
         # The method argument passing in torch.onnx.export is different to AdaptiveModel's forward().
