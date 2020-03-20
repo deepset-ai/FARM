@@ -209,10 +209,10 @@ class Trainer:
         """ Perform the training procedure. """
 
         # connect the prediction heads with the right output from processor
-        self.model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
+        self.model.module.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
 
         # Check that the tokenizer fits the language model
-        self.model.verify_vocab_size(vocab_size=len(self.data_silo.processor.tokenizer))
+        self.model.module.verify_vocab_size(vocab_size=len(self.data_silo.processor.tokenizer))
 
         logger.info(f"\n {GROWING_TREE}")
         self.model.train()
@@ -241,7 +241,7 @@ class Trainer:
 
                 # Forward pass through model
                 logits = self.model.forward(**batch)
-                per_sample_loss = self.model.logits_to_loss(logits=logits, global_step=self.global_step, **batch)
+                per_sample_loss = self.model.module.logits_to_loss(logits=logits, global_step=self.global_step, **batch)
 
                 loss = self.backward_propagate(per_sample_loss, step)
 
@@ -353,15 +353,15 @@ class Trainer:
         :type resume_from_checkpoint: str
         """
         checkpoint_to_load = None
-        if checkpoint_root_dir.exists():
-            if resume_from_checkpoint == "latest":
-                saved_checkpoints = cls._get_checkpoints(checkpoint_root_dir)
-                if saved_checkpoints:
-                    checkpoint_to_load = saved_checkpoints[0]  # latest checkpoint
-                else:
-                    checkpoint_to_load = None
-            else:
-                checkpoint_to_load = checkpoint_root_dir / resume_from_checkpoint
+        #if checkpoint_root_dir.exists():
+        #    if resume_from_checkpoint == "latest":
+        #        saved_checkpoints = cls._get_checkpoints(checkpoint_root_dir)
+        #        if saved_checkpoints:
+        #            checkpoint_to_load = saved_checkpoints[0]  # latest checkpoint
+        #        else:
+        #            checkpoint_to_load = None
+        #    else:
+        #        checkpoint_to_load = checkpoint_root_dir / resume_from_checkpoint
 
         if checkpoint_to_load:
             trainer = cls._load_checkpoint(path=checkpoint_to_load, data_silo=data_silo)
@@ -506,4 +506,3 @@ class Trainer:
         }
 
         return state_dict
-
