@@ -1,8 +1,13 @@
 import logging
-import io
 
+from farm.data_handler.data_silo import DataSilo
+from farm.data_handler.processor import TextClassificationProcessor
 from farm.infer import Inferencer
-from farm.utils import set_all_seeds
+from farm.modeling.adaptive_model import AdaptiveModel
+from farm.modeling.language_model import LanguageModel
+from farm.modeling.tokenization import Tokenizer
+from farm.utils import set_all_seeds, initialize_device_settings
+
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -272,19 +277,19 @@ def embeddings_extraction():
     set_all_seeds(seed=42)
     batch_size = 32
     use_gpu = False
-    lang_model = "bert-base-german-cased"
-    # or local path:
-    # lang_model = Path("../saved_models/farm-bert-base-cased-squad2")
+    lang_model = Path("saved_models/glove-testing")
+    # TODO implement remote language model loading
 
     # Load model, tokenizer and processor directly into Inferencer
-    model = Inferencer.load(lang_model, task_type="embeddings", gpu=use_gpu, batch_size=batch_size)
+    model = Inferencer.load(model_name_or_path=lang_model, task_type="embeddings", gpu=use_gpu, batch_size=batch_size)
+    # model = Inferencer(model=model, processor=processor, gpu=use_gpu, batch_size=batch_size)
 
     #TODO Load corpus into dataset & extract stats from there
 
     # Fit S3E on a corpus
-    s3e_stats = fit_s3e_on_corpus(path_corpus="../data/lm_finetune_nips/train.txt",
-                                  path_vectors="../../Sentence-Embedding-S3E/word_embedding/crawl-300d-2M.vec",
-                                  path_word_weights="../../Sentence-Embedding-S3E/word_embedding/enwiki_vocab_min200.txt",
+    s3e_stats = fit_s3e_on_corpus(processor="data/lm_finetune_nips/train.txt",
+                                  path_vectors="../Sentence-Embedding-S3E/word_embedding/crawl-300d-2M.vec",
+                                  path_word_weights="../Sentence-Embedding-S3E/word_embedding/enwiki_vocab_min200.txt",
                                   n_clusters=10)
 
     # Input

@@ -1006,7 +1006,7 @@ class WordEmbedding_LM(LanguageModel):
         :return: Language Model
 
         """
-        import fasttext
+        # import fasttext
         wordembedding_LM = cls()
         if "farm_lm_name" in kwargs:
             wordembedding_LM.name = kwargs["farm_lm_name"]
