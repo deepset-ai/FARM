@@ -6,7 +6,7 @@ from pathlib import Path
 
 from farm.modeling.language_model import LanguageModel
 from farm.modeling.prediction_head import PredictionHead, BertLMHead, QuestionAnsweringHead, TokenClassificationHead, TextClassificationHead
-from transformers.modeling_auto import AutoModelForQuestionAnswering, AutoModelForSequenceClassification, AutoModelForTokenClassification
+from transformers.modeling_auto import AutoModelForQuestionAnswering, AutoModelForSequenceClassification, AutoModelForTokenClassification, AutoModelWithLMHead
 from farm.utils import MLFlowLogger as MlLogger
 
 logger = logging.getLogger(__name__)
@@ -373,6 +373,18 @@ class AdaptiveModel(nn.Module):
             setattr(transformers_model, transformers_model.base_model_prefix, self.language_model.model)
             transformers_model.qa_outputs.load_state_dict(
                 self.prediction_heads[0].feed_forward.feed_forward[0].state_dict())
+
+        elif self.prediction_heads[0].model_type == "language_modelling":
+            # init model
+            transformers_model = AutoModelWithLMHead.from_config(self.language_model.model.config)
+            # transfer weights for language model + prediction head
+            setattr(transformers_model, transformers_model.base_model_prefix, self.language_model.model)
+            ph_state_dict = self.prediction_heads[0].state_dict()
+            ph_state_dict["transform.dense.weight"] = ph_state_dict.pop("dense.weight")
+            ph_state_dict["transform.dense.bias"] = ph_state_dict.pop("dense.bias")
+            ph_state_dict["transform.LayerNorm.weight"] = ph_state_dict.pop("LayerNorm.weight")
+            ph_state_dict["transform.LayerNorm.bias"] = ph_state_dict.pop("LayerNorm.bias")
+            transformers_model.cls.predictions.load_state_dict(ph_state_dict)
 
         elif self.prediction_heads[0].model_type == "text_classification":
             # add more info to config
