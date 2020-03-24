@@ -23,7 +23,8 @@ class AdaptiveModel(nn.Module):
         embeds_dropout_prob,
         lm_output_types,
         device,
-        loss_aggregation_fn=None
+        loss_aggregation_fn=None,
+        extraction_layer=-1
     ):
         """
         :param language_model: Any model that turns token ids into vector representations
@@ -72,6 +73,8 @@ class AdaptiveModel(nn.Module):
         if not loss_aggregation_fn:
             loss_aggregation_fn = lambda loss_per_head, global_step=None, batch=None: sum(loss_per_head)
         self.loss_aggregation_fn = loss_aggregation_fn
+        # useful for embedding extraction from earlier layers
+        self.extraction_layer = extraction_layer
 
     def fit_heads_to_lm(self):
         """This iterates over each prediction head and ensures that its input dimensionality matches the output
@@ -216,15 +219,16 @@ class AdaptiveModel(nn.Module):
         :return: predictions in the right format
         """
         all_preds = []
-        # collect preds from all heads
-        # TODO add switch between single vs multiple prediction heads
-        for head, logits_for_head in zip(
-            self.prediction_heads, logits
-        ):
-            preds = head.formatted_preds(
-                logits=logits_for_head, **kwargs
-            )
-            all_preds.append(preds)
+
+        if len(self.prediction_heads) > 0:
+            # collect preds from all heads
+            # TODO add switch between single vs multiple prediction heads
+            for head, logits_for_head in zip(self.prediction_heads, logits):
+                preds = head.formatted_preds(logits=logits_for_head, **kwargs)
+                all_preds.append(preds)
+        else:
+            # just return LM output (e.g. useful for extracting embeddings at inference time)
+            self.language_model.formatted_preds(logits=logits, **kwargs)
         return all_preds
 
     def forward(self, **kwargs):
@@ -236,12 +240,18 @@ class AdaptiveModel(nn.Module):
         :return: all logits as torch.tensor or multiple tensors.
         """
         # Run language model
-        sequence_output, pooled_output = self.language_model(
-            **kwargs, output_all_encoded_layers=False
-        )
+        if self.extraction_layer == -1:
+            sequence_output, pooled_output = self.language_model(**kwargs, output_all_encoded_layers=False)
+        else:
+            self.language_model.enable_hidden_states_output()
+            sequence_output, pooled_output, all_hidden_states = self.forward(**kwargs)
+            sequence_output = all_hidden_states[self.extraction_layer]
+            pooled_output = None #not (always) available in earlier layers
+            self.disable_hidden_states_output()
 
         # Run (multiple) prediction heads
         all_logits = []
+        # if len(self.prediction_heads) > 0:
         for head, lm_out in zip(self.prediction_heads, self.lm_output_types):
             # Choose relevant vectors from LM as output and perform dropout
             if lm_out == "per_token":
@@ -259,6 +269,9 @@ class AdaptiveModel(nn.Module):
 
             # Do the actual forward pass of a single head
             all_logits.append(head(output))
+        else:
+            # just return LM output (e.g. useful for extracting embeddings at inference time)
+            all_logits.append((sequence_output, pooled_output))
 
         return all_logits
 

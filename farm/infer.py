@@ -44,10 +44,13 @@ class Inferencer:
         self,
         model,
         processor,
+        task_type,
         batch_size=4,
         gpu=False,
         name=None,
-        return_class_probs=False
+        return_class_probs=False,
+        embedding_strategy="reduce_mean",
+        embedding_layer=-1
     ):
         """
         Initializes Inferencer from an AdaptiveModel and a Processor instance.
@@ -56,6 +59,9 @@ class Inferencer:
         :type model: AdaptiveModel
         :param processor: A dataset specific Processor object which will turn input (file or dict) into a Pytorch Dataset.
         :type processor: Processor
+        :param task_type: Type of task the model should be used for. Currently supporting:
+                          "embeddings", "question_answering", "text_classification", "ner". More coming soon...
+        :param task_type: str
         :param batch_size: Number of samples computed once per batch
         :type batch_size: int
         :param gpu: If GPU shall be used
@@ -76,14 +82,20 @@ class Inferencer:
         self.batch_size = batch_size
         self.device = device
         self.language = self.model.language_model.language
+        self.task_type = task_type
+
+        if task_type == "embeddings":
+            self.model.prediction_heads = torch.nn.ModuleList([])
+            self.model.language_model.extraction_layer = embedding_layer
+            self.model.language_model.extraction_strategy = embedding_strategy
+
         # TODO adjust for multiple prediction heads
+        # TODO check if still used in API to determine model type
         if len(self.model.prediction_heads) == 1:
             self.prediction_type = self.model.prediction_heads[0].model_type
-            # self.label_map = self.processor.label_maps[0]
         elif len(self.model.prediction_heads) == 0:
-            self.prediction_type = "embedder"
-        # else:
-        #     raise NotImplementedError("A model with multiple prediction heads is currently not supported by the Inferencer")
+            self.prediction_type = "embeddings"
+
         self.name = name if name != None else f"anonymous-{self.prediction_type}"
         self.return_class_probs = return_class_probs
 
@@ -115,7 +127,7 @@ class Inferencer:
         :param gpu: If GPU shall be used
         :type gpu: bool
         :param task_type: Type of task the model should be used for. Currently supporting:
-                          "embeddings", "question_answering", "text_classification". More coming soon...
+                          "embeddings", "question_answering", "text_classification", "ner". More coming soon...
         :param task_type: str
         :param strict: whether to strictly enforce that the keys loaded from saved model match the ones in
                        the PredictionHead (see torch.nn.module.load_state_dict()).
@@ -175,21 +187,6 @@ class Inferencer:
                                                         metric="acc",
                                                         quote_char='"',
                                                         )
-
-            # elif task_type == "multilabel-classification":
-            #     # label_list = ["toxic", "severe_toxic", "obscene", "threat", "insult", "identity_hate"]
-            #     label_list = list(config.label2id.keys())
-            #
-            #     processor = TextClassificationProcessor(tokenizer=tokenizer,
-            #                                             max_seq_len=max_seq_len,
-            #                                             data_dir=None,
-            #                                             label_list=label_list,
-            #                                             label_column_name="label",
-            #                                             metric="acc",
-            #                                             quote_char='"',
-            #                                             multilabel=True,
-            #                                             )
-
             elif task_type == "ner":
                 label_list = list(config.label2id.keys())
                 processor = NERProcessor(
@@ -203,6 +200,7 @@ class Inferencer:
         return cls(
             model,
             processor,
+            task_type=task_type,
             batch_size=batch_size,
             gpu=gpu,
             name=name,
@@ -235,7 +233,7 @@ class Inferencer:
         The format of the input `dicts` depends on the task:
 
         QA:                    [{"qas": ["What is X?"], "context":  "Some context containing the answer"}]
-        Classification / NER:  [{"text": "Some input text"}]
+        Classification / NER / embeddings:  [{"text": "Some input text"}]
 
 
         :param dicts: Samples to run inference on provided as a list of dicts. One dict per sample.
@@ -254,13 +252,18 @@ class Inferencer:
                               (only relevant if you do multiprocessing)
         :type min_chunksize: int
         """
-        if self.prediction_type == "embedder":
+
+        #TODO
+        if self.prediction_type == "embeddings":
             raise TypeError(
                 "You have called inference_from_dicts for a model without any prediction head! "
                 "If you want to: "
                 "a) ... extract vectors from the language model: call `Inferencer.extract_vectors(...)`"
                 f"b) ... run inference on a downstream task: make sure your model path {self.name} contains a saved prediction head"
             )
+
+        # whether to aggregate predictions across different samples (e.g. for QA on long texts)
+        aggregate_preds = hasattr(self.model.prediction_heads[0], "aggregate_preds")
 
         # Using multiprocessing
         if max_processes > 1:  # use multiprocessing if max_processes > 1
@@ -287,7 +290,10 @@ class Inferencer:
             with tqdm(total=len(dicts), desc=f"Inferencing Dicts", unit=" Dicts") as pbar:
                 for dataset, tensor_names, baskets in results:
                     # TODO change format of formatted_preds in QA (list of dicts)
-                    preds_all.extend(self._get_predictions(dataset, tensor_names, baskets, rest_api_schema, disable_tqdm=True))
+                    if aggregate_preds:
+                        preds_all.extend(self._get_predictions(dataset, tensor_names, baskets, rest_api_schema, disable_tqdm=True))
+                    else:
+                        preds_all.extend(self._get_predictions_and_aggregate(dataset, tensor_names, baskets, rest_api_schema, disable_tqdm=True))
                     pbar.update(multiprocessing_chunk_size)
             p.close()
             p.join()
@@ -296,7 +302,10 @@ class Inferencer:
             chunk = next(grouper(dicts, len(dicts)))
             dataset, tensor_names, baskets = self._create_datasets_chunkwise(chunk, processor=self.processor, rest_api_schema=rest_api_schema)
             # TODO change formot of formatted_preds in QA (list of dicts)
-            preds_all = self._get_predictions(dataset, tensor_names, baskets, rest_api_schema)
+            if aggregate_preds:
+                preds_all = self._get_predictions(dataset, tensor_names, baskets, rest_api_schema)
+            else:
+                preds_all = self._get_predictions_and_aggregate(dataset, tensor_names, baskets, rest_api_schema)
 
         return preds_all
 
@@ -317,44 +326,54 @@ class Inferencer:
         data_loader = NamedDataLoader(
             dataset=dataset, sampler=SequentialSampler(dataset), batch_size=self.batch_size, tensor_names=tensor_names
         )
-        unaggregated_preds_all = []
         preds_all = []
-        aggregate_preds = hasattr(self.model.prediction_heads[0], "aggregate_preds")
         for i, batch in enumerate(tqdm(data_loader, desc=f"Inferencing Samples", unit=" Batches", disable=disable_tqdm)):
             batch = {key: batch[key].to(self.device) for key in batch}
-
-            if not aggregate_preds:
-                batch_samples = samples[i * self.batch_size : (i + 1) * self.batch_size]
+            batch_samples = samples[i * self.batch_size : (i + 1) * self.batch_size]
 
             # get logits
             with torch.no_grad():
-                if aggregate_preds:
-                    # Aggregation works on preds, not logits. We want as much processing happening in one batch + on GPU
-                    # So we transform logits to preds here as well
-                    logits = self.model.forward(**batch)
-                    preds = self.model.logits_to_preds(logits, **batch)[0]
-                    unaggregated_preds_all += preds
-                else:
-                    logits = self.model.forward(**batch)[0]
-                    preds = self.model.formatted_preds(
-                        logits=[logits],
-                        samples=batch_samples,
-                        tokenizer=self.processor.tokenizer,
-                        return_class_probs=self.return_class_probs,
-                        rest_api_schema=rest_api_schema,
-                        **batch)
-                    preds_all += preds
+                logits = self.model.forward(**batch)[0]
+                # todo make sure we have return_class_probs and embedding params in kwargs
+                preds = self.model.formatted_preds(
+                    logits=[logits],
+                    samples=batch_samples,
+                    tokenizer=self.processor.tokenizer,
+                    rest_api_schema=rest_api_schema,
+                    return_class_probs=self.return_class_probs,
+                    **batch)
+                preds_all += preds
+        return preds_all
+
+    def _get_predictions_and_aggregate(self, dataset, tensor_names, baskets, rest_api_schema=False, disable_tqdm=False):
+        """ Feed the preprocessed dataset to the model and get the actual predictions """
+        # TODO update docstring
+
+        data_loader = NamedDataLoader(
+            dataset=dataset, sampler=SequentialSampler(dataset), batch_size=self.batch_size, tensor_names=tensor_names
+        )
+        unaggregated_preds_all = []
+        for i, batch in enumerate(tqdm(data_loader, desc=f"Inferencing Samples", unit=" Batches", disable=disable_tqdm)):
+            batch = {key: batch[key].to(self.device) for key in batch}
+
+            # get logits
+            with torch.no_grad():
+                # Aggregation works on preds, not logits. We want as much processing happening in one batch + on GPU
+                # So we transform logits to preds here as well
+                logits = self.model.forward(**batch)
+                preds = self.model.logits_to_preds(logits, **batch)[0]
+                unaggregated_preds_all += preds
 
         # In some use cases we want to aggregate the individual predictions.
         # This is mostly useful, if the input text is longer than the max_seq_len that the model can process.
         # In QA we can use this to get answers from long input texts by first getting predictions for smaller passages
         # and then aggregating them here.
-        if aggregate_preds:
-            # can assume that we have only complete docs i.e. all the samples of one doc are in the current chunk
-            preds_all = self.model.formatted_preds(logits=[None], # For QA we collected preds per batch and do not want to pass logits
-                                                   preds_p=unaggregated_preds_all,
-                                                   baskets=baskets,
-                                                   rest_api_schema=rest_api_schema)[0]
+
+        # can assume that we have only complete docs i.e. all the samples of one doc are in the current chunk
+        preds_all = self.model.formatted_preds(logits=[None], # For QA we collected preds per batch and do not want to pass logits
+                                               preds_p=unaggregated_preds_all,
+                                               baskets=baskets,
+                                               rest_api_schema=rest_api_schema)[0]
         return preds_all
 
     def extract_vectors(
@@ -377,30 +396,12 @@ class Inferencer:
         :return: dict of predictions
         """
 
-        dataset, tensor_names = self.processor.dataset_from_dicts(dicts, rest_api_schema=True)
-        samples = []
-        for dict in dicts:
-            samples.extend(self.processor._dict_to_samples(dict))
+        logger.info("Deprecated! Please use Inferencer.inference_from_dicts() instead.")
+        self.model.prediction_heads = torch.nn.ModuleList([])
+        self.model.language_model.extraction_layer = extraction_layer
+        self.model.language_model.extraction_strategy = extraction_strategy
 
-        data_loader = NamedDataLoader(
-            dataset=dataset, sampler=SequentialSampler(dataset), batch_size=self.batch_size, tensor_names=tensor_names
-        )
-
-        preds_all = []
-        for i, batch in enumerate(data_loader):
-            batch = {key: batch[key].to(self.device) for key in batch}
-            batch_samples = samples[i * self.batch_size : (i + 1) * self.batch_size]
-            with torch.no_grad():
-                preds = self.model.language_model.formatted_preds(
-                    extraction_strategy=extraction_strategy,
-                    samples=batch_samples,
-                    tokenizer=self.processor.tokenizer,
-                    extraction_layer=extraction_layer,
-                    **batch,
-                )
-                preds_all += preds
-
-        return preds_all
+        return self.inference_from_dicts(dicts, rest_api_schema=False, max_processes=1)
 
 
 class FasttextInferencer:

@@ -234,29 +234,26 @@ class LanguageModel(nn.Module):
 
         return language
 
-    def formatted_preds(self, input_ids, samples, extraction_strategy="pooled", extraction_layer=-1, ignore_first_token=True,
+    def formatted_preds(self, logits, samples, ignore_first_token=True,
                         padding_mask=None, **kwargs):
-        # get language model output from last layer
-        if extraction_layer == -1:
-            sequence_output, pooled_output = self.forward(input_ids, padding_mask=padding_mask, **kwargs)
-        # or from earlier layer
-        else:
-            self.enable_hidden_states_output()
-            sequence_output, pooled_output, all_hidden_states = self.forward(input_ids, padding_mask=padding_mask, **kwargs)
-            sequence_output = all_hidden_states[extraction_layer]
-            self.disable_hidden_states_output()
+
+        # TODO catch error if self.extraction_strategy has not been set properly
+
+        sequence_output = logits[0]
+        pooled_output = logits[1]
+
         # aggregate vectors
-        if extraction_strategy == "pooled":
-            if extraction_layer != -1:
-                raise ValueError(f"Pooled output only works for the last layer, but got extraction_layer = {extraction_layer}. Please set `extraction_layer=-1`.)")
+        if self.extraction_strategy == "pooled":
+            if self.extraction_layer != -1:
+                raise ValueError(f"Pooled output only works for the last layer, but got extraction_layer = {self.extraction_layer}. Please set `extraction_layer=-1`.)")
             vecs = pooled_output.cpu().numpy()
-        elif extraction_strategy == "per_token":
+        elif self.extraction_strategy == "per_token":
             vecs = sequence_output.cpu().numpy()
-        elif extraction_strategy == "reduce_mean":
-            vecs = self._pool_tokens(sequence_output, padding_mask, extraction_strategy, ignore_first_token=ignore_first_token)
-        elif extraction_strategy == "reduce_max":
-            vecs = self._pool_tokens(sequence_output, padding_mask, extraction_strategy, ignore_first_token=ignore_first_token)
-        elif extraction_strategy == "cls_token":
+        elif self.extraction_strategy == "reduce_mean":
+            vecs = self._pool_tokens(sequence_output, padding_mask, self.extraction_strategy, ignore_first_token=ignore_first_token)
+        elif self.extraction_strategy == "reduce_max":
+            vecs = self._pool_tokens(sequence_output, padding_mask, self.extraction_strategy, ignore_first_token=ignore_first_token)
+        elif self.extraction_strategy == "cls_token":
             vecs = sequence_output[:, 0, :].cpu().numpy()
         else:
             raise NotImplementedError
