@@ -641,7 +641,15 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
 
 
 class ONNXAdaptiveModel(BaseAdaptiveModel):
-    def __init__(self, onnx_session, prediction_heads, device, language):
+    """
+    Implementation of ONNX Runtime for Inference of ONNX Models. This class is compatible with the FARM Inferencer.
+
+    To convert an existing FARM AdaptiveModel(PyTorch) to ONNX, use AdaptiveModel.convert_to_onnx().
+    """
+    def __init__(self, onnx_session, prediction_heads, language, device="cpu"):
+        if str(onnxruntime.get_device()).lower() != str(device).lower():
+            raise Exception(f"Device {device} not available for Inference. For CPU, run pip install onnxruntime and"
+                            f"for GPU run pip install onnxruntime-gpu")
         self.onnx_session = onnx_session
         self.prediction_heads = prediction_heads
         self.device = device
@@ -673,7 +681,7 @@ class ONNXAdaptiveModel(BaseAdaptiveModel):
             model_config = json.load(f)
             language = model_config["language"]
 
-        return cls(onnx_session, prediction_heads, device, language)
+        return cls(onnx_session, prediction_heads, language, device)
 
     def forward(self, **kwargs):
         """
