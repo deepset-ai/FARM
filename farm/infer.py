@@ -49,8 +49,8 @@ class Inferencer:
         gpu=False,
         name=None,
         return_class_probs=False,
-        embedding_strategy="reduce_mean",
-        embedding_layer=-1
+        extraction_strategy=None,
+        extraction_layer=None
     ):
         """
         Initializes Inferencer from an AdaptiveModel and a Processor instance.
@@ -85,9 +85,11 @@ class Inferencer:
         self.task_type = task_type
 
         if task_type == "embeddings":
+            if not extraction_layer or not extraction_strategy:
+                raise ValueError("You need to set both args `extraction_layer` and `extraction_strategy`")
             self.model.prediction_heads = torch.nn.ModuleList([])
-            self.model.language_model.extraction_layer = embedding_layer
-            self.model.language_model.extraction_strategy = embedding_strategy
+            self.model.language_model.extraction_layer = extraction_layer
+            self.model.language_model.extraction_strategy = extraction_strategy
 
         # TODO adjust for multiple prediction heads
         # TODO check if still used in API to determine model type
@@ -112,7 +114,9 @@ class Inferencer:
         return_class_probs=False,
         strict=True,
         max_seq_len=256,
-        doc_stride=128
+        doc_stride=128,
+        extraction_layer=None,
+        extraction_strategy=None
     ):
         """
         Load an Inferencer incl. all relevant components (model, tokenizer, processor ...) either by
@@ -205,6 +209,8 @@ class Inferencer:
             gpu=gpu,
             name=name,
             return_class_probs=return_class_probs,
+            extraction_strategy=extraction_strategy,
+            extraction_layer=extraction_layer
         )
 
     def save(self, path):
@@ -253,17 +259,10 @@ class Inferencer:
         :type min_chunksize: int
         """
 
-        #TODO
-        if self.prediction_type == "embeddings":
-            raise TypeError(
-                "You have called inference_from_dicts for a model without any prediction head! "
-                "If you want to: "
-                "a) ... extract vectors from the language model: call `Inferencer.extract_vectors(...)`"
-                f"b) ... run inference on a downstream task: make sure your model path {self.name} contains a saved prediction head"
-            )
-
         # whether to aggregate predictions across different samples (e.g. for QA on long texts)
-        aggregate_preds = hasattr(self.model.prediction_heads[0], "aggregate_preds")
+        aggregate_preds = False
+        if len(self.model.prediction_heads) > 0:
+            aggregate_preds = hasattr(self.model.prediction_heads[0], "aggregate_preds")
 
         # Using multiprocessing
         if max_processes > 1:  # use multiprocessing if max_processes > 1
@@ -291,9 +290,9 @@ class Inferencer:
                 for dataset, tensor_names, baskets in results:
                     # TODO change format of formatted_preds in QA (list of dicts)
                     if aggregate_preds:
-                        preds_all.extend(self._get_predictions(dataset, tensor_names, baskets, rest_api_schema, disable_tqdm=True))
-                    else:
                         preds_all.extend(self._get_predictions_and_aggregate(dataset, tensor_names, baskets, rest_api_schema, disable_tqdm=True))
+                    else:
+                        preds_all.extend(self._get_predictions(dataset, tensor_names, baskets, rest_api_schema, disable_tqdm=True))
                     pbar.update(multiprocessing_chunk_size)
             p.close()
             p.join()
@@ -301,12 +300,11 @@ class Inferencer:
         else:
             chunk = next(grouper(dicts, len(dicts)))
             dataset, tensor_names, baskets = self._create_datasets_chunkwise(chunk, processor=self.processor, rest_api_schema=rest_api_schema)
-            # TODO change formot of formatted_preds in QA (list of dicts)
+            # TODO change format of formatted_preds in QA (list of dicts)
             if aggregate_preds:
-                preds_all = self._get_predictions(dataset, tensor_names, baskets, rest_api_schema)
-            else:
                 preds_all = self._get_predictions_and_aggregate(dataset, tensor_names, baskets, rest_api_schema)
-
+            else:
+                preds_all = self._get_predictions(dataset, tensor_names, baskets, rest_api_schema)
         return preds_all
 
     @classmethod

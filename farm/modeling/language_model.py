@@ -239,8 +239,9 @@ class LanguageModel(nn.Module):
 
         # TODO catch error if self.extraction_strategy has not been set properly
 
-        sequence_output = logits[0]
-        pooled_output = logits[1]
+        # unpack the tuple from LM forward pass
+        sequence_output = logits[0][0]
+        pooled_output = logits[0][1]
 
         # aggregate vectors
         if self.extraction_strategy == "pooled":

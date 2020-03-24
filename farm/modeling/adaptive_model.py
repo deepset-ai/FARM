@@ -24,7 +24,6 @@ class AdaptiveModel(nn.Module):
         lm_output_types,
         device,
         loss_aggregation_fn=None,
-        extraction_layer=-1
     ):
         """
         :param language_model: Any model that turns token ids into vector representations
@@ -73,8 +72,6 @@ class AdaptiveModel(nn.Module):
         if not loss_aggregation_fn:
             loss_aggregation_fn = lambda loss_per_head, global_step=None, batch=None: sum(loss_per_head)
         self.loss_aggregation_fn = loss_aggregation_fn
-        # useful for embedding extraction from earlier layers
-        self.extraction_layer = extraction_layer
 
     def fit_heads_to_lm(self):
         """This iterates over each prediction head and ensures that its input dimensionality matches the output
@@ -228,7 +225,7 @@ class AdaptiveModel(nn.Module):
                 all_preds.append(preds)
         else:
             # just return LM output (e.g. useful for extracting embeddings at inference time)
-            self.language_model.formatted_preds(logits=logits, **kwargs)
+            all_preds = self.language_model.formatted_preds(logits=logits, **kwargs)
         return all_preds
 
     def forward(self, **kwargs):
@@ -239,17 +236,24 @@ class AdaptiveModel(nn.Module):
         :param kwargs: Holds all arguments that need to be passed to the language model and prediction head(s).
         :return: all logits as torch.tensor or multiple tensors.
         """
-        # Run language model
-        if self.extraction_layer == -1:
+
+        # Check if we have to extract from a different layer than the last one (default)
+        try:
+            extraction_layer = self.language_model.extraction_layer
+        except:
+            extraction_layer = -1
+
+        # Run forward pass of language model
+        if extraction_layer == -1:
             sequence_output, pooled_output = self.language_model(**kwargs, output_all_encoded_layers=False)
         else:
             self.language_model.enable_hidden_states_output()
-            sequence_output, pooled_output, all_hidden_states = self.forward(**kwargs)
-            sequence_output = all_hidden_states[self.extraction_layer]
-            pooled_output = None #not (always) available in earlier layers
-            self.disable_hidden_states_output()
+            sequence_output, pooled_output, all_hidden_states = self.language_model(**kwargs)
+            sequence_output = all_hidden_states[extraction_layer]
+            pooled_output = None #not available in earlier layers
+            self.language_model.disable_hidden_states_output()
 
-        # Run (multiple) prediction heads
+        # Run forward pass of (multiple) prediction heads
         all_logits = []
         # if len(self.prediction_heads) > 0:
         for head, lm_out in zip(self.prediction_heads, self.lm_output_types):
