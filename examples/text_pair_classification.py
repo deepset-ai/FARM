@@ -44,8 +44,7 @@ def text_pair_classification():
     processor = TextPairClassificationProcessor(tokenizer=tokenizer,
                                                 label_list=label_list,
                                                 max_seq_len=128,
-                                                train_filename="dev.tsv",
-                                                dev_split=0.5,
+                                                dev_filename="dev.tsv",
                                                 test_filename=None,
                                                 data_dir=Path("../data/asnq_binary"),
                                                 delimiter="\t")
