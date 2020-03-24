@@ -22,7 +22,8 @@ logger = logging.getLogger(__name__)
 
 class Inferencer:
     """
-    Loads a saved AdaptiveModel from disk and runs it in inference mode. Can be used for a model with prediction head (down-stream predictions) and without (using LM as embedder).
+    Loads a saved AdaptiveModel/ONNXAdaptiveModel from disk and runs it in inference mode. Can be used for a
+    model with prediction head (down-stream predictions) and without (using LM as embedder).
 
     Example usage:
 
