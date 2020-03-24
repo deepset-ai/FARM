@@ -29,10 +29,9 @@ def doc_classifcation():
     n_epochs = 1
     batch_size = 32
     evaluate_every = 100
-    # or a local path:
+    # load from a local path:
     lang_model = Path("../saved_models/glove-german-uncased")
-    lang_model = Path("saved_models/glove-testing")
-    # TODO implement remote language model loading
+    # or through s3
     #lang_model = "glove-german-uncased"
     do_lower_case = True
     use_amp = None
@@ -55,7 +54,7 @@ def doc_classifcation():
                                             train_filename="test.tsv",
                                             dev_filename=None,
                                             dev_split=0.5,
-                                            test_filename=None,
+                                            test_filename=None, #"test.tsv",
                                             metric=metric,
                                             label_column_name="coarse_label"
                                             )
@@ -64,11 +63,11 @@ def doc_classifcation():
     #    few descriptive statistics of our datasets
     data_silo = DataSilo(
         processor=processor,
-        max_processes=8,
         batch_size=batch_size)
 
     # 4. Create an AdaptiveModel
-    # a) which consists of a pretrained language model as a basis
+    # a) which consists of an embedding model as a basis.
+    # Word embedding models only converts words it has seen during training to embedding vectors.
     language_model = LanguageModel.load(lang_model)
     # b) and a prediction head on top that is suited for our task => Text classification
     prediction_head = TextClassificationHead(
@@ -106,7 +105,7 @@ def doc_classifcation():
     trainer.train()
 
     # 8. Hooray! You have a model. Store it:
-    save_dir = Path("saved_models/glove-testing2")
+    save_dir = Path("../saved_models/glove-german-doc-tutorial")
     model.save(save_dir)
     processor.save(save_dir)
 

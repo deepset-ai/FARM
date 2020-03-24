@@ -19,6 +19,8 @@ import logging
 import re
 import numpy as np
 
+from farm.modeling.utils import load_embedding_tokenizer
+
 from transformers.tokenization_bert import BertTokenizer
 from transformers.tokenization_roberta import RobertaTokenizer
 from transformers.tokenization_xlnet import XLNetTokenizer
@@ -31,7 +33,6 @@ logger = logging.getLogger(__name__)
 
 # Special characters used by the different tokenizers to indicate start of word / whitespace
 SPECIAL_TOKENIZER_CHARS = r"^(##|Ġ|▁)"
-
 
 class Tokenizer:
     """
@@ -68,7 +69,7 @@ class Tokenizer:
             elif "xlnet" in pretrained_model_name_or_path.lower():
                 tokenizer_class = "XLNetTokenizer"
             elif "word2vec" in pretrained_model_name_or_path.lower() or "glove" in pretrained_model_name_or_path.lower():
-                tokenizer_class = "BertTokenizer"
+                tokenizer_class = "EmbeddingTokenizer"
             else:
                 raise ValueError(f"Could not infer tokenizer_type from name '{pretrained_model_name_or_path}'. Set arg `tokenizer_type` in Tokenizer.load() to one of: 'bert', 'roberta', 'xlnet' ")
             logger.info(f"Loading tokenizer of type '{tokenizer_class}'")
@@ -85,6 +86,8 @@ class Tokenizer:
             ret = BertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "XLNetTokenizer":
             ret = XLNetTokenizer.from_pretrained(pretrained_model_name_or_path, keep_accents=True, **kwargs)
+        elif tokenizer_class == "EmbeddingTokenizer":
+            ret = load_embedding_tokenizer(pretrained_model_name_or_path, **kwargs)
         if ret is None:
             raise Exception("Unable to load tokenizer")
         else:

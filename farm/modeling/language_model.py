@@ -42,10 +42,12 @@ from transformers.modeling_distilbert import DistilBertModel, DistilBertConfig
 from transformers.modeling_utils import SequenceSummary
 from transformers.tokenization_bert import load_vocab
 
+from farm.modeling import utils
+
 # These are the names of the attributes in various model configs which refer to the number of dimensions
 # in the output vectors
 OUTPUT_DIM_NAMES = ["dim", "hidden_size", "d_model"]
-PRETRAINED_CONFIG_ARCHIVE_MAP = {"glove-german-uncased":"https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/glove-german-uncased/language_model_config.json"}
+
 
 class LanguageModel(nn.Module):
     """
@@ -893,9 +895,9 @@ class EmbeddingConfig():
 
 
 class EmbeddingModel():
-    def __init__(self, path, config, vocab_filename):
-        super(EmbeddingModel, self).__init__()
-        self.config = EmbeddingConfig(**dict(config))
+    def __init__(self, path, config_dict, vocab_filename):
+        #super(EmbeddingModel, self).__init__()
+        self.config = EmbeddingConfig(**dict(config_dict))
         self.vocab = load_vocab(vocab_filename)
         self.embeddings = self.load_vectors(path=path)
         assert "[UNK]" in self.vocab, "No [UNK] symbol in Wordembeddingmodel! Aborting"
@@ -910,7 +912,6 @@ class EmbeddingModel():
         f.close()
 
     def load_vectors(self,path):
-
         f = io.open(path, 'rt', encoding='utf-8').readlines()
 
         words_transformed = set()
@@ -941,7 +942,7 @@ class EmbeddingModel():
                     repetitions += 1
 
 
-        embeddings = torch.zeros((len(self.vocab),embeddings_dimensionality)) # TODO random init of all embeddings, so if it isnt filled it can still learn
+        embeddings = torch.zeros((len(self.vocab),embeddings_dimensionality)) # TODO nonzero init of all embeddings, so if it isnt filled it can still learn
         for i, w in enumerate(self.vocab):
             current = vectors.get(w,np.zeros(embeddings_dimensionality))
             if w not in vectors:
@@ -985,7 +986,6 @@ class WordEmbedding_LM(LanguageModel):
 
         * a local path of a model trained via FARM ("some_dir/farm_model")
         * the name of a remote model on s3
-        * TODO: or a local path of a model trained via transformers (NOT SUPPORTED)
 
         :param pretrained_model_name_or_path: name or path of a model
         :param language: (Optional) Name of language the model was trained for (e.g. "german").
@@ -1006,50 +1006,21 @@ class WordEmbedding_LM(LanguageModel):
             config = json.load(open(farm_lm_config,"r"))
             farm_lm_model = Path(pretrained_model_name_or_path) / config["embeddings_filename"]
             vocab_filename = Path(pretrained_model_name_or_path) / config["vocab_filename"]
-            wordembedding_LM.model = EmbeddingModel(path=str(farm_lm_model), config=config, vocab_filename=str(vocab_filename))
+            wordembedding_LM.model = EmbeddingModel(path=str(farm_lm_model), config_dict=config, vocab_filename=str(vocab_filename))
             wordembedding_LM.language = config.get("language", None)
         else:
-            raise NotImplementedError
-            #load_config(pretrained_model_name_or_path)
+            config_dict, resolved_vocab_file, resolved_model_file = utils.load_model(pretrained_model_name_or_path, **kwargs)
+            model = EmbeddingModel(path=resolved_model_file,
+                                   config_dict=config_dict,
+                                   vocab_filename=resolved_vocab_file)
+            wordembedding_LM.model = model
+            wordembedding_LM.language = model.config.language
 
 
         # taking the mean for getting the pooled representation
         # TODO: extend this to other pooling operations or remove completely
         wordembedding_LM.pooler = lambda x: torch.mean(x, dim=0)
         return wordembedding_LM
-
-
-    def load_config(self, pretrained_model_name_or_path):
-
-        from transformers.file_utils import cached_path
-        from transformers import configuration_utils
-        config_file = PRETRAINED_CONFIG_ARCHIVE_MAP[pretrained_model_name_or_path]
-
-        try:
-            # Load from URL or cache if already cached
-            resolved_config_file = cached_path(
-                config_file,
-            )
-            # Load config dict
-            if resolved_config_file is None:
-                raise EnvironmentError
-            config_dict = configuration_utils._dict_from_json_file(resolved_config_file)
-
-        except EnvironmentError:
-            if pretrained_model_name_or_path in PRETRAINED_CONFIG_ARCHIVE_MAP:
-                msg = "Couldn't reach server at '{}' to download pretrained model configuration file.".format(
-                    config_file
-                )
-            else:
-                msg = (
-                    "Model name '{}' was not found in model name list. "
-                    "We assumed '{}' was a path, a model identifier, or url to a configuration file or "
-                    "a directory containing such a file but couldn't find any such file at this path or url.".format(
-                        pretrained_model_name_or_path, config_file,
-                    )
-                )
-            raise EnvironmentError(msg)
-        return config_dict
 
     def save(self, save_dir):
         """
@@ -1071,6 +1042,7 @@ class WordEmbedding_LM(LanguageModel):
         """
         sequence_output = []
         pooled_output = []
+        # TODO do not use padding items
         for sample in input_ids:
             sample_embeddings = []
             for index in sample:
@@ -1080,7 +1052,6 @@ class WordEmbedding_LM(LanguageModel):
             sequence_output.append(sample_embeddings)
             pooled_output.append(self.pooler(sample_embeddings))
 
-        #pooled_output = torch.stack([torch.tensor(x) for x in pooled_output])
         sequence_output = torch.stack(sequence_output)
         pooled_output = torch.stack(pooled_output)
         m = nn.BatchNorm1d(pooled_output.shape[1])
