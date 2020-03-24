@@ -385,6 +385,8 @@ class AdaptiveModel(nn.Module):
             ph_state_dict["transform.LayerNorm.weight"] = ph_state_dict.pop("LayerNorm.weight")
             ph_state_dict["transform.LayerNorm.bias"] = ph_state_dict.pop("LayerNorm.bias")
             transformers_model.cls.predictions.load_state_dict(ph_state_dict)
+            logger.warning("Currently only the Masked Language Modeling component of the prediction head is converted, "
+                           "not the Next Sentence Prediction or Sentence Order Prediction components")
 
         elif self.prediction_heads[0].model_type == "text_classification":
             # add more info to config
