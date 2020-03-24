@@ -410,7 +410,7 @@ class DataSilo:
         logger.info("Examples in dev  : {}".format(self.counts["dev"]))
         logger.info("Examples in test : {}".format(self.counts["test"]))
         logger.info("")
-        logger.info("Max sequence length:     {}".format(max(seq_lens)))
+        logger.info("Longest sequence length observed after clipping:     {}".format(max(seq_lens)))
         logger.info("Average sequence length after clipping: {}".format(self.ave_len))
         logger.info("Proportion clipped:      {}".format(self.clipped))
         if self.clipped > 0.5:
