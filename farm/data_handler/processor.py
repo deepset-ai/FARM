@@ -1041,8 +1041,6 @@ class NaturalQuestionsProcessor(Processor):
                  tokenizer,
                  max_seq_len,
                  data_dir,
-                 label_list=None,
-                 metric="squad",
                  train_filename=Path("train-v2.0.json"),
                  dev_filename=Path("dev-v2.0.json"),
                  test_filename=None,
@@ -1080,6 +1078,7 @@ class NaturalQuestionsProcessor(Processor):
 
             self.target = "classification"
             self.ph_output_type = "per_token_squad"
+            self.answer_type_list = ["is_impossible", "span", "yes", "no"]
 
             self.doc_stride = doc_stride
             self.max_query_length = max_query_length
@@ -1096,60 +1095,8 @@ class NaturalQuestionsProcessor(Processor):
                 proxies=proxies
             )
 
-            if metric and label_list:
-                self.add_task("question_answering", metric, label_list)
-            else:
-                logger.info(
-                    "Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
-                    "using the default task or add a custom task later via processor.add_task()")
-
-    def dataset_from_dicts(self, dicts, indices=None, rest_api_schema=False, return_baskets=False):
-        """ Overwrites the method from the base class since Question Answering processing is quite different.
-        This method allows for documents and questions to be tokenized earlier. Then SampleBaskets are initialized
-        with one document and one question. """
-
-        if rest_api_schema:
-            dicts = [self._convert_rest_api_dict(x) for x in dicts]
-        self.baskets = self._dicts_to_baskets(dicts, indices)
-        self._init_samples_in_baskets()
-        self._featurize_samples()
-        if 0 in indices:
-            self._log_samples(2)
-        # This mode is for inference where we need to keep baskets
-        if return_baskets:
-            dataset, tensor_names = self._create_dataset(keep_baskets=True)
-            return dataset, tensor_names, self.baskets
-        # This mode is for training where we can free ram by removing baskets
-        else:
-            dataset, tensor_names = self._create_dataset(keep_baskets=False)
-            return dataset, tensor_names
-
-    def _dicts_to_baskets(self, dicts, indices):
-        # Perform tokenization on documents and questions resulting in a nested list of doc-question pairs
-        dicts_converted = [self.prepare_dict(d) for d in dicts]
-        dicts_tokenized = [self.apply_tokenization(d) for d in dicts_converted]
-
-        baskets = []
-        for index, document in zip(indices, dicts_tokenized):
-            for q_idx, raw in enumerate(document):
-                # In case of Question Answering the external ID is used for document IDs
-                basket = SampleBasket(raw=raw, id=f"{index}-{q_idx}", external_id=raw.get("document_id",None))
-                baskets.append(basket)
-        return baskets
-
-    def _convert_rest_api_dict(self, infer_dict):
-        # converts dicts from inference mode to data structure used in FARM
-        questions = infer_dict.get("questions", None)
-        text = infer_dict.get("text", None)
-        document_id = infer_dict.get("document_id", None)
-        qas = [{"question": q,
-                "id": i,
-                "answers": [],
-                "is_impossible": False} for i, q in enumerate(questions)]
-        converted = {"qas": qas,
-                     "context": text,
-                     "document_id":document_id}
-        return converted
+            self.add_task("question_answering", "squad", ["start_token", "end_token"])
+            self.add_task("classification", "f1_macro", self.answer_type_list)
 
     def file_to_dicts(self, file: str) -> [dict]:
         dicts = [json.loads(l) for l in open(file)]
@@ -1160,10 +1107,10 @@ class NaturalQuestionsProcessor(Processor):
             This method will split question-document pairs from the SampleBasket into question-passage pairs which will
         each form one sample. The "t" and "c" in variables stand for token and character respectively.
         """
-        # dictionary = self.prepare_dict(dictionary)
-        # dictionary_tokenized = self.apply_tokenization(dictionary)[0]
+        dictionary_converted_ = self.prepare_dict(dictionary)
+        dictionary_tokenized = self.apply_tokenization(dictionary_converted_)[0]
         n_special_tokens = self.tokenizer.num_added_tokens(pair=True)
-        samples = create_samples_qa(dictionary,
+        samples = create_samples_qa(dictionary_tokenized,
                                     self.max_query_length,
                                     self.max_seq_len,
                                     self.doc_stride,
@@ -1298,11 +1245,10 @@ class NaturalQuestionsProcessor(Processor):
         return raw_baskets
 
     def _sample_to_features(self, sample: Sample) -> dict:
-        answer_type_list = ["is_impossible", "span", "yes", "no"]
         features = sample_to_features_squad(sample=sample,
                                             tokenizer=self.tokenizer,
                                             max_seq_len=self.max_seq_len,
-                                            answer_type_list=answer_type_list)
+                                            answer_type_list=self.answer_type_list)
         return features
 
 

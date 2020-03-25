@@ -31,9 +31,9 @@ def question_answering():
     ##########################
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)
-    batch_size = 24
+    batch_size = 1
     n_epochs = 2
-    evaluate_every = 2000
+    evaluate_every = 1
     lang_model = "roberta-base"
     do_lower_case = False # roberta is a cased model
     train_filename = "train_sample_small.jsonl"
@@ -49,10 +49,9 @@ def question_answering():
     processor = NaturalQuestionsProcessor(
         tokenizer=tokenizer,
         max_seq_len=384,
-        label_list=label_list,
-        metric=metric,
         train_filename=train_filename,
-        dev_filename=dev_filename,
+        dev_filename=None,
+        dev_split=0.01,
         test_filename=None,
         data_dir=Path("../data/natural_questions"),
     )
@@ -60,48 +59,48 @@ def question_answering():
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
     # NOTE: In FARM, the dev set metrics differ from test set metrics in that they are calculated on a token level instead of a word level
     data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=False)
-    #
-    # # 4. Create an AdaptiveModel
-    # # a) which consists of a pretrained language model as a basis
-    # language_model = LanguageModel.load(lang_model)
-    # # b) and a prediction head on top that is suited for our task => Question Answering
-    # prediction_head = QuestionAnsweringHead()
-    #
-    # model = AdaptiveModel(
-    #     language_model=language_model,
-    #     prediction_heads=[prediction_head],
-    #     embeds_dropout_prob=0.1,
-    #     lm_output_types=["per_token"],
-    #     device=device,
-    # )
-    #
-    # # 5. Create an optimizer
-    # model, optimizer, lr_schedule = initialize_optimizer(
-    #     model=model,
-    #     learning_rate=3e-5,
-    #     schedule_opts={"name": "LinearWarmup", "warmup_proportion": 0.2},
-    #     n_batches=len(data_silo.loaders["train"]),
-    #     n_epochs=n_epochs,
-    #     device=device
-    # )
-    # # 6. Feed everything to the Trainer, which keeps care of growing our model and evaluates it from time to time
-    # trainer = Trainer(
-    #     model=model,
-    #     optimizer=optimizer,
-    #     data_silo=data_silo,
-    #     epochs=n_epochs,
-    #     n_gpu=n_gpu,
-    #     lr_schedule=lr_schedule,
-    #     evaluate_every=evaluate_every,
-    #     device=device,
-    # )
-    # # 7. Let it grow! Watch the tracked metrics live on the public mlflow server: https://public-mlflow.deepset.ai
-    # trainer.train()
-    #
-    # # 8. Hooray! You have a model. Store it:
-    # save_dir = Path("../saved_models/bert-english-qa-tutorial")
-    # model.save(save_dir)
-    # processor.save(save_dir)
+
+    # 4. Create an AdaptiveModel
+    # a) which consists of a pretrained language model as a basis
+    language_model = LanguageModel.load(lang_model)
+    # b) and a prediction head on top that is suited for our task => Question Answering
+    prediction_head = QuestionAnsweringHead()
+
+    model = AdaptiveModel(
+        language_model=language_model,
+        prediction_heads=[prediction_head],
+        embeds_dropout_prob=0.1,
+        lm_output_types=["per_token"],
+        device=device,
+    )
+
+    # 5. Create an optimizer
+    model, optimizer, lr_schedule = initialize_optimizer(
+        model=model,
+        learning_rate=3e-5,
+        schedule_opts={"name": "LinearWarmup", "warmup_proportion": 0.2},
+        n_batches=len(data_silo.loaders["train"]),
+        n_epochs=n_epochs,
+        device=device
+    )
+    # 6. Feed everything to the Trainer, which keeps care of growing our model and evaluates it from time to time
+    trainer = Trainer(
+        model=model,
+        optimizer=optimizer,
+        data_silo=data_silo,
+        epochs=n_epochs,
+        n_gpu=n_gpu,
+        lr_schedule=lr_schedule,
+        evaluate_every=evaluate_every,
+        device=device,
+    )
+    # 7. Let it grow! Watch the tracked metrics live on the public mlflow server: https://public-mlflow.deepset.ai
+    trainer.train()
+
+    # 8. Hooray! You have a model. Store it:
+    save_dir = Path("../saved_models/bert-english-qa-tutorial")
+    model.save(save_dir)
+    processor.save(save_dir)
     #
     # # 9. Load it & harvest your fruits (Inference)
     # QA_input = [
