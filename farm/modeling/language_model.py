@@ -253,8 +253,7 @@ class LanguageModel(nn.Module):
         :return: list of dicts containing preds, e.g. [{"context": "some text", "vec": [-0.01, 0.5 ...]}]
         """
 
-        if not hasattr(self.model.language_model, "extraction_layer") or not hasattr(self.model.language_model,
-                                                                                     "extraction_strategy"):
+        if not hasattr(self, "extraction_layer") or not hasattr(self, "extraction_strategy"):
             raise ValueError("`extraction_layer` or `extraction_strategy` not specified for LM. "
                              "Make sure to set both, e.g. via Inferencer(extraction_strategy='cls_token', extraction_layer=-1)`")
 
