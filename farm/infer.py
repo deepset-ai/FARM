@@ -271,7 +271,7 @@ class Inferencer:
             # Get us some workers (i.e. processes)
             p = mp.Pool(processes=num_cpus_used)
             logger.info(
-                f"Got ya {num_cpus_used} parallel workers to do inference on {len(dicts)}dicts (chunksize = {multiprocessing_chunk_size})..."
+                f"Got ya {num_cpus_used} parallel workers to do inference on {len(dicts)} dicts (chunksize = {multiprocessing_chunk_size})..."
             )
             log_ascii_workers(num_cpus_used, logger)
 
