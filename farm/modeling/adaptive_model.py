@@ -128,7 +128,7 @@ class BaseAdaptiveModel:
             head.metric = tasks[head.task_name]["metric"]
 
     @classmethod
-    def _get_prediction_head_files(cls, load_dir):
+    def _get_prediction_head_files(cls, load_dir, strict=True):
         load_dir = Path(load_dir)
         files = os.listdir(load_dir)
         model_files = [
@@ -145,12 +145,13 @@ class BaseAdaptiveModel:
         model_files.sort()
         config_files.sort()
 
-        error_str = (
-            "There is a mismatch in number of model files and config files. "
-            "This might be because the Language Model Prediction Head "
-            "does not currently support saving and loading"
-        )
-        assert len(model_files) == len(config_files), error_str
+        if strict:
+            error_str = (
+                f"There is a mismatch in number of model files ({len(model_files)}) and config files ({len(config_files)})."
+                "This might be because the Language Model Prediction Head "
+                "does not currently support saving and loading"
+            )
+            assert len(model_files) == len(config_files), error_str
         logger.info(f"Found files for loading {len(model_files)} prediction heads")
 
         return model_files, config_files
@@ -683,7 +684,7 @@ class ONNXAdaptiveModel(BaseAdaptiveModel):
         onnx_session = onnxruntime.InferenceSession(str(load_dir / "model.onnx"), sess_options)
 
         # Prediction heads
-        _, ph_config_files = cls._get_prediction_head_files(load_dir)
+        _, ph_config_files = cls._get_prediction_head_files(load_dir, strict=False)
         prediction_heads = []
         ph_output_type = []
         for config_file in ph_config_files:
