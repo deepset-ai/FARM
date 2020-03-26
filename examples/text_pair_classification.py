@@ -43,6 +43,7 @@ def text_pair_classification():
     # The TextPairClassificationProcessor expects a csv with columns called "text', "text_b" and "label"
     processor = TextPairClassificationProcessor(tokenizer=tokenizer,
                                                 label_list=label_list,
+                                                metric="f1_macro",
                                                 max_seq_len=128,
                                                 dev_filename="dev.tsv",
                                                 test_filename=None,
