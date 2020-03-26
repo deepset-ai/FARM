@@ -94,7 +94,7 @@ class PredictionHead(nn.Module):
         self.config = config
 
     @classmethod
-    def load(cls, config_file, strict=True):
+    def load(cls, config_file, strict=True, load_weights=True):
         """
         Loads a Prediction Head. Infers the class of prediction head from config_file.
 
@@ -109,9 +109,10 @@ class PredictionHead(nn.Module):
         """
         config = json.load(open(config_file))
         prediction_head = cls.subclasses[config["name"]](**config)
-        model_file = cls._get_model_file(config_file=config_file)
-        logger.info("Loading prediction head from {}".format(model_file))
-        prediction_head.load_state_dict(torch.load(model_file, map_location=torch.device("cpu")), strict=strict)
+        if load_weights:
+            model_file = cls._get_model_file(config_file=config_file)
+            logger.info("Loading prediction head from {}".format(model_file))
+            prediction_head.load_state_dict(torch.load(model_file, map_location=torch.device("cpu")), strict=strict)
         return prediction_head
 
     def logits_to_loss(self, logits, labels):

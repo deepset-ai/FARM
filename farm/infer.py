@@ -12,7 +12,7 @@ from farm.data_handler.dataloader import NamedDataLoader
 from farm.data_handler.processor import Processor, InferenceProcessor, SquadProcessor, NERProcessor, TextClassificationProcessor
 from farm.data_handler.utils import grouper
 from farm.modeling.tokenization import Tokenizer
-from farm.modeling.adaptive_model import AdaptiveModel
+from farm.modeling.adaptive_model import AdaptiveModel, BaseAdaptiveModel
 from farm.utils import initialize_device_settings
 from farm.utils import set_all_seeds, calc_chunksize, log_ascii_workers
 
@@ -22,7 +22,8 @@ logger = logging.getLogger(__name__)
 
 class Inferencer:
     """
-    Loads a saved AdaptiveModel from disk and runs it in inference mode. Can be used for a model with prediction head (down-stream predictions) and without (using LM as embedder).
+    Loads a saved AdaptiveModel/ONNXAdaptiveModel from disk and runs it in inference mode. Can be used for a
+    model with prediction head (down-stream predictions) and without (using LM as embedder).
 
     Example usage:
 
@@ -75,7 +76,7 @@ class Inferencer:
         self.model.eval()
         self.batch_size = batch_size
         self.device = device
-        self.language = self.model.language_model.language
+        self.language = self.model.get_language()
         # TODO adjust for multiple prediction heads
         if len(self.model.prediction_heads) == 1:
             self.prediction_type = self.model.prediction_heads[0].model_type
@@ -134,7 +135,7 @@ class Inferencer:
 
         # a) either from local dir
         if os.path.exists(model_name_or_path):
-            model = AdaptiveModel.load(model_name_or_path, device, strict=strict)
+            model = BaseAdaptiveModel.load(load_dir=model_name_or_path, device=device, strict=strict)
             if task_type == "embeddings":
                 processor = InferenceProcessor.load_from_dir(model_name_or_path)
             else:
