@@ -19,7 +19,7 @@ import logging
 import re
 import numpy as np
 
-from farm.modeling.utils import load_embedding_tokenizer
+from farm.modeling.wordembedding_utils import load_embedding_tokenizer
 
 from transformers.tokenization_bert import BertTokenizer
 from transformers.tokenization_roberta import RobertaTokenizer
