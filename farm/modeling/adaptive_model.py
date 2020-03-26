@@ -656,9 +656,12 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
 
 class ONNXAdaptiveModel(BaseAdaptiveModel):
     """
-    Implementation of ONNX Runtime for Inference of ONNX Models. This class is compatible with the FARM Inferencer.
+    Implementation of ONNX Runtime for Inference of ONNX Models.
 
-    To convert an existing FARM AdaptiveModel(PyTorch) to ONNX, use AdaptiveModel.convert_to_onnx().
+    Existing PyTorch based FARM AdaptiveModel can be converted to ONNX format using AdpativeModel.convert_to_onnx().
+    The conversion is currently only implemented for Question Answering Models.
+
+    For inference, this class is compatible with the FARM Inferencer.
     """
     def __init__(self, onnx_session, prediction_heads, language, device="cpu"):
         if str(onnxruntime.get_device()).lower() != str(device).lower():
@@ -684,6 +687,8 @@ class ONNXAdaptiveModel(BaseAdaptiveModel):
         prediction_heads = []
         ph_output_type = []
         for config_file in ph_config_files:
+            # ONNX Model doesn't need have a separate neural network for PredictionHead. It only uses the
+            # instance methods of PredictionHead class, so, we load with the load_weights param as False.
             head = PredictionHead.load(config_file, load_weights=False)
             # # set shared weights between LM and PH
             # if type(head) == BertLMHead:
