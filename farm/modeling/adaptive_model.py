@@ -275,9 +275,6 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         ph_output_type = []
         for config_file in ph_config_files:
             head = PredictionHead.load(config_file, strict=strict)
-            # # set shared weights between LM and PH
-            # if type(head) == BertLMHead:
-            #     head.set_shared_weights(language_model)
             prediction_heads.append(head)
             ph_output_type.append(head.ph_output_type)
 
@@ -362,7 +359,7 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         """
         all_preds = []
 
-        if len(self.prediction_heads) == 0 or self.disable_heads:
+        if len(self.prediction_heads) == 0:
             # just return LM output (e.g. useful for extracting embeddings at inference time)
             all_preds = self.language_model.formatted_preds(logits=logits, **kwargs)
         else:
@@ -719,9 +716,6 @@ class ONNXAdaptiveModel(BaseAdaptiveModel):
             # ONNX Model doesn't need have a separate neural network for PredictionHead. It only uses the
             # instance methods of PredictionHead class, so, we load with the load_weights param as False.
             head = PredictionHead.load(config_file, load_weights=False)
-            # # set shared weights between LM and PH
-            # if type(head) == BertLMHead:
-            #     head.set_shared_weights(language_model)
             prediction_heads.append(head)
             ph_output_type.append(head.ph_output_type)
 

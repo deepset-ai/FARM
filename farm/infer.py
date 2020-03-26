@@ -86,8 +86,9 @@ class Inferencer:
         self.task_type = task_type
 
         if task_type == "embeddings":
-            # if not extraction_layer or not extraction_strategy:
-            #     raise ValueError("You need to set both args `extraction_layer` and `extraction_strategy`")
+            if not extraction_layer or not extraction_strategy:
+                if not hasattr(self.model.language_model, "extraction_layer") or not hasattr(self.model.language_model, "extraction_strategy"):
+                    raise ValueError("You need to set both args `extraction_layer` and `extraction_strategy`")
             self.model.prediction_heads = torch.nn.ModuleList([])
             #self.model.skip_heads = True
             self.model.language_model.extraction_layer = extraction_layer
@@ -164,7 +165,7 @@ class Inferencer:
             if not task_type:
                 raise ValueError("Please specify the 'task_type' of the model you want to load from transformers. "
                                  "Valid options for arg `task_type`:"
-                                 "'question_answering', 'embeddings', 'text_classification'")
+                                 "'question_answering', 'embeddings', 'text_classification', 'ner'")
 
             model = AdaptiveModel.convert_from_transformers(model_name_or_path, device, task_type)
             config = AutoConfig.from_pretrained(model_name_or_path)
@@ -201,7 +202,8 @@ class Inferencer:
                 )
             else:
                 raise ValueError(f"`task_type` {task_type} is not supported yet. "
-                                 f"Valid options for arg `task_type`: 'question_answering', 'embeddings', 'text_classification'")
+                                 f"Valid options for arg `task_type`: 'question_answering', "
+                                 f"'embeddings', 'text_classification', 'ner'")
 
         return cls(
             model,
@@ -320,7 +322,22 @@ class Inferencer:
         return dataset, tensor_names, baskets
 
     def _get_predictions(self, dataset, tensor_names, baskets, rest_api_schema=False, disable_tqdm=False):
-        """ Feed the preprocessed dataset to the model and get the actual predictions"""
+        """
+        Feed a preprocessed dataset to the model and get the actual predictions (forward pass + formatting).
+
+        :param dataset: PyTorch Dataset with samples you want to predict
+        :param tensor_names: Names of the tensors in the dataset
+        :param baskets: For each item in the dataset, we need additional information to create formatted preds.
+                        Baskets contain all relevant infos for that.
+                        Example: QA - input string to convert the predicted answer from indices back to string space
+        :param rest_api_schema: Whether input dicts use the format that complies with the FARM REST API.
+                                Currently only used for QA to switch from squad to a more useful format in production.
+                                While input is almost the same, output contains additional meta data(offset, context..)
+        :type rest_api_schema: bool
+        :param disable_tqdm: Whether to disable tqdm logging (can get very verbose in multiprocessing)
+        :type disable_tqdm: bool
+        :return: list of predictions
+        """
         samples = [s for b in baskets for s in b.samples]
 
         data_loader = NamedDataLoader(
@@ -334,7 +351,6 @@ class Inferencer:
             # get logits
             with torch.no_grad():
                 logits = self.model.forward(**batch)[0]
-                # todo make sure we have return_class_probs and embedding params in kwargs
                 preds = self.model.formatted_preds(
                     logits=[logits],
                     samples=batch_samples,
@@ -346,8 +362,26 @@ class Inferencer:
         return preds_all
 
     def _get_predictions_and_aggregate(self, dataset, tensor_names, baskets, rest_api_schema=False, disable_tqdm=False):
-        """ Feed the preprocessed dataset to the model and get the actual predictions """
-        # TODO update docstring
+        """
+        Feed a preprocessed dataset to the model and get the actual predictions (forward pass + logits_to_preds + formatted_preds).
+
+        Difference to _get_predictions():
+         - Additional aggregation step across predictions of individual samples
+         (e.g. For QA on long texts, we extract answers from multiple passages and then aggregate them on the "document level")
+
+        :param dataset: PyTorch Dataset with samples you want to predict
+        :param tensor_names: Names of the tensors in the dataset
+        :param baskets: For each item in the dataset, we need additional information to create formatted preds.
+                        Baskets contain all relevant infos for that.
+                        Example: QA - input string to convert the predicted answer from indices back to string space
+        :param rest_api_schema: Whether input dicts use the format that complies with the FARM REST API.
+                                Currently only used for QA to switch from squad to a more useful format in production.
+                                While input is almost the same, output contains additional meta data(offset, context..)
+        :type rest_api_schema: bool
+        :param disable_tqdm: Whether to disable tqdm logging (can get very verbose in multiprocessing)
+        :type disable_tqdm: bool
+        :return: list of predictions
+        """
 
         data_loader = NamedDataLoader(
             dataset=dataset, sampler=SequentialSampler(dataset), batch_size=self.batch_size, tensor_names=tensor_names

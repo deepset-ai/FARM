@@ -236,8 +236,27 @@ class LanguageModel(nn.Module):
 
     def formatted_preds(self, logits, samples, ignore_first_token=True,
                         padding_mask=None, **kwargs):
+        """
+        Extracting vectors from language model (e.g. for extracting sentence embeddings).
+        Different pooling strategies and layers are available and will be determined from the object attributes
+        `extraction_layer` and `extraction_strategy`. Both should be set via the Inferencer:
+        Example:  Inferencer(extraction_strategy='cls_token', extraction_layer=-1)
 
-        # TODO catch error if self.extraction_strategy has not been set properly
+        :param logits: Tuple of (sequence_output, pooled_output) from the language model.
+                       Sequence_output: one vector per token, pooled_output: one vector for whole sequence
+        :param samples: For each item in logits we need additional meta information to format the prediction (e.g. input text).
+                        This is created by the Processor and passed in here from the Inferencer.
+        :param ignore_first_token: Whether to include the first token for pooling operations (e.g. reduce_mean).
+                                   Many models have here a special token like [CLS] that you don't want to include into your average of token embeddings.
+        :param padding_mask: Mask for the padding tokens. Those will also not be included in the pooling operations to prevent a bias by the number of padding tokens.
+        :param kwargs: kwargs
+        :return: list of dicts containing preds, e.g. [{"context": "some text", "vec": [-0.01, 0.5 ...]}]
+        """
+
+        if not hasattr(self.model.language_model, "extraction_layer") or not hasattr(self.model.language_model,
+                                                                                     "extraction_strategy"):
+            raise ValueError("`extraction_layer` or `extraction_strategy` not specified for LM. "
+                             "Make sure to set both, e.g. via Inferencer(extraction_strategy='cls_token', extraction_layer=-1)`")
 
         # unpack the tuple from LM forward pass
         sequence_output = logits[0][0]
