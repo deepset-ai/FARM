@@ -98,14 +98,9 @@ class Inferencer:
             self.model.language_model.extraction_layer = extraction_layer
             self.model.language_model.extraction_strategy = extraction_strategy
 
-        # TODO adjust for multiple prediction heads
-        # TODO check if still used in API to determine model type
-        if len(self.model.prediction_heads) == 1:
-            self.prediction_type = self.model.prediction_heads[0].model_type
-        elif len(self.model.prediction_heads) == 0:
-            self.prediction_type = "embeddings"
+        # TODO add support for multiple prediction heads
 
-        self.name = name if name != None else f"anonymous-{self.prediction_type}"
+        self.name = name if name != None else f"anonymous-{self.task_type}"
         self.return_class_probs = return_class_probs
 
         model.connect_heads_with_processor(processor.tasks, require_labels=False)
