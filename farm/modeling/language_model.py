@@ -42,7 +42,7 @@ from transformers.modeling_distilbert import DistilBertModel, DistilBertConfig
 from transformers.modeling_utils import SequenceSummary
 from transformers.tokenization_bert import load_vocab
 
-from farm.modeling import utils
+from farm.modeling import wordembedding_utils
 
 # These are the names of the attributes in various model configs which refer to the number of dimensions
 # in the output vectors
@@ -893,13 +893,12 @@ class EmbeddingConfig():
 
 
 
-
 class EmbeddingModel():
     def __init__(self, path, config_dict, vocab_filename):
-        #super(EmbeddingModel, self).__init__()
         self.config = EmbeddingConfig(**dict(config_dict))
         self.vocab = load_vocab(vocab_filename)
-        self.embeddings = self.load_vectors(path=path)
+        temp = wordembedding_utils.load_embedding_vectors(embedding_filename=path, vocab=self.vocab)
+        self.embeddings = torch.from_numpy(temp).float()
         assert "[UNK]" in self.vocab, "No [UNK] symbol in Wordembeddingmodel! Aborting"
         self.unk_idx = self.vocab["[UNK]"]
 
@@ -911,46 +910,9 @@ class EmbeddingModel():
                 f.write(w + " " + " ".join(["%.6f" % v for v in vec]) + "\n")
         f.close()
 
-    def load_vectors(self,path):
-        f = io.open(path, 'rt', encoding='utf-8').readlines()
-
-        words_transformed = set()
-        repetitions = 0
-        embeddings_dimensionality = None
-        vectors = {}
-
-        for line in tqdm(f):
-            line = line.strip()
-            if line:
-                word, vec = line.split(' ', 1)
-                if (word not in words_transformed):  # omit repetitions = speed up + debug
-                    try:
-                        np_vec = np.fromstring(vec, sep=' ')
-                        if embeddings_dimensionality is None:
-                            if len(np_vec) < 4:  # word2vec includes number of vectors and its dimension as header
-                                logger.info("Skipping header")
-                                continue
-                            else:
-                                embeddings_dimensionality = len(np_vec)
-                        if len(np_vec) == embeddings_dimensionality:
-                            vectors[word] = np_vec
-                            words_transformed.add(word)
-                    except:
-                        if logger is not None:
-                            logger.debug("Embeddings reader: Could not convert line: {}".format(line))
-                else:
-                    repetitions += 1
-
-
-        embeddings = torch.zeros((len(self.vocab),embeddings_dimensionality)) # TODO nonzero init of all embeddings, so if it isnt filled it can still learn
-        for i, w in enumerate(self.vocab):
-            current = vectors.get(w,np.zeros(embeddings_dimensionality))
-            if w not in vectors:
-                logger.warning(f"Could not load pretrained embedding for word: {w}")
-            embeddings[i,:] = torch.tensor(current)
-        return embeddings
 
     def resize_token_embeddings(self, new_num_tokens=None):
+        # function is called as a vocab length validation inside FARM
         # hacky way of returning an object with num_embeddings attribute set
         # TODO add functionality to add words/tokens to a wordembeddingmodel after initialization
         temp = {}
@@ -962,12 +924,11 @@ class EmbeddingModel():
 
 class WordEmbedding_LM(LanguageModel):
     """
-    A wrapper around facebooks fasttext https://github.com/facebookresearch/fastText/
-     to fit the LanguageModel class.
+    A wrapper around EmbeddingModel to fit the LanguageModel class.
 
     NOTE:
-    - since fasttext just maps words to embeddings, we can not apply gradients to fasttext directly
-    - Unlike the other LM variants, fasttext does not output the
+    - EmbeddingModels just map words to embeddings
+    - Unlike the other LM variants, EmbeddingModel does not output the
     pooled_output. An additional pooler is initialized.
 
     """
@@ -1009,7 +970,7 @@ class WordEmbedding_LM(LanguageModel):
             wordembedding_LM.model = EmbeddingModel(path=str(farm_lm_model), config_dict=config, vocab_filename=str(vocab_filename))
             wordembedding_LM.language = config.get("language", None)
         else:
-            config_dict, resolved_vocab_file, resolved_model_file = utils.load_model(pretrained_model_name_or_path, **kwargs)
+            config_dict, resolved_vocab_file, resolved_model_file = wordembedding_utils.load_model(pretrained_model_name_or_path, **kwargs)
             model = EmbeddingModel(path=resolved_model_file,
                                    config_dict=config_dict,
                                    vocab_filename=resolved_vocab_file)
@@ -1029,10 +990,11 @@ class WordEmbedding_LM(LanguageModel):
         :param save_dir: The directory in which the model should be saved.
         :type save_dir: str
         """
+        raise NotImplementedError
         #save model
-        self.model.save(save_dir=save_dir)
-        #save config
-        self.save_config(save_dir=save_dir)
+        # self.model.save(save_dir=save_dir)
+        # #save config
+        # self.save_config(save_dir=save_dir)
 
 
     def forward(self, input_ids, **kwargs,):

@@ -30,9 +30,9 @@ def doc_classifcation():
     batch_size = 32
     evaluate_every = 100
     # load from a local path:
-    lang_model = Path("../saved_models/glove-german-uncased")
+    #lang_model = Path("../saved_models/glove_converted")
     # or through s3
-    #lang_model = "glove-german-uncased"
+    lang_model = "glove-german-uncased"
     do_lower_case = True
     use_amp = None
 
@@ -48,7 +48,7 @@ def doc_classifcation():
 
     # TODO adjust back to normal data loading
     processor = TextClassificationProcessor(tokenizer=tokenizer,
-                                            max_seq_len=128,
+                                            max_seq_len=64,
                                             data_dir=Path("../data/germeval18"),
                                             label_list=label_list,
                                             train_filename="test.tsv",
@@ -71,6 +71,7 @@ def doc_classifcation():
     language_model = LanguageModel.load(lang_model)
     # b) and a prediction head on top that is suited for our task => Text classification
     prediction_head = TextClassificationHead(
+        layer_dims=[300,600,len(label_list)],
         class_weights=data_silo.calculate_class_weights(task_name="text_classification"),
         num_labels=len(label_list))
 
