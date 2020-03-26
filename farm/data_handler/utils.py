@@ -246,7 +246,7 @@ def _get_md5checksum(fname):
     return hash_md5.hexdigest()
 
 def _download_extract_downstream_data(input_file, proxies=None):
-    # download archive to glove_converted dir and extract to correct position
+    # download archive to temp dir and extract to correct position
     full_path = Path(os.path.realpath(input_file))
     directory = full_path.parent
     taskname = directory.stem
