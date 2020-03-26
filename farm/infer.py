@@ -37,8 +37,8 @@ class Inferencer:
        model = Inferencer.load(your_model_dir)
        model.inference_from_dicts(dicts=basic_texts)
        # LM embeddings
-       model.extract_vectors(dicts=basic_texts)
-
+       model = Inferencer.load(your_model_dir, extraction_strategy="cls_token", extraction_layer=-1)
+       model.inference_from_dicts(dicts=basic_texts)
     """
 
     def __init__(
@@ -71,6 +71,11 @@ class Inferencer:
         :type name: string
         :param return_class_probs: either return probability distribution over all labels or the prob of the associated label
         :type return_class_probs: bool
+        :param extraction_strategy: Strategy to extract vectors. Choices: 'cls_token' (sentence vector), 'reduce_mean'
+                               (sentence vector), reduce_max (sentence vector), 'per_token' (individual token vectors)
+        :type extraction_strategy: str
+        :param extraction_layer: number of layer from which the embeddings shall be extracted. Default: -1 (very last layer).
+        :type extraction_layer: int
         :return: An instance of the Inferencer.
 
         """
@@ -87,10 +92,9 @@ class Inferencer:
 
         if task_type == "embeddings":
             if not extraction_layer or not extraction_strategy:
-                if not hasattr(self.model.language_model, "extraction_layer") or not hasattr(self.model.language_model, "extraction_strategy"):
-                    raise ValueError("You need to set both args `extraction_layer` and `extraction_strategy`")
+                    logger.warning("Using task_type='embeddings', but couldn't find one of the args `extraction_layer` and `extraction_strategy`. "
+                                   "Since FARM 0.4.2, you set both when initializing the Inferencer and then call inferencer.inference_from_dicts() instead of inferencer.extract_vectors()")
             self.model.prediction_heads = torch.nn.ModuleList([])
-            #self.model.skip_heads = True
             self.model.language_model.extraction_layer = extraction_layer
             self.model.language_model.extraction_strategy = extraction_strategy
 
@@ -144,6 +148,11 @@ class Inferencer:
         :type max_seq_len: int
         :param doc_stride: Only QA: When input text is longer than max_seq_len it gets split into parts, strided by doc_stride
         :type doc_stride: int
+        :param extraction_strategy: Strategy to extract vectors. Choices: 'cls_token' (sentence vector), 'reduce_mean'
+                               (sentence vector), reduce_max (sentence vector), 'per_token' (individual token vectors)
+        :type extraction_strategy: str
+        :param extraction_layer: number of layer from which the embeddings shall be extracted. Default: -1 (very last layer).
+        :type extraction_layer: int
         :return: An instance of the Inferencer.
 
         """

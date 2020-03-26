@@ -31,7 +31,7 @@ def onnx_runtime_example():
         }
     ]
 
-    results = inferencer.inference_from_dicts(qa_input, rest_api_schema=True)
+    results = inferencer.inference_from_dicts(qa_input)
     print(results)
 
 
