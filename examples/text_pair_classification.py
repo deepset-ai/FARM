@@ -39,10 +39,11 @@ def text_pair_classification():
         pretrained_model_name_or_path=lang_model,
         do_lower_case=False)
 
-    # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
-    #    We do not have a sample dataset for regression yet, add your own dataset to run the example
+    # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset.
+    # The TextPairClassificationProcessor expects a csv with columns called "text', "text_b" and "label"
     processor = TextPairClassificationProcessor(tokenizer=tokenizer,
                                                 label_list=label_list,
+                                                metric="f1_macro",
                                                 max_seq_len=128,
                                                 dev_filename="dev.tsv",
                                                 test_filename=None,
@@ -59,8 +60,7 @@ def text_pair_classification():
     language_model = LanguageModel.load(lang_model)
     # b) and a prediction head on top that is suited for our task
     prediction_head = TextClassificationHead(num_labels=len(label_list),
-                                             class_weights=data_silo.calculate_class_weights(
-                                                 task_name="text_classification"),
+                                             class_weights=data_silo.calculate_class_weights(task_name="text_classification")
                                              )
 
     model = AdaptiveModel(

@@ -12,7 +12,7 @@ from farm.data_handler.dataloader import NamedDataLoader
 from farm.data_handler.processor import Processor, InferenceProcessor, SquadProcessor, NERProcessor, TextClassificationProcessor
 from farm.data_handler.utils import grouper
 from farm.modeling.tokenization import Tokenizer
-from farm.modeling.adaptive_model import AdaptiveModel
+from farm.modeling.adaptive_model import AdaptiveModel, BaseAdaptiveModel
 from farm.utils import initialize_device_settings
 from farm.utils import set_all_seeds, calc_chunksize, log_ascii_workers
 
@@ -22,7 +22,8 @@ logger = logging.getLogger(__name__)
 
 class Inferencer:
     """
-    Loads a saved AdaptiveModel from disk and runs it in inference mode. Can be used for a model with prediction head (down-stream predictions) and without (using LM as embedder).
+    Loads a saved AdaptiveModel/ONNXAdaptiveModel from disk and runs it in inference mode. Can be used for a
+    model with prediction head (down-stream predictions) and without (using LM as embedder).
 
     Example usage:
 
@@ -81,13 +82,14 @@ class Inferencer:
         self.model.eval()
         self.batch_size = batch_size
         self.device = device
-        self.language = self.model.language_model.language
+        self.language = self.model.get_language()
         self.task_type = task_type
 
         if task_type == "embeddings":
-            if not extraction_layer or not extraction_strategy:
-                raise ValueError("You need to set both args `extraction_layer` and `extraction_strategy`")
+            # if not extraction_layer or not extraction_strategy:
+            #     raise ValueError("You need to set both args `extraction_layer` and `extraction_strategy`")
             self.model.prediction_heads = torch.nn.ModuleList([])
+            #self.model.skip_heads = True
             self.model.language_model.extraction_layer = extraction_layer
             self.model.language_model.extraction_strategy = extraction_strategy
 
@@ -150,7 +152,7 @@ class Inferencer:
 
         # a) either from local dir
         if os.path.exists(model_name_or_path):
-            model = AdaptiveModel.load(model_name_or_path, device, strict=strict)
+            model = BaseAdaptiveModel.load(load_dir=model_name_or_path, device=device, strict=strict)
             if task_type == "embeddings":
                 processor = InferenceProcessor.load_from_dir(model_name_or_path)
             else:
@@ -375,7 +377,7 @@ class Inferencer:
         return preds_all
 
     def extract_vectors(
-        self, dicts, extraction_strategy="cls_token", extraction_layer=-1
+        self, dicts, extraction_strategy="cls_token", extraction_layer=-1, max_processes=1
     ):
         """
         Converts a text into vector(s) using the language model only (no prediction head involved).
@@ -390,16 +392,18 @@ class Inferencer:
                                (sentence vector), reduce_max (sentence vector), 'per_token' (individual token vectors)
         :type extraction_strategy: str
         :param extraction_layer: number of layer from which the embeddings shall be extracted. Default: -1 (very last layer).
-        :type: int
+        :type extraction_layer: int
+        :param max_processes: number of parallel processes for multiprocessing
+        :type max_processes: int
         :return: dict of predictions
         """
 
-        logger.info("Deprecated! Please use Inferencer.inference_from_dicts() instead.")
+        logger.warning("Deprecated! Please use Inferencer.inference_from_dicts() instead.")
         self.model.prediction_heads = torch.nn.ModuleList([])
         self.model.language_model.extraction_layer = extraction_layer
         self.model.language_model.extraction_strategy = extraction_strategy
 
-        return self.inference_from_dicts(dicts, rest_api_schema=False, max_processes=1)
+        return self.inference_from_dicts(dicts, rest_api_schema=False, max_processes=max_processes)
 
 
 class FasttextInferencer:
