@@ -30,9 +30,10 @@ def doc_classifcation():
     batch_size = 32
     evaluate_every = 100
     # load from a local path:
-    #lang_model = Path("../saved_models/glove_converted")
+    lang_model = Path("../saved_models/glove-german-uncased")
+    lang_model = Path("../saved_models/glove_converted")
     # or through s3
-    lang_model = "glove-german-uncased"
+    #lang_model = "glove-german-uncased"
     do_lower_case = True
     use_amp = None
 
@@ -51,9 +52,9 @@ def doc_classifcation():
                                             max_seq_len=64,
                                             data_dir=Path("../data/germeval18"),
                                             label_list=label_list,
-                                            train_filename="test.tsv",
+                                            train_filename="train.tsv",
                                             dev_filename=None,
-                                            dev_split=0.5,
+                                            dev_split=0.2,
                                             test_filename=None, #"test.tsv",
                                             metric=metric,
                                             label_column_name="coarse_label"
@@ -63,61 +64,62 @@ def doc_classifcation():
     #    few descriptive statistics of our datasets
     data_silo = DataSilo(
         processor=processor,
-        batch_size=batch_size)
+        batch_size=batch_size,
+        max_processes=8)
 
-    # 4. Create an AdaptiveModel
-    # a) which consists of an embedding model as a basis.
-    # Word embedding models only converts words it has seen during training to embedding vectors.
-    language_model = LanguageModel.load(lang_model)
-    # b) and a prediction head on top that is suited for our task => Text classification
-    prediction_head = TextClassificationHead(
-        layer_dims=[300,600,len(label_list)],
-        class_weights=data_silo.calculate_class_weights(task_name="text_classification"),
-        num_labels=len(label_list))
+    # # 4. Create an AdaptiveModel
+    # # a) which consists of an embedding model as a basis.
+    # # Word embedding models only converts words it has seen during training to embedding vectors.
+    # language_model = LanguageModel.load(lang_model)
+    # # b) and a prediction head on top that is suited for our task => Text classification
+    # prediction_head = TextClassificationHead(
+    #     layer_dims=[300,600,len(label_list)],
+    #     class_weights=data_silo.calculate_class_weights(task_name="text_classification"),
+    #     num_labels=len(label_list))
+    #
+    # model = AdaptiveModel(
+    #     language_model=language_model,
+    #     prediction_heads=[prediction_head],
+    #     embeds_dropout_prob=0.1,
+    #     lm_output_types=["per_sequence"],
+    #     device=device)
+    #
+    # # 5. Create an optimizer
+    # model, optimizer, lr_schedule = initialize_optimizer(
+    #     model=model,
+    #     learning_rate=3e-5,
+    #     device=device,
+    #     n_batches=len(data_silo.loaders["train"]),
+    #     n_epochs=n_epochs,
+    #     use_amp=use_amp)
+    #
+    # # 6. Feed everything to the Trainer, which keeps care of growing our model into powerful plant and evaluates it from time to time
+    # trainer = Trainer(
+    #     model=model,
+    #     optimizer=optimizer,
+    #     data_silo=data_silo,
+    #     epochs=n_epochs,
+    #     n_gpu=n_gpu,
+    #     lr_schedule=lr_schedule,
+    #     evaluate_every=evaluate_every,
+    #     device=device)
 
-    model = AdaptiveModel(
-        language_model=language_model,
-        prediction_heads=[prediction_head],
-        embeds_dropout_prob=0.1,
-        lm_output_types=["per_sequence"],
-        device=device)
-
-    # 5. Create an optimizer
-    model, optimizer, lr_schedule = initialize_optimizer(
-        model=model,
-        learning_rate=3e-5,
-        device=device,
-        n_batches=len(data_silo.loaders["train"]),
-        n_epochs=n_epochs,
-        use_amp=use_amp)
-
-    # 6. Feed everything to the Trainer, which keeps care of growing our model into powerful plant and evaluates it from time to time
-    trainer = Trainer(
-        model=model,
-        optimizer=optimizer,
-        data_silo=data_silo,
-        epochs=n_epochs,
-        n_gpu=n_gpu,
-        lr_schedule=lr_schedule,
-        evaluate_every=evaluate_every,
-        device=device)
-
-    # 7. Let it grow
-    trainer.train()
-
-    # 8. Hooray! You have a model. Store it:
-    save_dir = Path("../saved_models/glove-german-doc-tutorial")
-    model.save(save_dir)
-    processor.save(save_dir)
-
-    # 9. Load it & harvest your fruits (Inference)
-    basic_texts = [
-        {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei"},
-        {"text": "Martin Müller spielt Handball in Berlin"},
-    ]
-    model = Inferencer.load(save_dir)
-    result = model.inference_from_dicts(dicts=basic_texts)
-    print(result)
+    # # 7. Let it grow
+    # trainer.train()
+    #
+    # # 8. Hooray! You have a model. Store it:
+    # save_dir = Path("../saved_models/glove-german-doc-tutorial")
+    # model.save(save_dir)
+    # processor.save(save_dir)
+    #
+    # # 9. Load it & harvest your fruits (Inference)
+    # basic_texts = [
+    #     {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei"},
+    #     {"text": "Martin Müller spielt Handball in Berlin"},
+    # ]
+    # model = Inferencer.load(save_dir)
+    # result = model.inference_from_dicts(dicts=basic_texts)
+    # print(result)
 
 
 if __name__ == "__main__":
