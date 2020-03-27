@@ -13,7 +13,7 @@ from transformers.modeling_auto import AutoModelForQuestionAnswering, AutoModelF
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import SquadProcessor
 from farm.modeling.language_model import LanguageModel
-from farm.modeling.prediction_head import PredictionHead, BertLMHead, QuestionAnsweringHead, TokenClassificationHead, TextClassificationHead
+from farm.modeling.prediction_head import PredictionHead, QuestionAnsweringHead, TokenClassificationHead, TextClassificationHead
 from farm.modeling.tokenization import Tokenizer
 from farm.utils import MLFlowLogger as MlLogger
 
@@ -168,7 +168,7 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         embeds_dropout_prob,
         lm_output_types,
         device,
-        loss_aggregation_fn=None
+        loss_aggregation_fn=None,
     ):
         """
         :param language_model: Any model that turns token ids into vector representations
@@ -275,9 +275,6 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         ph_output_type = []
         for config_file in ph_config_files:
             head = PredictionHead.load(config_file, strict=strict)
-            # # set shared weights between LM and PH
-            # if type(head) == BertLMHead:
-            #     head.set_shared_weights(language_model)
             prediction_heads.append(head)
             ph_output_type.append(head.ph_output_type)
 
@@ -361,15 +358,16 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         :return: predictions in the right format
         """
         all_preds = []
-        # collect preds from all heads
-        # TODO add switch between single vs multiple prediction heads
-        for head, logits_for_head in zip(
-            self.prediction_heads, logits
-        ):
-            preds = head.formatted_preds(
-                logits=logits_for_head, **kwargs
-            )
-            all_preds.append(preds)
+
+        if len(self.prediction_heads) == 0:
+            # just return LM output (e.g. useful for extracting embeddings at inference time)
+            all_preds = self.language_model.formatted_preds(logits=logits, **kwargs)
+        else:
+            # collect preds from all heads (default)
+            # TODO add switch between single vs multiple prediction heads
+            for head, logits_for_head in zip(self.prediction_heads, logits):
+                preds = head.formatted_preds(logits=logits_for_head, **kwargs)
+                all_preds.append(preds)
         return all_preds
 
     def forward(self, **kwargs):
@@ -380,32 +378,59 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         :param kwargs: Holds all arguments that need to be passed to the language model and prediction head(s).
         :return: all logits as torch.tensor or multiple tensors.
         """
-        # Run language model
-        sequence_output, pooled_output = self.language_model(
-            **kwargs, output_all_encoded_layers=False
-        )
 
-        # Run (multiple) prediction heads
+        # Run forward pass of language model
+        sequence_output, pooled_output = self.forward_lm(**kwargs)
+
+        # Run forward pass of (multiple) prediction heads using the output from above
         all_logits = []
-        for head, lm_out in zip(self.prediction_heads, self.lm_output_types):
-            # Choose relevant vectors from LM as output and perform dropout
-            if lm_out == "per_token":
-                output = self.dropout(sequence_output)
-            elif lm_out == "per_sequence" or lm_out == "per_sequence_continuous":
-                output = self.dropout(pooled_output)
-            elif (
-                lm_out == "per_token_squad"
-            ):  # we need a per_token_squad because of variable metric computation later on...
-                output = self.dropout(sequence_output)
-            else:
-                raise ValueError(
-                    "Unknown extraction strategy from language model: {}".format(lm_out)
-                )
+        if len(self.prediction_heads) > 0:
+            for head, lm_out in zip(self.prediction_heads, self.lm_output_types):
+                # Choose relevant vectors from LM as output and perform dropout
+                if lm_out == "per_token":
+                    output = self.dropout(sequence_output)
+                elif lm_out == "per_sequence" or lm_out == "per_sequence_continuous":
+                    output = self.dropout(pooled_output)
+                elif (
+                    lm_out == "per_token_squad"
+                ):  # we need a per_token_squad because of variable metric computation later on...
+                    output = self.dropout(sequence_output)
+                else:
+                    raise ValueError(
+                        "Unknown extraction strategy from language model: {}".format(lm_out)
+                    )
 
-            # Do the actual forward pass of a single head
-            all_logits.append(head(output))
+                # Do the actual forward pass of a single head
+                all_logits.append(head(output))
+        else:
+            # just return LM output (e.g. useful for extracting embeddings at inference time)
+            all_logits.append((sequence_output, pooled_output))
 
         return all_logits
+
+    def forward_lm(self, **kwargs):
+        """
+        Forward pass for the language model
+        :param kwargs:
+        :return:
+        """
+        # Check if we have to extract from a special layer of the LM (default = last layer)
+        try:
+            extraction_layer = self.language_model.extraction_layer
+        except:
+            extraction_layer = -1
+
+        # Run forward pass of language model
+        if extraction_layer == -1:
+            sequence_output, pooled_output = self.language_model(**kwargs, output_all_encoded_layers=False)
+        else:
+            # get output from an earlier layer
+            self.language_model.enable_hidden_states_output()
+            sequence_output, pooled_output, all_hidden_states = self.language_model(**kwargs)
+            sequence_output = all_hidden_states[extraction_layer]
+            pooled_output = None #not available in earlier layers
+            self.language_model.disable_hidden_states_output()
+        return sequence_output, pooled_output
 
     def log_params(self):
         """
@@ -691,9 +716,6 @@ class ONNXAdaptiveModel(BaseAdaptiveModel):
             # ONNX Model doesn't need have a separate neural network for PredictionHead. It only uses the
             # instance methods of PredictionHead class, so, we load with the load_weights param as False.
             head = PredictionHead.load(config_file, load_weights=False)
-            # # set shared weights between LM and PH
-            # if type(head) == BertLMHead:
-            #     head.set_shared_weights(language_model)
             prediction_heads.append(head)
             ph_output_type.append(head.ph_output_type)
 
