@@ -159,7 +159,7 @@ class EmbeddingTokenizer(PreTrainedTokenizer):
 
         return tokenizer
 
-    def tokenize(self, text, **kwargs):
+    def _tokenize(self, text):
         if self.do_lower_case:
             text = text.lower()
         tokens = _run_split_on_punc(text)

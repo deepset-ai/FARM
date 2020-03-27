@@ -33,7 +33,7 @@ def doc_classifcation():
     lang_model = Path("../saved_models/glove-german-uncased")
     lang_model = Path("../saved_models/glove_converted")
     # or through s3
-    #lang_model = "glove-german-uncased"
+    lang_model = "glove-german-uncased"
     do_lower_case = True
     use_amp = None
 
@@ -47,25 +47,25 @@ def doc_classifcation():
     label_list = ["OTHER", "OFFENSE"]
     metric = "f1_macro"
 
-    # TODO adjust back to normal data loading
+    # TODO adjust back to normal
     processor = TextClassificationProcessor(tokenizer=tokenizer,
-                                            max_seq_len=64,
+                                            max_seq_len=128,
                                             data_dir=Path("../data/germeval18"),
                                             label_list=label_list,
-                                            train_filename="train.tsv",
-                                            dev_filename=None,
-                                            dev_split=0.2,
-                                            test_filename=None, #"test.tsv",
+                                            dev_split=0,
+                                            test_filename=None,
+                                            train_filename="test.tsv",
                                             metric=metric,
                                             label_column_name="coarse_label"
                                             )
+
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a
     #    few descriptive statistics of our datasets
     data_silo = DataSilo(
         processor=processor,
         batch_size=batch_size,
-        max_processes=8)
+        max_processes=4)
 
     # # 4. Create an AdaptiveModel
     # # a) which consists of an embedding model as a basis.
