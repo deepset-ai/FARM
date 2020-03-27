@@ -17,10 +17,11 @@ def embeddings_extraction():
     ]
 
     # Load model, tokenizer and processor directly into Inferencer
-    model = Inferencer.load(lang_model, task_type="embeddings", gpu=use_gpu, batch_size=batch_size)
+    model = Inferencer.load(lang_model, task_type="embeddings", gpu=use_gpu, batch_size=batch_size,
+                            extraction_strategy="reduce_mean", extraction_layer=-2)
 
     # Get embeddings for input text (you can vary the strategy and layer)
-    result = model.extract_vectors(dicts=basic_texts, extraction_strategy="cls_token", extraction_layer=-1)
+    result = model.inference_from_dicts(dicts=basic_texts, max_processes=1)
     print(result)
 
 if __name__ == "__main__":
