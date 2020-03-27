@@ -15,18 +15,25 @@
 """Tokenization classes."""
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+import collections
 import logging
 import re
+import os
+import unicodedata
 import numpy as np
 
-from farm.modeling.wordembedding_utils import load_embedding_tokenizer
+from pathlib import Path
+from farm.modeling.wordembedding_utils import load_from_cache, EMBEDDING_VOCAB_FILES_MAP
 
-from transformers.tokenization_bert import BertTokenizer
+from transformers.tokenization_bert import BertTokenizer, load_vocab
 from transformers.tokenization_roberta import RobertaTokenizer
 from transformers.tokenization_xlnet import XLNetTokenizer
 from transformers.tokenization_albert import AlbertTokenizer
 from transformers.tokenization_xlm_roberta import XLMRobertaTokenizer
 from transformers.tokenization_distilbert import DistilBertTokenizer
+from transformers.tokenization_utils import PreTrainedTokenizer
+
+
 
 
 logger = logging.getLogger(__name__)
@@ -87,11 +94,103 @@ class Tokenizer:
         elif tokenizer_class == "XLNetTokenizer":
             ret = XLNetTokenizer.from_pretrained(pretrained_model_name_or_path, keep_accents=True, **kwargs)
         elif tokenizer_class == "EmbeddingTokenizer":
-            ret = load_embedding_tokenizer(pretrained_model_name_or_path, **kwargs)
+            ret = EmbeddingTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         if ret is None:
             raise Exception("Unable to load tokenizer")
         else:
             return ret
+
+class EmbeddingTokenizer(PreTrainedTokenizer):
+    def __init__(
+        self,
+        vocab_file,
+        do_lower_case=True,
+        unk_token="[UNK]",
+        sep_token="[SEP]",
+        pad_token="[PAD]",
+        cls_token="[CLS]",
+        mask_token="[MASK]",
+        **kwargs
+    ):
+        """Constructs a BertTokenizer.
+
+        Args:
+            **vocab_file**: Path to a one-wordpiece-per-line vocabulary file
+            **do_lower_case**: (`optional`) boolean (default True)
+                Whether to lower case the input
+        """
+        super().__init__(
+            unk_token=unk_token,
+            sep_token=sep_token,
+            pad_token=pad_token,
+            cls_token=cls_token,
+            mask_token=mask_token,
+            **kwargs,
+        )
+        if not os.path.isfile(vocab_file):
+            raise ValueError("Can't find a vocabulary file at path '{}'.".format(vocab_file))
+        self.vocab = load_vocab(vocab_file)
+        self.unk_tok_idx = self.vocab[unk_token]
+        self.ids_to_tokens = collections.OrderedDict([(ids, tok) for tok, ids in self.vocab.items()])
+        self.do_lower_case = do_lower_case
+        self.vocab_size = len(self.vocab)
+
+    @classmethod
+    def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
+        if pretrained_model_name_or_path in EMBEDDING_VOCAB_FILES_MAP["vocab_file"]:
+            # Get the vocabulary from AWS S3 bucket
+            resolved_vocab_file = load_from_cache(pretrained_model_name_or_path,
+                                                  EMBEDDING_VOCAB_FILES_MAP["vocab_file"],
+                                                  **kwargs)
+        elif os.path.isdir(pretrained_model_name_or_path):
+            # Get the vocabulary from local files
+            logger.info(
+                "Model name '{}' not found in model shortcut name list ({}). "
+                "Assuming '{}' is a path to a directory containing tokenizer files.".format(
+                    pretrained_model_name_or_path, ", ".join(EMBEDDING_VOCAB_FILES_MAP["vocab_file"].keys()), pretrained_model_name_or_path
+                )
+            )
+            resolved_vocab_file = str(Path(pretrained_model_name_or_path) / "vocab.txt")
+        else:
+            raise NotImplementedError
+
+
+        tokenizer = cls(vocab_file=resolved_vocab_file, **kwargs)
+
+        return tokenizer
+
+    def tokenize(self, text, **kwargs):
+        if self.do_lower_case:
+            text = text.lower()
+        tokens = _run_split_on_punc(text)
+        tokens = [t if t in self.vocab else self.unk_token for t in tokens]
+        return tokens
+
+    def save_pretrained(self, vocab_path):
+        """Save the tokenizer vocabulary to a directory or file."""
+        index = 0
+        if os.path.isdir(vocab_path):
+            vocab_file = os.path.join(vocab_path, "vocab.txt")
+        else:
+            vocab_file = vocab_path
+        with open(vocab_file, "w", encoding="utf-8") as writer:
+            for token, token_index in sorted(self.vocab.items(), key=lambda kv: kv[1]):
+                if index != token_index:
+                    logger.warning(
+                        "Saving vocabulary to {}: vocabulary indices are not consecutive."
+                        " Please check that the vocabulary is not corrupted!".format(vocab_file)
+                    )
+                    index = token_index
+                writer.write(token + "\n")
+                index += 1
+        return (vocab_file,)
+
+
+    def _convert_token_to_id(self, token):
+        return self.vocab.get(token,self.unk_tok_idx)
+
+
+
 
 def tokenize_with_metadata(text, tokenizer):
     """
@@ -261,3 +360,39 @@ def insert_at_special_tokens_pos(seq, special_tokens_mask, insert_element):
     for idx in special_tokens_indices:
         new_seq.insert(idx, insert_element)
     return new_seq
+
+def _run_split_on_punc(text, never_split=None):
+    """Splits punctuation on a piece of text."""
+    if never_split is not None and text in never_split:
+        return [text]
+    chars = list(text)
+    i = 0
+    start_new_word = True
+    output = []
+    while i < len(chars):
+        char = chars[i]
+        if _is_punctuation(char):
+            output.append([char])
+            start_new_word = True
+        else:
+            if start_new_word:
+                output.append([])
+            start_new_word = False
+            output[-1].append(char)
+        i += 1
+
+    return ["".join(x) for x in output]
+
+def _is_punctuation(char):
+    """Checks whether `chars` is a punctuation character."""
+    cp = ord(char)
+    # We treat all non-letter/number ASCII as punctuation.
+    # Characters such as "^", "$", and "`" are not in the Unicode
+    # Punctuation class but we treat them as punctuation anyways, for
+    # consistency.
+    if (cp >= 33 and cp <= 47) or (cp >= 58 and cp <= 64) or (cp >= 91 and cp <= 96) or (cp >= 123 and cp <= 126):
+        return True
+    cat = unicodedata.category(char)
+    if cat.startswith("P"):
+        return True
+    return False
