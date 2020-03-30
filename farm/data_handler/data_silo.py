@@ -78,6 +78,10 @@ class DataSilo:
         self.caching = caching
         self.cache_path = cache_path
 
+        if len(self.processor.tasks) == 0:
+            raise Exception("No task initialized. Try initializing the processor with a metric and a label list. "
+                            "Alternatively you can add a task using Processor.add_task()")
+
         loaded_from_cache = False
         if self.caching:  # Check if DataSets are present in cache
             checksum = self._get_checksum()
@@ -410,7 +414,7 @@ class DataSilo:
         logger.info("Examples in dev  : {}".format(self.counts["dev"]))
         logger.info("Examples in test : {}".format(self.counts["test"]))
         logger.info("")
-        logger.info("Max sequence length:     {}".format(max(seq_lens)))
+        logger.info("Longest sequence length observed after clipping:     {}".format(max(seq_lens)))
         logger.info("Average sequence length after clipping: {}".format(self.ave_len))
         logger.info("Proportion clipped:      {}".format(self.clipped))
         if self.clipped > 0.5:
@@ -437,7 +441,7 @@ class DataSilo:
         :param task_name: name of the task as used in the processor
         :type task_name: str
         """
-
+        
         tensor_name = self.processor.tasks[task_name]["label_tensor_name"]
         label_list = self.processor.tasks[task_name]["label_list"]
         tensor_idx = list(self.tensor_names).index(tensor_name)
