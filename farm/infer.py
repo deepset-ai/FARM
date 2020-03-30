@@ -182,7 +182,7 @@ class Inferencer:
                     max_seq_len=max_seq_len,
                     label_list=["start_token", "end_token"],
                     metric="squad",
-                    data_dir=None,
+                    data_dir="data",
                     doc_stride=doc_stride
                 )
             elif task_type == "embeddings":
@@ -192,7 +192,7 @@ class Inferencer:
                 label_list = list(config.id2label[id] for id in range(len(config.id2label)))
                 processor = TextClassificationProcessor(tokenizer=tokenizer,
                                                         max_seq_len=max_seq_len,
-                                                        data_dir=None,
+                                                        data_dir="data",
                                                         label_list=label_list,
                                                         label_column_name="label",
                                                         metric="acc",
@@ -201,7 +201,7 @@ class Inferencer:
             elif task_type == "ner":
                 label_list = list(config.label2id.keys())
                 processor = NERProcessor(
-                    tokenizer=tokenizer, max_seq_len=max_seq_len, data_dir=None, metric="seq_f1",
+                    tokenizer=tokenizer, max_seq_len=max_seq_len, data_dir="data", metric="seq_f1",
                     label_list=label_list
                 )
             else:
