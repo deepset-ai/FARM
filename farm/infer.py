@@ -51,7 +51,8 @@ class Inferencer:
         name=None,
         return_class_probs=False,
         extraction_strategy=None,
-        extraction_layer=None
+        extraction_layer=None,
+        s3e_stats=None,
     ):
         """
         Initializes Inferencer from an AdaptiveModel and a Processor instance.
@@ -97,6 +98,7 @@ class Inferencer:
             self.model.prediction_heads = torch.nn.ModuleList([])
             self.model.language_model.extraction_layer = extraction_layer
             self.model.language_model.extraction_strategy = extraction_strategy
+            self.model.language_model.s3e_stats = s3e_stats
 
         # TODO add support for multiple prediction heads
 

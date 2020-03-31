@@ -398,8 +398,6 @@ def s3e_pooling(token_embs, token_ids, token_weights, centroids, token_to_cluste
     """
 
     embeddings = []
-    # TODO remove temporary hack to fit BERT emb dim (768) with fasttext ones (300)
-    token_embs = token_embs[:, :, :300]
     n_clusters = centroids.shape[0]
     emb_dim = token_embs.shape[2]
     # n_tokens = token_embs.shape[1]

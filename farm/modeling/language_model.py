@@ -245,7 +245,7 @@ class LanguageModel(nn.Module):
         return language
 
     def formatted_preds(self, logits, samples, ignore_first_token=True,
-                        padding_mask=None, **kwargs):
+                        padding_mask=None, input_ids=None, **kwargs):
         """
         Extracting vectors from language model (e.g. for extracting sentence embeddings).
         Different pooling strategies and layers are available and will be determined from the object attributes
@@ -287,7 +287,7 @@ class LanguageModel(nn.Module):
         elif self.extraction_strategy == "s3e":
             vecs = self._pool_tokens(sequence_output, padding_mask, self.extraction_strategy,
                                      ignore_first_token=ignore_first_token,
-                                     input_ids=input_ids, s3e_stats=s3e_stats)
+                                     input_ids=input_ids, s3e_stats=self.s3e_stats)
         else:
             raise NotImplementedError
 
@@ -317,7 +317,7 @@ class LanguageModel(nn.Module):
         if strategy == "s3e":
             input_ids = input_ids.cpu().numpy()
             pooled_vecs = s3e_pooling(token_embs=token_vecs, token_ids=input_ids,
-                               token_weights=s3e_stats["token_weights"],centroids=s3e_stats["centroids"],
+                               token_weights=s3e_stats["token_weights"], centroids=s3e_stats["centroids"],
                                token_to_cluster=s3e_stats["token_to_cluster"])
         return pooled_vecs
 
@@ -979,7 +979,7 @@ class WordEmbedding_LM(LanguageModel):
         :return: Language Model
 
         """
-        import fasttext
+        #import fasttext
         wordembedding_LM = cls()
         if "farm_lm_name" in kwargs:
             wordembedding_LM.name = kwargs["farm_lm_name"]

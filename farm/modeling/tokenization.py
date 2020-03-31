@@ -223,6 +223,7 @@ def tokenize_with_metadata(text, tokenizer):
     words = text.split(" ")
     word_offsets = []
     cumulated = 0
+    logger.info(len(words))
     for idx, word in enumerate(words):
         word_offsets.append(cumulated)
         cumulated += len(word) + 1  # 1 because we so far have whitespace tokenizer
@@ -251,7 +252,11 @@ def _words_to_tokens(words, word_offsets, tokenizer):
     tokens = []
     token_offsets = []
     start_of_word = []
+    idx = 0
     for w, w_off in zip(words, word_offsets):
+        idx += 1
+        if idx % 500000 == 0:
+            logger.info(idx)
         # Get (subword) tokens of single word.
         # For the first word of a text: we just call the regular tokenize function.
         # For later words: we need to call it with add_prefix_space=True to get the same results with roberta / gpt2 tokenizer
