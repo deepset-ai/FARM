@@ -4,6 +4,7 @@ import logging
 import os
 from pathlib import Path
 
+import psutil
 import numpy
 import onnxruntime
 import torch
@@ -690,7 +691,7 @@ class ONNXAdaptiveModel(BaseAdaptiveModel):
     For inference, this class is compatible with the FARM Inferencer.
     """
     def __init__(self, onnx_session, prediction_heads, language, device="cpu"):
-        if str(onnxruntime.get_device()).lower() != str(device).lower():
+        if device == "cuda" and onnxruntime.get_device() != "gpu":
             raise Exception(f"Device {device} not available for Inference. For CPU, run pip install onnxruntime and"
                             f"for GPU run pip install onnxruntime-gpu")
         self.onnx_session = onnx_session
@@ -703,9 +704,8 @@ class ONNXAdaptiveModel(BaseAdaptiveModel):
         sess_options = onnxruntime.SessionOptions()
         # Set graph optimization level to ORT_ENABLE_EXTENDED to enable bert optimization.
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
-
-        # To enable model serialization and store the optimized graph to desired location.
-        sess_options.optimized_model_filepath = os.path.join(load_dir, "optimized_model.onnx")
+        # Use OpenMP optimizations. Only useful for CPU, has little impact for GPUs.
+        sess_options.intra_op_num_threads = psutil.cpu_count(logical=True)
         onnx_session = onnxruntime.InferenceSession(str(load_dir / "model.onnx"), sess_options)
 
         # Prediction heads
