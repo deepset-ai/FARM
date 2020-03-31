@@ -472,7 +472,9 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         if len(self.prediction_heads) != 1:
             raise ValueError(f"Currently conversion only works for models with a SINGLE prediction head. "
                              f"Your model has {len(self.prediction_heads)}")
-
+        elif len(self.prediction_heads[0].layer_dims) != 2:
+            raise ValueError(f"Currently conversion only works for PredictionHeads that are a single layer Feed Forward NN with dimensions [LM_output_dim, number_classes].\n"
+                             f"            Your PredictionHead has {str(self.prediction_heads[0].layer_dims)} dimensions.")
         #TODO add more infos to config
 
         if self.prediction_heads[0].model_type == "span_classification":
@@ -498,6 +500,14 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
                            "not the Next Sentence Prediction or Sentence Order Prediction components")
 
         elif self.prediction_heads[0].model_type == "text_classification":
+            if self.language_model.model.base_model_prefix == "roberta":
+                # Classification Heads in transformers have different architecture across Language Model variants
+                # The RobertaClassificationhead has components: input2dense, dropout, tanh, dense2output
+                # The tanh function cannot be mapped to current FARM style linear Feed Forward ClassificationHeads.
+                # So conversion for this type cannot work. We would need a compatible FARM RobertaClassificationHead
+                logger.error("Conversion for Text Classification with Roberta or XLMRoberta not possible at the moment.")
+                raise NotImplementedError
+
             # add more info to config
             self.language_model.model.config.id2label = {id: label for id, label in enumerate(self.prediction_heads[0].label_list)}
             self.language_model.model.config.label2id = {label: id for id, label in enumerate(self.prediction_heads[0].label_list)}
