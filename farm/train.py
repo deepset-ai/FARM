@@ -353,15 +353,15 @@ class Trainer:
         :type resume_from_checkpoint: str
         """
         checkpoint_to_load = None
-        #if checkpoint_root_dir.exists():
-        #    if resume_from_checkpoint == "latest":
-        #        saved_checkpoints = cls._get_checkpoints(checkpoint_root_dir)
-        #        if saved_checkpoints:
-        #            checkpoint_to_load = saved_checkpoints[0]  # latest checkpoint
-        #        else:
-        #            checkpoint_to_load = None
-        #    else:
-        #        checkpoint_to_load = checkpoint_root_dir / resume_from_checkpoint
+        if checkpoint_root_dir.exists():
+           if resume_from_checkpoint == "latest":
+               saved_checkpoints = cls._get_checkpoints(checkpoint_root_dir)
+               if saved_checkpoints:
+                   checkpoint_to_load = saved_checkpoints[0]  # latest checkpoint
+               else:
+                   checkpoint_to_load = None
+           else:
+               checkpoint_to_load = checkpoint_root_dir / resume_from_checkpoint
 
         if checkpoint_to_load:
             trainer = cls._load_checkpoint(path=checkpoint_to_load, data_silo=data_silo)

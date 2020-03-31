@@ -1,10 +1,8 @@
 import argparse
-import json
 import logging
 from pathlib import Path
 
-from transformers.tokenization_bert import BertTokenizer
-
+from farm.modeling.tokenization import Tokenizer
 from farm.data_handler.data_silo import StreamingDataSilo, DataSilo
 from farm.data_handler.processor import BertStyleLMProcessor
 from farm.modeling.adaptive_model import AdaptiveModel
@@ -40,14 +38,13 @@ def train_from_scratch():
     ml_logger.init_experiment(experiment_name="train_from_scratch", run_name="run")
 
     set_all_seeds(seed=39)
-    # device, n_gpu = initialize_device_settings(use_cuda=True)
     device, n_gpu = initialize_device_settings(use_cuda=True, local_rank=args.local_rank, use_amp=use_amp)
-    evaluate_every = 10000
+    evaluate_every = 15000
 
     save_dir = Path("saved_models/train_from_scratch")
     data_dir = Path("data/lm_finetune_nips")
     train_filename = "train.txt"
-    # dev_filename = "dev.txt"
+    dev_filename = "dev.txt"
 
     max_seq_len = 128
     batch_size = 60
@@ -55,18 +52,16 @@ def train_from_scratch():
     learning_rate = 0.0001
     warmup_proportion = 0.01
     n_epochs = 1
-    vocab_file = "bert-base-uncased-vocab.txt"
 
     # 1.Create a tokenizer
-    tokenizer = BertTokenizer(data_dir / vocab_file, do_lower_case=True)
-    # tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+    tokenizer = Tokenizer.load("bert-base-uncased", do_lower_case=True)
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a PyTorch Dataset
     processor = BertStyleLMProcessor(
         data_dir=data_dir,
         tokenizer=tokenizer, max_seq_len=max_seq_len,
         train_filename=train_filename,
-        dev_filename=None,
+        dev_filename=dev_filename,
         test_filename=None,
     )
 
@@ -106,12 +101,12 @@ def train_from_scratch():
     )
 
     # 6. Feed everything to the Trainer, which keeps care of growing our model and evaluates it from time to time
-    # if args.get("checkpoint_every"):
-    #     checkpoint_every = int(args["checkpoint_every"])
-    #     checkpoint_root_dir = Path("/opt/ml/checkpoints/training")
-    # else:
-    checkpoint_every = None
-    checkpoint_root_dir = None
+    if args.get("checkpoint_every"):
+        checkpoint_every = int(args["checkpoint_every"])
+        checkpoint_root_dir = Path("/opt/ml/checkpoints/training")
+    else:
+        checkpoint_every = None
+        checkpoint_root_dir = None
 
     trainer = Trainer.create_or_load_checkpoint(
         model=model,
