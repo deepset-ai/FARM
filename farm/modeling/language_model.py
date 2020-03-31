@@ -128,7 +128,11 @@ class LanguageModel(nn.Module):
                 elif 'xlnet' in pretrained_model_name_or_path:
                     language_model_class = 'XLNet'
 
-            language_model = cls.subclasses[language_model_class].load(pretrained_model_name_or_path, **kwargs)
+            if language_model_class:
+                language_model = cls.subclasses[language_model_class].load(pretrained_model_name_or_path, **kwargs)
+            else:
+                language_model = None
+
             if language_model_class == 'XLMRoberta':
                 # TODO: for some reason, the pretrained XLMRoberta has different vocab size in the tokenizer compared to the model this is a hack to resolve that
                 n_added_tokens = 3
