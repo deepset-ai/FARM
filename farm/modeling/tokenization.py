@@ -149,10 +149,14 @@ def _words_to_tokens(words, word_offsets, tokenizer):
     start_of_word = []
     for w, w_off in zip(words, word_offsets):
         # Get (subword) tokens of single word.
+
+        # empty / pure whitespace
+        if len(w) == 0:
+          continue
         # For the first word of a text: we just call the regular tokenize function.
         # For later words: we need to call it with add_prefix_space=True to get the same results with roberta / gpt2 tokenizer
         # see discussion here. https://github.com/huggingface/transformers/issues/1196
-        if len(tokens) == 0:
+        elif len(tokens) == 0:
             tokens_word = tokenizer.tokenize(w)
         else:
             try:
