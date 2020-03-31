@@ -572,6 +572,11 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
             adaptive_model = cls(language_model=lm, prediction_heads=[ph], embeds_dropout_prob=0.1,
                                lm_output_types="per_token", device=device)
         elif task_type == "text_classification":
+            if "roberta" in model_name_or_path:
+                # The RobertaClassificationhead has components: input2dense, dropout, tanh, dense2output
+                # The tanh function cannot be mapped to current FARM style linear Feed Forward PredictionHeads.
+                logger.error("Conversion for Text Classification with Roberta or XLMRoberta not possible at the moment.")
+                raise NotImplementedError
             ph = TextClassificationHead.load(model_name_or_path)
             adaptive_model = cls(language_model=lm, prediction_heads=[ph], embeds_dropout_prob=0.1,
                                  lm_output_types="per_sequence", device=device)
