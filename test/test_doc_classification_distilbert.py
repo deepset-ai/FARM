@@ -18,7 +18,7 @@ def test_doc_classification(caplog):
     caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
-    device, n_gpu = initialize_device_settings(use_cuda=True)
+    device, n_gpu = initialize_device_settings(use_cuda=False)
     n_epochs = 1
     batch_size = 1
     evaluate_every = 2

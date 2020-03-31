@@ -21,7 +21,7 @@ def train_from_scratch(args):
         level=logging.INFO,
     )
 
-    ml_logger = MLFlowLogger(tracking_uri=args.get("mlflow_tracking_uri", "file:/opt/ml/checkpoints/mlflow"))
+    ml_logger = MLFlowLogger(tracking_uri=args.get("mlflow_tracking_uri", "file:/opt/ml/model/mlflow"))
     ml_logger.init_experiment(experiment_name="train_from_scratch", run_name="run")
 
     set_all_seeds(seed=39)
