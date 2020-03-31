@@ -489,7 +489,7 @@ class StreamingDataSilo:
     multiple workers that utilize the available CPU cores and ensure enough pre-computed batches.
     """
 
-    def __init__(self, processor, batch_size, dataloader_workers=8):
+    def __init__(self, processor, batch_size, distributed=False, dataloader_workers=8):
         """
         :param processor: A dataset specific Processor object which will turn input file into a Pytorch Dataset.
         :type processor: Processor
@@ -502,6 +502,7 @@ class StreamingDataSilo:
         self.processor = processor
         self.batch_size = batch_size
         self.dataloader_workers = dataloader_workers
+        self.distributed = distributed
 
     def get_data_loader(self, dataset_name):
         """
@@ -551,7 +552,9 @@ class StreamingDataSilo:
             filepath=self.processor.data_dir / filename,
             batch_size=self.batch_size,
             dataloader_workers=self.dataloader_workers,
+            distributed = self.distributed
         )
+
         data_loader = NamedDataLoader(
             dataset=data_set, batch_size=1, num_workers=self.dataloader_workers, pin_memory=True
         )
@@ -559,7 +562,7 @@ class StreamingDataSilo:
 
 
 class _StreamingDataSet(IterableDataset):
-    def __init__(self, processor, filepath, batch_size, dataloader_workers):
+    def __init__(self, processor, filepath, batch_size, dataloader_workers, distributed=False):
         """
         :param processor: A dataset specific Processor object which will turn input file into a Pytorch Dataset.
         :type processor: Processor
@@ -575,6 +578,7 @@ class _StreamingDataSet(IterableDataset):
         self.processor = processor
         self.filepath = filepath
         self.dataloader_workers = dataloader_workers
+        self.distributed = distributed
 
         # calculate number of samples for __len__()
         total_lines = sum(1 for line in open(filepath, encoding="utf-8"))
@@ -582,6 +586,11 @@ class _StreamingDataSet(IterableDataset):
         self.n_samples = total_lines - (2 * empty_lines)
 
         self.file_to_dicts_generator = processor.file_to_dicts(filepath)
+
+        if self.distributed:
+            self.rank = torch.distributed.get_rank()
+            self.world_size = torch.distributed.get_world_size()
+
 
     def __len__(self):
         return self.n_samples
@@ -601,10 +610,17 @@ class _StreamingDataSet(IterableDataset):
 
         if self.dataloader_workers > 1:
             worker_info = torch.utils.data.get_worker_info()
-            worker_id = worker_info.id
-            dicts = stream_grouper(
-                self.file_to_dicts_generator, n=10, worker_id=worker_id, total_workers=self.dataloader_workers
-            )
+            if self.distributed:
+                chunk_id = self.rank * worker_info.num_workers + worker_info.id
+                total_chunks = self.world_size * worker_info.num_workers
+
+                dicts = stream_grouper(
+                    self.file_to_dicts_generator, n=10, worker_id=chunk_id, total_workers=total_chunks
+                )
+            else:
+                worker_id = worker_info.id
+                dicts = stream_grouper(self.file_to_dicts_generator, n=10, worker_id=chunk_id, total_workers=total_chunks)
+
         else:
             dicts = grouper(self.file_to_dicts_generator, n=10)
 

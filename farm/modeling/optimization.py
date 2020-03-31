@@ -146,11 +146,11 @@ def initialize_optimizer(model,
     # Get optimizer from pytorch, transformers or apex
     optimizer = _get_optim(model, optimizer_opts)
 
-    # Get learning rate schedule
-    scheduler = get_scheduler(optimizer, schedule_opts)
-
     # Adjust for parallel training + amp
     model, optimizer = _optimize_model(model, device, local_rank, optimizer, distributed, use_amp)
+
+    # Get learning rate schedule - moved below to supress warning
+    scheduler = get_scheduler(optimizer, schedule_opts)
 
     return model, optimizer, scheduler
 
@@ -275,15 +275,16 @@ def _optimize_model(model, device, local_rank, optimizer=None, distributed=False
         if APEX_PARALLEL_AVAILABLE:
             model = convert_syncbn_model(model)
 
-        n_gpu = torch.cuda.device_count() // torch.distributed.get_world_size()
-        device_ids = list(range(local_rank * n_gpu, (local_rank + 1) * n_gpu))
+        #n_gpu = torch.cuda.device_count() // torch.distributed.get_world_size()
+        #device_ids = list(range(local_rank * n_gpu, (local_rank + 1) * n_gpu))
         # for some models DistributedDataParallel might complain about parameters
         # not contributing to loss. find_used_parameters remedies that.
         #TODO check if Wrapped DDP still needed?
-        model = DistributedDataParallel(model,
-                                        device_ids=device_ids,
-                                        output_device=device_ids[0],
-                                        find_unused_parameters=True)
+        # model = DistributedDataParallel(model,
+        #                                 device_ids=device_ids,
+        #                                 output_device=device_ids[0],
+        #                                 find_unused_parameters=True)
+        model = DistributedDataParallel(model, device_ids=[local_rank], output_device=local_rank)
 
     elif torch.cuda.device_count() > 1 and device.type == "cuda":
         model = WrappedDataParallel(model)
