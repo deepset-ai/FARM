@@ -246,7 +246,7 @@ class Trainer:
                 loss = self.backward_propagate(per_sample_loss, step)
 
                 # Perform  evaluation
-                if self.global_step % self.evaluate_every == 0 and self.global_step != 0:
+                if self.evaluate_every != 0 and if self.global_step % self.evaluate_every == 0 and self.global_step != 0:
                     # When using StreamingDataSilo, each evaluation creates a new instance of
                     # dev_data_loader. In cases like training from scratch, this could cause
                     # some variance across evaluators due to the randomness in word masking.
