@@ -277,6 +277,7 @@ class Processor(ABC):
             except:
                 logger.error(f"Could not create sample(s) from this dict: \n {basket.raw}")
                 raise
+        self.baskets = [b for b in self.baskets if len(b.samples) > 0]
 
     def _featurize_samples(self):
         for basket in self.baskets:
@@ -802,6 +803,8 @@ class BertStyleLMProcessor(Processor):
                 tokenized["text_b"] = tokenize_with_metadata(
                     text_b, self.tokenizer
                 )
+                if len(tokenized["text_a"]["tokens"]) == 0 or len(tokenized["text_b"]["tokens"]) == 0:
+                    continue
                 # truncate to max_seq_len
                 for seq_name in ["tokens", "offsets", "start_of_word"]:
                     tokenized["text_a"][seq_name], tokenized["text_b"][seq_name], _ = truncate_sequences(
@@ -822,6 +825,8 @@ class BertStyleLMProcessor(Processor):
                 tokenized["text_a"] = tokenize_with_metadata(
                     text_a, self.tokenizer
                 )
+                if len(tokenized["text_a"]["tokens"]) == 0:
+                    continue
                 # truncate to max_seq_len
                 for seq_name in ["tokens", "offsets", "start_of_word"]:
                     tokenized["text_a"][seq_name], _, _ = truncate_sequences(
