@@ -479,6 +479,8 @@ class TextClassificationProcessor(Processor):
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets and a start_of_word mask
         tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer)
+        if len(tokenized["tokens"]) == 0:
+            return []
         # truncate tokens, offsets and start_of_word to max_seq_len that can be handled by the model
         for seq_name in tokenized.keys():
             tokenized[seq_name], _, _ = truncate_sequences(seq_a=tokenized[seq_name], seq_b=None, tokenizer=self.tokenizer,
@@ -516,6 +518,8 @@ class TextPairClassificationProcessor(TextClassificationProcessor):
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
         tokenized_a = tokenize_with_metadata(dictionary["text"], self.tokenizer)
         tokenized_b = tokenize_with_metadata(dictionary["text_b"], self.tokenizer)
+        if len(tokenized_a["tokens"]) == 0 or len(tokenized_b["tokens"]) == 0:
+            return []
         tokenized = {"tokens": tokenized_a["tokens"],
                      "tokens_b": tokenized_b["tokens"]}
         tokenized["tokens"], tokenized["tokens_b"], _ = truncate_sequences(seq_a=tokenized["tokens"],
@@ -681,6 +685,8 @@ class NERProcessor(Processor):
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets, which helps to map our entity tags back to original positions
         tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer)
+        if len(tokenized["tokens"]) == 0:
+            return []
         # truncate tokens, offsets and start_of_word to max_seq_len that can be handled by the model
         for seq_name in tokenized.keys():
             tokenized[seq_name], _, _ = truncate_sequences(seq_a=tokenized[seq_name], seq_b=None, tokenizer=self.tokenizer,
@@ -1148,6 +1154,8 @@ class RegressionProcessor(Processor):
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets
         tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer)
+        if len(tokenized["tokens"]) == 0:
+            return []
         # truncate tokens, offsets and start_of_word to max_seq_len that can be handled by the model
         for seq_name in tokenized.keys():
             tokenized[seq_name], _, _ = truncate_sequences(seq_a=tokenized[seq_name], seq_b=None,
