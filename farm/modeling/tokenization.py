@@ -16,25 +16,23 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import collections
+import json
 import logging
-import re
 import os
+import re
 import unicodedata
-import numpy as np
-
 from pathlib import Path
-from farm.modeling.wordembedding_utils import load_from_cache, EMBEDDING_VOCAB_FILES_MAP
 
-from transformers.tokenization_bert import BertTokenizer, load_vocab
-from transformers.tokenization_roberta import RobertaTokenizer
-from transformers.tokenization_xlnet import XLNetTokenizer
+import numpy as np
 from transformers.tokenization_albert import AlbertTokenizer
-from transformers.tokenization_xlm_roberta import XLMRobertaTokenizer
+from transformers.tokenization_bert import BertTokenizer, load_vocab
 from transformers.tokenization_distilbert import DistilBertTokenizer
+from transformers.tokenization_roberta import RobertaTokenizer
 from transformers.tokenization_utils import PreTrainedTokenizer
+from transformers.tokenization_xlm_roberta import XLMRobertaTokenizer
+from transformers.tokenization_xlnet import XLNetTokenizer
 
-
-
+from farm.modeling.wordembedding_utils import load_from_cache, EMBEDDING_VOCAB_FILES_MAP
 
 logger = logging.getLogger(__name__)
 
@@ -100,25 +98,27 @@ class Tokenizer:
         else:
             return ret
 
-class EmbeddingTokenizer(PreTrainedTokenizer):
-    def __init__(
-        self,
-        vocab_file,
-        do_lower_case=True,
-        unk_token="[UNK]",
-        sep_token="[SEP]",
-        pad_token="[PAD]",
-        cls_token="[CLS]",
-        mask_token="[MASK]",
-        **kwargs
-    ):
-        """Constructs a BertTokenizer.
 
-        Args:
-            **vocab_file**: Path to a one-wordpiece-per-line vocabulary file
-            **do_lower_case**: (`optional`) boolean (default True)
-                Whether to lower case the input
-        """
+class EmbeddingTokenizer(PreTrainedTokenizer):
+    """Constructs a EmbeddingTokenizer.
+
+    Args:
+        **vocab_file**: Path to a one-word-per-line vocabulary file
+        **do_lower_case**: (`optional`) boolean (default True)
+            Whether to lower case the input
+    """
+
+    def __init__(
+            self,
+            vocab_file,
+            do_lower_case=True,
+            unk_token="[UNK]",
+            sep_token="[SEP]",
+            pad_token="[PAD]",
+            cls_token="[CLS]",
+            mask_token="[MASK]",
+            **kwargs
+    ):
         super().__init__(
             unk_token=unk_token,
             sep_token=sep_token,
@@ -147,13 +147,17 @@ class EmbeddingTokenizer(PreTrainedTokenizer):
             logger.info(
                 "Model name '{}' not found in model shortcut name list ({}). "
                 "Assuming '{}' is a path to a directory containing tokenizer files.".format(
-                    pretrained_model_name_or_path, ", ".join(EMBEDDING_VOCAB_FILES_MAP["vocab_file"].keys()), pretrained_model_name_or_path
+                    pretrained_model_name_or_path, ", ".join(EMBEDDING_VOCAB_FILES_MAP["vocab_file"].keys()),
+                    pretrained_model_name_or_path
                 )
             )
-            resolved_vocab_file = str(Path(pretrained_model_name_or_path) / "vocab.txt")
+            temp = open(str(Path(pretrained_model_name_or_path) / "language_model_config.json"), "r",
+                        encoding="utf-8").read()
+            config_dict = json.loads(temp)
+
+            resolved_vocab_file = str(Path(pretrained_model_name_or_path) / config_dict["vocab_filename"])
         else:
             raise NotImplementedError
-
 
         tokenizer = cls(vocab_file=resolved_vocab_file, **kwargs)
 
@@ -185,11 +189,8 @@ class EmbeddingTokenizer(PreTrainedTokenizer):
                 index += 1
         return (vocab_file,)
 
-
     def _convert_token_to_id(self, token):
-        return self.vocab.get(token,self.unk_tok_idx)
-
-
+        return self.vocab.get(token, self.unk_tok_idx)
 
 
 def tokenize_with_metadata(text, tokenizer):
@@ -326,9 +327,9 @@ def truncate_sequences(seq_a, seq_b, tokenizer, max_seq_len, truncation_strategy
 
     if max_seq_len and total_len > max_seq_len:
         seq_a, seq_b, overflowing_tokens = tokenizer.truncate_sequences(seq_a, pair_ids=seq_b,
-                                                                    num_tokens_to_remove=total_len - max_seq_len,
-                                                                    truncation_strategy=truncation_strategy,
-                                                                    stride=stride)
+                                                                        num_tokens_to_remove=total_len - max_seq_len,
+                                                                        truncation_strategy=truncation_strategy,
+                                                                        stride=stride)
     return (seq_a, seq_b, overflowing_tokens)
 
 
@@ -361,6 +362,7 @@ def insert_at_special_tokens_pos(seq, special_tokens_mask, insert_element):
         new_seq.insert(idx, insert_element)
     return new_seq
 
+
 def _run_split_on_punc(text, never_split=None):
     """Splits punctuation on a piece of text."""
     if never_split is not None and text in never_split:
@@ -382,6 +384,7 @@ def _run_split_on_punc(text, never_split=None):
         i += 1
 
     return ["".join(x) for x in output]
+
 
 def _is_punctuation(char):
     """Checks whether `chars` is a punctuation character."""

@@ -1,45 +1,48 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
 import io
-import os
 import json
 import logging
-
-import numpy as np
-
-from tqdm import tqdm
-from farm.file_utils import load_from_cache
-from transformers.tokenization_bert import BertTokenizer
+import os
 from pathlib import Path
 
+import numpy as np
+from tqdm import tqdm
+from transformers.tokenization_bert import BertTokenizer
+
+from farm.file_utils import load_from_cache
 
 # create dictionaries with links to wordembeddings stored on deepset s3
 # the dicts need to be used with HF transformers to use their data + modelling functionality
 # language model config
-PRETRAINED_CONFIG_ARCHIVE_MAP = {"glove-german-uncased":"https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/glove-german-uncased/language_model_config.json"}
+PRETRAINED_CONFIG_ARCHIVE_MAP = {
+    "glove-german-uncased": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/glove-german-uncased/language_model_config.json"}
 # tokenization
 EMBEDDING_VOCAB_FILES_MAP = {}
-EMBEDDING_VOCAB_FILES_MAP["vocab_file"] = {"glove-german-uncased":"https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/glove-german-uncased/vocab.txt"}
+EMBEDDING_VOCAB_FILES_MAP["vocab_file"] = {
+    "glove-german-uncased": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/glove-german-uncased/vocab.txt"}
 MAX_MODEL_INPU_SIZES = {"glove-german-uncased": 10000}
 PRETRAINED_INIT_CONFIGURATION = {"glove-german-uncased": {"do_lower_case": False}}
-#model
-EMBEDDING_MODEL_MAP = {"glove-german-uncased":"https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/glove-german-uncased/vectors.txt"}
-
-#conversion
+# model
+EMBEDDING_MODEL_MAP = {
+    "glove-german-uncased": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/glove-german-uncased/vectors.txt"}
+# conversion
 SPECIAL_TOKENS = ["[CLS]", "[SEP]", "[UNK]", "[PAD]", "[MASK]"]
 
-
 logger = logging.getLogger(__name__)
+
 
 def load_embedding_tokenizer(pretrained_model_name_or_path, **kwargs):
     # if the pretrained model points to a file on deepset s3, we need to adjust transformers dictionaries
     if pretrained_model_name_or_path in PRETRAINED_INIT_CONFIGURATION:
         BertTokenizer.pretrained_vocab_files_map["vocab_file"]. \
-            update({pretrained_model_name_or_path:EMBEDDING_VOCAB_FILES_MAP["vocab_file"].get(pretrained_model_name_or_path, None)})
+            update({pretrained_model_name_or_path: EMBEDDING_VOCAB_FILES_MAP["vocab_file"].get(
+            pretrained_model_name_or_path, None)})
         BertTokenizer.max_model_input_sizes. \
-            update({pretrained_model_name_or_path:MAX_MODEL_INPU_SIZES.get(pretrained_model_name_or_path,None)})
+            update({pretrained_model_name_or_path: MAX_MODEL_INPU_SIZES.get(pretrained_model_name_or_path, None)})
         BertTokenizer.pretrained_init_configuration. \
-            update({pretrained_model_name_or_path:PRETRAINED_INIT_CONFIGURATION.get(pretrained_model_name_or_path,None)})
+            update(
+            {pretrained_model_name_or_path: PRETRAINED_INIT_CONFIGURATION.get(pretrained_model_name_or_path, None)})
     ret = BertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
     return ret
 
@@ -51,12 +54,14 @@ def load_model(pretrained_model_name_or_path, **kwargs):
     config_dict = json.loads(temp)
 
     # loading vocab
-    resolved_vocab_file = load_from_cache(pretrained_model_name_or_path, EMBEDDING_VOCAB_FILES_MAP["vocab_file"], **kwargs)
+    resolved_vocab_file = load_from_cache(pretrained_model_name_or_path, EMBEDDING_VOCAB_FILES_MAP["vocab_file"],
+                                          **kwargs)
 
     # loading model
     resolved_model_file = load_from_cache(pretrained_model_name_or_path, EMBEDDING_MODEL_MAP, **kwargs)
 
     return config_dict, resolved_vocab_file, resolved_model_file
+
 
 def load_embedding_vectors(embedding_filename, vocab):
     f = io.open(embedding_filename, 'rt', encoding='utf-8').readlines()
@@ -89,13 +94,14 @@ def load_embedding_vectors(embedding_filename, vocab):
                 repetitions += 1
 
     # TODO nonzero init of all embeddings, so if it isnt filled it can still learn
-    embeddings = np.zeros((len(vocab),embeddings_dimensionality))
+    embeddings = np.zeros((len(vocab), embeddings_dimensionality))
     for i, w in enumerate(vocab):
-        current = vectors.get(w,np.zeros(embeddings_dimensionality))
+        current = vectors.get(w, np.zeros(embeddings_dimensionality))
         if w not in vectors:
             logger.warning(f"Could not load pretrained embedding for word: {w}")
-        embeddings[i,:] = current
+        embeddings[i, :] = current
     return embeddings
+
 
 def load_word2vec_vocab(vocab_filename):
     """Loads a vocabulary file into a list."""
@@ -103,11 +109,12 @@ def load_word2vec_vocab(vocab_filename):
     with open(vocab_filename, "r", encoding="utf-8") as reader:
         lines = reader.readlines()
     for l in lines:
-        w,c = l.split(" ")
+        w, c = l.split(" ")
         vocab.append(w.strip())
     return vocab
 
-def convert_WordEmbeddings(embedding_filename, vocab_filename, output_path, language = "English"):
+
+def convert_WordEmbeddings(embedding_filename, vocab_filename, output_path, language="English"):
     """
     Converts a Wordembedding model in word2vec format to a format that can be used inside FARM
     For compatibility special tokens are added to create embeddings for [CLS], [SEP], [UNK], [PAD] and [MASK]
@@ -129,30 +136,30 @@ def convert_WordEmbeddings(embedding_filename, vocab_filename, output_path, lang
 
     # create embeddings
     temp_embeddings = load_embedding_vectors(embedding_filename=embedding_filename, vocab=temp_vocab)
-    mean_embedding = np.mean(temp_embeddings,axis=0)
-    embeddings = np.zeros((temp_embeddings.shape[0]+len(SPECIAL_TOKENS),temp_embeddings.shape[1]))
-    for i,tok in enumerate(SPECIAL_TOKENS):
-        embeddings[i,:] = mean_embedding
-    embeddings[len(SPECIAL_TOKENS):,:] = temp_embeddings
+    mean_embedding = np.mean(temp_embeddings, axis=0)
+    embeddings = np.zeros((temp_embeddings.shape[0] + len(SPECIAL_TOKENS), temp_embeddings.shape[1]))
+    for i, tok in enumerate(SPECIAL_TOKENS):
+        embeddings[i, :] = mean_embedding
+    embeddings[len(SPECIAL_TOKENS):, :] = temp_embeddings
 
     # create config
     lm_config = {
-      "embeddings_filename": "vectors.txt",
-      "hidden_size": embeddings.shape[1],
-      "language": language,
-      "name": "WordEmbedding_LM",
-      "vocab_filename": "vocab.txt",
-      "vocab_size": embeddings.shape[0]
+        "embeddings_filename": "vectors.txt",
+        "hidden_size": embeddings.shape[1],
+        "language": language,
+        "name": "WordEmbedding_LM",
+        "vocab_filename": "vocab.txt",
+        "vocab_size": embeddings.shape[0]
     }
 
     # saving
     if not os.path.exists(output_path):
         os.makedirs(output_path)
-    with open(Path(output_path) / "language_model_config.json","w") as file:
-        file.write(json.dumps(lm_config,indent=2))
+    with open(Path(output_path) / "language_model_config.json", "w") as file:
+        file.write(json.dumps(lm_config, indent=2))
 
-    _save_word2vec_format(fname=str(Path(output_path) / "vectors.txt"),
-                          fvocab=str(Path(output_path) / "vocab.txt"),
+    _save_word2vec_format(fname=str(Path(output_path) / lm_config["embeddings_filename"]),
+                          fvocab=str(Path(output_path) / lm_config["vocab_filename"]),
                           vocab=vocab,
                           vectors=embeddings)
 
@@ -186,10 +193,9 @@ def _save_word2vec_format(fname, vocab, vectors, fvocab):
     assert (len(vocab), vector_size) == vectors.shape
     with io.open(fname, 'w') as fout:
         # store in sorted order: most frequent words at the top
-        for i,word in enumerate(vocab):
-            row = vectors[i,:]
+        for i, word in enumerate(vocab):
+            row = vectors[i, :]
             fout.write(f"{word} {' '.join(repr(val) for val in row)}\n")
-
 
 
 if __name__ == "__main__":
@@ -197,4 +203,3 @@ if __name__ == "__main__":
                            vocab_filename="../../saved_models/glove_normal/vocab.txt",
                            output_path="../../saved_models/glove_converted",
                            language="German")
-
