@@ -739,7 +739,7 @@ class ONNXAdaptiveModel(BaseAdaptiveModel):
                 'segment_ids': numpy.ascontiguousarray(kwargs['segment_ids'].cpu().numpy()),
             }
             res = self.onnx_session.run(None, input_to_onnx)
-            logits = [torch.from_numpy(res[0])]
+            logits = [torch.from_numpy(res[0]).to(self.device)]
 
         return logits
 
