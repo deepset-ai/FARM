@@ -33,7 +33,7 @@ def question_answering():
     device, n_gpu = initialize_device_settings(use_cuda=True)
     batch_size = 16
     n_epochs = 1
-    evaluate_every = 100
+    evaluate_every = 1
     lang_model = "roberta-base"
     do_lower_case = False # roberta is a cased model
     train_filename = "train_sample_small.jsonl"
@@ -51,7 +51,7 @@ def question_answering():
         max_seq_len=384,
         train_filename=train_filename,
         dev_filename=None,
-        dev_split=0.001,
+        dev_split=0.0,
         test_filename=None,
         data_dir=Path("../data/natural_questions"),
     )

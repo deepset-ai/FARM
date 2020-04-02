@@ -1048,7 +1048,7 @@ class NaturalQuestionsProcessor(Processor):
                  doc_stride=128,
                  max_query_length=64,
                  proxies=None,
-                 downsample_is_impossible=0.01,
+                 keep_is_impossible=0.0001,
                  **kwargs):
             """
             :param tokenizer: Used to split a sentence (str) into tokens.
@@ -1083,7 +1083,7 @@ class NaturalQuestionsProcessor(Processor):
 
             self.doc_stride = doc_stride
             self.max_query_length = max_query_length
-            self.downsample_is_impossible = downsample_is_impossible
+            self.keep_is_impossible = keep_is_impossible
 
             super(NaturalQuestionsProcessor, self).__init__(
                 tokenizer=tokenizer,
@@ -1110,40 +1110,52 @@ class NaturalQuestionsProcessor(Processor):
             This method will split question-document pairs from the SampleBasket into question-passage pairs which will
         each form one sample. The "t" and "c" in variables stand for token and character respectively.
         """
-        dictionary_converted_ = self.prepare_dict(dictionary)
-        dictionary_tokenized = self.apply_tokenization(dictionary_converted_)[0]
+        dictionary_converted = self.prepare_dict(dictionary)
+        dictionary_tokenized = self.apply_tokenization(dictionary_converted)[0]
         n_special_tokens = self.tokenizer.num_added_tokens(pair=True)
         samples = create_samples_qa(dictionary_tokenized,
                                     self.max_query_length,
                                     self.max_seq_len,
                                     self.doc_stride,
                                     n_special_tokens)
-        # samples = [s for s in samples if self.is_not_impossible(s)]
+        samples = self.downsample(samples, self.keep_is_impossible)
         return samples
 
-    # @staticmethod
-    # def is_not_impossible(sample):
-    #     sample_tok = sample["tokenized"]
-    #     if len(sample_tok["answers"]) == 0:
-    #         return False
-    #     first_answer = sample_tok["answers"][0]
-    #     if first_answer["start_t"] < sample_tok["passage_start_t"]:
-    #         return False
-    #     if first_answer["end_t"] > sample_tok["passage_start_t"] + len(sample_tok["passage_tokens"]):
-    #         return False
-    #     if first_answer["answer_type"] == "is_impossible":
-    #         return False
-    #     else:
-    #         return True
+    def downsample(self, samples, keep_prob):
+        ret = []
+        for s in samples:
+            x = self.check_is_impossible(s)
+            if self.check_is_impossible(s):
+                if np.random.random() > 1 - keep_prob:
+                    ret.append(s)
+            else:
+                ret.append(s)
+        return ret
+
+    @staticmethod
+    def check_is_impossible(sample):
+        sample_tok = sample.tokenized
+        if len(sample_tok["answers"]) == 0:
+            return True
+        first_answer = sample_tok["answers"][0]
+        if first_answer["start_t"] < sample_tok["passage_start_t"]:
+            return True
+        if first_answer["end_t"] > sample_tok["passage_start_t"] + len(sample_tok["passage_tokens"]):
+            return True
+        if first_answer["answer_type"] == "is_impossible":
+            return True
+        else:
+            return False
 
 
     def prepare_dict(self, dictionary):
         converted_answers = []
         doc_text = dictionary["document_text"]
         doc_tokens, tok_to_ch = split_with_metadata(doc_text)
-        if "annotations" not in dictionary:
-            print()
         for annotation in dictionary["annotations"]:
+            # There seem to be cases where there is no answer but an annotation is given as a (-1, -1) long answer
+            if self.check_no_answer(annotation):
+                continue
             sa_text, sa_start_c = self.unify_short_answers(annotation["short_answers"], doc_text, tok_to_ch)
             la_text, la_start_c = self.retrieve_long_answer(annotation["long_answer"]["start_token"],
                                                             annotation["long_answer"]["end_token"],
@@ -1152,7 +1164,7 @@ class NaturalQuestionsProcessor(Processor):
             text, start_c = self.choose_span(sa_text, sa_start_c, la_text, la_start_c)
             converted_answers.append({"text": text,
                                       "answer_start": start_c})
-        if len(dictionary["annotations"]) == 0:
+        if len(converted_answers) == 0:
             answer_type = "is_impossible"
         else:
             answer_type = dictionary["annotations"][0]["yes_no_answer"]
@@ -1166,6 +1178,16 @@ class NaturalQuestionsProcessor(Processor):
                               "answers": converted_answers,
                               "answer_type": answer_type}]}
         return converted
+
+    @staticmethod
+    def check_no_answer(annotation):
+        if annotation["long_answer"]["start_token"] > -1 or annotation["long_answer"]["end_token"] > -1:
+            return False
+        for sa in annotation["short_answers"]:
+            if sa["start_token"] > -1 or sa["end_token"] > -1:
+                return False
+        else:
+            return True
 
     def retrieve_long_answer(self, start_t, end_t, tok_to_ch, doc_text):
         start_c, end_c = self.convert_tok_to_ch(start_t, end_t, tok_to_ch, doc_text)
