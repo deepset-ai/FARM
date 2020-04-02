@@ -12,7 +12,7 @@ from farm.modeling.prediction_head import TextClassificationHead
 from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer
 from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
-from farm.modeling.wordembedding_utils import FARM_fasttext
+from farm.modeling.wordembedding_utils import Fasttext_converter
 
 def doc_classifcation():
     logging.basicConfig(
@@ -27,7 +27,7 @@ def doc_classifcation():
     ########## Settings
     ##########################
     set_all_seeds(seed=42)
-    n_epochs = 1
+    n_epochs = 3
     batch_size = 32
     evaluate_every = 100
     # load fasttext from a local path:
@@ -35,12 +35,12 @@ def doc_classifcation():
     # or through s3
     fasttext_model = "fasttext-german-uncased"
     do_lower_case = True
-    max_features = 20_000 # maximum number of unique words we will transform
+    max_features = 10_000 # maximum number of unique words we will transform
     device, n_gpu = initialize_device_settings(use_cuda=True)
 
 
     # 1. To make Fasttext work within FARM and with advanced aggregation strategies, we need a fixed vocabulary and associated Wordembeddings
-    ft_converter = FARM_fasttext(
+    ft_converter = Fasttext_converter(
         pretrained_model_name_or_path=fasttext_model,
         do_lower_case=do_lower_case,
         data_path=Path("../data/germeval18"),
@@ -49,7 +49,7 @@ def doc_classifcation():
         language="German",
         max_features=max_features)
     # We convert the data to have fixed size vocab and embeddings
-    vocab_counts = ft_converter.convert_data()
+    vocab_counts = ft_converter.convert_on_data()
 
     # 2. Create a tokenizer
     tokenizer = Tokenizer.load(pretrained_model_name_or_path=ft_converter.output_path, do_lower_case=do_lower_case)

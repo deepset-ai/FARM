@@ -36,11 +36,15 @@ SPECIAL_TOKENS = ["[CLS]", "[SEP]", "[UNK]", "[PAD]", "[MASK]"]
 logger = logging.getLogger(__name__)
 
 
-class FARM_fasttext():
+class Fasttext_converter():
     """
-    Class to use fasttext inside FARM
-    and to convert data to format usable by preprocessing pipeline
+    Class to use fasttext inside FARM by converting embeddings to format usable by preprocessing pipeline.
+    Farm needs fixed vocab and embeddings. We can construct a vocab for the data we wish to embed.
     """
+    try:
+        import fasttext  # fasttext import is optional in requirements. So we just load it when needed.
+    except ModuleNotFoundError:
+        logger.error("Could not find fasttext. Please install through 'pip install fasttext==0.9.1'.")
 
     def __init__(self,
                  pretrained_model_name_or_path,
@@ -58,16 +62,16 @@ class FARM_fasttext():
 
         """
         :param pretrained_model_name_or_path: path to local model or pointer to s3
-        :param do_lower_case:
-        :param data_path:
+        :param do_lower_case: casing information, should match the vocab
+        :param data_path: path to where data is stored
         :param train_filename:
-        :param output_path:
+        :param output_path: path where the embeddings (now in word2vec format) are stored
         :param language:
-        :param sep:
-        :param text_column_name:
-        :param max_inputdata_rows:
-        :param min_vocab_count:
-        :param max_features:
+        :param sep: seperator used in train file
+        :param text_column_name: column where the text for
+        :param max_inputdata_rows: limits the amount of rows to read from data for constructing the vocab
+        :param min_vocab_count: when constructing the vocab, words with less than min_vocab_count occurrences are ignored
+        :param max_features: maximum number of words to use in vocab
         """
 
         self.pretrained_model_name_or_path = pretrained_model_name_or_path
@@ -82,20 +86,28 @@ class FARM_fasttext():
         self.min_vocab_count = min_vocab_count
         self.max_features = max_features
 
-    def convert_data(self, **kwargs):
+    def convert_on_data(self, **kwargs):
         """
         Function to prepare data by
              - computing a vocab over the data
              - converting each vocab item to a corresponding vector
              - saving vocab and embeddings in word2vec txt format for further processing
         :param kwargs: placeholder for args passed to model loading, like proxy or caching settings
-        :return:
+        :return: vocab_counts, dict: dictionary with words and associated counts
         """
-        try:
-            import fasttext  # fasttext import is optional in requirements. So we just load it when needed.
-        except ModuleNotFoundError:
-            logger.error("Could not find fasttext. Please install through 'pip install fasttext==0.9.1'.")
+        model = self._load_model(**kwargs)
 
+        all_words = self._load_data()
+
+        temp_vocab, vocab_counts = self._create_vocab(all_words=all_words)
+
+        vocab,embeddings = self._create_embeddings(temp_vocab=temp_vocab, model=model)
+
+        self._save(vocab=vocab, embeddings=embeddings)
+
+        return vocab_counts
+
+    def _load_model(self, **kwargs):
         # Model loading
         farm_lm_config = Path(self.pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(farm_lm_config):
@@ -106,12 +118,16 @@ class FARM_fasttext():
             # from s3 or cache
             resolved_model_file = load_from_cache(self.pretrained_model_name_or_path, EMBEDDING_MODEL_MAP, **kwargs)
         if os.path.isfile(resolved_model_file):
-            model = fasttext.load_model(resolved_model_file)
+            model = self.fasttext.load_model(resolved_model_file)
         else:
             logger.error(f"Could not load fasttext model at {self.pretrained_model_name_or_path}.")
 
+        return model
+
+    def _load_data(self):
         # Data loading
-        df = pd.read_csv(str(self.data_path / self.train_filename), sep=self.sep)
+        df = pd.read_csv(str(self.data_path / self.train_filename), sep=self.sep, nrows=self.max_inputdata_rows)
+
         if self.text_column_name not in df.columns:
             logger.error(
                 f"Cannot find Text column name in the supplied data. Available columsn are {', '.join(df.columns)}.")
@@ -127,7 +143,9 @@ class FARM_fasttext():
             for w in words:
                 tokens.extend(run_split_on_punc(w))
             all_words.extend(tokens)
+        return all_words
 
+    def _create_vocab(self, all_words):
         # Vocab creation
         w, c = np.unique(all_words, return_counts=True)
         if self.min_vocab_count:
@@ -141,6 +159,10 @@ class FARM_fasttext():
                 w = w[idx[:max_features_adjusted]]
                 c = c[idx[:max_features_adjusted]]
         temp_vocab = list(w)
+        vocab_counts = dict(zip(temp_vocab, c))
+        return temp_vocab, vocab_counts
+
+    def _create_embeddings(self, temp_vocab, model):
         # Embedding creation
         embeddings = np.zeros((len(temp_vocab) + len(SPECIAL_TOKENS), model.get_dimension()))
         for i, w in enumerate(temp_vocab):
@@ -149,7 +171,9 @@ class FARM_fasttext():
         for i in range(len(SPECIAL_TOKENS)):
             embeddings[i, :] = mean_embedding
         vocab = SPECIAL_TOKENS + temp_vocab
+        return vocab, embeddings
 
+    def _save(self, vocab, embeddings):
         # create config
         lm_config = {
             "embeddings_filename": "vectors.txt",
@@ -159,20 +183,15 @@ class FARM_fasttext():
             "vocab_filename": "vocab.txt",
             "vocab_size": embeddings.shape[0]
         }
-
         # saving
         if not os.path.exists(self.output_path):
             os.makedirs(self.output_path)
         with open(self.output_path / "language_model_config.json", "w") as file:
             file.write(json.dumps(lm_config, indent=2))
-
         _save_word2vec_format(fname=str(self.output_path / lm_config["embeddings_filename"]),
                               fvocab=str(self.output_path / lm_config["vocab_filename"]),
                               vocab=vocab,
                               vectors=embeddings)
-
-        vocab_counts = dict(zip(temp_vocab, c))
-        return vocab_counts
 
 
 def load_embedding_tokenizer(pretrained_model_name_or_path, **kwargs):
@@ -206,8 +225,8 @@ def load_model(pretrained_model_name_or_path, **kwargs):
     return config_dict, resolved_vocab_file, resolved_model_file
 
 
-def load_embedding_vectors(embedding_filename, vocab):
-    f = io.open(embedding_filename, 'rt', encoding='utf-8').readlines()
+def load_embedding_vectors(embedding_file, vocab):
+    f = io.open(embedding_file, 'rt', encoding='utf-8').readlines()
 
     words_transformed = set()
     repetitions = 0
@@ -236,7 +255,6 @@ def load_embedding_vectors(embedding_filename, vocab):
             else:
                 repetitions += 1
 
-    # TODO nonzero init of all embeddings, so if it isnt filled it can still learn
     embeddings = np.zeros((len(vocab), embeddings_dimensionality))
     for i, w in enumerate(vocab):
         current = vectors.get(w, np.zeros(embeddings_dimensionality))
@@ -278,7 +296,7 @@ def convert_WordEmbeddings(embedding_filename, vocab_filename, output_path, lang
     vocab = SPECIAL_TOKENS + temp_vocab
 
     # create embeddings
-    temp_embeddings = load_embedding_vectors(embedding_filename=embedding_filename, vocab=temp_vocab)
+    temp_embeddings = load_embedding_vectors(embedding_file=embedding_filename, vocab=temp_vocab)
     mean_embedding = np.mean(temp_embeddings, axis=0)
     embeddings = np.zeros((temp_embeddings.shape[0] + len(SPECIAL_TOKENS), temp_embeddings.shape[1]))
     for i, tok in enumerate(SPECIAL_TOKENS):

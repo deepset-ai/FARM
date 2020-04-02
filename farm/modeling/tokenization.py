@@ -102,12 +102,7 @@ class Tokenizer:
 
 
 class EmbeddingTokenizer(PreTrainedTokenizer):
-    """Constructs a EmbeddingTokenizer.
-
-    Args:
-        **vocab_file**: Path to a one-word-per-line vocabulary file
-        **do_lower_case**: (`optional`) boolean (default True)
-            Whether to lower case the input
+    """Constructs an EmbeddingTokenizer.
     """
 
     def __init__(
@@ -121,6 +116,12 @@ class EmbeddingTokenizer(PreTrainedTokenizer):
             mask_token="[MASK]",
             **kwargs
     ):
+        """
+        :param vocab_file: Path to a one-word-per-line vocabulary file
+        :type vocab_file: str
+        :param do_lower_case: Flag whether to lower case the input
+        :type do_lower_case: bool
+        """
         super().__init__(
             unk_token=unk_token,
             sep_token=sep_token,
@@ -129,6 +130,7 @@ class EmbeddingTokenizer(PreTrainedTokenizer):
             mask_token=mask_token,
             **kwargs,
         )
+
         if not os.path.isfile(vocab_file):
             raise ValueError("Can't find a vocabulary file at path '{}'.".format(vocab_file))
         self.vocab = load_vocab(vocab_file)
@@ -139,20 +141,19 @@ class EmbeddingTokenizer(PreTrainedTokenizer):
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
+        """Load the tokenizer from local path or remote."""
         if pretrained_model_name_or_path in EMBEDDING_VOCAB_FILES_MAP["vocab_file"]:
-            # Get the vocabulary from AWS S3 bucket
+            # Get the vocabulary from AWS S3 bucket or cache
             resolved_vocab_file = load_from_cache(pretrained_model_name_or_path,
                                                   EMBEDDING_VOCAB_FILES_MAP["vocab_file"],
                                                   **kwargs)
         elif os.path.isdir(pretrained_model_name_or_path):
             # Get the vocabulary from local files
             logger.info(
-                "Model name '{}' not found in model shortcut name list ({}). "
-                "Assuming '{}' is a path to a directory containing tokenizer files.".format(
-                    pretrained_model_name_or_path, ", ".join(EMBEDDING_VOCAB_FILES_MAP["vocab_file"].keys()),
-                    pretrained_model_name_or_path
-                )
-            )
+                f"Model name '{pretrained_model_name_or_path}' not found in model shortcut name "
+                f"list ({', '.join(EMBEDDING_VOCAB_FILES_MAP['vocab_file'].keys())}). "
+                "Assuming '{pretrained_model_name_or_path}' is a path to a directory containing tokenizer files.")
+
             temp = open(str(Path(pretrained_model_name_or_path) / "language_model_config.json"), "r",
                         encoding="utf-8").read()
             config_dict = json.loads(temp)
@@ -162,10 +163,9 @@ class EmbeddingTokenizer(PreTrainedTokenizer):
             raise NotImplementedError
 
         tokenizer = cls(vocab_file=resolved_vocab_file, **kwargs)
-
         return tokenizer
 
-    def _tokenize(self, text):
+    def _tokenize(self, text, **kwargs):
         if self.do_lower_case:
             text = text.lower()
         tokens = run_split_on_punc(text)
