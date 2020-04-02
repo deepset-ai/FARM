@@ -388,7 +388,7 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, answer_type_list=No
     feature_dict = {"input_ids": input_ids,
                     "padding_mask": padding_mask,
                     "segment_ids": segment_ids,
-                    "answer_types": answer_types,
+                    "answer_type_ids": answer_types,
                     "id": sample_id,
                     "passage_start_t": passage_start_t,
                     "start_of_word": start_of_word,
@@ -397,7 +397,7 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, answer_type_list=No
     return [feature_dict]
 
 
-def generate_labels(answers, passage_len_t, question_len_t, tokenizer, answer_type_list, max_answers):
+def generate_labels(answers, passage_len_t, question_len_t, tokenizer, answer_type_list, max_answers, downsample_is_impossible=1):
     """
     Creates QA label for each answer in answers. The labels are the index of the start and end token
     relative to the passage. They are contained in an array of size (max_answers, 2).

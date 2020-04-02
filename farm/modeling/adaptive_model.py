@@ -67,6 +67,7 @@ class AdaptiveModel(nn.Module):
         self.lm_output_types = (
             [lm_output_types] if isinstance(lm_output_types, str) else lm_output_types
         )
+        assert len(self.lm_output_types) == len(self.prediction_heads)
         self.log_params()
         # default loss aggregation function is a simple sum (without using any of the optional params)
         if not loss_aggregation_fn:

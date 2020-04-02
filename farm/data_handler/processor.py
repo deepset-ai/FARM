@@ -1048,6 +1048,7 @@ class NaturalQuestionsProcessor(Processor):
                  doc_stride=128,
                  max_query_length=64,
                  proxies=None,
+                 downsample_is_impossible=0.01,
                  **kwargs):
             """
             :param tokenizer: Used to split a sentence (str) into tokens.
@@ -1082,6 +1083,7 @@ class NaturalQuestionsProcessor(Processor):
 
             self.doc_stride = doc_stride
             self.max_query_length = max_query_length
+            self.downsample_is_impossible = downsample_is_impossible
 
             super(NaturalQuestionsProcessor, self).__init__(
                 tokenizer=tokenizer,
@@ -1096,7 +1098,8 @@ class NaturalQuestionsProcessor(Processor):
             )
 
             self.add_task("question_answering", "squad", ["start_token", "end_token"])
-            self.add_task("classification", "f1_macro", self.answer_type_list)
+            self.add_task("text_classification", "f1_macro", self.answer_type_list, label_name="answer_type")
+
 
     def file_to_dicts(self, file: str) -> [dict]:
         dicts = [json.loads(l) for l in open(file)]
@@ -1115,7 +1118,24 @@ class NaturalQuestionsProcessor(Processor):
                                     self.max_seq_len,
                                     self.doc_stride,
                                     n_special_tokens)
+        # samples = [s for s in samples if self.is_not_impossible(s)]
         return samples
+
+    # @staticmethod
+    # def is_not_impossible(sample):
+    #     sample_tok = sample["tokenized"]
+    #     if len(sample_tok["answers"]) == 0:
+    #         return False
+    #     first_answer = sample_tok["answers"][0]
+    #     if first_answer["start_t"] < sample_tok["passage_start_t"]:
+    #         return False
+    #     if first_answer["end_t"] > sample_tok["passage_start_t"] + len(sample_tok["passage_tokens"]):
+    #         return False
+    #     if first_answer["answer_type"] == "is_impossible":
+    #         return False
+    #     else:
+    #         return True
+
 
     def prepare_dict(self, dictionary):
         converted_answers = []
