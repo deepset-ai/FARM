@@ -31,6 +31,8 @@ from farm.data_handler.utils import (
     read_squad_file,
     is_json,
     get_sentence_pair,
+    get_sequence_pair,
+    join_sentences
 )
 from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
 from farm.utils import MLFlowLogger as MlLogger
@@ -840,6 +842,153 @@ class BertStyleLMProcessor(Processor):
         return features
 
 
+class BertStyleMaxSequenceLMProcessor(Processor):
+    """
+    Prepares data for masked language model training and next sentence prediction in the style of BERT
+    """
+
+    def __init__(
+        self,
+        tokenizer,
+        max_seq_len,
+        data_dir,
+        train_filename="train.txt",
+        dev_filename="dev.txt",
+        test_filename="test.txt",
+        dev_split=0.0,
+        next_sent_pred=True,
+        max_docs=None,
+        proxies=None,
+        **kwargs
+    ):
+        """
+        :param tokenizer: Used to split a sentence (str) into tokens.
+        :param max_seq_len: Samples are truncated after this many tokens.
+        :type max_seq_len: int
+        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
+        :type data_dir: str
+        :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
+        :type label_list: list
+        :param metric: name of metric that shall be used for evaluation, e.g. "acc" or "f1_macro".
+                 Alternatively you can also supply a custom function, that takes preds and labels as args and returns a numerical value.
+                 For using multiple metrics supply them as a list, e.g ["acc", my_custom_metric_fn].
+        :type metric: str, function, or list
+        :param train_filename: The name of the file containing training data.
+        :type train_filename: str
+        :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
+                             will be a slice of the train set.
+        :type dev_filename: str or None
+        :param test_filename: None
+        :type test_filename: str
+        :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
+        :type dev_split: float
+        :param next_sent_pred: Whether to use next_sentence_prediction objective or not
+        :type next_sent_pred: bool
+        :param max_docs: maximum number of documents to include from input dataset
+        :type max_docs: int
+        :param proxies: proxy configuration to allow downloads of remote datasets.
+                        Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
+        :type proxies: dict
+        :param kwargs: placeholder for passing generic parameters
+        :type kwargs: object
+        """
+
+        self.delimiter = ""
+        self.max_docs = max_docs
+
+        super(BertStyleMaxSequenceLMProcessor, self).__init__(
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            train_filename=train_filename,
+            dev_filename=dev_filename,
+            test_filename=test_filename,
+            dev_split=dev_split,
+            data_dir=data_dir,
+            tasks={},
+            proxies=proxies
+        )
+
+        self.next_sent_pred = next_sent_pred
+        added_tokens = self.get_added_tokens()
+        self.add_task("lm", "acc", list(self.tokenizer.vocab) + added_tokens)
+        if self.next_sent_pred:
+            self.add_task("nextsentence", "acc", ["False", "True"])
+
+    def get_added_tokens(self):
+        dictionary = self.tokenizer.added_tokens_encoder
+        sorted_tuples = sorted(dictionary.items(), key=lambda x: x[0])
+        return [x[1] for x in sorted_tuples]
+
+    def file_to_dicts(self, file: str) -> list:
+        dicts = read_docs_from_txt(filename=file, delimiter=self.delimiter, max_docs=self.max_docs, proxies=self.proxies)
+        return dicts
+
+    def _dict_to_samples(self, dictionary, all_dicts=None):
+        assert len(all_dicts) > 1, "Need at least 2 documents to sample random sentences from"
+        # account for [CLS], [SEP], [SEP]
+        max_num_tokens = self.max_seq_len - 3
+        samples = []
+
+        # tokenize current doc
+        current_doc = dictionary["doc"]
+        current_doc_tokenized = []
+        for sentence in current_doc:
+            current_doc_tokenized.append(tokenize_with_metadata(sentence, self.tokenizer))
+
+        current_chunk = []
+        current_length = 0
+        i = 0
+        while i < len(current_doc_tokenized):
+            current_segment = current_doc_tokenized[i]
+            current_length += len(current_segment["tokens"])
+            current_chunk.append(current_segment)
+
+            # reached end of document or max_num_tokens
+            if (i == len(current_doc_tokenized) - 1) or (current_length >= max_num_tokens):
+                if current_chunk:
+                    sequence_a, sequence_b, is_next_label, num_unused_segments = get_sequence_pair(
+                        current_doc,
+                        current_chunk,
+                        all_dicts,
+                        self.tokenizer,
+                        max_num_tokens,
+                    )
+                    sequence_a = join_sentences(sequence_a)
+                    sequence_b = join_sentences(sequence_b)
+                    sample_in_clear_text = {"text_a": "TEXT A", "text_b": "TEXT B", "nextsentence_label": is_next_label}
+                    for seq_name in ["tokens", "offsets", "start_of_word"]:
+                        sequence_a[seq_name], sequence_b[seq_name], _ = truncate_sequences(
+                            seq_a=sequence_a[seq_name],
+                            seq_b=sequence_b[seq_name],
+                            tokenizer=self.tokenizer,
+                            max_seq_len=max_num_tokens,
+                            with_special_tokens=False,
+                            truncation_strategy="only_second",
+                        )
+                    samples.append(Sample(id=None, clear_text=sample_in_clear_text, tokenized={"text_a":sequence_a, "text_b":sequence_b}))
+
+                    assert len(sequence_a) >= 1
+                    assert len(sequence_b) >= 1
+                    i -= num_unused_segments
+
+                current_chunk = []
+                current_length = 0
+            i += 1
+        return samples
+
+
+
+
+
+
+
+
+    def _sample_to_features(self, sample) -> dict:
+        features = samples_to_features_bert_lm(
+            sample=sample, max_seq_len=self.max_seq_len, tokenizer=self.tokenizer,
+            next_sent_pred=self.next_sent_pred
+        )
+        return features
 #########################################
 # SQUAD 2.0 Processor ####
 #########################################

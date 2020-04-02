@@ -14,6 +14,7 @@ from tqdm import tqdm
 from typing import List
 
 from farm.file_utils import http_get
+from farm.modeling.tokenization import tokenize_with_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -443,6 +444,85 @@ def _get_random_sentence(all_baskets, forbidden_doc):
     if sentence is None:
         raise Exception("Failed to pick out a suitable random substitute for next sentence")
     return sentence
+
+
+def get_sequence_pair(doc, chunk, all_baskets, tokenizer, max_num_tokens, prob_next_sentence=0.5):
+    sequence_a = []
+    sequence_b = []
+    # determine how many segments from chunk go into sequence_a
+    len_sequence_a = 0
+    a_end = 1
+    if len(chunk) >= 2:
+        a_end = random.randrange(1, len(chunk))
+    for i in range(a_end):
+        sequence_a.append(chunk[i])
+        len_sequence_a += len(chunk[i]["tokens"])
+
+    # actual next sequence
+    if (random.random() > prob_next_sentence) and (len(chunk) > 1):
+        label = True
+        for i in range(a_end, len(chunk)):
+            sequence_b.append(chunk[i])
+        num_unused_segments = 0
+    # ToDo : fix bug (what to do if chunk_len == 1 and sequence_a_len == max_num_tokens?)
+    elif (len(chunk) == 1) and len_sequence_a == max_num_tokens:
+        #return sequence_a, [{"tokens":[], "offsets": [], "start_of_word": []}], True, 0
+    # random next sequence
+    else:
+        label = False
+        sequence_b_length = 0
+        target_b_length = max_num_tokens - len_sequence_a
+        random_doc = _get_random_doc(all_baskets, forbidden_doc=doc)
+        random_doc_tokenized = []
+        for sentence in random_doc:
+            random_doc_tokenized.append(tokenize_with_metadata(sentence, tokenizer))
+        random_start = random.randrange(len(random_doc_tokenized))
+
+        for i in range(random_start, len(random_doc)):
+            sequence_b.append(random_doc_tokenized[i])
+            sequence_b_length += len(random_doc_tokenized[i]["tokens"])
+            if sequence_b_length >= target_b_length:
+                break
+
+        # We didn't use all of the segments in chunk => put them back
+        num_unused_segments = len(chunk) - a_end
+
+    assert len(sequence_a) > 0
+    assert len(sequence_b) > 0
+    return sequence_a, sequence_b, label, num_unused_segments
+
+
+def _get_random_doc(all_baskets, forbidden_doc):
+    random_doc = None
+    for _ in range(100):
+        rand_doc_idx = random.randrange(len(all_baskets))
+        random_doc = all_baskets[rand_doc_idx]["doc"]
+
+        # check if random doc is different from initial doc
+        if random_doc != forbidden_doc:
+            break
+
+    if random_doc is None:
+        raise Exception("Failed to pick out a suitable random substitute for next sequence")
+    return random_doc
+
+
+def join_sentences(sequence):
+    sequence_joined = {
+        "tokens" : [],
+        "offsets" : [],
+        "start_of_word" : []
+    }
+    last_offset = 0
+    for sentence in sequence:
+        sequence_joined["tokens"].extend(sentence["tokens"])
+        sequence_joined["start_of_word"].extend(sentence["start_of_word"])
+        # get offsets right
+        current_offsets = [offset + last_offset for offset in sentence["offsets"]]
+        sequence_joined["offsets"].extend(current_offsets)
+        last_offset += sentence["offsets"][-1] + 2
+
+    return sequence_joined
 
 
 def mask_random_words(tokens, vocab, token_groups=None, max_predictions_per_seq=20, masked_lm_prob=0.15):
