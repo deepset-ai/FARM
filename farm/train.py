@@ -209,10 +209,10 @@ class Trainer:
         """ Perform the training procedure. """
 
         # connect the prediction heads with the right output from processor
-        self.model.module.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
+        self.model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
 
         # Check that the tokenizer fits the language model
-        self.model.module.verify_vocab_size(vocab_size=len(self.data_silo.processor.tokenizer))
+        self.model.verify_vocab_size(vocab_size=len(self.data_silo.processor.tokenizer))
 
         logger.info(f"\n {GROWING_TREE}")
         self.model.train()
@@ -241,7 +241,7 @@ class Trainer:
 
                 # Forward pass through model
                 logits = self.model.forward(**batch)
-                per_sample_loss = self.model.module.logits_to_loss(logits=logits, global_step=self.global_step, **batch)
+                per_sample_loss = self.model.logits_to_loss(logits=logits, global_step=self.global_step, **batch)
 
                 loss = self.backward_propagate(per_sample_loss, step)
 
@@ -277,12 +277,19 @@ class Trainer:
                 # save the current state as a checkpoint before exiting if a SIGTERM signal is received
                 if self.sigterm_handler and self.sigterm_handler.kill_now:
                     logger.info("Received a SIGTERM signal. Saving the current train state as a checkpoint ...")
-                    self._save()
-                    sys.exit(0)
+                    if self.local_rank in [0, -1]:
+                        self._save()
+                        torch.distributed.destroy_process_group()
+                        sys.exit(0)
 
                 # save a checkpoint and continue train
                 if self.checkpoint_every and step % self.checkpoint_every == 0:
-                    self._save()
+                    if self.local_rank in [0, -1]:
+                        self._save()
+                    # Use a barrier() to make sure that process 1 loads the model after process
+                    # 0 saves it.
+                    if self.local_rank != -1:
+                        torch.distributed.barrier()
 
             if do_stopping:
                 break
@@ -306,7 +313,8 @@ class Trainer:
 
     def backward_propagate(self, loss, step):
         loss = self.adjust_loss(loss)
-        if self.global_step % 10 == 1:
+        # if self.global_step % 10 == 1 and self.local_rank in [-1, 0]:
+        if self.local_rank in [-1, 0]:
             MlLogger.log_metrics(
                 {"Train_loss_total": float(loss.detach().cpu().numpy())},
                 step=self.global_step,
@@ -317,8 +325,8 @@ class Trainer:
         else:
             loss.backward()
 
-        if self.log_learning_rate:
-            MlLogger.log_metrics({"learning_rate": self.lr_schedule.get_lr()[0]}, step=self.global_step)
+        if self.log_learning_rate and self.local_rank in [-1, 0]:
+            MlLogger.log_metrics({"learning_rate": self.lr_schedule.get_last_lr()[0]}, step=self.global_step)
 
         if step % self.grad_acc_steps == 0:
             # TODO We might wanna add gradient clipping here
@@ -353,18 +361,20 @@ class Trainer:
         :type resume_from_checkpoint: str
         """
         checkpoint_to_load = None
-        if checkpoint_root_dir.exists():
-           if resume_from_checkpoint == "latest":
-               saved_checkpoints = cls._get_checkpoints(checkpoint_root_dir)
-               if saved_checkpoints:
-                   checkpoint_to_load = saved_checkpoints[0]  # latest checkpoint
+        if checkpoint_root_dir:
+            if checkpoint_root_dir.exists():
+               if resume_from_checkpoint == "latest":
+                   saved_checkpoints = cls._get_checkpoints(checkpoint_root_dir)
+                   if saved_checkpoints:
+                       checkpoint_to_load = saved_checkpoints[0]  # latest checkpoint
+                   else:
+                       checkpoint_to_load = None
                else:
-                   checkpoint_to_load = None
-           else:
-               checkpoint_to_load = checkpoint_root_dir / resume_from_checkpoint
+                   checkpoint_to_load = checkpoint_root_dir / resume_from_checkpoint
 
         if checkpoint_to_load:
-            trainer = cls._load_checkpoint(path=checkpoint_to_load, data_silo=data_silo)
+            #TODO load empty model class from config instead of passing here?
+            trainer = cls._load_checkpoint(path=checkpoint_to_load, data_silo=data_silo, model=kwargs["model"], local_rank=kwargs["local_rank"])
             logging.info(f"Resuming training from the train checkpoint at {checkpoint_to_load} ...")
         else:
             logging.info(f"No train checkpoints found. Starting a new training ...")
@@ -372,7 +382,7 @@ class Trainer:
         return trainer
 
     @classmethod
-    def _load_checkpoint(cls, path, data_silo):
+    def _load_checkpoint(cls, path, data_silo, model, local_rank=-1):
         """
         Load the train checkpoint at given path.
 
@@ -385,8 +395,18 @@ class Trainer:
         if not path.exists():
             raise Exception(f"The checkpoint path {path} does not exists.")
 
-        trainer_checkpoint = torch.load(path / "trainer")
+        if local_rank == -1:
+            map_location = None
+        else:
+            device = torch.device(f"cuda:{local_rank}")
+            # TODO simplify to device?
+            map_location = {'cuda:0': f'cuda:{local_rank}'}
+
+        trainer_checkpoint = torch.load(path / "trainer", map_location=map_location)
         trainer_state_dict = trainer_checkpoint["trainer_state_dict"]
+        if local_rank != -1:
+            trainer_state_dict["device"] = device
+            trainer_state_dict["local_rank"] = local_rank
 
         # Just setting seeds is not sufficient to have deterministic results when resuming
         # training from a checkpoint. Additionally, the previous states of Random Number
@@ -398,7 +418,8 @@ class Trainer:
         torch.set_rng_state(rng_state)
         torch.cuda.set_rng_state(cuda_rng_state)
 
-        model = trainer_checkpoint["model"]
+        # TODO switch to state_dict here?
+        model.load_state_dict(torch.load(path / "model_state_dict", map_location=map_location))
 
         optimizer = trainer_checkpoint["optimizer"]
 
@@ -406,7 +427,7 @@ class Trainer:
         scheduler_opts = trainer_checkpoint["scheduler_opts"]
         scheduler_opts["last_epoch"] = scheduler_state_dict["last_epoch"]
         scheduler = get_scheduler(optimizer, scheduler_opts)
-        scheduler.load_state_dict(scheduler_state_dict)
+        scheduler.load_state_dict(scheduler_state_dict) #TODO do we need map_location here, too?
 
         trainer = Trainer(
             data_silo=data_silo,
@@ -457,7 +478,9 @@ class Trainer:
         checkpoint_path.mkdir(parents=True, exist_ok=True)
 
         trainer_state_dict = self._get_state_dict()
+        #TODO verify if this still works without DDP
         self.model.save(checkpoint_path)
+        torch.save(self.model.state_dict(), checkpoint_path / "model_state_dict")
         torch.save(
             {
                 "model": self.model,

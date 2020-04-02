@@ -619,7 +619,7 @@ class _StreamingDataSet(IterableDataset):
                 )
             else:
                 worker_id = worker_info.id
-                dicts = stream_grouper(self.file_to_dicts_generator, n=10, worker_id=chunk_id, total_workers=total_chunks)
+                dicts = stream_grouper(self.file_to_dicts_generator, n=10, worker_id=worker_id, total_workers=self.dataloader_workers)
 
         else:
             dicts = grouper(self.file_to_dicts_generator, n=10)

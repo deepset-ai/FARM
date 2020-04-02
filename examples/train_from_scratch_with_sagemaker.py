@@ -25,7 +25,8 @@ def train_from_scratch(args):
     ml_logger.init_experiment(experiment_name="train_from_scratch", run_name="run")
 
     set_all_seeds(seed=39)
-    device, n_gpu = initialize_device_settings(use_cuda=True)
+    #TODO where to get local rank from on single machine?
+    device, n_gpu = initialize_device_settings(use_cuda=True, local_rank=args.local_rank, distributed=args.distributed)
     evaluate_every = int(args["evaluate_every"])
 
     save_dir = Path("/opt/ml/model")

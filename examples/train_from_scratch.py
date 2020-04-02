@@ -13,6 +13,9 @@ from farm.train import Trainer
 from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
 
 
+# Launch this via
+# python -m torch.distributed.launch --nproc_per_node=4 train_from_scratch.py
+
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("--local_rank",
@@ -26,20 +29,19 @@ def parse_arguments():
 def train_from_scratch():
     # We need the local rank argument for DDP
     args = parse_arguments()
-    use_amp = None  # "O2"
+    use_amp = None  # using "O2" here allows roughly 30% larger batch_sizes and 45% speed up
 
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
         level=logging.INFO,
     )
-
-    ml_logger = MLFlowLogger(tracking_uri="")
-    ml_logger.init_experiment(experiment_name="train_from_scratch", run_name="run")
+    if args.local_rank in [-1, 0]:
+        ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
+        ml_logger.init_experiment(experiment_name="train_from_scratch", run_name="debug")
 
     set_all_seeds(seed=39)
     device, n_gpu = initialize_device_settings(use_cuda=True, local_rank=args.local_rank, use_amp=use_amp)
-    evaluate_every = 15000
 
     save_dir = Path("saved_models/train_from_scratch")
     data_dir = Path("data/lm_finetune_nips")
@@ -47,11 +49,23 @@ def train_from_scratch():
     dev_filename = "dev.txt"
 
     max_seq_len = 128
-    batch_size = 60
+    batch_size = 30#60
     grad_acc = 4
     learning_rate = 0.0001
     warmup_proportion = 0.01
-    n_epochs = 1
+    n_epochs = 5
+    evaluate_every = 15000
+    checkpoint_every = 30
+    # checkpoint_every = None
+    # checkpoint_root_dir = None
+    checkpoint_root_dir = Path("checkpoints")
+    # checkpoint_root_dir = Path("/opt/ml/checkpoints/training")
+    distributed = False
+
+    # Choose enough workers to queue sufficient batches during training.
+    # 16 works well on a 4x V100 machine with 16 cores.
+    # For a single GPU you will need less.
+    data_loader_workers = 4
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load("bert-base-uncased", do_lower_case=True)
@@ -67,8 +81,8 @@ def train_from_scratch():
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and
     #    calculates a few descriptive statistics of our datasets
-    stream_data_silo = StreamingDataSilo(processor=processor, batch_size=batch_size, distributed=True,
-                                         dataloader_workers=16)
+    stream_data_silo = StreamingDataSilo(processor=processor, batch_size=batch_size, distributed=distributed,
+                                         dataloader_workers=data_loader_workers)
 
     # 4. Create an AdaptiveModel
     # a) which consists of a pretrained language model as a basis
@@ -95,19 +109,12 @@ def train_from_scratch():
         n_epochs=n_epochs,
         device=device,
         grad_acc_steps=grad_acc,
-        distributed=True,
+        distributed=distributed,
         use_amp=use_amp,
         local_rank=args.local_rank
     )
 
     # 6. Feed everything to the Trainer, which keeps care of growing our model and evaluates it from time to time
-    if args.get("checkpoint_every"):
-        checkpoint_every = int(args["checkpoint_every"])
-        checkpoint_root_dir = Path("/opt/ml/checkpoints/training")
-    else:
-        checkpoint_every = None
-        checkpoint_root_dir = None
-
     trainer = Trainer.create_or_load_checkpoint(
         model=model,
         optimizer=optimizer,
@@ -118,9 +125,12 @@ def train_from_scratch():
         evaluate_every=evaluate_every,
         device=device,
         grad_acc_steps=grad_acc,
+        local_rank=args.local_rank,
         checkpoint_every=checkpoint_every,
         checkpoint_root_dir=checkpoint_root_dir,
+        checkpoints_to_keep=2,
         use_amp=use_amp,
+        log_learning_rate=True
     )
     # 7. Let it grow! Watch the tracked metrics live on the public mlflow server: https://public-mlflow.deepset.ai
     trainer.train()
