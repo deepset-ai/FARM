@@ -975,12 +975,11 @@ class EmbeddingModel():
 
 class WordEmbedding_LM(LanguageModel):
     """
-    A wrapper around EmbeddingModel to fit the LanguageModel class.
+    A Language Model based only on word embeddings
+    - Inside FARM, WordEmbedding Language Models must have a fixed vocabulary
+    - Each (known) word in some text input is projected to its vector representation
+    - Pooling operations can be applied for representing whole text sequences
 
-    NOTE:
-    - EmbeddingModels just map words to embeddings
-    - Unlike other LM variants, EmbeddingModel does not output by default the pooled_output.
-      An additional pooler is added.
     """
 
     def __init__(self):
