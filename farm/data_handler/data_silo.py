@@ -18,6 +18,7 @@ from tqdm import tqdm
 from farm.data_handler.dataloader import NamedDataLoader
 from farm.data_handler.processor import Processor, BertStyleLMProcessor
 from farm.data_handler.utils import grouper, stream_grouper
+from farm.modeling.tokenization import EmbeddingTokenizer
 from farm.utils import MLFlowLogger as MlLogger
 from farm.utils import log_ascii_workers, calc_chunksize
 from farm.utils import get_dict_checksum
@@ -81,6 +82,11 @@ class DataSilo:
         if len(self.processor.tasks) == 0:
             raise Exception("No task initialized. Try initializing the processor with a metric and a label list. "
                             "Alternatively you can add a task using Processor.add_task()")
+
+        if type(self.processor.tokenizer) == EmbeddingTokenizer:
+            if max_processes != 1:
+                logger.warning("Multiprocessing not efficient for WordEmbedding Tokenizers. Please set max_process \n"
+                            "argument in DataSilo to 1.")
 
         loaded_from_cache = False
         if self.caching:  # Check if DataSets are present in cache

@@ -4,9 +4,11 @@ import io
 import json
 import logging
 import os
+import unicodedata
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 from tqdm import tqdm
 from transformers.tokenization_bert import BertTokenizer
 
@@ -25,11 +27,152 @@ MAX_MODEL_INPU_SIZES = {"glove-german-uncased": 10000}
 PRETRAINED_INIT_CONFIGURATION = {"glove-german-uncased": {"do_lower_case": False}}
 # model
 EMBEDDING_MODEL_MAP = {
-    "glove-german-uncased": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/glove-german-uncased/vectors.txt"}
+    "glove-german-uncased": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/glove-german-uncased/vectors.txt",
+    "fasttext-german-uncased": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/fasttext-german-uncased/language_model.bin",
+}
 # conversion
 SPECIAL_TOKENS = ["[CLS]", "[SEP]", "[UNK]", "[PAD]", "[MASK]"]
 
 logger = logging.getLogger(__name__)
+
+
+class FARM_fasttext():
+    """
+    Class to use fasttext inside FARM
+    and to convert data to format usable by preprocessing pipeline
+    """
+
+    def __init__(self,
+                 pretrained_model_name_or_path,
+                 do_lower_case,
+                 data_path,
+                 train_filename,
+                 output_path,
+                 language=None,
+                 sep="\t",
+                 text_column_name="text",
+                 max_inputdata_rows=None,
+                 min_vocab_count=None,
+                 max_features=None,
+                 ):
+
+        """
+        :param pretrained_model_name_or_path: path to local model or pointer to s3
+        :param do_lower_case:
+        :param data_path:
+        :param train_filename:
+        :param output_path:
+        :param language:
+        :param sep:
+        :param text_column_name:
+        :param max_inputdata_rows:
+        :param min_vocab_count:
+        :param max_features:
+        """
+
+        self.pretrained_model_name_or_path = pretrained_model_name_or_path
+        self.do_lower_case = do_lower_case
+        self.data_path = data_path
+        self.train_filename = train_filename
+        self.output_path = output_path
+        self.language = language
+        self.sep = sep
+        self.text_column_name = text_column_name
+        self.max_inputdata_rows = max_inputdata_rows
+        self.min_vocab_count = min_vocab_count
+        self.max_features = max_features
+
+    def convert_data(self, **kwargs):
+        """
+        Function to prepare data by
+             - computing a vocab over the data
+             - converting each vocab item to a corresponding vector
+             - saving vocab and embeddings in word2vec txt format for further processing
+        :param kwargs: placeholder for args passed to model loading, like proxy or caching settings
+        :return:
+        """
+        try:
+            import fasttext  # fasttext import is optional in requirements. So we just load it when needed.
+        except ModuleNotFoundError:
+            logger.error("Could not find fasttext. Please install through 'pip install fasttext==0.9.1'.")
+
+        # Model loading
+        farm_lm_config = Path(self.pretrained_model_name_or_path) / "language_model_config.json"
+        if os.path.exists(farm_lm_config):
+            # from local dir
+            config = json.load(open(farm_lm_config, "r"))
+            resolved_model_file = str(Path(self.pretrained_model_name_or_path) / config["embeddings_filename"])
+        else:
+            # from s3 or cache
+            resolved_model_file = load_from_cache(self.pretrained_model_name_or_path, EMBEDDING_MODEL_MAP, **kwargs)
+        if os.path.isfile(resolved_model_file):
+            model = fasttext.load_model(resolved_model_file)
+        else:
+            logger.error(f"Could not load fasttext model at {self.pretrained_model_name_or_path}.")
+
+        # Data loading
+        df = pd.read_csv(str(self.data_path / self.train_filename), sep=self.sep)
+        if self.text_column_name not in df.columns:
+            logger.error(
+                f"Cannot find Text column name in the supplied data. Available columsn are {', '.join(df.columns)}.")
+        if self.max_inputdata_rows:
+            df = df.sample(n=self.max_inputdata_rows)
+        texts = df.loc[:, self.text_column_name].values
+        all_words = []
+        for t in texts:
+            if self.do_lower_case:
+                t = t.lower()
+            words = t.split(" ")
+            tokens = []
+            for w in words:
+                tokens.extend(run_split_on_punc(w))
+            all_words.extend(tokens)
+
+        # Vocab creation
+        w, c = np.unique(all_words, return_counts=True)
+        if self.min_vocab_count:
+            idx = c >= self.min_vocab_count
+            w = w[idx]
+            c = c[idx]
+        if self.max_features:
+            max_features_adjusted = self.max_features - len(SPECIAL_TOKENS)
+            if w.shape[0] > max_features_adjusted:
+                idx = np.argsort(c)[::-1]  # descending order
+                w = w[idx[:max_features_adjusted]]
+                c = c[idx[:max_features_adjusted]]
+        temp_vocab = list(w)
+        # Embedding creation
+        embeddings = np.zeros((len(temp_vocab) + len(SPECIAL_TOKENS), model.get_dimension()))
+        for i, w in enumerate(temp_vocab):
+            embeddings[i + len(SPECIAL_TOKENS), :] = model.get_word_vector(w)
+        mean_embedding = np.mean(embeddings[len(SPECIAL_TOKENS):, :], axis=0)
+        for i in range(len(SPECIAL_TOKENS)):
+            embeddings[i, :] = mean_embedding
+        vocab = SPECIAL_TOKENS + temp_vocab
+
+        # create config
+        lm_config = {
+            "embeddings_filename": "vectors.txt",
+            "hidden_size": embeddings.shape[1],
+            "language": self.language,
+            "name": "WordEmbedding_LM",
+            "vocab_filename": "vocab.txt",
+            "vocab_size": embeddings.shape[0]
+        }
+
+        # saving
+        if not os.path.exists(self.output_path):
+            os.makedirs(self.output_path)
+        with open(self.output_path / "language_model_config.json", "w") as file:
+            file.write(json.dumps(lm_config, indent=2))
+
+        _save_word2vec_format(fname=str(self.output_path / lm_config["embeddings_filename"]),
+                              fvocab=str(self.output_path / lm_config["vocab_filename"]),
+                              vocab=vocab,
+                              vectors=embeddings)
+
+        vocab_counts = dict(zip(temp_vocab, c))
+        return vocab_counts
 
 
 def load_embedding_tokenizer(pretrained_model_name_or_path, **kwargs):
@@ -189,7 +332,7 @@ def _save_word2vec_format(fname, vocab, vectors, fvocab):
         with io.open(fvocab, 'w') as vout:
             for word in vocab:
                 vout.write(word + "\n")
-    logger.info(f"storing {vector_size} projection weights into {fname}")
+    logger.info(f"storing {len(vocab)} projection weights with dimension {vector_size} into {fname}")
     assert (len(vocab), vector_size) == vectors.shape
     with io.open(fname, 'w') as fout:
         # store in sorted order: most frequent words at the top
@@ -198,8 +341,48 @@ def _save_word2vec_format(fname, vocab, vectors, fvocab):
             fout.write(f"{word} {' '.join(repr(val) for val in row)}\n")
 
 
+def run_split_on_punc(text, never_split=None):
+    """Splits punctuation on a piece of text.
+    Function taken from HuggingFace: transformers.tokenization_bert.BasicTokenizer
+    """
+    if never_split is not None and text in never_split:
+        return [text]
+    chars = list(text)
+    i = 0
+    start_new_word = True
+    output = []
+    while i < len(chars):
+        char = chars[i]
+        if _is_punctuation(char):
+            output.append([char])
+            start_new_word = True
+        else:
+            if start_new_word:
+                output.append([])
+            start_new_word = False
+            output[-1].append(char)
+        i += 1
+
+    return ["".join(x) for x in output]
+
+
+def _is_punctuation(char):
+    """Checks whether `chars` is a punctuation character."""
+    cp = ord(char)
+    # We treat all non-letter/number ASCII as punctuation.
+    # Characters such as "^", "$", and "`" are not in the Unicode
+    # Punctuation class but we treat them as punctuation anyways, for
+    # consistency.
+    if (cp >= 33 and cp <= 47) or (cp >= 58 and cp <= 64) or (cp >= 91 and cp <= 96) or (cp >= 123 and cp <= 126):
+        return True
+    cat = unicodedata.category(char)
+    if cat.startswith("P"):
+        return True
+    return False
+
+
 if __name__ == "__main__":
-    convert_WordEmbeddings(embedding_filename="../../saved_models/glove_normal/vectors.txt",
-                           vocab_filename="../../saved_models/glove_normal/vocab.txt",
-                           output_path="../../saved_models/glove_converted",
+    convert_WordEmbeddings(embedding_filename="../../saved_models/glove-normal/vectors.txt",
+                           vocab_filename="../../saved_models/glove-normal/vocab.txt",
+                           output_path="../../saved_models/glove-converted",
                            language="German")

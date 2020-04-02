@@ -20,7 +20,6 @@ import json
 import logging
 import os
 import re
-import unicodedata
 from pathlib import Path
 
 import numpy as np
@@ -32,7 +31,8 @@ from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_xlm_roberta import XLMRobertaTokenizer
 from transformers.tokenization_xlnet import XLNetTokenizer
 
-from farm.modeling.wordembedding_utils import load_from_cache, EMBEDDING_VOCAB_FILES_MAP
+from farm.modeling.wordembedding_utils import load_from_cache, EMBEDDING_VOCAB_FILES_MAP, run_split_on_punc
+
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +73,9 @@ class Tokenizer:
                 tokenizer_class = "BertTokenizer"
             elif "xlnet" in pretrained_model_name_or_path.lower():
                 tokenizer_class = "XLNetTokenizer"
-            elif "word2vec" in pretrained_model_name_or_path.lower() or "glove" in pretrained_model_name_or_path.lower():
+            elif "word2vec" in pretrained_model_name_or_path.lower() or \
+                    "glove" in pretrained_model_name_or_path.lower() or \
+                    "fasttext" in pretrained_model_name_or_path.lower():
                 tokenizer_class = "EmbeddingTokenizer"
             else:
                 raise ValueError(f"Could not infer tokenizer_type from name '{pretrained_model_name_or_path}'. Set arg `tokenizer_type` in Tokenizer.load() to one of: 'bert', 'roberta', 'xlnet' ")
@@ -166,7 +168,7 @@ class EmbeddingTokenizer(PreTrainedTokenizer):
     def _tokenize(self, text):
         if self.do_lower_case:
             text = text.lower()
-        tokens = _run_split_on_punc(text)
+        tokens = run_split_on_punc(text)
         tokens = [t if t in self.vocab else self.unk_token for t in tokens]
         return tokens
 
@@ -361,41 +363,3 @@ def insert_at_special_tokens_pos(seq, special_tokens_mask, insert_element):
     for idx in special_tokens_indices:
         new_seq.insert(idx, insert_element)
     return new_seq
-
-
-def _run_split_on_punc(text, never_split=None):
-    """Splits punctuation on a piece of text."""
-    if never_split is not None and text in never_split:
-        return [text]
-    chars = list(text)
-    i = 0
-    start_new_word = True
-    output = []
-    while i < len(chars):
-        char = chars[i]
-        if _is_punctuation(char):
-            output.append([char])
-            start_new_word = True
-        else:
-            if start_new_word:
-                output.append([])
-            start_new_word = False
-            output[-1].append(char)
-        i += 1
-
-    return ["".join(x) for x in output]
-
-
-def _is_punctuation(char):
-    """Checks whether `chars` is a punctuation character."""
-    cp = ord(char)
-    # We treat all non-letter/number ASCII as punctuation.
-    # Characters such as "^", "$", and "`" are not in the Unicode
-    # Punctuation class but we treat them as punctuation anyways, for
-    # consistency.
-    if (cp >= 33 and cp <= 47) or (cp >= 58 and cp <= 64) or (cp >= 91 and cp <= 96) or (cp >= 123 and cp <= 126):
-        return True
-    cat = unicodedata.category(char)
-    if cat.startswith("P"):
-        return True
-    return False

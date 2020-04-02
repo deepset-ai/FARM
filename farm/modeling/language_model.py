@@ -970,22 +970,22 @@ class WordEmbedding_LM(LanguageModel):
         :return: Language Model
 
         """
-        import fasttext
         wordembedding_LM = cls()
         if "farm_lm_name" in kwargs:
             wordembedding_LM.name = kwargs["farm_lm_name"]
         else:
             wordembedding_LM.name = pretrained_model_name_or_path
-        # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
+        # We need to differentiate between loading model from local or remote
         farm_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(farm_lm_config):
-            # FARM style
+            # local dir
             config = json.load(open(farm_lm_config,"r"))
             farm_lm_model = Path(pretrained_model_name_or_path) / config["embeddings_filename"]
             vocab_filename = Path(pretrained_model_name_or_path) / config["vocab_filename"]
             wordembedding_LM.model = EmbeddingModel(path=str(farm_lm_model), config_dict=config, vocab_filename=str(vocab_filename))
             wordembedding_LM.language = config.get("language", None)
         else:
+            # from remote or cache
             config_dict, resolved_vocab_file, resolved_model_file = wordembedding_utils.load_model(pretrained_model_name_or_path, **kwargs)
             model = EmbeddingModel(path=resolved_model_file,
                                    config_dict=config_dict,
@@ -1020,7 +1020,7 @@ class WordEmbedding_LM(LanguageModel):
         """
         sequence_output = []
         pooled_output = []
-        # TODO do not use padding items
+        # TODO do not use padding items in pooled output
         for sample in input_ids:
             sample_embeddings = []
             for index in sample:
@@ -1032,6 +1032,6 @@ class WordEmbedding_LM(LanguageModel):
 
         sequence_output = torch.stack(sequence_output)
         pooled_output = torch.stack(pooled_output)
-        m = nn.BatchNorm1d(pooled_output.shape[1])
+        m = nn.BatchNorm1d(pooled_output.shape[1]) # batchnorm for stable learning
         pooled_output = m(pooled_output)
         return sequence_output, pooled_output
