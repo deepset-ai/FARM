@@ -4,6 +4,7 @@ import logging
 import os
 from pathlib import Path
 
+import multiprocessing
 import numpy
 import onnxruntime
 import torch
@@ -699,13 +700,13 @@ class ONNXAdaptiveModel(BaseAdaptiveModel):
     """
     Implementation of ONNX Runtime for Inference of ONNX Models.
 
-    Existing PyTorch based FARM AdaptiveModel can be converted to ONNX format using AdpativeModel.convert_to_onnx().
+    Existing PyTorch based FARM AdaptiveModel can be converted to ONNX format using AdaptiveModel.convert_to_onnx().
     The conversion is currently only implemented for Question Answering Models.
 
     For inference, this class is compatible with the FARM Inferencer.
     """
-    def __init__(self, onnx_session, prediction_heads, language, device="cpu"):
-        if str(onnxruntime.get_device()).lower() != str(device).lower():
+    def __init__(self, onnx_session, prediction_heads, language, device):
+        if str(device) == "cuda" and onnxruntime.get_device() != "GPU":
             raise Exception(f"Device {device} not available for Inference. For CPU, run pip install onnxruntime and"
                             f"for GPU run pip install onnxruntime-gpu")
         self.onnx_session = onnx_session
@@ -718,9 +719,8 @@ class ONNXAdaptiveModel(BaseAdaptiveModel):
         sess_options = onnxruntime.SessionOptions()
         # Set graph optimization level to ORT_ENABLE_EXTENDED to enable bert optimization.
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
-
-        # To enable model serialization and store the optimized graph to desired location.
-        sess_options.optimized_model_filepath = os.path.join(load_dir, "optimized_model.onnx")
+        # Use OpenMP optimizations. Only useful for CPU, has little impact for GPUs.
+        sess_options.intra_op_num_threads = multiprocessing.cpu_count()
         onnx_session = onnxruntime.InferenceSession(str(load_dir / "model.onnx"), sess_options)
 
         # Prediction heads
