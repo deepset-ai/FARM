@@ -8,12 +8,14 @@ import shutil
 import dill
 
 from farm.utils import MLFlowLogger as MlLogger
-from farm.utils import GracefulKiller
+from farm.utils import GracefulKiller, set_all_seeds
 from farm.eval import Evaluator
 from farm.data_handler.data_silo import DataSilo
 from farm.visual.ascii.images import GROWING_TREE
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.optimization import get_scheduler
+
+import random
 
 try:
     from apex import amp
@@ -222,7 +224,8 @@ class Trainer:
         loss = 0
 
         resume_from_step = self.from_step
-
+        # rng_state = random.getstate()
+        set_all_seeds(seed=39)
         for epoch in range(self.from_epoch, self.epochs):
             self.from_epoch = epoch
             train_data_loader = self.data_silo.get_data_loader("train")
@@ -234,6 +237,7 @@ class Trainer:
                         resume_from_step = None
                     continue
 
+                set_all_seeds(seed=39)
                 progress_bar.set_description(f"Train epoch {epoch}/{self.epochs} (Cur. train loss: {loss:.4f})")
 
                 # Move batch of samples to device

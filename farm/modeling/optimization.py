@@ -227,7 +227,8 @@ def get_scheduler(optimizer, opts):
             # The method names in transformers became quite long and unhandy.
             # for convenience we offer usage of shorter alias (e.g. "LinearWarmup")
             scheduler_translations = {"LinearWarmup": "get_linear_schedule_with_warmup",
-                                      "Constant": "get_constant_schedule_with_warmup",
+                                      "ConstantWarmup": "get_constant_schedule_with_warmup",
+                                      "Constant": "get_constant_schedule",
                                       "CosineWarmup": "get_cosine_schedule_with_warmup",
                                      "CosineWarmupWithRestarts": "get_cosine_with_hard_restarts_schedule_with_warmup"
             }

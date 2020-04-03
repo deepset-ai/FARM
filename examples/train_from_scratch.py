@@ -41,21 +41,21 @@ def train_from_scratch():
         ml_logger.init_experiment(experiment_name="train_from_scratch", run_name="debug")
 
     set_all_seeds(seed=39)
-    device, n_gpu = initialize_device_settings(use_cuda=True, local_rank=args.local_rank, use_amp=use_amp)
+    device, n_gpu = initialize_device_settings(use_cuda=False, local_rank=args.local_rank, use_amp=use_amp)
 
     save_dir = Path("saved_models/train_from_scratch")
     data_dir = Path("data/lm_finetune_nips")
     train_filename = "train.txt"
     dev_filename = "dev.txt"
 
-    max_seq_len = 128
-    batch_size = 30#60
-    grad_acc = 4
+    max_seq_len = 64
+    batch_size = 5#60
+    grad_acc = 1
     learning_rate = 0.0001
     warmup_proportion = 0.01
     n_epochs = 5
     evaluate_every = 15000
-    checkpoint_every = 30
+    checkpoint_every = 10
     # checkpoint_every = None
     # checkpoint_root_dir = None
     checkpoint_root_dir = Path("checkpoints")
@@ -104,7 +104,7 @@ def train_from_scratch():
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
         learning_rate=learning_rate,
-        schedule_opts={"name": "LinearWarmup", "warmup_proportion": warmup_proportion},
+        schedule_opts={"name": "Constant"},
         n_batches=len(stream_data_silo.get_data_loader("train")),
         n_epochs=n_epochs,
         device=device,
@@ -128,7 +128,7 @@ def train_from_scratch():
         local_rank=args.local_rank,
         checkpoint_every=checkpoint_every,
         checkpoint_root_dir=checkpoint_root_dir,
-        checkpoints_to_keep=2,
+        checkpoints_to_keep=4,
         use_amp=use_amp,
         log_learning_rate=True
     )
