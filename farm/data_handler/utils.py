@@ -446,9 +446,10 @@ def _get_random_sentence(all_baskets, forbidden_doc):
     return sentence
 
 
-def get_sequence_pair(doc, chunk, all_baskets, tokenizer, max_num_tokens, prob_next_sentence=0.5):
+def get_sequence_pair(doc, chunk, chunk_clear_text, all_baskets, tokenizer, max_num_tokens, prob_next_sentence=0.5):
     sequence_a = []
     sequence_b = []
+    sample_in_clear_text = { "text_a" : "", "text_b" : ""}
     # determine how many segments from chunk go into sequence_a
     len_sequence_a = 0
     a_end = 1
@@ -456,17 +457,40 @@ def get_sequence_pair(doc, chunk, all_baskets, tokenizer, max_num_tokens, prob_n
         a_end = random.randrange(1, len(chunk))
     for i in range(a_end):
         sequence_a.append(chunk[i])
+        sample_in_clear_text["text_a"] += f"{chunk_clear_text[i]} "
         len_sequence_a += len(chunk[i]["tokens"])
+    sample_in_clear_text["text_a"].strip()
 
     # actual next sequence
     if (random.random() > prob_next_sentence) and (len(chunk) > 1):
         label = True
         for i in range(a_end, len(chunk)):
             sequence_b.append(chunk[i])
+            sample_in_clear_text["text_b"] += f"{chunk_clear_text[i]} "
+        sample_in_clear_text["text_b"].strip()
+        sample_in_clear_text["nextsentence_label"] = True
         num_unused_segments = 0
-    # ToDo : fix bug (what to do if chunk_len == 1 and sequence_a_len == max_num_tokens?)
+    # edge case: split sequence in half
     elif (len(chunk) == 1) and len_sequence_a == max_num_tokens:
-        #return sequence_a, [{"tokens":[], "offsets": [], "start_of_word": []}], True, 0
+        sequence_a = {}
+        sequence_b = {}
+        boundary = int(len(chunk[0]["tokens"])/2)
+        sequence_a["tokens"] = chunk[0]["tokens"][:boundary]
+        sequence_a["offsets"] = chunk[0]["offsets"][:boundary]
+        sequence_a["start_of_word"] = chunk[0]["start_of_word"][:boundary]
+        sequence_b["tokens"] = chunk[0]["tokens"][boundary:]
+        sequence_b["start_of_word"] = chunk[0]["start_of_word"][boundary:]
+        # get offsets for sequence_b right
+        seq_b_offset_start = chunk[0]["offsets"][boundary]
+        sequence_b["offsets"] = [offset - seq_b_offset_start for offset in chunk[0]["offsets"][boundary:]]
+        # get clear text
+        clear_text_boundary = chunk[0]["offsets"][boundary]
+        sample_in_clear_text["text_a"] = chunk_clear_text[0][:clear_text_boundary]
+        sample_in_clear_text["text_b"] = chunk_clear_text[0][clear_text_boundary:]
+        sample_in_clear_text["text_a"].strip()
+        sample_in_clear_text["text_b"].strip()
+        sample_in_clear_text["nextsentence_label"] = True
+        return [sequence_a], [sequence_b], sample_in_clear_text, 0
     # random next sequence
     else:
         label = False
@@ -480,16 +504,19 @@ def get_sequence_pair(doc, chunk, all_baskets, tokenizer, max_num_tokens, prob_n
 
         for i in range(random_start, len(random_doc)):
             sequence_b.append(random_doc_tokenized[i])
+            sample_in_clear_text["text_b"] += f"{random_doc[i]} "
             sequence_b_length += len(random_doc_tokenized[i]["tokens"])
             if sequence_b_length >= target_b_length:
                 break
+        sample_in_clear_text["text_b"].strip()
+        sample_in_clear_text["nextsentence_label"] = False
 
         # We didn't use all of the segments in chunk => put them back
         num_unused_segments = len(chunk) - a_end
 
     assert len(sequence_a) > 0
     assert len(sequence_b) > 0
-    return sequence_a, sequence_b, label, num_unused_segments
+    return sequence_a, sequence_b, sample_in_clear_text, num_unused_segments
 
 
 def _get_random_doc(all_baskets, forbidden_doc):

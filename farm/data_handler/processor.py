@@ -936,26 +936,29 @@ class BertStyleMaxSequenceLMProcessor(Processor):
             current_doc_tokenized.append(tokenize_with_metadata(sentence, self.tokenizer))
 
         current_chunk = []
+        current_chunk_clear_text = []
         current_length = 0
         i = 0
         while i < len(current_doc_tokenized):
             current_segment = current_doc_tokenized[i]
             current_length += len(current_segment["tokens"])
             current_chunk.append(current_segment)
+            current_chunk_clear_text.append(current_doc[i])
 
             # reached end of document or max_num_tokens
             if (i == len(current_doc_tokenized) - 1) or (current_length >= max_num_tokens):
                 if current_chunk:
-                    sequence_a, sequence_b, is_next_label, num_unused_segments = get_sequence_pair(
+                    sequence_a, sequence_b, sample_in_clear_text, num_unused_segments = get_sequence_pair(
                         current_doc,
                         current_chunk,
+                        current_chunk_clear_text,
                         all_dicts,
                         self.tokenizer,
                         max_num_tokens,
                     )
                     sequence_a = join_sentences(sequence_a)
                     sequence_b = join_sentences(sequence_b)
-                    sample_in_clear_text = {"text_a": "TEXT A", "text_b": "TEXT B", "nextsentence_label": is_next_label}
+                    #sample_in_clear_text = {"text_a": "TEXT A", "text_b": "TEXT B", "nextsentence_label": is_next_label}
                     for seq_name in ["tokens", "offsets", "start_of_word"]:
                         sequence_a[seq_name], sequence_b[seq_name], _ = truncate_sequences(
                             seq_a=sequence_a[seq_name],
@@ -972,6 +975,7 @@ class BertStyleMaxSequenceLMProcessor(Processor):
                     i -= num_unused_segments
 
                 current_chunk = []
+                current_chunk_clear_text = []
                 current_length = 0
             i += 1
         return samples
