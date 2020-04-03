@@ -15,8 +15,6 @@ from farm.visual.ascii.images import GROWING_TREE
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.optimization import get_scheduler
 
-import random
-
 try:
     from apex import amp
     AMP_AVAILABLE = True
@@ -216,16 +214,18 @@ class Trainer:
         # Check that the tokenizer fits the language model
         self.model.verify_vocab_size(vocab_size=len(self.data_silo.processor.tokenizer))
 
-        logger.info(f"\n {GROWING_TREE}")
         self.model.train()
 
         do_stopping = False
         evalnr = 0
         loss = 0
-
         resume_from_step = self.from_step
-        # rng_state = random.getstate()
+
         set_all_seeds(seed=39)
+
+        if self.local_rank in [0, -1]:
+            logger.info(f"\n {GROWING_TREE}")
+
         for epoch in range(self.from_epoch, self.epochs):
             self.from_epoch = epoch
             train_data_loader = self.data_silo.get_data_loader("train")
@@ -233,7 +233,12 @@ class Trainer:
             for step, batch in enumerate(progress_bar):
                 # when resuming training from a checkpoint, we want to fast forward to the step of the checkpoint
                 if resume_from_step and step <= resume_from_step:
+                    # TODO: Improve skipping for StreamingDataSilo
+                    # The seeds before and within the loop are currently needed, if you need full reproducibility
+                    # of runs with vs. without checkpointing using StreamingDataSilo. Reason: While skipping steps in StreamingDataSilo,
+                    # we update the state of the random number generator (e.g. due to masking words), which can impact the model behaviour (e.g. dropout)
                     if resume_from_step == step:
+                        logger.info(f"Skipped {resume_from_step} steps ...")
                         resume_from_step = None
                     continue
 
@@ -250,7 +255,7 @@ class Trainer:
                 loss = self.backward_propagate(per_sample_loss, step)
 
                 # Perform  evaluation
-                if self.global_step % self.evaluate_every == 0 and self.global_step != 0:
+                if self.evaluate_every != 0 and self.global_step % self.evaluate_every == 0 and self.global_step != 0:
                     # When using StreamingDataSilo, each evaluation creates a new instance of
                     # dev_data_loader. In cases like training from scratch, this could cause
                     # some variance across evaluators due to the randomness in word masking.
@@ -275,6 +280,7 @@ class Trainer:
                                 logger.info("STOPPING EARLY AT EPOCH {}, STEP {}, EVALUATION {}".format(epoch, step, evalnr))
                 if do_stopping:
                     break
+
                 self.global_step += 1
                 self.from_step = step
 
@@ -351,7 +357,8 @@ class Trainer:
         MlLogger.log_params(params)
 
     @classmethod
-    def create_or_load_checkpoint(cls, data_silo, checkpoint_root_dir, resume_from_checkpoint="latest", **kwargs):
+    def create_or_load_checkpoint(cls, data_silo, checkpoint_root_dir, model, optimizer,
+                                  local_rank=-1, resume_from_checkpoint="latest", **kwargs):
         """
         Try loading a saved Trainer checkpoint. If no checkpoint found, it creates a new instance of Trainer.
 
@@ -378,15 +385,17 @@ class Trainer:
 
         if checkpoint_to_load:
             #TODO load empty model class from config instead of passing here?
-            trainer = cls._load_checkpoint(path=checkpoint_to_load, data_silo=data_silo, model=kwargs["model"], local_rank=kwargs["local_rank"])
+            trainer = cls._load_checkpoint(path=checkpoint_to_load, data_silo=data_silo,
+                                           model=model, optimizer=optimizer, local_rank=local_rank)
             logging.info(f"Resuming training from the train checkpoint at {checkpoint_to_load} ...")
         else:
             logging.info(f"No train checkpoints found. Starting a new training ...")
-            trainer = Trainer(data_silo=data_silo, checkpoint_root_dir=checkpoint_root_dir, **kwargs)
+            trainer = Trainer(data_silo=data_silo, model=model, optimizer=optimizer, local_rank=local_rank,
+                              checkpoint_root_dir=checkpoint_root_dir, **kwargs)
         return trainer
 
     @classmethod
-    def _load_checkpoint(cls, path, data_silo, model, local_rank=-1):
+    def _load_checkpoint(cls, path, data_silo, model, optimizer, local_rank=-1):
         """
         Load the train checkpoint at given path.
 
@@ -399,15 +408,17 @@ class Trainer:
         if not path.exists():
             raise Exception(f"The checkpoint path {path} does not exists.")
 
+        # In distributed mode, we save the model only once from process 0 (using cuda:0)
+        # At loading time, we need to load the model to the current cuda device (instead of back to cuda:0)
+        # Note: This assumes exactly one GPU per process (as recommended by PyTorch)
         if local_rank == -1:
             map_location = None
         else:
             device = torch.device(f"cuda:{local_rank}")
-            # TODO simplify to device?
             map_location = {'cuda:0': f'cuda:{local_rank}'}
 
         trainer_checkpoint = torch.load(path / "trainer", map_location=map_location)
-        trainer_state_dict = trainer_checkpoint["trainer_state_dict"]
+        trainer_state_dict = trainer_checkpoint["trainer_state"]
         if local_rank != -1:
             trainer_state_dict["device"] = device
             trainer_state_dict["local_rank"] = local_rank
@@ -422,16 +433,14 @@ class Trainer:
         torch.set_rng_state(rng_state)
         torch.cuda.set_rng_state(cuda_rng_state)
 
-        # TODO switch to state_dict here?
-        model.load_state_dict(torch.load(path / "model_state_dict", map_location=map_location))
-
-        optimizer = trainer_checkpoint["optimizer"]
+        model.load_state_dict(trainer_checkpoint["model_state"], strict=True)
+        optimizer.load_state_dict(trainer_checkpoint["optimizer_state"])
 
         scheduler_state_dict = trainer_checkpoint["scheduler_state"]
         scheduler_opts = trainer_checkpoint["scheduler_opts"]
-        scheduler_opts["last_epoch"] = scheduler_state_dict["last_epoch"]
+        #scheduler_opts["last_epoch"] = scheduler_state_dict["last_epoch"] #TODO check if still needed
         scheduler = get_scheduler(optimizer, scheduler_opts)
-        scheduler.load_state_dict(scheduler_state_dict) #TODO do we need map_location here, too?
+        scheduler.load_state_dict(scheduler_state_dict)
 
         trainer = Trainer(
             data_silo=data_silo,
@@ -482,15 +491,16 @@ class Trainer:
         checkpoint_path.mkdir(parents=True, exist_ok=True)
 
         trainer_state_dict = self._get_state_dict()
-        #TODO verify if this still works without DDP
+
+        # save as a regular AdaptiveModel (e.g. for down-stream eval during training from scratch)
         self.model.save(checkpoint_path)
-        torch.save(self.model.state_dict(), checkpoint_path / "model_state_dict")
+
+        # save all state dicst (incl. the model) to have full reproducibility
         torch.save(
             {
-                "model": self.model,
-                "trainer_state_dict": trainer_state_dict,
-                "model_state_dict": self.model.state_dict(),
-                "optimizer": self.optimizer,
+                "trainer_state": trainer_state_dict,
+                "model_state": self.model.state_dict(),
+                "optimizer_state": self.optimizer.state_dict(),
                 "scheduler_opts": self.lr_schedule.opts,
                 "scheduler_state": self.lr_schedule.state_dict(),
                 "numpy_rng_state": numpy.random.get_state(),

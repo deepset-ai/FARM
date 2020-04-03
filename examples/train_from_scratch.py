@@ -41,7 +41,7 @@ def train_from_scratch():
         ml_logger.init_experiment(experiment_name="train_from_scratch", run_name="debug")
 
     set_all_seeds(seed=39)
-    device, n_gpu = initialize_device_settings(use_cuda=False, local_rank=args.local_rank, use_amp=use_amp)
+    device, n_gpu = initialize_device_settings(use_cuda=True, local_rank=args.local_rank, use_amp=use_amp)
 
     save_dir = Path("saved_models/train_from_scratch")
     data_dir = Path("data/lm_finetune_nips")
@@ -49,10 +49,10 @@ def train_from_scratch():
     dev_filename = "dev.txt"
 
     max_seq_len = 64
-    batch_size = 5#60
+    batch_size = 4#60
     grad_acc = 1
-    learning_rate = 0.0001
-    warmup_proportion = 0.01
+    learning_rate = 1e-4
+    warmup_proportion = 0.05
     n_epochs = 5
     evaluate_every = 15000
     checkpoint_every = 10
@@ -60,7 +60,7 @@ def train_from_scratch():
     # checkpoint_root_dir = None
     checkpoint_root_dir = Path("checkpoints")
     # checkpoint_root_dir = Path("/opt/ml/checkpoints/training")
-    distributed = False
+    distributed = True
 
     # Choose enough workers to queue sufficient batches during training.
     # 16 works well on a 4x V100 machine with 16 cores.
@@ -90,7 +90,7 @@ def train_from_scratch():
 
     # b) and *two* prediction heads on top that are suited for our task => Language Model finetuning
     lm_prediction_head = BertLMHead(768, tokenizer.vocab_size)
-    next_sentence_head = NextSentenceHead([768, 2], task_name="nextsentence")
+    next_sentence_head = NextSentenceHead(num_labels=2, task_name="nextsentence")
 
     model = AdaptiveModel(
         language_model=language_model,
@@ -104,7 +104,7 @@ def train_from_scratch():
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
         learning_rate=learning_rate,
-        schedule_opts={"name": "Constant"},
+        schedule_opts={"name": "LinearWarmup", "warmup_proportion": warmup_proportion},
         n_batches=len(stream_data_silo.get_data_loader("train")),
         n_epochs=n_epochs,
         device=device,
