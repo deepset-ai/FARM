@@ -13,15 +13,15 @@ from farm.train import Trainer
 from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
 
 
-# Launch this via
-# python -m torch.distributed.launch --nproc_per_node=4 train_from_scratch.py
+# To get the best speed in a multi-GPU environment, launch the script via
+# python -m torch.distributed.launch --nproc_per_node=<NUM_GPUS> train_from_scratch.py
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument("--local_rank",
                         type=int,
                         default=-1,
-                        help="local_rank for distributed training on gpus")
+                        help="local_rank for distributed training on GPUs")
     args = parser.parse_args()
     return args
 
@@ -36,9 +36,11 @@ def train_from_scratch():
         datefmt="%m/%d/%Y %H:%M:%S",
         level=logging.INFO,
     )
+
+    # Only the main process should log here
     if args.local_rank in [-1, 0]:
         ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
-        ml_logger.init_experiment(experiment_name="train_from_scratch", run_name="debug")
+        ml_logger.init_experiment(experiment_name="train_from_scratch", run_name="run")
 
     set_all_seeds(seed=39)
     device, n_gpu = initialize_device_settings(use_cuda=True, local_rank=args.local_rank, use_amp=use_amp)
@@ -48,23 +50,21 @@ def train_from_scratch():
     train_filename = "train.txt"
     dev_filename = "dev.txt"
 
-    max_seq_len = 64
-    batch_size = 4#60
-    grad_acc = 1
+    distributed = True
+    max_seq_len = 128
+    batch_size = 60
+    grad_acc = 4
     learning_rate = 1e-4
     warmup_proportion = 0.05
-    n_epochs = 5
+    n_epochs = 3
     evaluate_every = 15000
-    checkpoint_every = 10
-    # checkpoint_every = None
-    # checkpoint_root_dir = None
+    checkpoint_every = 1000
     checkpoint_root_dir = Path("checkpoints")
-    # checkpoint_root_dir = Path("/opt/ml/checkpoints/training")
-    distributed = True
+    checkpoints_to_keep = 4
 
     # Choose enough workers to queue sufficient batches during training.
-    # 16 works well on a 4x V100 machine with 16 cores.
-    # For a single GPU you will need less.
+    # Optimal number depends on your GPU speed, CPU speed and number of cores
+    # 16 works well on a 4x V100 machine with 16 cores (AWS: p3.8xlarge). For a single GPU you will need less.
     data_loader_workers = 4
 
     # 1.Create a tokenizer
@@ -128,9 +128,8 @@ def train_from_scratch():
         local_rank=args.local_rank,
         checkpoint_every=checkpoint_every,
         checkpoint_root_dir=checkpoint_root_dir,
-        checkpoints_to_keep=4,
-        use_amp=use_amp,
-        log_learning_rate=True
+        checkpoints_to_keep=checkpoints_to_keep,
+        use_amp=use_amp
     )
     # 7. Let it grow! Watch the tracked metrics live on the public mlflow server: https://public-mlflow.deepset.ai
     trainer.train()
