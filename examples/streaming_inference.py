@@ -21,7 +21,7 @@ def streaming_inference_example():
 
 def sample_dicts_generator():
     """
-    This is a sample dicts generator. Some example real world use-cases
+    This is a sample dicts generator. Some exemplary use cases:
 
     * read chunks of text from large files iteratively and generate inference predictions
     * connect with external datasources, eg, a Elasticsearch Scroll API that reads all documents from a given index

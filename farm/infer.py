@@ -278,7 +278,8 @@ class Inferencer:
         set the streaming param to True and determine optimal multiprocessing_chunksize by performing speed benchmarks.
 
 
-        :param dicts: Samples to run inference on provided as a list of dicts. One dict per sample.
+        :param dicts: Samples to run inference on provided as a list(or a generator object) of dicts.
+                      One dict per sample.
         :type dicts: iter(dict)
         :param rest_api_schema: Whether input dicts use the format that complies with the FARM REST API.
                                 Currently only used for QA to switch from squad to a more useful format in production.
@@ -339,7 +340,6 @@ class Inferencer:
             # return a generator object if streaming is enabled, else, cast the generator to a list.
             if not streaming and type(predictions) != list:
                 return list(predictions)
-                return list(itertools.chain(*predictions))
             else:
                 return predictions
 
