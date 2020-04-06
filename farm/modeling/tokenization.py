@@ -68,7 +68,10 @@ class Tokenizer:
             elif "xlnet" in pretrained_model_name_or_path.lower():
                 tokenizer_class = "XLNetTokenizer"
             else:
-                raise ValueError(f"Could not infer tokenizer_type from name '{pretrained_model_name_or_path}'. Set arg `tokenizer_type` in Tokenizer.load() to one of: 'bert', 'roberta', 'xlnet' ")
+                raise ValueError(f"Could not infer tokenizer_class from name '{pretrained_model_name_or_path}'. Set "
+                                 f"arg `tokenizer_class` in Tokenizer.load() to one of: AlbertTokenizer, "
+                                 f"XLMRobertaTokenizer, RobertaTokenizer, DistilBertTokenizer, BertTokenizer, or "
+                                 f"XLNetTokenizer.")
             logger.info(f"Loading tokenizer of type '{tokenizer_class}'")
         # return appropriate tokenizer object
         if tokenizer_class == "AlbertTokenizer":
