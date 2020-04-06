@@ -497,17 +497,16 @@ def get_sequence_pair(doc, chunk, chunk_clear_text, all_baskets, tokenizer, max_
         sequence_b_length = 0
         target_b_length = max_num_tokens - len_sequence_a
         random_doc = _get_random_doc(all_baskets, forbidden_doc=doc)
-        random_doc_tokenized = []
-        for sentence in random_doc:
-            random_doc_tokenized.append(tokenize_with_metadata(sentence, tokenizer))
-        random_start = random.randrange(len(random_doc_tokenized))
 
+        random_start = random.randrange(len(random_doc))
         for i in range(random_start, len(random_doc)):
-            sequence_b.append(random_doc_tokenized[i])
+            current_sentence_tokenized = tokenize_with_metadata(random_doc[i], tokenizer)
+            sequence_b.append(current_sentence_tokenized)
             sample_in_clear_text["text_b"] += f"{random_doc[i]} "
-            sequence_b_length += len(random_doc_tokenized[i]["tokens"])
+            sequence_b_length += len(current_sentence_tokenized["tokens"])
             if sequence_b_length >= target_b_length:
                 break
+
         sample_in_clear_text["text_b"].strip()
         sample_in_clear_text["nextsentence_label"] = False
 
