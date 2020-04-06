@@ -11,6 +11,7 @@ from pathlib import Path
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 
+from numpy.random import random as random_float
 from farm.data_handler.dataset import convert_features_to_dataset
 from farm.data_handler.input_features import (
     samples_to_features_ner,
@@ -279,6 +280,8 @@ class Processor(ABC):
             except:
                 logger.error(f"Could not create sample(s) from this dict: \n {basket.raw}")
                 raise
+        # In tasks where downsampling happens, there might be baskets with no samples which should be removed
+        self.baskets = [b for b in self.baskets if len(b.samples) != 0]
 
     def _featurize_samples(self):
         for basket in self.baskets:
@@ -1124,9 +1127,8 @@ class NaturalQuestionsProcessor(Processor):
     def downsample(self, samples, keep_prob):
         ret = []
         for s in samples:
-            x = self.check_is_impossible(s)
             if self.check_is_impossible(s):
-                if np.random.random() > 1 - keep_prob:
+                if random_float() > 1 - keep_prob:
                     ret.append(s)
             else:
                 ret.append(s)
@@ -1151,7 +1153,7 @@ class NaturalQuestionsProcessor(Processor):
     def prepare_dict(self, dictionary):
         converted_answers = []
         doc_text = dictionary["document_text"]
-        doc_tokens, tok_to_ch = split_with_metadata(doc_text)
+        _, tok_to_ch = split_with_metadata(doc_text)
         for annotation in dictionary["annotations"]:
             # There seem to be cases where there is no answer but an annotation is given as a (-1, -1) long answer
             if self.check_no_answer(annotation):

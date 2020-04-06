@@ -328,12 +328,12 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, answer_type_list=No
     # Generates a numpy array of shape (max_answers, 2) where (i, 2) indexes into the start and end indices
     # of the ith answer. The array is filled with -1 since the number of answers is often less than max_answers
     # no answer labels are represented by (0,0)
-    labels, answer_types = generate_labels(answers,
-                                           passage_len_t,
-                                           question_len_t,
-                                           tokenizer,
-                                           answer_type_list=answer_type_list,
-                                           max_answers=max_answers)
+        labels, answer_types = generate_labels(answers,
+                                               passage_len_t,
+                                               question_len_t,
+                                               tokenizer,
+                                               answer_type_list=answer_type_list,
+                                               max_answers=max_answers)
 
     # Generate a start of word vector for the full sequence (i.e. question + answer + special tokens).
     # This will allow us to perform evaluation during training without clear text.
@@ -413,7 +413,7 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, answer_ty
     # If there are no answers
     if len(answers) == 0:
         label_idxs[0, :] = 0
-        return label_idxs
+        return label_idxs, answer_types
 
     for i, answer in enumerate(answers):
         # TODO THIS SECTION NEEDS A LOT MORE COMMENTING SO IT IS NOT CONFUSED WITH SQUAD

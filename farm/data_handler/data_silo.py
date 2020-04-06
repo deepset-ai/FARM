@@ -158,15 +158,20 @@ class DataSilo:
             datasets = []
 
             desc = f"Preprocessing Dataset"
+            final_tensor_names = None
             if filename:
                 desc += f" {filename}"
             with tqdm(total=len(dicts), unit=' Dicts', desc=desc) as pbar:
                 for dataset, tensor_names in results:
+                    if final_tensor_names is None and tensor_names is not None:
+                        final_tensor_names = tensor_names
                     datasets.append(dataset)
                     # update progress bar (last step can have less dicts than actual chunk_size)
                     pbar.update(min(multiprocessing_chunk_size, pbar.total-pbar.n))
+            # _dataset_from_chunk can return a None in cases where downsampling has occurred
+            datasets = [d for d in datasets if d]
             concat_datasets = ConcatDataset(datasets)
-            return concat_datasets, tensor_names
+            return concat_datasets, final_tensor_names
 
     def _load_data(self, train_dicts=None, dev_dicts=None, test_dicts=None):
         """
