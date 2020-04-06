@@ -521,7 +521,7 @@ class Inferencer:
         return preds_all
 
     def extract_vectors(
-        self, dicts, extraction_strategy="cls_token", extraction_layer=-1, max_processes=1
+        self, dicts, extraction_strategy="cls_token", extraction_layer=-1, num_processes=None
     ):
         """
         Converts a text into vector(s) using the language model only (no prediction head involved).
@@ -537,8 +537,8 @@ class Inferencer:
         :type extraction_strategy: str
         :param extraction_layer: number of layer from which the embeddings shall be extracted. Default: -1 (very last layer).
         :type extraction_layer: int
-        :param max_processes: number of parallel processes for multiprocessing
-        :type max_processes: int
+        :param num_processes: number of parallel processes for multiprocessing
+        :type num_processes: int
         :return: dict of predictions
         """
 
@@ -547,7 +547,7 @@ class Inferencer:
         self.model.language_model.extraction_layer = extraction_layer
         self.model.language_model.extraction_strategy = extraction_strategy
 
-        return self.inference_from_dicts(dicts, rest_api_schema=False, max_processes=max_processes)
+        return self.inference_from_dicts(dicts, rest_api_schema=False, num_processes=num_processes)
 
 
 class FasttextInferencer:
