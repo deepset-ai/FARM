@@ -16,7 +16,7 @@ from sklearn.model_selection import StratifiedKFold, KFold
 from tqdm import tqdm
 
 from farm.data_handler.dataloader import NamedDataLoader
-from farm.data_handler.processor import Processor
+from farm.data_handler.processor import Processor, BertStyleLMProcessor
 from farm.data_handler.utils import grouper, stream_grouper
 from farm.utils import MLFlowLogger as MlLogger
 from farm.utils import log_ascii_workers, calc_chunksize
@@ -77,6 +77,10 @@ class DataSilo:
         self.max_multiprocessing_chunksize = max_multiprocessing_chunksize
         self.caching = caching
         self.cache_path = cache_path
+
+        if len(self.processor.tasks) == 0:
+            raise Exception("No task initialized. Try initializing the processor with a metric and a label list. "
+                            "Alternatively you can add a task using Processor.add_task()")
 
         loaded_from_cache = False
         if self.caching:  # Check if DataSets are present in cache
@@ -415,7 +419,7 @@ class DataSilo:
         logger.info("Examples in dev  : {}".format(self.counts["dev"]))
         logger.info("Examples in test : {}".format(self.counts["test"]))
         logger.info("")
-        logger.info("Max sequence length:     {}".format(max(seq_lens)))
+        logger.info("Longest sequence length observed after clipping:     {}".format(max(seq_lens)))
         logger.info("Average sequence length after clipping: {}".format(self.ave_len))
         logger.info("Proportion clipped:      {}".format(self.clipped))
         if self.clipped > 0.5:
@@ -442,7 +446,7 @@ class DataSilo:
         :param task_name: name of the task as used in the processor
         :type task_name: str
         """
-
+        
         tensor_name = self.processor.tasks[task_name]["label_tensor_name"]
         label_list = self.processor.tasks[task_name]["label_list"]
         tensor_idx = list(self.tensor_names).index(tensor_name)
@@ -577,7 +581,15 @@ class _StreamingDataSet(IterableDataset):
         self.filepath = filepath
         self.dataloader_workers = dataloader_workers
 
+        # calculate number of samples for __len__()
+        total_lines = sum(1 for line in open(filepath, encoding="utf-8"))
+        empty_lines = sum(1 if line == "\n" else 0 for line in open(filepath, encoding="utf-8"))
+        self.n_samples = total_lines - (2 * empty_lines)
+
         self.file_to_dicts_generator = processor.file_to_dicts(filepath)
+
+    def __len__(self):
+        return self.n_samples
 
     def __iter__(self):
         #  With IterableDataset, the same __iter__ is copied over to the multiple workers of
@@ -605,6 +617,8 @@ class _StreamingDataSet(IterableDataset):
 
         batch = []
         for datasets, tensor_names in results:
+            if not datasets:
+                continue
             self.tensor_names = tensor_names
             for ds in datasets:
                 batch.append(ds)
@@ -623,6 +637,10 @@ class _StreamingDataSet(IterableDataset):
         :return: PyTorch Dataset
         """
         dicts = [d[1] for d in chunk]
+        # need at least 2 documents to sample random sentences from
+        if len(dicts) < 2 and type(self.processor) == BertStyleLMProcessor:
+            logger.info("Skipping a dict chunk as it contains less than 2 documents ...")
+            return None, None
         indices = [x[0] for x in chunk]
         datasets, tensor_names = self.processor.dataset_from_dicts(dicts=dicts, indices=indices)
         return datasets, tensor_names

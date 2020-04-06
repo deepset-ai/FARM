@@ -128,16 +128,22 @@ class LanguageModel(nn.Module):
                 elif 'xlnet' in pretrained_model_name_or_path:
                     language_model_class = 'XLNet'
 
-            language_model = cls.subclasses[language_model_class].load(pretrained_model_name_or_path, **kwargs)
+            if language_model_class:
+                language_model = cls.subclasses[language_model_class].load(pretrained_model_name_or_path, **kwargs)
+            else:
+                language_model = None
+
             if language_model_class == 'XLMRoberta':
                 # TODO: for some reason, the pretrained XLMRoberta has different vocab size in the tokenizer compared to the model this is a hack to resolve that
                 n_added_tokens = 3
 
         if not language_model:
             raise Exception(
-                f"Model not found for {pretrained_model_name_or_path}. Either supply the local path for a saved model "
-                f"or one of bert/roberta/xlnet/albert/distilbert models that can be downloaded from remote. Here's the list of available "
-                f"models: https://farm.deepset.ai/api/modeling.html#farm.modeling.language_model.LanguageModel.load"
+                f"Model not found for {pretrained_model_name_or_path}. Either supply the local path for a saved "
+                f"model or one of bert/roberta/xlnet/albert/distilbert models that can be downloaded from remote. "
+                f"Ensure that the model class name can be inferred from the directory name when loading a "
+                f"Transformers' model. Here's a list of available models: "
+                f"https://farm.deepset.ai/api/modeling.html#farm.modeling.language_model.LanguageModel.load"
             )
 
         # resize embeddings in case of custom vocab
@@ -234,29 +240,45 @@ class LanguageModel(nn.Module):
 
         return language
 
-    def formatted_preds(self, input_ids, samples, extraction_strategy="pooled", extraction_layer=-1, ignore_first_token=True,
+    def formatted_preds(self, logits, samples, ignore_first_token=True,
                         padding_mask=None, **kwargs):
-        # get language model output from last layer
-        if extraction_layer == -1:
-            sequence_output, pooled_output = self.forward(input_ids, padding_mask=padding_mask, **kwargs)
-        # or from earlier layer
-        else:
-            self.enable_hidden_states_output()
-            sequence_output, pooled_output, all_hidden_states = self.forward(input_ids, padding_mask=padding_mask, **kwargs)
-            sequence_output = all_hidden_states[extraction_layer]
-            self.disable_hidden_states_output()
+        """
+        Extracting vectors from language model (e.g. for extracting sentence embeddings).
+        Different pooling strategies and layers are available and will be determined from the object attributes
+        `extraction_layer` and `extraction_strategy`. Both should be set via the Inferencer:
+        Example:  Inferencer(extraction_strategy='cls_token', extraction_layer=-1)
+
+        :param logits: Tuple of (sequence_output, pooled_output) from the language model.
+                       Sequence_output: one vector per token, pooled_output: one vector for whole sequence
+        :param samples: For each item in logits we need additional meta information to format the prediction (e.g. input text).
+                        This is created by the Processor and passed in here from the Inferencer.
+        :param ignore_first_token: Whether to include the first token for pooling operations (e.g. reduce_mean).
+                                   Many models have here a special token like [CLS] that you don't want to include into your average of token embeddings.
+        :param padding_mask: Mask for the padding tokens. Those will also not be included in the pooling operations to prevent a bias by the number of padding tokens.
+        :param kwargs: kwargs
+        :return: list of dicts containing preds, e.g. [{"context": "some text", "vec": [-0.01, 0.5 ...]}]
+        """
+
+        if not hasattr(self, "extraction_layer") or not hasattr(self, "extraction_strategy"):
+            raise ValueError("`extraction_layer` or `extraction_strategy` not specified for LM. "
+                             "Make sure to set both, e.g. via Inferencer(extraction_strategy='cls_token', extraction_layer=-1)`")
+
+        # unpack the tuple from LM forward pass
+        sequence_output = logits[0][0]
+        pooled_output = logits[0][1]
+
         # aggregate vectors
-        if extraction_strategy == "pooled":
-            if extraction_layer != -1:
-                raise ValueError(f"Pooled output only works for the last layer, but got extraction_layer = {extraction_layer}. Please set `extraction_layer=-1`.)")
+        if self.extraction_strategy == "pooled":
+            if self.extraction_layer != -1:
+                raise ValueError(f"Pooled output only works for the last layer, but got extraction_layer = {self.extraction_layer}. Please set `extraction_layer=-1`.)")
             vecs = pooled_output.cpu().numpy()
-        elif extraction_strategy == "per_token":
+        elif self.extraction_strategy == "per_token":
             vecs = sequence_output.cpu().numpy()
-        elif extraction_strategy == "reduce_mean":
-            vecs = self._pool_tokens(sequence_output, padding_mask, extraction_strategy, ignore_first_token=ignore_first_token)
-        elif extraction_strategy == "reduce_max":
-            vecs = self._pool_tokens(sequence_output, padding_mask, extraction_strategy, ignore_first_token=ignore_first_token)
-        elif extraction_strategy == "cls_token":
+        elif self.extraction_strategy == "reduce_mean":
+            vecs = self._pool_tokens(sequence_output, padding_mask, self.extraction_strategy, ignore_first_token=ignore_first_token)
+        elif self.extraction_strategy == "reduce_max":
+            vecs = self._pool_tokens(sequence_output, padding_mask, self.extraction_strategy, ignore_first_token=ignore_first_token)
+        elif self.extraction_strategy == "cls_token":
             vecs = sequence_output[:, 0, :].cpu().numpy()
         else:
             raise NotImplementedError
@@ -647,13 +669,13 @@ class DistilBert(LanguageModel):
     A DistilBERT model that wraps HuggingFace's implementation
     (https://github.com/huggingface/transformers) to fit the LanguageModel class.
 
-    NOTE: 
-    - DistilBert doesn’t have token_type_ids, you don’t need to indicate which 
-    token belongs to which segment. Just separate your segments with the separation 
+    NOTE:
+    - DistilBert doesn’t have token_type_ids, you don’t need to indicate which
+    token belongs to which segment. Just separate your segments with the separation
     token tokenizer.sep_token (or [SEP])
     - Unlike the other BERT variants, DistilBert does not output the
     pooled_output. An additional pooler is initialized.
-    
+
     """
 
     def __init__(self):

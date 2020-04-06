@@ -42,10 +42,14 @@ class ModelListEndpoint(Resource):
         resp = []
 
         for idx, model in INFERENCERS.items():
+
+            #TODO UI still relies on the old prediction_type attribute, but we should switch this to inferencer.task_type
+            prediction_type = model.model.prediction_heads[0].model_type
+
             _res = {
                 "id": idx,
                 "name": model.name,
-                "prediction_type": model.prediction_type,
+                "prediction_type": prediction_type,
                 "language": model.language,
             }
             resp.append(_res)

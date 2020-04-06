@@ -123,6 +123,7 @@ class Trainer:
         checkpoints_to_keep=3,
         from_epoch=0,
         from_step=0,
+        global_step=0,
     ):
         """
         :param optimizer: An optimizer object that determines the learning strategy to be used during training
@@ -164,6 +165,8 @@ class Trainer:
         :param from_step: the step number to start the training from. In the case when training resumes from a saved
                checkpoint, it is used to fast-forward training to the last step in the checkpoint.
         :type from_step: int
+        :param global_step: the global step number across the training epochs.
+        :type global_step: int
         """
 
         self.model = model
@@ -200,7 +203,7 @@ class Trainer:
 
         self.from_epoch = from_epoch
         self.from_step = from_step
-        self.global_step = (from_epoch * from_step) - 1
+        self.global_step = global_step
 
     def train(self):
         """ Perform the training procedure. """
@@ -220,24 +223,16 @@ class Trainer:
 
         resume_from_step = self.from_step
 
-        for epoch in range(self.from_epoch + 1, self.epochs + 1):
+        for epoch in range(self.from_epoch, self.epochs):
+            self.from_epoch = epoch
             train_data_loader = self.data_silo.get_data_loader("train")
             progress_bar = tqdm(train_data_loader)
-            for step, batch in enumerate(progress_bar, start=1):
+            for step, batch in enumerate(progress_bar):
                 # when resuming training from a checkpoint, we want to fast forward to the step of the checkpoint
                 if resume_from_step and step <= resume_from_step:
                     if resume_from_step == step:
                         resume_from_step = None
                     continue
-
-                if self.sigterm_handler and self.sigterm_handler.kill_now:  # save the current state as a checkpoint
-                    logger.info("Received a SIGTERM signal. Saving the current train state as a checkpoint ...")
-                    self._save()
-                    sys.exit(0)
-
-                # save a checkpoint and continue train (do not create a new checkpoint if just resumed from a checkpoint)
-                if self.checkpoint_every and step % self.checkpoint_every == 0 and resume_from_step + 1 != step:
-                    self._save()
 
                 progress_bar.set_description(f"Train epoch {epoch}/{self.epochs} (Cur. train loss: {loss:.4f})")
 
@@ -251,7 +246,7 @@ class Trainer:
                 loss = self.backward_propagate(per_sample_loss, step)
 
                 # Perform  evaluation
-                if self.global_step % self.evaluate_every == 0 and self.global_step != 0:
+                if self.evaluate_every != 0 and self.global_step % self.evaluate_every == 0 and self.global_step != 0:
                     # When using StreamingDataSilo, each evaluation creates a new instance of
                     # dev_data_loader. In cases like training from scratch, this could cause
                     # some variance across evaluators due to the randomness in word masking.
@@ -278,7 +273,17 @@ class Trainer:
                     break
                 self.global_step += 1
                 self.from_step = step
-            self.from_epoch = epoch
+
+                # save the current state as a checkpoint before exiting if a SIGTERM signal is received
+                if self.sigterm_handler and self.sigterm_handler.kill_now:
+                    logger.info("Received a SIGTERM signal. Saving the current train state as a checkpoint ...")
+                    self._save()
+                    sys.exit(0)
+
+                # save a checkpoint and continue train
+                if self.checkpoint_every and step % self.checkpoint_every == 0:
+                    self._save()
+
             if do_stopping:
                 break
 
@@ -352,7 +357,7 @@ class Trainer:
             if resume_from_checkpoint == "latest":
                 saved_checkpoints = cls._get_checkpoints(checkpoint_root_dir)
                 if saved_checkpoints:
-                    checkpoint_to_load = saved_checkpoints[0][0]  # latest checkpoint
+                    checkpoint_to_load = saved_checkpoints[0]  # latest checkpoint
                 else:
                     checkpoint_to_load = None
             else:
@@ -417,17 +422,21 @@ class Trainer:
     @classmethod
     def _get_checkpoints(cls, checkpoint_root_dir):
         """
-        Get a list of checkpoints sorted by the number of training steps.
+        Get a list of checkpoint dirs sorted by the number of training steps.
         """
         dirs = [d for d in checkpoint_root_dir.iterdir() if d.is_dir() and d.name.startswith("epoch")]
 
-        checkpoints_with_total_steps = []
+        checkpoints_with_epoch_and_step = []  # list of tuple(checkpoint_dir, epoch, step)
         for d in dirs:
             epoch, step = [int(s) for s in str(d).split("_") if s.isdigit()]
-            checkpoints_with_total_steps.append((d, (epoch + 1) * (step + 1)))
-        checkpoints_with_total_steps.sort(key=lambda tup: tup[1], reverse=True)
+            checkpoints_with_epoch_and_step.append((d, epoch, step))
 
-        return checkpoints_with_total_steps
+        sorted_checkpoints_with_epoch_and_step = sorted(checkpoints_with_epoch_and_step,
+                                                        key=lambda tup: (tup[1], tup[2]),  # sort by epoch and step
+                                                        reverse=True)
+        sorted_checkpoints = [tup[0] for tup in sorted_checkpoints_with_epoch_and_step]
+
+        return sorted_checkpoints
 
     def _save(self):
         """
@@ -443,6 +452,7 @@ class Trainer:
 
         # TODO custom defined evaluators are not saved in the checkpoint.
         """
+        logger.info("Saving a train checkpoint ...")
         checkpoint_path = self.checkpoint_root_dir / "checkpoint_in_progress"
         checkpoint_path.mkdir(parents=True, exist_ok=True)
 
@@ -469,7 +479,7 @@ class Trainer:
 
         saved_checkpoints = self._get_checkpoints(self.checkpoint_root_dir)
         if len(saved_checkpoints) > self.checkpoints_to_keep:
-            for cp, _ in saved_checkpoints[self.checkpoints_to_keep:]:
+            for cp in saved_checkpoints[self.checkpoints_to_keep:]:
                 shutil.rmtree(cp)
 
         logger.info(f"Saved a training checkpoint at {checkpoint_name}")
@@ -491,6 +501,7 @@ class Trainer:
             "checkpoint_every": self.checkpoint_every,
             "from_epoch": self.from_epoch,
             "from_step": self.from_step,
+            "global_step": self.global_step,
             "log_learning_rate": self.log_learning_rate,
         }
 
