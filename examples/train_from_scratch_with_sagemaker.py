@@ -12,6 +12,16 @@ from farm.modeling.optimization import initialize_optimizer
 from farm.modeling.prediction_head import BertLMHead, NextSentenceHead
 from farm.train import Trainer
 from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
+import argparse
+
+def parse_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--local_rank",
+                        type=int,
+                        default=-1,
+                        help="local_rank for distributed training on GPUs")
+    args = parser.parse_args()
+    return args
 
 
 def train_from_scratch(args):
@@ -21,12 +31,19 @@ def train_from_scratch(args):
         level=logging.INFO,
     )
 
-    ml_logger = MLFlowLogger(tracking_uri=args.get("mlflow_tracking_uri", "file:/opt/ml/model/mlflow"))
-    ml_logger.init_experiment(experiment_name="train_from_scratch", run_name="run")
+    #TODO prettify this loading of params from two sources (cmd + json)
+    cmd_args = parse_arguments()
+    args["local_rank"] = cmd_args["local_rank"]
+
+    # Only the main process should log here
+    if args.local_rank in [-1, 0]:
+        ml_logger = MLFlowLogger(tracking_uri=args.get("mlflow_tracking_uri", "file:/opt/ml/model/mlflow"))
+        ml_logger.init_experiment(experiment_name="train_from_scratch", run_name="run")
 
     set_all_seeds(seed=39)
-    #TODO where to get local rank from on single machine?
-    device, n_gpu = initialize_device_settings(use_cuda=True, local_rank=args.local_rank, distributed=args.distributed)
+    device, n_gpu = initialize_device_settings(use_cuda=True, local_rank=args.local_rank)
+
+    distributed = args.get("distributed", "False").lower() == "true"
     evaluate_every = int(args["evaluate_every"])
 
     save_dir = Path("/opt/ml/model")
@@ -46,7 +63,9 @@ def train_from_scratch(args):
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and
     #    calculates a few descriptive statistics of our datasets
-    stream_data_silo = StreamingDataSilo(processor=processor, batch_size=int(args["batch_size"]))
+    stream_data_silo = StreamingDataSilo(processor=processor, batch_size=int(args["batch_size"]),
+                                         dataloader_workers=args.get("data_loader_workers", 8),
+                                         distributed=distributed)
 
     # 4. Create an AdaptiveModel
     # a) which consists of a pretrained language model as a basis
@@ -54,7 +73,7 @@ def train_from_scratch(args):
 
     # b) and *two* prediction heads on top that are suited for our task => Language Model finetuning
     lm_prediction_head = BertLMHead(768, tokenizer.vocab_size)
-    next_sentence_head = NextSentenceHead([768, 2], task_name="nextsentence")
+    next_sentence_head = NextSentenceHead(num_labels=2, task_name="nextsentence")
 
     model = AdaptiveModel(
         language_model=language_model,
@@ -73,6 +92,9 @@ def train_from_scratch(args):
         n_epochs=int(args["n_epochs"]),
         device=device,
         grad_acc_steps=int(args["gradient_accumulation_steps"]),
+        distributed=distributed,
+        use_amp=None,
+        local_rank=args.local_rank
     )
 
     # 6. Feed everything to the Trainer, which keeps care of growing our model and evaluates it from time to time
@@ -95,6 +117,8 @@ def train_from_scratch(args):
         grad_acc_steps=int(args["gradient_accumulation_steps"]),
         checkpoint_every=checkpoint_every,
         checkpoint_root_dir=checkpoint_root_dir,
+        checkpoints_to_keep=int(args.get("checkpoints_to_keep", 4)),
+
     )
     # 7. Let it grow! Watch the tracked metrics live on the public mlflow server: https://public-mlflow.deepset.ai
     trainer.train()
