@@ -47,7 +47,8 @@ def sample_to_features_text(
         tokens_b,
         add_special_tokens=True,
         max_length=max_seq_len,
-        truncation_strategy='do_not_truncate'
+        truncation_strategy='do_not_truncate',
+        return_token_type_ids=True
     )
 
     input_ids, segment_ids = inputs["input_ids"], inputs["token_type_ids"]
@@ -143,9 +144,9 @@ def samples_to_features_ner(
                                    add_special_tokens=True,
                                    max_length=max_seq_len,
                                    truncation_strategy='do_not_truncate', # We've already truncated our tokens before
-                                   return_special_tokens_mask=True
-
-    )
+                                   return_special_tokens_mask=True,
+                                   return_token_type_ids=True
+                                   )
 
     input_ids, segment_ids, special_tokens_mask = inputs["input_ids"], inputs["token_type_ids"], inputs["special_tokens_mask"]
 
@@ -259,7 +260,8 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
                                    max_length=max_seq_len,
                                    truncation_strategy='do_not_truncate',
                                    # We've already truncated our tokens before
-                                   return_special_tokens_mask=True
+                                   return_special_tokens_mask=True,
+                                   return_token_type_ids=True
                                    )
 
     input_ids, segment_ids, special_tokens_mask = inputs["input_ids"], inputs["token_type_ids"], inputs[
@@ -350,6 +352,7 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
                                     add_special_tokens=True,
                                     max_length=None,
                                     truncation_strategy='only_second',
+                                    return_token_type_ids=True,
                                     return_tensors=None)
     input_ids = encoded["input_ids"]
     segment_ids = encoded["token_type_ids"]

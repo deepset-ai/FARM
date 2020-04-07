@@ -279,6 +279,10 @@ class Processor(ABC):
             except:
                 logger.error(f"Could not create sample(s) from this dict: \n {basket.raw}")
                 raise
+        baskets_to_remove = [b.id for b in self.baskets if len(b.samples) == 0]
+        if baskets_to_remove:
+            logger.warning(f"Baskets with the following ids have been removed because they have no Samples: {baskets_to_remove}")
+        self.baskets = [b for b in self.baskets if len(b.samples) > 0]
 
     def _featurize_samples(self):
         for basket in self.baskets:
@@ -479,7 +483,11 @@ class TextClassificationProcessor(Processor):
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets and a start_of_word mask
-        tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer)
+        text = dictionary["text"]
+        tokenized = tokenize_with_metadata(text, self.tokenizer)
+        if len(tokenized["tokens"]) == 0:
+            logger.warning(f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text}")
+            return []
         # truncate tokens, offsets and start_of_word to max_seq_len that can be handled by the model
         for seq_name in tokenized.keys():
             tokenized[seq_name], _, _ = truncate_sequences(seq_a=tokenized[seq_name], seq_b=None, tokenizer=self.tokenizer,
@@ -517,6 +525,16 @@ class TextPairClassificationProcessor(TextClassificationProcessor):
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
         tokenized_a = tokenize_with_metadata(dictionary["text"], self.tokenizer)
         tokenized_b = tokenize_with_metadata(dictionary["text_b"], self.tokenizer)
+
+        if len(tokenized_a["tokens"]) == 0:
+            text = dictionary["text"]
+            logger.warning(f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text}")
+            return []
+        if len(tokenized_b["tokens"]) == 0:
+            text_b = dictionary["text_b"]
+            logger.warning(f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text_b}")
+            return []
+
         tokenized = {"tokens": tokenized_a["tokens"],
                      "tokens_b": tokenized_b["tokens"]}
         tokenized["tokens"], tokenized["tokens_b"], _ = truncate_sequences(seq_a=tokenized["tokens"],
@@ -682,6 +700,10 @@ class NERProcessor(Processor):
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets, which helps to map our entity tags back to original positions
         tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer)
+        if len(tokenized["tokens"]) == 0:
+            text = dictionary["text"]
+            logger.warning(f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text}")
+            return []
         # truncate tokens, offsets and start_of_word to max_seq_len that can be handled by the model
         for seq_name in tokenized.keys():
             tokenized[seq_name], _, _ = truncate_sequences(seq_a=tokenized[seq_name], seq_b=None, tokenizer=self.tokenizer,
@@ -888,14 +910,22 @@ class BertStyleLMProcessor(Processor):
                     tokenized = {"text_a" : sequence_a, "text_b" : sequence_b}
                     samples.append(Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized))
 
-                    assert len(sequence_a["tokens"]) >= 1
-                    assert len(sequence_b["tokens"]) >= 1
+                    if len(tokenized["text_a"]["tokens"]) == 0:
+                        logger.warning(
+                            f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text_a}")
+                        continue
+                    if len(tokenized["text_b"]["tokens"]) == 0:
+                        logger.warning(
+                            f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text_b}")
+                        continue
+
                     i -= num_unused_segments
 
                 current_chunk = []
                 current_chunk_clear_text = []
                 current_length = 0
             i += 1
+            
         return samples
 
     def _dict_to_samples_no_next_sent(self, doc):
@@ -913,6 +943,8 @@ class BertStyleLMProcessor(Processor):
             tokenized["text_a"] = tokenize_with_metadata(
                 text_a, self.tokenizer
             )
+            if len(tokenized["text_a"]["tokens"]) == 0:
+                continue
             # truncate to max_seq_len
             for seq_name in ["tokens", "offsets", "start_of_word"]:
                 tokenized["text_a"][seq_name], _, _ = truncate_sequences(
@@ -1237,6 +1269,10 @@ class RegressionProcessor(Processor):
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets
         tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer)
+        if len(tokenized["tokens"]) == 0:
+            text = dictionary["text"]
+            logger.warning(f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text}")
+            return []
         # truncate tokens, offsets and start_of_word to max_seq_len that can be handled by the model
         for seq_name in tokenized.keys():
             tokenized[seq_name], _, _ = truncate_sequences(seq_a=tokenized[seq_name], seq_b=None,
