@@ -766,6 +766,12 @@ class BertStyleLMProcessor(Processor):
         :type dev_split: float
         :param next_sent_pred: Whether to use next_sentence_prediction objective or not
         :type next_sent_pred: bool
+        :param next_sent_pred_style:
+            Two different styles for next sentence prediction available:
+                - "sentence":   Use of a single sentence for Sequence A and a single sentence for Sequence B
+                - "bert-style": Fill up all of max_seq_len tokens and split into Sequence A and B at sentence border.
+                                If there are too many tokens, Sequence B will be truncated.
+        :type next_sent_pred_style: str
         :param max_docs: maximum number of documents to include from input dataset
         :type max_docs: int
         :param proxies: proxy configuration to allow downloads of remote datasets.
@@ -791,10 +797,6 @@ class BertStyleLMProcessor(Processor):
         )
 
         self.next_sent_pred = next_sent_pred
-        # Two different styles for next sentence prediction available:
-        #   - "sentence":   Use of a single sentence for Sequence A and a single sentence for Sequence B
-        #   - "bert-style": Fill up all of max_seq_len tokens and split into Sequence A and B at sentence border.
-        #                   If there are too many tokens, Sequence B will be truncated.
         self.next_sent_pred_style = next_sent_pred_style
         added_tokens = self.get_added_tokens()
         self.add_task("lm", "acc", list(self.tokenizer.vocab) + added_tokens)
