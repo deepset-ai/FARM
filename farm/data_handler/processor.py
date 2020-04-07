@@ -791,6 +791,10 @@ class BertStyleLMProcessor(Processor):
         )
 
         self.next_sent_pred = next_sent_pred
+        # Two different styles for next sentence prediction available:
+        #   - "sentence":   Use of a single sentence for Sequence A and a single sentence for Sequence B
+        #   - "bert-style": Fill up all of max_seq_len tokens and split into Sequence A and B at sentence border.
+        #                   If there are too many tokens, Sequence B will be truncated.
         self.next_sent_pred_style = next_sent_pred_style
         added_tokens = self.get_added_tokens()
         self.add_task("lm", "acc", list(self.tokenizer.vocab) + added_tokens)
@@ -819,7 +823,7 @@ class BertStyleLMProcessor(Processor):
             elif self.next_sent_pred_style == "bert-style":
                 samples = self._dict_to_samples_bert_style(doc, all_dicts)
             else:
-                raise Exception("next_sent_pred_style has to be 'sentence' or 'bert-style'")
+                raise NotImplementedError("next_sent_pred_style has to be 'sentence' or 'bert-style'")
 
         # no next sentence prediction
         else:

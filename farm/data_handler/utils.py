@@ -447,6 +447,29 @@ def _get_random_sentence(all_baskets, forbidden_doc):
 
 
 def get_sequence_pair(doc, chunk, chunk_clear_text, all_baskets, tokenizer, max_num_tokens, prob_next_sentence=0.5):
+    """
+    Get one sample from corpus consisting of two sequences. A sequence can consist of more than one sentence.
+    With prob. 50% these are two subsequent sequences from one doc. With 50% the second sequence will be a
+    random one from another document.
+
+    :param doc: The current document.
+    :type doc: [str]
+    :param chunk: List of subsequent, tokenized sentences.
+    :type chunk: [dict]
+    :param chunk_clear_text: List of subsequent sentences.
+    :type chunk_clear_text: [str]
+    :param all_baskets: SampleBaskets containing multiple other docs from which we can sample the second sequence
+    if we need a random one.
+    :type all_baskets: [dict]
+    :param tokenizer: Used to split a sentence (str) into tokens.
+    :param max_num_tokens: Samples are truncated after this many tokens.
+    :type max_num_tokens: int
+    :return: (list, list, dict, int)
+        tokenized seq a,
+        tokenized seq b,
+        sample in clear text with label,
+        number of unused sentences in chunk
+    """
     sequence_a = []
     sequence_b = []
     sample_in_clear_text = { "text_a" : "", "text_b" : ""}
@@ -537,6 +560,12 @@ def _get_random_doc(all_baskets, forbidden_doc):
 
 
 def join_sentences(sequence):
+    """
+    Takes a list of subsequent, tokenized sentences and puts them together into one sequence.
+    :param sequence: List of tokenized sentences.
+    :type sequence: [dict]
+    :return: Tokenized sequence. (Dict with keys 'tokens', 'offsets' and 'start_of_word')
+    """
     sequence_joined = {
         "tokens" : [],
         "offsets" : [],
