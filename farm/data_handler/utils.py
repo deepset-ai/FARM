@@ -471,10 +471,13 @@ def get_sequence_pair(doc, chunk, chunk_clear_text, all_baskets, tokenizer, max_
         sample_in_clear_text["nextsentence_label"] = True
         num_unused_segments = 0
     # edge case: split sequence in half
-    elif (len(chunk) == 1) and len_sequence_a == max_num_tokens:
+    elif (len(chunk) == 1) and len_sequence_a >= max_num_tokens:
         sequence_a = {}
         sequence_b = {}
-        boundary = int(len(chunk[0]["tokens"])/2)
+        if int(len(chunk[0]["tokens"])/2) >= max_num_tokens:
+            boundary = int(max_num_tokens/2)
+        else:
+            boundary = int(len(chunk[0]["tokens"])/2)
         sequence_a["tokens"] = chunk[0]["tokens"][:boundary]
         sequence_a["offsets"] = chunk[0]["offsets"][:boundary]
         sequence_a["start_of_word"] = chunk[0]["start_of_word"][:boundary]
