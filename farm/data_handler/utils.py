@@ -586,7 +586,8 @@ def join_sentences(sequence):
 def mask_random_words(tokens, vocab, token_groups=None, max_predictions_per_seq=20, masked_lm_prob=0.15):
     """
     Masking some random tokens for Language Model task with probabilities as in the original BERT paper.
-    num_masked. If whole_word_mask is set to true, *all* tokens of a word are either masked or not.
+    num_masked.
+    If token_groups is supplied, whole word masking is applied, so *all* tokens of a word are either masked or not.
     This option was added by the BERT authors later and showed solid improvements compared to the original objective.
     Whole Word Masking means that if we mask all of the wordpieces corresponding to an original word.
     When a word has been split intoWordPieces, the first token does not have any marker and any subsequence
