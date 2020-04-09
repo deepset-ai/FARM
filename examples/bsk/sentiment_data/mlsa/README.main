@@ -1,0 +1,825 @@
+===========================================================
+
+   Documentation for German Sentiment Corpus:
+   (Version 1.0)
+
+   Table of Contents:
+
+	1. Coarse-Grained Annotation Layer (Layer 1)
+	2. Coarse-Grained Annotation Layer (Layer 2)
+	3. Coarse-Grained Annotation Layer (Layer 3)
+	4. Licensing Information
+
+===========================================================
+
+
+
+===========================================================
+
+   Documentation for German Sentiment Corpus:
+   Coarse-Grained Annotation Layer (Layer 1)
+   (Version 1.0)
+
+===========================================================
+
+Sentence-layer annotation represents the most coarse-grained annotation in this
+corpus. We adhere to definitions of objectivity and subjectivity introduced in
+(Wiebe et al., 2005). Additionally, we followed guidelines drawn from (Balahur &
+Steinberger, 2009). Their clarifications proved to be quite effective, raising
+inter-annotator agreement in a sentence-layer polarity annotation task from
+about 50% to >80%. All sentences were annotated in two dimensions.
+
+The first dimension covers the factual nature of the sentence, i.e. whether it
+provides objective information or if it is intended to express an opinion,
+belief or subjective argument. Therefore, it is either objective or subjective.
+The second dimension covers the semantic orientation of the sentence, i.e. its
+polarity. Thus, it is either positive, negative or neutral. An example of an
+objective sentence without any overt polarity is:
+
+“Die Bewegung der extrem detaillierten Raumschiffe basiert auf realen
+physikalischen Gesetzen.”
+
+[“The movement of the extremely detailed spaceships were based on real physical
+laws.”]
+
+An example of a subjective sentence with negative polarity is:
+
+“Das Schlimmste aber war eine mir unerklärliche starke innere Unruhe und das
+gleichzeitige Unvermögen, mich normal zu bewegen.”
+
+[“But the worst thing was an inexplicable severe inner restlessness and the
+concomitant inability to move normal.”]
+
+File format:
+
+The sentence-level annotation is delivered in XML and as tab-separated text
+file. Both files contain the same information:
+
+XML-formats:
+sentenceid: the unique id of the sentence, equal among all three layers
+sentenceurl: the URL of the web page the sentence was retrieved from
+content: the text of the sentence itself
+polarity: either '+', '-' or '0' (positive, negative or neutral)
+    rater1 - rater3: the assessments given by the three annotators
+    majority-voting: the assessment with the highest number of agreements
+factuality: 's' or 'o', depending on whether the sentence is subjective
+    or objective
+    rater1 - rater3: the assessments given by the three annotators
+    majority-voting:  the assessment with the highest number of agreements
+
+Text format:
+The text file is in tab-separated format, containing the same information as the XML document. 
+Due to the nature of XML and text files, some headers had to be renamed:
+fact_rater1 - fact_rater3: factuality assessments by the three annotators, 
+    equal to 'rater1' - 'rater3' in nested within the factuality tag in the XML
+    format
+fact_majority: equal to 'majority-voting' nested in the factuality tag in the
+    XML format
+pol_rater1 - pol_rater3: polarity assessments by the three annotators, 
+    equal to rater1 - rater3 in nested within the polarity tag in the XML
+    format
+pol_majority: equal to 'majority-voting' nested in the polarity tag in the
+    XML format
+
+References
+
+Balahur, A. and Steinberger, R. (2009). Rethinking Sentiment Analysis in the
+News: From Theory to Practice and Back. In: Proceedings of WOMSA.
+
+Wiebe, J., Wilson, T., and Cardie, C. (2005). Annotating expressions of opinions
+and emotions in language. In: Language Resources and Evaluation, 39 (2-3).
+
+-----------------------------------------------------------
+
+Robert Remus
+Ulli Waltinger
+Stefan Gindl
+
+
+Version 1.0  
+last modified 21/11/2011
+
+
+
+===========================================================
+
+   Documentation for German Sentiment Corpus:
+   Fine-Grained Annotation Layer (Layer 2)
+   (Version 1.0)
+
+===========================================================
+
+
+In this layer, we model the contextually interpreted sentiments on the
+levels of words and NP/PP phrases. That is, the annotation decisions
+are based on the meaning of the words in the context of the sentence.
+
+Word sentiment markers:
+
+The sentiments on the level of individual words are expressed by
+single character markers added at the end of the words.
+
+A word might be positive (+), negative(-), neutral(empty), a shifter
+(~), an intensifier (^), or a diminisher (%).
+
+If a word ends with a hyphen (e.g., "auf beziehungs-_ bzw.
+partnerschaftliche Probleme-", an underscore is added to the word in
+order to prevent missinterpretations of the hyphen as a negative
+marker.
+
+Currently, only words that are part of an NP/PP are marked with
+sentiment markers. Annotated words are nouns, adjectives, negation
+particles, prepositions, adverbs.
+
+The world level annotation was done by 3 persons individually. The
+individual results were harmonized into a single reference annotation.
+
+
+Phrase level markers:
+
+Each phrase is marked up textually by brackets, e.g. "[auf
+beziehungs-_ bzw. partnerschaftliche Probleme-]". The type of a phrase
+(NP/PP) is not written to the brackets. We follow largely the
+annotation model of TIGER for structuring embedded NPs and PPs.
+
+Currently, the following limitations with regard to TIGER exist: (1)
+Adjectival phrases are not marked up (2) Relative or infinitival
+sentences are not included in NPs/PPs if they appear at the end of a
+phrase or if the are discontiguous. We do not only annotate the
+phrases which immediately contain words that are marked up as polar.
+Any dependent subphrase (NP/PP) is integrated into all its dominating
+NPs/PPs, e.g. "[Die tieferen Ursachen [der Faszination+]]". Dependent
+subphrases without any polar words are also included, however, there
+is no internal bracketing for them, e.g. "[hohe+ Ansprüche an Qualität
+und Lage]"
+
+At the level of phrases, we distinguish the following markers:
+positive (+), negative (-), neutral(0), bipolar (#). The category
+'bipolar' is used mainly for coordinations where negative and positive
+sentiments of something are kept in balance by the writer. This is
+quite common for a lot of binomial constructions as "Krieg und
+Frieden".
+
+
+File format:
+
+The annotations of layer 2 are delivered as tab-separated text files
+consisting of 6 columns (see layer2.phrases.detailed.txt):
+
+- column 1: Sentence ID where phrase stems from.
+
+- column 2: Phrase with harmonized word level annotations, and in the
+case of complex NPs/PPs, with subphrase annotations. Subphrase
+annotations are attached to the closing right bracket. The sentiment
+annotations of the different annotators are separated by slashes.
+
+- column 3: Sentiment annotation of annotator 1 for the phrase
+
+- column 4: Sentiment annotation of annotator 2 for the phrase
+
+- column 5: Sentiment annotation of annotator 3 for the phrase
+
+- column 6: Type of phrase: t means toplevel, s means subphrase. A
+phrase of type s has to appear in an other toplevel phrase. Toplevel
+phrases are the biggest constituents that are annotated.
+
+
+Furthermore, to facilitate end-usage, 
+we provide a version where the polarity annotation is
+based on a majority vote between the 3 annotators. This file 
+consists of 3 columns  (see layer2.phrases.majority.txt):
+
+- column 1: Sentence ID where phrase stems from.
+
+- column 2: Phrase with harmonized word level annotations, and in the
+case of complex NPs/PPs, with subphrase annotations. Phrase and subphrase
+annotations (majority vote) are attached to the closing right bracket. 
+
+- column 3: Type of phrase: t means toplevel, s means subphrase. A
+phrase of type s has to appear in an other toplevel phrase. Toplevel
+phrases are the biggest constituents that are annotated.
+     
+
+References
+
+
+Brants, S., Dipper, S., Hansen, S., Lezius, W., and Smith, G. (2002).
+The TIGER treebank. In Proceedings of the Workshop on Treebanks and
+Linguistic Theories, Sozopol.
+
+
+
+-----------------------------------------------------------
+
+Simon Clematide
+Manfred Klenner
+Stefanos Petrakis
+
+
+Version 1.0  
+last modified 11/14/11
+
+
+
+===========================================================
+
+   Documentation for German Sentiment Corpus:
+   Fine-Grained Annotation Layer (Layer 3)
+   (Version 1.0)
+
+===========================================================
+
+
+In this layer, we model the entities involved in expressing sentiment
+analogous to semantic roles in FrameNet:
+framenet.icsi.berkeley.edu
+(We encourage potential users of this corpus to familiarize themselves with the
+basic concepts of that resource as they are required for understanding the
+annotation scheme employed for this annotation layer.) 
+The lexical units that convey sentiment are labeled as frame evoking
+elements (FEEs) of a particular frame. The entities that provide
+further information that is relevant to the event that the frame evokes, such
+as its source or its target, are labeled as frame elements (FEs).
+The linguistic units that are tagged as FEEs or FEs can be either words or
+phrases.
+This layer is built on top of the output of a constituency parse. 
+
+
+Frames
+	Direct Subjective Elements (DSEs):
+	We follow the definition of DSEs by the MPQA project
+	(Wiebe et al., 2005):  DSEs mark direct mentions of private states and speech
+	events (spoken or written) expressing private states.
+	A typical example of a DSE is:
+	"Peter <DSE>schimpfte</DSE> über das Wetter."
+	("Peter <DSE>complained</DSE> about the weather.")
+
+
+	Expressive Subjectivity Elements (ESEs):
+	We follow the definition of ESEs by the MPQA project (Wiebe et
+	al., 2005): ESEs mark expressive-subjective elements, words and phrases 
+	that indirectly express a private state.
+	A typical example of an ESE is:
+	"Peter trägt eine <ESE>furchtbare</ESE> Jacke."
+	("Peter wears a <ESE>terrible</ESE> jacket.")	
+
+
+	Objective Speech Events (OSEs):
+	We adhere to the definition of OSEs by the MPQA project (Wiebe et
+	al., 2005) in that OSEs mark speech events that do not express private states.
+	A typical example of an OSE is:
+	"Peter <OSE>sagte</OSE>, dass es regnete."
+	("Peter <OSE>said</OSE> it was raining.")
+	Note that it is not the lexical unit per se which decides whether an
+	OSE or a DSE is evoked. For instance, the verb "say" may also evoke a
+	DSE in case the speech event that it introduces conveys a sentiment:
+	"Peter <DSE>sagte</DSE>: 'Um Himmels Willen!'"
+	("Peter <DSE>said</DSE> 'Good heavens!'");
+
+
+Frame Flags
+	Backgrounded Subjectivity:
+	The flag "Backgrounded" is assigned to those FEEs that entail sentiment
+	information but their primary meaning conveys something else.
+	For example, the verb "ermorden" ("to murder") means "to kill another
+	being" but this usually entails that the perpetrator has a negative
+	sentiment towards its victim.
+	As a consequence of this flag, unlike the MPQA project, we always
+	annotate diseases/illnesses as sentiment-bearing units
+	(i.e. "backgrounded" DSEs).
+
+	Polarity:
+	There are three different polarity types: "Positive", "Negative" and
+	"Both".
+	Note that the polarity type that the frame flag indicates is not the
+	contextual polarity but the polarity conveyed by the FEE. In other
+	words: if a FEE conveys a positive polarity but it occurs in a
+	context in which this FEE is negated, then the polarity flag is still
+	positive despite of the contextual polarity being negative.
+
+Frame Elements (FEs)
+      Source
+      A constituent being labeled as a source is the entity that possesses a
+      private state.
+      Note that (per definition) only DSEs can be assigned this FE.
+      A typical example of a Source is:
+      "<SOURCE>Peter</SOURCE> <DSE>schimpft</DSE> über das Wetter."
+      ("<SOURCE>Peter</SOURCE> <DSE>complain</DSE> about the weather.")
+
+
+      Target
+      A constituent being labeled as a target is the entity towards which the
+      sentiment is directed.
+      A typical example of a Target is:
+       "Peter <DSE>schimpft</DSE> <TARGET>über das Wetter</TARGET>."
+      ("Peter  <DSE>complain</DSE> <TARGET>about the weather</TARGET>.")
+
+
+      Polarity
+      The FE "Polarity" denotes markers that indicate the polarity towards the
+      target. Note that this is different from the frame flag "Polarity" which
+      indicates the prior polarity of the lexical unit evoking the pertaining
+      frame. For example, the verb "kritisieren" ("criticize") evokes a DSE
+      with a negative polarity frame flag. The noun "Kampagne" ("campaign"),
+      by contrast, evokes a DSE without a polarity flag since "Kampagne" is
+      underspecified for polarity towards its target.
+      Prepositional markers that appear on the dependents of such a predicate,
+      for example "für/gegen" ("for/against") in "Kampagne für/gegen höhere
+      Steuern" ("campaign for/against higher taxes"), are considered a marker
+      indicating the contextual polarity towards the target (as it has not
+      been specified by the target itself). Those markers are assigned the
+      FE "Polarity".
+      
+      Modulation
+      The FE "Modulation" essentially marks any diminisher or intensifier if
+      they modify a FEE. An example of a diminished FEE is:
+      "<MODULATION>weniger</MODULATION> <ESE>gut</ESE>"
+      ("<MODULATION>less</MODULATION> <ESE>good</ESE>")
+      while an example of an intensified FEE is:
+      "<MODULATION>wirklich</MODULATION> <ESE>gut</ESE>"
+      ("<MODULATION>really</MODULATION> <ESE>good</ESE>"). 
+      
+      Operator
+      Markers that bring about a context modification of the FEE, are assigned
+      the FE "Operator". The most common form of context modification are
+      negation:
+      "<OPERATOR>nicht</OPERATOR> <ESE>überzeugend</ESE>"
+      ("<OPERATOR>not</OPERATOR> <ESE>convincing</ESE>") 
+      and modal embedding:
+      "<OPERATOR>mögliche</OPERATOR> soziale <ESE>Spannungen</ESE>"
+      ("<OPERATOR>potential</OPERATOR> social <ESE>tensions</ESE>").
+      Note that by negation we also consider polarity shifters:
+      "<OPERATOR>gestörtes</OPERATOR> <DSE>Vertrauen</DSE>"
+      ("<OPERATOR>disrupted</OPERATOR> <DSE>confidence</DSE>)"
+
+      Support
+      If a FEE is part of a support construction, the lexical units involved
+      carrying no semantics (and thus having exclusively a syntactic function)
+      are assigned the FE "Support":
+      "Diese <TARGET>Ermittlung</TARGET> <SUPPORT>bereitet</SUPPORT>
+      häufig <ESE>Schwierigkeiten</ESE>."
+       "This <TARGET>identification</TARGET> <SUPPORT>is</SUPPORT>
+      often <ESE>a problem</ESE>."
+	   
+
+
+
+Frame Element Flags
+
+      Subtract Predicate:
+      There are cases in which the scope of a FE 
+      of a frame is an entire clause or even sentence, so that
+      the FEE is also contained in that constituent.
+      In those cases the entire clause/sentence is marked as the
+      FE but the FE is given a flag "SubtractPredicate" indicating that the
+      predicate, i.e the FEE, should be excluded from this sequence of words.
+      A typical example of the usage of this FE flag is given in the following
+      sentence:
+      <TARGET flag="SubtractPredicate">Du <ESE>solltest</ESE> nach Hause
+      gehen.</TARGET>
+      <TARGET flag="SubtractPredicate">You <ESE>should</ESE> go home.</TARGET>
+
+File Formats
+
+     The representation format of this layer is Tiger/SALSA XML.
+     This graph-based format allows the same word or, more
+     general, the same constituent being labeled with several functions.
+     For instance, it may evoke several frames, or it may be an FEE and a FE of
+     another frame at the same time.
+
+     This format also includes the syntactic information of a constituency
+     parse. The parse was generated by the Berkeley parser.
+     The annotators primarily tagged units that correspond to some
+     linguistically meaningful constituent(s) of the parse. Since the parse,
+     however, has been automatically generated, occasional errors occur.
+     In those cases, where these errors affect the constituents involved in
+     the sentiment frames and the spans of the automatically generated
+     constituents do not correspond to the correct spans of the FEs (or FEEs),
+     the annotators tag the correct span (even though this may mean that
+     no meaningful constituents -- according to the incorrect parse -- are
+     tagged).
+  
+     We refer the reader to Erk & Padó (2004) for more
+     details on Tiger/SALSA XML.
+
+     There already exists software to process and visualize
+     those data. Our annotation files can be read (and modified) by SALTO
+     (Burchardt et al., 2006) which is a publicly available annotation tool
+     for the Tiger/SALSA XML format.
+     A Java-API supporting automatic processing of the format is also
+     available. All this software can be downloaded from:
+     http://www.coli.uni-saarland.de/projects/salsa/page.php?id=software
+     
+	
+     The annotation of this layer comes in three files:
+     layer3.annotation.ann1.xml:
+	this file exclusively contains the annotation from annotator 1.
+     layer3.annotation.ann2.xml:
+        this file exclusively contains the annotation from annotator 2.
+     layer3.annotation.merged.xml:
+	this file contains the merged annotation (result of the
+     	adjudication). Note that this file also contains cases in which the 
+     	annotators failed to reach an agreement. 
+
+
+     
+
+References
+
+A. Burchardt, K. Erk, A. Frank, A. Kowalski, and S. Padó
+  SALTO -- A Versatile Multi-Level Annotation Tool.
+  Proceedings of LREC 2006, Genoa, Italy.
+
+K. Erk and S. Padó
+  A powerful and versatile XML Format for representing role-semantic annotation
+  Proceedings of LREC 2004, Lisbon, Portugal. 
+
+S. Petrov, L. Barrett, R. Thibaux, and D. Klein. 
+  Learning Accurate, Compact, and Interpretable Tree Annotation
+  Proceedings of COLING-ACL 2006, Sydney, Australia.
+
+J. Wiebe, T. Wilson, and  C. Cardie
+  Annotating expressions of opinions and emotions in language
+  Language Resources and Evaluation, volume 39, issue 2-3,  pp. 165-210, 2005.
+
+
+
+
+
+-----------------------------------------------------------
+
+Josef Ruppenhofer
+Michael Wiegand
+
+Version 1.0  
+last modified 11/14/11
+
+
+
+===========================================================
+
+   CREATIVE COMMONS
+   Attribution-ShareAlike 3.0 Unported
+
+===========================================================
+
+Creative Commons Legal Code
+
+Attribution-ShareAlike 3.0 Unported
+
+    CREATIVE COMMONS CORPORATION IS NOT A LAW FIRM AND DOES NOT PROVIDE
+    LEGAL SERVICES. DISTRIBUTION OF THIS LICENSE DOES NOT CREATE AN
+    ATTORNEY-CLIENT RELATIONSHIP. CREATIVE COMMONS PROVIDES THIS
+    INFORMATION ON AN "AS-IS" BASIS. CREATIVE COMMONS MAKES NO WARRANTIES
+    REGARDING THE INFORMATION PROVIDED, AND DISCLAIMS LIABILITY FOR
+    DAMAGES RESULTING FROM ITS USE.
+
+License
+
+THE WORK (AS DEFINED BELOW) IS PROVIDED UNDER THE TERMS OF THIS CREATIVE
+COMMONS PUBLIC LICENSE ("CCPL" OR "LICENSE"). THE WORK IS PROTECTED BY
+COPYRIGHT AND/OR OTHER APPLICABLE LAW. ANY USE OF THE WORK OTHER THAN AS
+AUTHORIZED UNDER THIS LICENSE OR COPYRIGHT LAW IS PROHIBITED.
+
+BY EXERCISING ANY RIGHTS TO THE WORK PROVIDED HERE, YOU ACCEPT AND AGREE
+TO BE BOUND BY THE TERMS OF THIS LICENSE. TO THE EXTENT THIS LICENSE MAY
+BE CONSIDERED TO BE A CONTRACT, THE LICENSOR GRANTS YOU THE RIGHTS
+CONTAINED HERE IN CONSIDERATION OF YOUR ACCEPTANCE OF SUCH TERMS AND
+CONDITIONS.
+
+1. Definitions
+
+ a. "Adaptation" means a work based upon the Work, or upon the Work and
+    other pre-existing works, such as a translation, adaptation,
+    derivative work, arrangement of music or other alterations of a
+    literary or artistic work, or phonogram or performance and includes
+    cinematographic adaptations or any other form in which the Work may be
+    recast, transformed, or adapted including in any form recognizably
+    derived from the original, except that a work that constitutes a
+    Collection will not be considered an Adaptation for the purpose of
+    this License. For the avoidance of doubt, where the Work is a musical
+    work, performance or phonogram, the synchronization of the Work in
+    timed-relation with a moving image ("synching") will be considered an
+    Adaptation for the purpose of this License.
+ b. "Collection" means a collection of literary or artistic works, such as
+    encyclopedias and anthologies, or performances, phonograms or
+    broadcasts, or other works or subject matter other than works listed
+    in Section 1(f) below, which, by reason of the selection and
+    arrangement of their contents, constitute intellectual creations, in
+    which the Work is included in its entirety in unmodified form along
+    with one or more other contributions, each constituting separate and
+    independent works in themselves, which together are assembled into a
+    collective whole. A work that constitutes a Collection will not be
+    considered an Adaptation (as defined below) for the purposes of this
+    License.
+ c. "Creative Commons Compatible License" means a license that is listed
+    at http://creativecommons.org/compatiblelicenses that has been
+    approved by Creative Commons as being essentially equivalent to this
+    License, including, at a minimum, because that license: (i) contains
+    terms that have the same purpose, meaning and effect as the License
+    Elements of this License; and, (ii) explicitly permits the relicensing
+    of adaptations of works made available under that license under this
+    License or a Creative Commons jurisdiction license with the same
+    License Elements as this License.
+ d. "Distribute" means to make available to the public the original and
+    copies of the Work or Adaptation, as appropriate, through sale or
+    other transfer of ownership.
+ e. "License Elements" means the following high-level license attributes
+    as selected by Licensor and indicated in the title of this License:
+    Attribution, ShareAlike.
+ f. "Licensor" means the individual, individuals, entity or entities that
+    offer(s) the Work under the terms of this License.
+ g. "Original Author" means, in the case of a literary or artistic work,
+    the individual, individuals, entity or entities who created the Work
+    or if no individual or entity can be identified, the publisher; and in
+    addition (i) in the case of a performance the actors, singers,
+    musicians, dancers, and other persons who act, sing, deliver, declaim,
+    play in, interpret or otherwise perform literary or artistic works or
+    expressions of folklore; (ii) in the case of a phonogram the producer
+    being the person or legal entity who first fixes the sounds of a
+    performance or other sounds; and, (iii) in the case of broadcasts, the
+    organization that transmits the broadcast.
+ h. "Work" means the literary and/or artistic work offered under the terms
+    of this License including without limitation any production in the
+    literary, scientific and artistic domain, whatever may be the mode or
+    form of its expression including digital form, such as a book,
+    pamphlet and other writing; a lecture, address, sermon or other work
+    of the same nature; a dramatic or dramatico-musical work; a
+    choreographic work or entertainment in dumb show; a musical
+    composition with or without words; a cinematographic work to which are
+    assimilated works expressed by a process analogous to cinematography;
+    a work of drawing, painting, architecture, sculpture, engraving or
+    lithography; a photographic work to which are assimilated works
+    expressed by a process analogous to photography; a work of applied
+    art; an illustration, map, plan, sketch or three-dimensional work
+    relative to geography, topography, architecture or science; a
+    performance; a broadcast; a phonogram; a compilation of data to the
+    extent it is protected as a copyrightable work; or a work performed by
+    a variety or circus performer to the extent it is not otherwise
+    considered a literary or artistic work.
+ i. "You" means an individual or entity exercising rights under this
+    License who has not previously violated the terms of this License with
+    respect to the Work, or who has received express permission from the
+    Licensor to exercise rights under this License despite a previous
+    violation.
+ j. "Publicly Perform" means to perform public recitations of the Work and
+    to communicate to the public those public recitations, by any means or
+    process, including by wire or wireless means or public digital
+    performances; to make available to the public Works in such a way that
+    members of the public may access these Works from a place and at a
+    place individually chosen by them; to perform the Work to the public
+    by any means or process and the communication to the public of the
+    performances of the Work, including by public digital performance; to
+    broadcast and rebroadcast the Work by any means including signs,
+    sounds or images.
+ k. "Reproduce" means to make copies of the Work by any means including
+    without limitation by sound or visual recordings and the right of
+    fixation and reproducing fixations of the Work, including storage of a
+    protected performance or phonogram in digital form or other electronic
+    medium.
+
+2. Fair Dealing Rights. Nothing in this License is intended to reduce,
+limit, or restrict any uses free from copyright or rights arising from
+limitations or exceptions that are provided for in connection with the
+copyright protection under copyright law or other applicable laws.
+
+3. License Grant. Subject to the terms and conditions of this License,
+Licensor hereby grants You a worldwide, royalty-free, non-exclusive,
+perpetual (for the duration of the applicable copyright) license to
+exercise the rights in the Work as stated below:
+
+ a. to Reproduce the Work, to incorporate the Work into one or more
+    Collections, and to Reproduce the Work as incorporated in the
+    Collections;
+ b. to create and Reproduce Adaptations provided that any such Adaptation,
+    including any translation in any medium, takes reasonable steps to
+    clearly label, demarcate or otherwise identify that changes were made
+    to the original Work. For example, a translation could be marked "The
+    original work was translated from English to Spanish," or a
+    modification could indicate "The original work has been modified.";
+ c. to Distribute and Publicly Perform the Work including as incorporated
+    in Collections; and,
+ d. to Distribute and Publicly Perform Adaptations.
+ e. For the avoidance of doubt:
+
+     i. Non-waivable Compulsory License Schemes. In those jurisdictions in
+        which the right to collect royalties through any statutory or
+        compulsory licensing scheme cannot be waived, the Licensor
+        reserves the exclusive right to collect such royalties for any
+        exercise by You of the rights granted under this License;
+    ii. Waivable Compulsory License Schemes. In those jurisdictions in
+        which the right to collect royalties through any statutory or
+        compulsory licensing scheme can be waived, the Licensor waives the
+        exclusive right to collect such royalties for any exercise by You
+        of the rights granted under this License; and,
+   iii. Voluntary License Schemes. The Licensor waives the right to
+        collect royalties, whether individually or, in the event that the
+        Licensor is a member of a collecting society that administers
+        voluntary licensing schemes, via that society, from any exercise
+        by You of the rights granted under this License.
+
+The above rights may be exercised in all media and formats whether now
+known or hereafter devised. The above rights include the right to make
+such modifications as are technically necessary to exercise the rights in
+other media and formats. Subject to Section 8(f), all rights not expressly
+granted by Licensor are hereby reserved.
+
+4. Restrictions. The license granted in Section 3 above is expressly made
+subject to and limited by the following restrictions:
+
+ a. You may Distribute or Publicly Perform the Work only under the terms
+    of this License. You must include a copy of, or the Uniform Resource
+    Identifier (URI) for, this License with every copy of the Work You
+    Distribute or Publicly Perform. You may not offer or impose any terms
+    on the Work that restrict the terms of this License or the ability of
+    the recipient of the Work to exercise the rights granted to that
+    recipient under the terms of the License. You may not sublicense the
+    Work. You must keep intact all notices that refer to this License and
+    to the disclaimer of warranties with every copy of the Work You
+    Distribute or Publicly Perform. When You Distribute or Publicly
+    Perform the Work, You may not impose any effective technological
+    measures on the Work that restrict the ability of a recipient of the
+    Work from You to exercise the rights granted to that recipient under
+    the terms of the License. This Section 4(a) applies to the Work as
+    incorporated in a Collection, but this does not require the Collection
+    apart from the Work itself to be made subject to the terms of this
+    License. If You create a Collection, upon notice from any Licensor You
+    must, to the extent practicable, remove from the Collection any credit
+    as required by Section 4(c), as requested. If You create an
+    Adaptation, upon notice from any Licensor You must, to the extent
+    practicable, remove from the Adaptation any credit as required by
+    Section 4(c), as requested.
+ b. You may Distribute or Publicly Perform an Adaptation only under the
+    terms of: (i) this License; (ii) a later version of this License with
+    the same License Elements as this License; (iii) a Creative Commons
+    jurisdiction license (either this or a later license version) that
+    contains the same License Elements as this License (e.g.,
+    Attribution-ShareAlike 3.0 US)); (iv) a Creative Commons Compatible
+    License. If you license the Adaptation under one of the licenses
+    mentioned in (iv), you must comply with the terms of that license. If
+    you license the Adaptation under the terms of any of the licenses
+    mentioned in (i), (ii) or (iii) (the "Applicable License"), you must
+    comply with the terms of the Applicable License generally and the
+    following provisions: (I) You must include a copy of, or the URI for,
+    the Applicable License with every copy of each Adaptation You
+    Distribute or Publicly Perform; (II) You may not offer or impose any
+    terms on the Adaptation that restrict the terms of the Applicable
+    License or the ability of the recipient of the Adaptation to exercise
+    the rights granted to that recipient under the terms of the Applicable
+    License; (III) You must keep intact all notices that refer to the
+    Applicable License and to the disclaimer of warranties with every copy
+    of the Work as included in the Adaptation You Distribute or Publicly
+    Perform; (IV) when You Distribute or Publicly Perform the Adaptation,
+    You may not impose any effective technological measures on the
+    Adaptation that restrict the ability of a recipient of the Adaptation
+    from You to exercise the rights granted to that recipient under the
+    terms of the Applicable License. This Section 4(b) applies to the
+    Adaptation as incorporated in a Collection, but this does not require
+    the Collection apart from the Adaptation itself to be made subject to
+    the terms of the Applicable License.
+ c. If You Distribute, or Publicly Perform the Work or any Adaptations or
+    Collections, You must, unless a request has been made pursuant to
+    Section 4(a), keep intact all copyright notices for the Work and
+    provide, reasonable to the medium or means You are utilizing: (i) the
+    name of the Original Author (or pseudonym, if applicable) if supplied,
+    and/or if the Original Author and/or Licensor designate another party
+    or parties (e.g., a sponsor institute, publishing entity, journal) for
+    attribution ("Attribution Parties") in Licensor's copyright notice,
+    terms of service or by other reasonable means, the name of such party
+    or parties; (ii) the title of the Work if supplied; (iii) to the
+    extent reasonably practicable, the URI, if any, that Licensor
+    specifies to be associated with the Work, unless such URI does not
+    refer to the copyright notice or licensing information for the Work;
+    and (iv) , consistent with Ssection 3(b), in the case of an
+    Adaptation, a credit identifying the use of the Work in the Adaptation
+    (e.g., "French translation of the Work by Original Author," or
+    "Screenplay based on original Work by Original Author"). The credit
+    required by this Section 4(c) may be implemented in any reasonable
+    manner; provided, however, that in the case of a Adaptation or
+    Collection, at a minimum such credit will appear, if a credit for all
+    contributing authors of the Adaptation or Collection appears, then as
+    part of these credits and in a manner at least as prominent as the
+    credits for the other contributing authors. For the avoidance of
+    doubt, You may only use the credit required by this Section for the
+    purpose of attribution in the manner set out above and, by exercising
+    Your rights under this License, You may not implicitly or explicitly
+    assert or imply any connection with, sponsorship or endorsement by the
+    Original Author, Licensor and/or Attribution Parties, as appropriate,
+    of You or Your use of the Work, without the separate, express prior
+    written permission of the Original Author, Licensor and/or Attribution
+    Parties.
+ d. Except as otherwise agreed in writing by the Licensor or as may be
+    otherwise permitted by applicable law, if You Reproduce, Distribute or
+    Publicly Perform the Work either by itself or as part of any
+    Adaptations or Collections, You must not distort, mutilate, modify or
+    take other derogatory action in relation to the Work which would be
+    prejudicial to the Original Author's honor or reputation. Licensor
+    agrees that in those jurisdictions (e.g. Japan), in which any exercise
+    of the right granted in Section 3(b) of this License (the right to
+    make Adaptations) would be deemed to be a distortion, mutilation,
+    modification or other derogatory action prejudicial to the Original
+    Author's honor and reputation, the Licensor will waive or not assert,
+    as appropriate, this Section, to the fullest extent permitted by the
+    applicable national law, to enable You to reasonably exercise Your
+    right under Section 3(b) of this License (right to make Adaptations)
+    but not otherwise.
+
+5. Representations, Warranties and Disclaimer
+
+UNLESS OTHERWISE MUTUALLY AGREED TO BY THE PARTIES IN WRITING, LICENSOR
+OFFERS THE WORK AS-IS AND MAKES NO REPRESENTATIONS OR WARRANTIES OF ANY
+KIND CONCERNING THE WORK, EXPRESS, IMPLIED, STATUTORY OR OTHERWISE,
+INCLUDING, WITHOUT LIMITATION, WARRANTIES OF TITLE, MERCHANTIBILITY,
+FITNESS FOR A PARTICULAR PURPOSE, NONINFRINGEMENT, OR THE ABSENCE OF
+LATENT OR OTHER DEFECTS, ACCURACY, OR THE PRESENCE OF ABSENCE OF ERRORS,
+WHETHER OR NOT DISCOVERABLE. SOME JURISDICTIONS DO NOT ALLOW THE EXCLUSION
+OF IMPLIED WARRANTIES, SO SUCH EXCLUSION MAY NOT APPLY TO YOU.
+
+6. Limitation on Liability. EXCEPT TO THE EXTENT REQUIRED BY APPLICABLE
+LAW, IN NO EVENT WILL LICENSOR BE LIABLE TO YOU ON ANY LEGAL THEORY FOR
+ANY SPECIAL, INCIDENTAL, CONSEQUENTIAL, PUNITIVE OR EXEMPLARY DAMAGES
+ARISING OUT OF THIS LICENSE OR THE USE OF THE WORK, EVEN IF LICENSOR HAS
+BEEN ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
+
+7. Termination
+
+ a. This License and the rights granted hereunder will terminate
+    automatically upon any breach by You of the terms of this License.
+    Individuals or entities who have received Adaptations or Collections
+    from You under this License, however, will not have their licenses
+    terminated provided such individuals or entities remain in full
+    compliance with those licenses. Sections 1, 2, 5, 6, 7, and 8 will
+    survive any termination of this License.
+ b. Subject to the above terms and conditions, the license granted here is
+    perpetual (for the duration of the applicable copyright in the Work).
+    Notwithstanding the above, Licensor reserves the right to release the
+    Work under different license terms or to stop distributing the Work at
+    any time; provided, however that any such election will not serve to
+    withdraw this License (or any other license that has been, or is
+    required to be, granted under the terms of this License), and this
+    License will continue in full force and effect unless terminated as
+    stated above.
+
+8. Miscellaneous
+
+ a. Each time You Distribute or Publicly Perform the Work or a Collection,
+    the Licensor offers to the recipient a license to the Work on the same
+    terms and conditions as the license granted to You under this License.
+ b. Each time You Distribute or Publicly Perform an Adaptation, Licensor
+    offers to the recipient a license to the original Work on the same
+    terms and conditions as the license granted to You under this License.
+ c. If any provision of this License is invalid or unenforceable under
+    applicable law, it shall not affect the validity or enforceability of
+    the remainder of the terms of this License, and without further action
+    by the parties to this agreement, such provision shall be reformed to
+    the minimum extent necessary to make such provision valid and
+    enforceable.
+ d. No term or provision of this License shall be deemed waived and no
+    breach consented to unless such waiver or consent shall be in writing
+    and signed by the party to be charged with such waiver or consent.
+ e. This License constitutes the entire agreement between the parties with
+    respect to the Work licensed here. There are no understandings,
+    agreements or representations with respect to the Work not specified
+    here. Licensor shall not be bound by any additional provisions that
+    may appear in any communication from You. This License may not be
+    modified without the mutual written agreement of the Licensor and You.
+ f. The rights granted under, and the subject matter referenced, in this
+    License were drafted utilizing the terminology of the Berne Convention
+    for the Protection of Literary and Artistic Works (as amended on
+    September 28, 1979), the Rome Convention of 1961, the WIPO Copyright
+    Treaty of 1996, the WIPO Performances and Phonograms Treaty of 1996
+    and the Universal Copyright Convention (as revised on July 24, 1971).
+    These rights and subject matter take effect in the relevant
+    jurisdiction in which the License terms are sought to be enforced
+    according to the corresponding provisions of the implementation of
+    those treaty provisions in the applicable national law. If the
+    standard suite of rights granted under applicable copyright law
+    includes additional rights not granted under this License, such
+    additional rights are deemed to be included in the License; this
+    License is not intended to restrict the license of any rights under
+    applicable law.
+
+
+Creative Commons Notice
+
+    Creative Commons is not a party to this License, and makes no warranty
+    whatsoever in connection with the Work. Creative Commons will not be
+    liable to You or any party on any legal theory for any damages
+    whatsoever, including without limitation any general, special,
+    incidental or consequential damages arising in connection to this
+    license. Notwithstanding the foregoing two (2) sentences, if Creative
+    Commons has expressly identified itself as the Licensor hereunder, it
+    shall have all rights and obligations of Licensor.
+
+    Except for the limited purpose of indicating to the public that the
+    Work is licensed under the CCPL, Creative Commons does not authorize
+    the use by either party of the trademark "Creative Commons" or any
+    related trademark or logo of Creative Commons without the prior
+    written consent of Creative Commons. Any permitted use will be in
+    compliance with Creative Commons' then-current trademark usage
+    guidelines, as may be published on its website or otherwise made
+    available upon request from time to time. For the avoidance of doubt,
+    this trademark restriction does not form part of the License.
+
+    Creative Commons may be contacted at http://creativecommons.org/.
+

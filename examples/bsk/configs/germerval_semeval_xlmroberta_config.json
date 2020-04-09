@@ -1,0 +1,64 @@
+{
+  "general": {
+    "cache_dir":  {"value": null, "default": "",                "desc": "Path for storing pre-trained models downloaded from s3."},
+    "data_dir":   {"value": "sentiment_data/germeval-17", "default": "data/germeval18", "desc": "Input directory for downstream task. Should contain train + test (+ dev) files."},
+    "output_dir": {"value": "saved_models_germeval_semeval_xlmroberta", "default": "saved_models",    "desc": "Output directory where model predictions and checkpoints will be saved."},
+
+    "cuda":        {"value": null, "default": true,  "desc": "CUDA flag,  uses CUDA if available."},
+    "local_rank":  {"value": null, "default": -1,    "desc": "If local_rank == -1 -> multiGPU mode on one machine,  other values signal distributed computation across several nodes (apex install required)."},
+    "use_amp":     {"value": null, "default": null, "desc": "Automatic mixed precision with APEX. Must be set to null to disable or to any optimisation level (see apex documentation). 'O1' is recommended."},
+    "seed":         {"value": [42], "default": 42, "desc": "Random seed for initializations."}
+  },
+
+  "task": {
+    "type":             {"value": null, "default": "text_classification"},
+    "language":         {"value": "en", "default": "de"},
+    "name":             {"value": "Fine-tune xlm-roberta-semeval on germeval", "default": "GermEval18Fine", "desc": "SemEval2017 - Task 4a: Classification of sentiment on tweets."},
+    "do_eval":          {"value": null, "default": true,                         "desc": "Whether to run eval on the dev set."},
+    "do_train":         {"value": false, "default": true,                         "desc": "Whether to run training. Can be used to only evaluate on an already trained model."},
+
+    "processor_name":   {"value": null, "default": "TextClassificationProcessor","desc": "A Dataprocessor that is suited for tabular data. Needs special data parameters defined."},
+    "dev_split":        {"value": 0, "default": 0.1,                          "desc": "Split a dev set from the training set using dev_split as proportion."},
+    "train_filename":   {"value": "train_normalized.tsv", "default": "train.tsv",       "desc": "Filename for training."},
+    "dev_filename":     {"value": "dev_normalized.tsv", "default": null,                         "desc": "Filename for development. Missing in case of GermEval2018."},
+    "test_filename":    {"value": "test_TIMESTAMP2_normalized.tsv", "default": "test.tsv",                   "desc": "Filename for testing. It is the submission file from competition."},
+    "delimiter":        {"value": null, "default": "\t",                         "desc": "Filename for testing. It is the submission file from competition."},
+    "columns":          {"value": ["unused", "text", "unused", "label", "unused"], "default": ["text", "unused", "label"],  "desc": "Columns specifying position of text and labels in data files."},
+    "label_list":       {"value": ["negative", "neutral", "positive"], "default": ["OTHER", "INSULT", "ABUSE", "PROFANITY"],"desc": "List of possible labels."},
+    "metric":           {"value": "acc", "default": "f1_macro",                 "desc": "Metric used. The competition uses macro averaged f1 score."},
+    "label_column_name":{"value": "sentiment", "default": "fine_label",        "desc":"Name of field that the label comes from in datasource"},
+    "skiprows":         {"value": null, "default": null,          "desc":""}
+  },
+
+  "parameter": {
+    "model":            {"value": ["saved_models/xlm-roberta-large-english-SemEval2017-4a-english-Fine-tune xlm-roberta-semeval on germeval"], "default": null,                            "desc": "Bert pre-trained model selected in the list: bert-base-uncased,  bert-large-uncased,  bert-base-cased,  bert-large-cased,  bert-base-multilingual-uncased,  bert-base-multilingual-cased,  bert-base-chinese."},
+    "prediction_head":  {"value":  null,                    "default": "TextClassificationHead", "desc":  "Kind of prediction head we use on top of Language Model"},
+    "lm_output_type":   {"value":  null,                    "default": "per_sequence",           "desc":  "Language Model output."},
+    "lower_case":       {"value": null,                     "default": false,                    "desc": "Set to true if you are using an uncased model."},
+    "max_seq_len":      {"value": 140,                     "default": 150,                      "desc": "The maximum total input sequence length after WordPiece tokenization. 128 was too short for some texts"},
+    "balance_classes":  {"value": null,                     "default": true,                     "desc": "Balance classes using weighted CrossEntropyLoss. Original train set from GermEval18 is skewed and the final evaluation is macro averaged,  so we need to balance for optimal performance.."},
+
+    "epochs":                       {"value": 3, "default": 5.0,      "desc": "Total number of training epochs to perform."},
+    "batch_size":                   {"value": 12, "default": 32,       "desc": "Total batch size for training on a single V100 GPU."},
+    "gradient_accumulation_steps":  {"value": null, "default": 1,        "desc": "Number of updates steps (batches) to accumulate before performing a backward/update pass."},
+    "embeds_dropout_prob":          {"value": null, "default": 0.1,      "desc": "Strength of dropout to be applied to the word embeddings generated by the language model."},
+    "layer_dims":                   {"value": [768, 3], "default": [768, 4], "desc": "Cannot do experiments on this value, since it is already a list. Dimensions of the prediction head. Needs to be of type String, otherwise it gets iterated over."}
+  },
+
+  "optimizer": {
+    "learning_rate":      {"value": 9e-06, "default": 5e-6, "desc": "The initial learning rate for AdamW."},
+    "optimizer_opts":     {"value": null, "default": null, "desc": "Additional optimizer config."},
+    "schedule_opts":      {"value": null, "default": null, "desc":  "opts for lr schedule"}
+ },
+
+  "logging": {
+    "eval_every":     {"value": 100,                                "default": 50,   "desc": "Steps per training loop (batches) required for evaluation on dev set. Set to 0 when you do not want to do evaluation on dev set during training."},
+    "mlflow_url":     {"value": "http://mlflow:hYfk-Pkdrt-53Jre-Ps7N@mlflow-research.deepset.ai", "default": null, "desc": "Mlflow server for tracking experiments (e.g. http://80.123.45.167:5000/)"},
+    "mlflow_nested":  {"value": null,                                "default": true, "desc": "Nesting mlflow experiments. For doing multiple runs across a set of hyperparameters."},
+
+    "mlflow_experiment": {"value": "Fine-tune xlm-roberta-semeval on germeval",           "default": null, "desc": "Experiment name used for mlflow"},
+    "mlflow_run_name":   {"value": "Germeval", "default": null, "desc": "Name of the particular run for mlflow"}
+  }
+}
+
+
