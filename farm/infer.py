@@ -163,6 +163,11 @@ class Inferencer:
             else:
                 processor = Processor.load_from_dir(model_name_or_path)
 
+            # override processor attributes loaded from config file with inferencer params
+            processor.max_seq_len = max_seq_len
+            if hasattr(processor, "doc_stride"):
+                processor.doc_stride = doc_stride
+
         # b) or from remote transformers model hub
         else:
             logger.info(f"Could not find `{model_name_or_path}` locally. Try to download from model hub ...")
