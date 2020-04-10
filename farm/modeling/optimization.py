@@ -20,6 +20,7 @@ try:
     AMP_AVAILABLE = True
 except ImportError:
     AMP_AVAILABLE = False
+    APEX_PARALLEL_AVAILABLE = False
 
 from farm.utils import MLFlowLogger as MlLogger
 
@@ -264,8 +265,8 @@ def get_scheduler(optimizer, opts):
 
 def calculate_optimization_steps(n_batches, grad_acc_steps, n_epochs, local_rank):
     optimization_steps = int(n_batches / grad_acc_steps) * n_epochs
-    if local_rank != -1:
-        optimization_steps = optimization_steps // torch.distributed.get_world_size()
+    # if local_rank != -1:
+    #     optimization_steps = optimization_steps // torch.distributed.get_world_size()
     return optimization_steps
 
 
@@ -275,6 +276,7 @@ def _optimize_model(model, device, local_rank, optimizer=None, distributed=False
     if distributed:
         if APEX_PARALLEL_AVAILABLE:
             model = convert_syncbn_model(model)
+            logger.info("Multi-GPU Training via apex.parallel")
 
         # n_gpu = torch.cuda.device_count() // torch.distributed.get_world_size()
         # device_ids = list(range(local_rank * n_gpu, (local_rank + 1) * n_gpu))
@@ -284,9 +286,11 @@ def _optimize_model(model, device, local_rank, optimizer=None, distributed=False
                            device_ids=[local_rank],
                            output_device=local_rank,
                            find_unused_parameters=True)
+        logger.info("Multi-GPU Training via DistributedDataParallel")
 
     elif torch.cuda.device_count() > 1 and device.type == "cuda":
         model = WrappedDataParallel(model)
+        logger.info("Multi-GPU Training via DataParallel")
 
     return model, optimizer
 

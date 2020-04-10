@@ -319,7 +319,7 @@ def _conll03get(dataset, directory, language):
 
 
 
-def read_docs_from_txt(filename, delimiter="", encoding="utf-8", max_docs=None, proxies=None):
+def read_docs_from_txt(filename, delimiter="", encoding="utf-8", max_docs=None, proxies=None, disable_tqdm=True):
     """Reads a text file with one sentence per line and a delimiter between docs (default: empty lines) ."""
     if not (os.path.exists(filename)):
         _download_extract_downstream_data(filename, proxies)
@@ -330,7 +330,7 @@ def read_docs_from_txt(filename, delimiter="", encoding="utf-8", max_docs=None, 
     corpus_lines = 0
 
     with open(filename, "r", encoding=encoding) as f:
-        for line_num, line in enumerate(tqdm(f, desc="Loading Dataset", total=corpus_lines)):
+        for line_num, line in enumerate(tqdm(f, desc="Loading Dataset", total=corpus_lines, disable=disable_tqdm)):
             line = line.strip()
             if line == delimiter:
                 if len(doc) > 0:

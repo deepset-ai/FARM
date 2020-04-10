@@ -7,7 +7,8 @@ import numpy
 import shutil
 import dill
 
-from farm.utils import MLFlowLogger as MlLogger
+# from farm.utils import MLFlowLogger as MlLogger
+from farm.utils import StdoutLogger as MlLogger
 from farm.utils import GracefulKiller, set_all_seeds
 from farm.eval import Evaluator
 from farm.data_handler.data_silo import DataSilo
@@ -117,6 +118,7 @@ class Trainer:
         local_rank=-1,
         early_stopping=None,
         log_learning_rate=False,
+        log_loss_every=10,
         checkpoint_on_sigterm=False,
         checkpoint_every=None,
         checkpoint_root_dir=None,
@@ -124,6 +126,7 @@ class Trainer:
         from_epoch=0,
         from_step=0,
         global_step=0,
+        disable_tqdm=False
     ):
         """
         :param optimizer: An optimizer object that determines the learning strategy to be used during training
@@ -148,6 +151,8 @@ class Trainer:
         :type early_stopping: EarlyStopping
         :param log_learning_rate: Whether to log learning rate to Mlflow
         :type log_learning_rate: bool
+        :param log_loss_every: Log current train loss after this many train steps.
+        :type log_loss_every: int
         :param checkpoint_on_sigterm: save a checkpoint for the Trainer when a SIGTERM signal is sent. The checkpoint
                can be used to resume training. It is useful in frameworks like AWS SageMaker with Spot instances where
                a SIGTERM notifies to save the training state and subsequently the instance is terminated.
@@ -167,6 +172,8 @@ class Trainer:
         :type from_step: int
         :param global_step: the global step number across the training epochs.
         :type global_step: int
+        :param disable_tqdm: Disable tqdm progress bar (helps to reduce verbosity in some environments)
+        :type disable_tqdm: bool
         """
 
         self.model = model
@@ -183,6 +190,8 @@ class Trainer:
         self.log_params()
         self.early_stopping = early_stopping
         self.log_learning_rate = log_learning_rate
+        self.log_loss_every = log_loss_every
+        self.disable_tqdm = disable_tqdm
 
         if use_amp and not AMP_AVAILABLE:
             raise ImportError(f'Got use_amp = {use_amp}, but cannot find apex. '
@@ -229,7 +238,7 @@ class Trainer:
         for epoch in range(self.from_epoch, self.epochs):
             self.from_epoch = epoch
             train_data_loader = self.data_silo.get_data_loader("train")
-            progress_bar = tqdm(train_data_loader)
+            progress_bar = tqdm(train_data_loader, disable=self.local_rank not in [0, -1] or self.disable_tqdm)
             for step, batch in enumerate(progress_bar):
                 # when resuming training from a checkpoint, we want to fast forward to the step of the checkpoint
                 if resume_from_step and step <= resume_from_step:
@@ -323,12 +332,12 @@ class Trainer:
 
     def backward_propagate(self, loss, step):
         loss = self.adjust_loss(loss)
-        # if self.global_step % 10 == 1 and self.local_rank in [-1, 0]:
-        if self.local_rank in [-1, 0]:
-            MlLogger.log_metrics(
-                {"Train_loss_total": float(loss.detach().cpu().numpy())},
-                step=self.global_step,
-            )
+        if self.global_step % self.log_loss_every == 1 and self.local_rank in [-1, 0]:
+            if self.local_rank in [-1, 0]:
+                MlLogger.log_metrics(
+                    {"Train_loss_total": float(loss.detach().cpu().numpy())},
+                    step=self.global_step,
+                )
         if self.use_amp:
             with amp.scale_loss(loss, self.optimizer) as scaled_loss:
                 scaled_loss.backward()

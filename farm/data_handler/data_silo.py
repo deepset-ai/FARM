@@ -584,6 +584,7 @@ class _StreamingDataSet(IterableDataset):
         total_lines = sum(1 for line in open(filepath, encoding="utf-8"))
         empty_lines = sum(1 if line == "\n" else 0 for line in open(filepath, encoding="utf-8"))
         self.n_samples = total_lines - (2 * empty_lines)
+        logger.info(f"Found data for {self.n_samples} samples")
 
         self.file_to_dicts_generator = processor.file_to_dicts(filepath)
 
