@@ -264,7 +264,10 @@ class Trainer:
                 loss = self.backward_propagate(per_sample_loss, step)
 
                 # Perform  evaluation
-                if self.evaluate_every != 0 and self.global_step % self.evaluate_every == 0 and self.global_step != 0:
+                if self.evaluate_every != 0 \
+                        and self.global_step % self.evaluate_every == 0 \
+                        and self.global_step != 0\
+                        and self.local_rank in [0,-1]:
                     # When using StreamingDataSilo, each evaluation creates a new instance of
                     # dev_data_loader. In cases like training from scratch, this could cause
                     # some variance across evaluators due to the randomness in word masking.
@@ -545,10 +548,13 @@ class Trainer:
             "checkpoint_on_sigterm": self.checkpoint_on_sigterm,
             "checkpoint_root_dir": self.checkpoint_root_dir,
             "checkpoint_every": self.checkpoint_every,
+            "checkpoints_to_keep": self.checkpoints_to_keep,
             "from_epoch": self.from_epoch,
             "from_step": self.from_step,
             "global_step": self.global_step,
             "log_learning_rate": self.log_learning_rate,
+            "log_loss_every": self.log_loss_every,
+            "disable_tqdm": self.disable_tqdm
         }
 
         return state_dict
