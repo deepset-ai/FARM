@@ -11,7 +11,7 @@ from farm.modeling.language_model import LanguageModel
 from farm.modeling.optimization import initialize_optimizer
 from farm.modeling.prediction_head import BertLMHead, NextSentenceHead
 from farm.train import Trainer
-from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
+from farm.utils import set_all_seeds, StdoutLogger, initialize_device_settings
 import argparse
 
 def parse_arguments():
@@ -20,7 +20,8 @@ def parse_arguments():
                         type=int,
                         default=-1,
                         help="local_rank for distributed training on GPUs")
-    args = parser.parse_args()
+    args, unknownargs = parser.parse_known_args()
+    logging.info(f"Got unknown arguments: {unknownargs}")
     return args
 
 
@@ -33,24 +34,25 @@ def train_from_scratch(args):
 
     #TODO prettify this loading of params from two sources (cmd + json)
     cmd_args = parse_arguments()
-    args["local_rank"] = cmd_args["local_rank"]
+    args["local_rank"] = cmd_args.local_rank
+    logging.info(f'local_rank: {args["local_rank"]}')
 
     # Only the main process should log here
-    if args.local_rank in [-1, 0]:
-        ml_logger = MLFlowLogger(tracking_uri=args.get("mlflow_tracking_uri", "file:/opt/ml/model/mlflow"))
+    if args["local_rank"] in [-1, 0]:
+        ml_logger = StdoutLogger(tracking_uri=None)
         ml_logger.init_experiment(experiment_name="train_from_scratch", run_name="run")
 
     set_all_seeds(seed=39)
-    device, n_gpu = initialize_device_settings(use_cuda=True, local_rank=args.local_rank)
+    device, n_gpu = initialize_device_settings(use_cuda=True, local_rank=args["local_rank"])
 
-    distributed = args.get("distributed", "False").lower() == "true"
+    distributed = bool(int(args.get("distributed", 0)))
     evaluate_every = int(args["evaluate_every"])
 
     save_dir = Path("/opt/ml/model")
     data_dir = Path("/opt/ml/input/data/input_channel")
 
     # 1.Create a tokenizer
-    tokenizer = BertTokenizer(data_dir/args["vocab_file"], do_lower_case=args["do_lower_case"])
+    tokenizer = BertTokenizer(data_dir/args["vocab_file"], do_lower_case=bool(int(args["do_lower_case"])))
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a PyTorch Dataset
     processor = BertStyleLMProcessor(
@@ -64,7 +66,7 @@ def train_from_scratch(args):
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and
     #    calculates a few descriptive statistics of our datasets
     stream_data_silo = StreamingDataSilo(processor=processor, batch_size=int(args["batch_size"]),
-                                         dataloader_workers=args.get("data_loader_workers", 8),
+                                         dataloader_workers=int(args.get("data_loader_workers", 8)),
                                          distributed=distributed)
 
     # 4. Create an AdaptiveModel
@@ -94,7 +96,7 @@ def train_from_scratch(args):
         grad_acc_steps=int(args["gradient_accumulation_steps"]),
         distributed=distributed,
         use_amp=None,
-        local_rank=args.local_rank
+        local_rank=args["local_rank"]
     )
 
     # 6. Feed everything to the Trainer, which keeps care of growing our model and evaluates it from time to time
@@ -114,13 +116,16 @@ def train_from_scratch(args):
         lr_schedule=lr_schedule,
         evaluate_every=evaluate_every,
         device=device,
+        local_rank=args["local_rank"],
         grad_acc_steps=int(args["gradient_accumulation_steps"]),
         checkpoint_every=checkpoint_every,
         checkpoint_root_dir=checkpoint_root_dir,
-        checkpoints_to_keep=int(args.get("checkpoints_to_keep", 4)),
-
+        checkpoints_to_keep=int(args.get("checkpoints_to_keep", 10)),
+        log_loss_every=200,
+        disable_tqdm=True
     )
-    # 7. Let it grow! Watch the tracked metrics live on the public mlflow server: https://public-mlflow.deepset.ai
+
+    # 7. Let it grow!
     trainer.train()
 
     # 8. Hooray! You have a model. Store it:

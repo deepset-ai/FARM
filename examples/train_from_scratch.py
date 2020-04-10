@@ -52,7 +52,7 @@ def train_from_scratch():
 
     distributed = True
     max_seq_len = 128
-    batch_size = 60
+    batch_size = 70 # if distributed: this is per_gpu
     grad_acc = 4
     learning_rate = 1e-4
     warmup_proportion = 0.05
