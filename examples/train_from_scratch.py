@@ -61,7 +61,7 @@ def train_from_scratch():
     checkpoint_every = 1000
     checkpoint_root_dir = Path("checkpoints")
     checkpoints_to_keep = 4
-
+    next_sent_pred_style = "bert-style" #or "sentence"
     # Choose enough workers to queue sufficient batches during training.
     # Optimal number depends on your GPU speed, CPU speed and number of cores
     # 16 works well on a 4x V100 machine with 16 cores (AWS: p3.8xlarge). For a single GPU you will need less.
@@ -77,6 +77,7 @@ def train_from_scratch():
         train_filename=train_filename,
         dev_filename=dev_filename,
         test_filename=None,
+        next_sent_pred_style=next_sent_pred_style
     )
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and

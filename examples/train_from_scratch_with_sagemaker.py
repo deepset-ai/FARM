@@ -61,6 +61,7 @@ def train_from_scratch(args):
         train_filename=args["train_file"],
         dev_filename=args.get("dev_file", None),
         test_filename=args.get("test_file", None),
+        next_sent_pred_style=args.get("next_sent_pred_style", "bert-style")
     )
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and

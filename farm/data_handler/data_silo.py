@@ -17,7 +17,7 @@ from tqdm import tqdm
 
 from farm.data_handler.dataloader import NamedDataLoader
 from farm.data_handler.processor import Processor, BertStyleLMProcessor
-from farm.data_handler.utils import grouper, stream_grouper
+from farm.data_handler.utils import grouper
 from farm.utils import MLFlowLogger as MlLogger
 from farm.utils import log_ascii_workers, calc_chunksize
 from farm.utils import get_dict_checksum
@@ -601,11 +601,11 @@ class _StreamingDataSet(IterableDataset):
         #  a Dataloader. Hence, we need to configure the __iter__ to not yield duplicated data
         #  when more than 1 workers are used.
         #
-        #  To avoid duplicates, we need to split the input dicts between the workers. The
-        #  stream_grouper() converts a dict generator given as input and yields only the
+        #  To avoid duplicates, we need to split the input dicts between the workers.
+        #  The grouper() converts a dict generator given as input and yields only the
         #  dicts that are to be processed by the given worker_id.
         #
-        #  For instance, consider input as [dictA, dictB, dictC, ...], then the stream_grouper
+        #  For instance, consider input as [dictA, dictB, dictC, ...], then the grouper
         #  (with n=2) will return, [[dictA, dictB], [dictE, dictF] ...] for worker 1 and
         #  [[dictC, dictD], [dictG, dictH] ...] for worker 2.
 
@@ -615,12 +615,12 @@ class _StreamingDataSet(IterableDataset):
                 chunk_id = self.rank * worker_info.num_workers + worker_info.id
                 total_chunks = self.world_size * worker_info.num_workers
 
-                dicts = stream_grouper(
+                dicts = grouper(
                     self.file_to_dicts_generator, n=10, worker_id=chunk_id, total_workers=total_chunks
                 )
             else:
                 worker_id = worker_info.id
-                dicts = stream_grouper(self.file_to_dicts_generator, n=10, worker_id=worker_id, total_workers=self.dataloader_workers)
+                dicts = grouper(self.file_to_dicts_generator, n=10, worker_id=worker_id, total_workers=self.dataloader_workers)
 
         else:
             dicts = grouper(self.file_to_dicts_generator, n=10)

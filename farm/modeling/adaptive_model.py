@@ -4,6 +4,7 @@ import logging
 import os
 from pathlib import Path
 
+import multiprocessing
 import numpy
 import onnxruntime
 import torch
@@ -472,7 +473,9 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         if len(self.prediction_heads) != 1:
             raise ValueError(f"Currently conversion only works for models with a SINGLE prediction head. "
                              f"Your model has {len(self.prediction_heads)}")
-
+        elif len(self.prediction_heads[0].layer_dims) != 2:
+            raise ValueError(f"Currently conversion only works for PredictionHeads that are a single layer Feed Forward NN with dimensions [LM_output_dim, number_classes].\n"
+                             f"            Your PredictionHead has {str(self.prediction_heads[0].layer_dims)} dimensions.")
         #TODO add more infos to config
 
         if self.prediction_heads[0].model_type == "span_classification":
@@ -498,6 +501,14 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
                            "not the Next Sentence Prediction or Sentence Order Prediction components")
 
         elif self.prediction_heads[0].model_type == "text_classification":
+            if self.language_model.model.base_model_prefix == "roberta":
+                # Classification Heads in transformers have different architecture across Language Model variants
+                # The RobertaClassificationhead has components: input2dense, dropout, tanh, dense2output
+                # The tanh function cannot be mapped to current FARM style linear Feed Forward ClassificationHeads.
+                # So conversion for this type cannot work. We would need a compatible FARM RobertaClassificationHead
+                logger.error("Conversion for Text Classification with Roberta or XLMRoberta not possible at the moment.")
+                raise NotImplementedError
+
             # add more info to config
             self.language_model.model.config.id2label = {id: label for id, label in enumerate(self.prediction_heads[0].label_list)}
             self.language_model.model.config.label2id = {label: id for id, label in enumerate(self.prediction_heads[0].label_list)}
@@ -562,6 +573,11 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
             adaptive_model = cls(language_model=lm, prediction_heads=[ph], embeds_dropout_prob=0.1,
                                lm_output_types="per_token", device=device)
         elif task_type == "text_classification":
+            if "roberta" in model_name_or_path:
+                # The RobertaClassificationhead has components: input2dense, dropout, tanh, dense2output
+                # The tanh function cannot be mapped to current FARM style linear Feed Forward PredictionHeads.
+                logger.error("Conversion for Text Classification with Roberta or XLMRoberta not possible at the moment.")
+                raise NotImplementedError
             ph = TextClassificationHead.load(model_name_or_path)
             adaptive_model = cls(language_model=lm, prediction_heads=[ph], embeds_dropout_prob=0.1,
                                  lm_output_types="per_sequence", device=device)
@@ -684,13 +700,13 @@ class ONNXAdaptiveModel(BaseAdaptiveModel):
     """
     Implementation of ONNX Runtime for Inference of ONNX Models.
 
-    Existing PyTorch based FARM AdaptiveModel can be converted to ONNX format using AdpativeModel.convert_to_onnx().
+    Existing PyTorch based FARM AdaptiveModel can be converted to ONNX format using AdaptiveModel.convert_to_onnx().
     The conversion is currently only implemented for Question Answering Models.
 
     For inference, this class is compatible with the FARM Inferencer.
     """
-    def __init__(self, onnx_session, prediction_heads, language, device="cpu"):
-        if str(onnxruntime.get_device()).lower() != str(device).lower():
+    def __init__(self, onnx_session, prediction_heads, language, device):
+        if str(device) == "cuda" and onnxruntime.get_device() != "GPU":
             raise Exception(f"Device {device} not available for Inference. For CPU, run pip install onnxruntime and"
                             f"for GPU run pip install onnxruntime-gpu")
         self.onnx_session = onnx_session
@@ -703,9 +719,8 @@ class ONNXAdaptiveModel(BaseAdaptiveModel):
         sess_options = onnxruntime.SessionOptions()
         # Set graph optimization level to ORT_ENABLE_EXTENDED to enable bert optimization.
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
-
-        # To enable model serialization and store the optimized graph to desired location.
-        sess_options.optimized_model_filepath = os.path.join(load_dir, "optimized_model.onnx")
+        # Use OpenMP optimizations. Only useful for CPU, has little impact for GPUs.
+        sess_options.intra_op_num_threads = multiprocessing.cpu_count()
         onnx_session = onnxruntime.InferenceSession(str(load_dir / "model.onnx"), sess_options)
 
         # Prediction heads
@@ -739,7 +754,7 @@ class ONNXAdaptiveModel(BaseAdaptiveModel):
                 'segment_ids': numpy.ascontiguousarray(kwargs['segment_ids'].cpu().numpy()),
             }
             res = self.onnx_session.run(None, input_to_onnx)
-            logits = [torch.from_numpy(res[0])]
+            logits = [torch.from_numpy(res[0]).to(self.device)]
 
         return logits
 
