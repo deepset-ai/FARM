@@ -498,6 +498,9 @@ class Inferencer:
             dataset=dataset, sampler=SequentialSampler(dataset), batch_size=self.batch_size, tensor_names=tensor_names
         )
         unaggregated_preds_all = []
+
+        # TODO This is not memory efficient, needs to be redone
+        all_logits = []
         for i, batch in enumerate(tqdm(data_loader, desc=f"Inferencing Samples", unit=" Batches", disable=disable_tqdm)):
             batch = {key: batch[key].to(self.device) for key in batch}
 
@@ -508,8 +511,10 @@ class Inferencer:
                 logits = self.model.forward(**batch)
                 # preds = self.model.logits_to_preds(logits, **batch)[0] (This must somehow be useful for SQuAD)
                 preds = self.model.logits_to_preds(logits, **batch)
-
+                all_logits.append(logits[1])
                 unaggregated_preds_all.append(preds)
+
+        all_logits = torch.cat(all_logits)
 
         # In some use cases we want to aggregate the individual predictions.
         # This is mostly useful, if the input text is longer than the max_seq_len that the model can process.
@@ -517,10 +522,10 @@ class Inferencer:
         # and then aggregating them here.
 
         # can assume that we have only complete docs i.e. all the samples of one doc are in the current chunk
-        preds_all = self.model.formatted_preds(logits=[None], # For QA we collected preds per batch and do not want to pass logits
+        preds_all = self.model.formatted_preds(logits=[None, all_logits], # For QA we collected preds per batch and do not want to pass logits
                                                preds_p=unaggregated_preds_all,
                                                baskets=baskets,
-                                               rest_api_schema=rest_api_schema)[0]
+                                               rest_api_schema=rest_api_schema)
         return preds_all
 
     def extract_vectors(

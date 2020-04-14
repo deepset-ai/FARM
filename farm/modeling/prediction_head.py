@@ -367,7 +367,12 @@ class TextClassificationHead(PredictionHead):
     def formatted_preds(self, logits, samples, return_class_probs=False, **kwargs):
         preds = self.logits_to_preds(logits)
         probs = self.logits_to_probs(logits, return_class_probs)
-        contexts = [sample.clear_text["text"] for sample in samples]
+        try:
+            contexts = [sample.clear_text["text"] for sample in samples]
+        # This case covers Natural Questions where the sample is in a QA style
+        except KeyError:
+            contexts = [sample.clear_text["question_text"] + " | " + sample.clear_text["passage_text"] for sample in samples]
+
         contexts_b = [sample.clear_text["text_b"] for sample in samples if "text_b" in  sample.clear_text]
         if len(contexts_b) != 0:
             contexts = ["|".join([a, b]) for a,b in zip(contexts, contexts_b)]
@@ -1209,9 +1214,9 @@ class QuestionAnsweringHead(PredictionHead):
 
             # Iterate over each prediction on the one document
             full_preds = []
-            for start_t, end_t, score in pred_d:
+            for start_t, end_t, score, sample_idx in pred_d:
                 pred_str, _, _ = self.span_to_string(start_t, end_t, token_offsets, clear_text)
-                full_preds.append([pred_str, start_t, end_t, score])
+                full_preds.append([pred_str, start_t, end_t, score, sample_idx])
             curr_dict["id"] = basket_id
             curr_dict["preds"] = full_preds
             ret.append(curr_dict)
@@ -1403,8 +1408,8 @@ class QuestionAnsweringHead(PredictionHead):
             passage_best_score.append(best_pred_score)
 
         # Get all predictions in flattened list and sort by score
-        pos_answers_flat = [(start, end, score)
-                            for passage_preds in preds
+        pos_answers_flat = [(start, end, score, sample_idx)
+                            for sample_idx, passage_preds in enumerate(preds)
                             for start, end, score in passage_preds
                             if not (start == -1 and end == -1)]
 
@@ -1421,8 +1426,7 @@ class QuestionAnsweringHead(PredictionHead):
         # the most significant difference between scores.
         # Most significant difference: change top prediction from "no answer" to answer (or vice versa)
         best_overall_positive_score = max(x[2] for x in pos_answer_dedup)
-        no_answer_pred = [-1, -1, best_overall_positive_score - no_ans_gap]
-
+        no_answer_pred = [-1, -1, best_overall_positive_score - no_ans_gap, None]
 
         # Add no answer to positive answers, sort the order and return the n_best
         n_preds = [no_answer_pred] + pos_answer_dedup
@@ -1434,14 +1438,14 @@ class QuestionAnsweringHead(PredictionHead):
     def deduplicate(flat_pos_answers):
         # Remove duplicate spans that might be twice predicted in two different passages
         seen = {}
-        for (start, end, score) in flat_pos_answers:
+        for (start, end, score, idx) in flat_pos_answers:
             if (start, end) not in seen:
-                seen[(start, end)] = score
+                seen[(start, end)] = (score, idx)
             else:
-                seen_score = seen[(start, end)]
+                seen_score = seen[(start, end)][0]
                 if score > seen_score:
-                    seen[(start, end)] = score
-        return [(start, end, score) for (start, end), score in seen.items()]
+                    seen[(start, end)] = (score, idx)
+        return [(start, end, score, idx) for (start, end), (score, idx) in seen.items()]
 
 
 
@@ -1511,3 +1515,18 @@ class QuestionAnsweringHead(PredictionHead):
 
     def prepare_labels(self, labels, start_of_word, **kwargs):
         return labels
+
+    def merge(self, preds_all):
+        ret = []
+        qa_preds = preds_all[0][0][0]["preds"]
+        cls_preds = preds_all[1][0]["predictions"]
+        for qp in qa_preds:
+            sample_idx = qp[-1]
+            if sample_idx is not None:
+                cls_pred = cls_preds[sample_idx]["label"]
+            else:
+                cls_pred = None
+            qp.append(cls_pred)
+            ret.append(qp)
+        return ret
+

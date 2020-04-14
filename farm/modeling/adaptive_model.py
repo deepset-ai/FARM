@@ -372,10 +372,8 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
                 all_preds.append(preds)
         else:
             # Currently this case is triggered only by Natural Questions which requires 2 prediction_heads
-            # In this case, logits = [None] (see Inferencer._get_predictions_and_aggregate() )
             preds_p = kwargs.get("preds_p", None)
             preds_p_for_heads = [list() for _ in range(n_heads)]
-            logits_for_heads = [list() for _ in range(n_heads)]
 
             samples = [s for b in kwargs["baskets"] for s in b.samples]
             kwargs["samples"] = samples
@@ -387,17 +385,17 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
                     for i, p in enumerate(preds_p_sample):
                         preds_p_for_heads[i] += p
 
-            if logits == [None]:
-                logits_for_heads = [None] * n_heads
-            else:
-                for logit_batch in logits:
-                    for i in range(n_heads):
-                        logits_for_heads[i] += logit_batch
-
             del kwargs["preds_p"]
-            for i, (head, preds_p_for_head, logits_for_head) in enumerate(zip(self.prediction_heads, preds_p_for_heads, logits_for_heads)):
+
+            merge_fn = None
+            for i, (head, preds_p_for_head, logits_for_head) in enumerate(zip(self.prediction_heads, preds_p_for_heads, logits)):
                 preds = head.formatted_preds(logits=logits_for_head, preds_p=preds_p_for_head, **kwargs)
+                if hasattr(head, "merge"):
+                    merge_fn = getattr(head, "merge", None)
                 all_preds[i].append(preds)
+            if merge_fn is not None:
+                merge_fn(all_preds)
+
         return all_preds
 
     def forward(self, **kwargs):
