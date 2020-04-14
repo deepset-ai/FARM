@@ -538,18 +538,19 @@ def is_json(x):
     except:
         return False
 
-def grouper(iterable, n):
+
+def grouper(iterable, n, worker_id=0, total_workers=1):
     """
+    Split an iterable into a list of n-sized chunks. Each element in the chunk is a tuple of (index_num, element).
+
+    Example:
+
     >>> list(grouper('ABCDEFG', 3))
     [[(0, 'A'), (1, 'B'), (2, 'C')], [(3, 'D'), (4, 'E'), (5, 'F')], [(6, 'G')]]
-    """
-    iterable = iter(enumerate(iterable))
-    return iter(lambda: list(islice(iterable, n)), [])
 
 
-def stream_grouper(iterable, n, worker_id, total_workers):
-    """
-    This method is an extension of grouper() for use with StreamingDataSilo.
+
+    Use with the StreamingDataSilo
 
     When StreamingDataSilo is used with multiple PyTorch DataLoader workers, the generator
     yielding dicts(that gets converted to datasets) is replicated across the workers.
@@ -600,7 +601,8 @@ def stream_grouper(iterable, n, worker_id, total_workers):
 
     iterable = iter(enumerate(iterable))
     iterable = get_iter_start_pos(iterable)
-    iterable = filter_elements_per_worker(iterable)
+    if total_workers > 1:
+        iterable = filter_elements_per_worker(iterable)
 
     return iter(lambda: list(islice(iterable, n)), [])
 

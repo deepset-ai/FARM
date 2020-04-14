@@ -281,8 +281,9 @@ class Processor(ABC):
                 logger.error(f"Could not create sample(s) from this dict: \n {basket.raw}")
                 raise
         baskets_to_remove = [b.id for b in self.baskets if len(b.samples) == 0]
-        logger.warning(f"Baskets with the following ids have been removed because they have no Samples: {baskets_to_remove}")
-        self.baskets = [b for b in self.baskets if len(b.samples) != 0]
+        if baskets_to_remove:
+            logger.warning(f"Baskets with the following ids have been removed because they have no Samples: {baskets_to_remove}")
+        self.baskets = [b for b in self.baskets if len(b.samples) > 0]
 
     def _featurize_samples(self):
         for basket in self.baskets:
@@ -830,11 +831,11 @@ class BertStyleLMProcessor(Processor):
                 if len(tokenized["text_a"]["tokens"]) == 0:
                     logger.warning(
                         f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text_a}")
-                    return []
+                    continue
                 if len(tokenized["text_b"]["tokens"]) == 0:
                     logger.warning(
                         f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text_b}")
-                    return []
+                    continue
 
                 # truncate to max_seq_len
                 for seq_name in ["tokens", "offsets", "start_of_word"]:
