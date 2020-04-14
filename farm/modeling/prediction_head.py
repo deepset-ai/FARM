@@ -1160,7 +1160,7 @@ class QuestionAnsweringHead(PredictionHead):
             return False
         return True
 
-    def formatted_preds(self, logits, preds_p, baskets, rest_api_schema=False):
+    def formatted_preds(self, logits, preds_p, baskets, rest_api_schema=False, **kwargs):
         """ Takes a list of predictions, each corresponding to one sample, and converts them into document level
         predictions. Leverages information in the SampleBaskets. Assumes that we are being passed predictions from
         ALL samples in the one SampleBasket i.e. all passages of a document. Logits should be None, because we have
@@ -1203,16 +1203,16 @@ class QuestionAnsweringHead(PredictionHead):
         for pred_d, basket in zip(top_preds, baskets):
             curr_dict = {}
             # Unpack document offsets, clear text and squad_id
-            token_offsets = basket.raw["document_offsets"]
-            clear_text = basket.raw["document_text"]
-            squad_id = basket.raw["squad_id"]
+            token_offsets = basket.samples[0].tokenized["document_offsets"]
+            clear_text = basket.raw["context"]
+            basket_id = basket.id
 
             # Iterate over each prediction on the one document
             full_preds = []
             for start_t, end_t, score in pred_d:
                 pred_str, _, _ = self.span_to_string(start_t, end_t, token_offsets, clear_text)
                 full_preds.append([pred_str, start_t, end_t, score])
-            curr_dict["id"] = squad_id
+            curr_dict["id"] = basket_id
             curr_dict["preds"] = full_preds
             ret.append(curr_dict)
         return ret

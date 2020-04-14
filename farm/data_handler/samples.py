@@ -297,7 +297,8 @@ def create_samples_qa(dictionary, max_query_len, max_seq_len, doc_stride, n_spec
                      "question_tokens": question_tokens,
                      "question_offsets": question_offsets,
                      "question_start_of_word": dictionary["question_start_of_word"][:max_query_len],
-                     "answers": answers_tokenized}
+                     "answers": answers_tokenized,
+                     "document_offsets": doc_offsets}   # So that stringify can access them
         samples.append(Sample(id=passage_id,
                               clear_text=clear_text,
                               tokenized=tokenized))

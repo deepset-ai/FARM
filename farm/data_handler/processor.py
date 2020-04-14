@@ -180,6 +180,9 @@ class Processor(ABC):
         # read config
         processor_config_file = Path(load_dir) / "processor_config.json"
         config = json.load(open(processor_config_file))
+        # In inference mode, we don't want to downsample the Natural Questions style inputs
+        config["keep_is_impossible"] = 1
+        config["rest_api_schema"] = True
         # init tokenizer
         if "lower_case" in config.keys():
             logger.warning("Loading tokenizer from deprecated FARM config. "
@@ -280,10 +283,6 @@ class Processor(ABC):
             except:
                 logger.error(f"Could not create sample(s) from this dict: \n {basket.raw}")
                 raise
-        baskets_to_remove = [b.id for b in self.baskets if len(b.samples) == 0]
-        if baskets_to_remove:
-            logger.warning(f"Baskets with the following ids have been removed because they have no Samples: {baskets_to_remove}")
-        self.baskets = [b for b in self.baskets if len(b.samples) > 0]
 
     def _featurize_samples(self):
         for basket in self.baskets:
@@ -1137,15 +1136,17 @@ class NaturalQuestionsProcessor(Processor):
 
     def file_to_dicts(self, file: str) -> [dict]:
         dicts = [json.loads(l) for l in open(file)]
+        dicts = [self.prepare_dict(d) for d in dicts]
         return dicts
+
 
     def _dict_to_samples(self, dictionary: dict, all_dicts=None) -> [Sample]:
         """
             This method will split question-document pairs from the SampleBasket into question-passage pairs which will
         each form one sample. The "t" and "c" in variables stand for token and character respectively.
         """
-        dictionary_converted = self.prepare_dict(dictionary)
-        dictionary_tokenized = self.apply_tokenization(dictionary_converted)[0]
+        # dictionary_converted = self.prepare_dict(dictionary)
+        dictionary_tokenized = self.apply_tokenization(dictionary)[0]
         n_special_tokens = self.tokenizer.num_added_tokens(pair=True)
         samples = create_samples_qa(dictionary_tokenized,
                                     self.max_query_length,
@@ -1163,6 +1164,8 @@ class NaturalQuestionsProcessor(Processor):
                     ret.append(s)
             else:
                 ret.append(s)
+        if len(ret) == 0:
+            ret = random.choice(samples)
         return ret
 
     @staticmethod

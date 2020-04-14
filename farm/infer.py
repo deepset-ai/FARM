@@ -268,7 +268,8 @@ class Inferencer:
         Runs down-stream inference on samples created from input dictionaries.
         The format of the input `dicts` depends on the task:
 
-        * QA: [{"qas": ["What is X?"], "context":  "Some context containing the answer"}]
+        * QA (SQuAD):    [{"qas": ["What is X?"], "context":  "Some context containing the answer"}]
+        * QA (rest_api): [{"questions": ["What is X?"], "text":  "Some context containing the answer"}]
         * Classification / NER / embeddings: [{"text": "Some input text"}]
 
 
@@ -505,8 +506,10 @@ class Inferencer:
                 # Aggregation works on preds, not logits. We want as much processing happening in one batch + on GPU
                 # So we transform logits to preds here as well
                 logits = self.model.forward(**batch)
-                preds = self.model.logits_to_preds(logits, **batch)[0]
-                unaggregated_preds_all += preds
+                # preds = self.model.logits_to_preds(logits, **batch)[0] (This must somehow be useful for SQuAD)
+                preds = self.model.logits_to_preds(logits, **batch)
+
+                unaggregated_preds_all.append(preds)
 
         # In some use cases we want to aggregate the individual predictions.
         # This is mostly useful, if the input text is longer than the max_seq_len that the model can process.
