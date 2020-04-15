@@ -133,7 +133,7 @@ def read_ner_file(filename, sep="\t", proxies=None):
             continue
         if len(line) == 0 or "-DOCSTART-" in line or line[0] == "\n":
             if len(sentence) > 0:
-                if "conll03-de" in str(filename):
+                if "conll03" in str(filename):
                     _convertIOB1_to_IOB2(label)
                 if "germeval14" in str(filename):
                     label = _convert_germeval14_labels(label)
