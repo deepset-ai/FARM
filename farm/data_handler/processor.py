@@ -180,9 +180,7 @@ class Processor(ABC):
         # read config
         processor_config_file = Path(load_dir) / "processor_config.json"
         config = json.load(open(processor_config_file))
-        # In inference mode, we don't want to downsample the Natural Questions style inputs
-        config["keep_is_impossible"] = 1
-        config["rest_api_schema"] = True
+        config["inference"] = True
         # init tokenizer
         if "lower_case" in config.keys():
             logger.warning("Loading tokenizer from deprecated FARM config. "
@@ -1082,6 +1080,7 @@ class NaturalQuestionsProcessor(Processor):
                  max_query_length=64,
                  proxies=None,
                  keep_is_impossible=0.0001,
+                 inference=False,
                  **kwargs):
             """
             :param tokenizer: Used to split a sentence (str) into tokens.
@@ -1116,7 +1115,10 @@ class NaturalQuestionsProcessor(Processor):
 
             self.doc_stride = doc_stride
             self.max_query_length = max_query_length
-            self.keep_is_impossible = keep_is_impossible
+            if not inference:
+                self.keep_is_impossible = keep_is_impossible
+            else:
+                self.keep_is_impossible = 1
 
             super(NaturalQuestionsProcessor, self).__init__(
                 tokenizer=tokenizer,

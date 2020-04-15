@@ -390,9 +390,9 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
             merge_fn = None
             for i, (head, preds_p_for_head, logits_for_head) in enumerate(zip(self.prediction_heads, preds_p_for_heads, logits)):
                 preds = head.formatted_preds(logits=logits_for_head, preds_p=preds_p_for_head, **kwargs)
+                all_preds[i].append(preds)
                 if hasattr(head, "merge"):
                     merge_fn = getattr(head, "merge", None)
-                all_preds[i].append(preds)
             if merge_fn is not None:
                 merge_fn(all_preds)
 

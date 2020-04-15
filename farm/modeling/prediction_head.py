@@ -1518,15 +1518,25 @@ class QuestionAnsweringHead(PredictionHead):
 
     def merge(self, preds_all):
         ret = []
-        qa_preds = preds_all[0][0][0]["preds"]
         cls_preds = preds_all[1][0]["predictions"]
-        for qp in qa_preds:
-            sample_idx = qp[-1]
-            if sample_idx is not None:
-                cls_pred = cls_preds[sample_idx]["label"]
-            else:
-                cls_pred = None
-            qp.append(cls_pred)
-            ret.append(qp)
+        for all_qa_preds in preds_all[0][0]:
+            for qa_preds_dict in all_qa_preds:
+                qa_preds = qa_preds_dict["preds"]
+                for qp in qa_preds:
+                    sample_idx = qp[-1]
+                    if sample_idx is not None:
+                        cls_pred = cls_preds[sample_idx]["label"]
+                    else:
+                        cls_pred = None
+                    qp.append(cls_pred)
+                    ret.append(qp)
         return ret
 
+class Span:
+    def __init__(self, start, end, score=None, unit=None, sample_idx=None, classification=None):
+        self.start = start
+        self.end = end
+        self.score = score
+        self.unit = unit
+        self.sample_idx = sample_idx
+        self.classification = classification
