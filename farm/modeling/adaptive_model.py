@@ -371,6 +371,7 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
                 preds = head.formatted_preds(logits=logits_for_head, **kwargs)
                 all_preds.append(preds)
         else:
+            # TODO this should be done elsewhere
             # Currently this case is triggered only by Natural Questions which requires 2 prediction_heads
             preds_p = kwargs.get("preds_p", None)
             preds_p_for_heads = [list() for _ in range(n_heads)]
@@ -388,6 +389,7 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
             del kwargs["preds_p"]
 
             merge_fn = None
+            # TODO Exception if there are multiple merge fns
             for i, (head, preds_p_for_head, logits_for_head) in enumerate(zip(self.prediction_heads, preds_p_for_heads, logits)):
                 preds = head.formatted_preds(logits=logits_for_head, preds_p=preds_p_for_head, **kwargs)
                 all_preds[i].append(preds)
