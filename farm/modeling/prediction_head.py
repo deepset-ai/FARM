@@ -65,6 +65,8 @@ class PredictionHead(nn.Module):
         :param head_num: Which head to save
         :type head_num: int
         """
+        # updating config in case the parameters have been changed
+        self.generate_config()
         output_config_file = Path(save_dir) / f"prediction_head_{head_num}_config.json"
         with open(output_config_file, "w") as file:
             json.dump(self.config, file)
