@@ -188,6 +188,7 @@ def to_numpy(container):
 
 
 def convert_iob_to_simple_tags(preds, spans):
+    contains_named_entity = len([x for x in preds if x != "O"]) != 0
     simple_tags = []
     merged_spans = []
     open_tag = False
@@ -224,6 +225,10 @@ def convert_iob_to_simple_tags(preds, spans):
         merged_spans.append(cur_span)
         simple_tags.append(cur_tag)
         open_tag = False
+    if contains_named_entity and len(simple_tags) == 0:
+        raise Exception("Predicted Named Entities lost when converting from IOB to simple tags. Please check the format"
+                        "of the training data adheres to either adheres to IOB2 format or is converted when "
+                        "read_ner_file() is called.")
     return simple_tags, merged_spans
 
 
