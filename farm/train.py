@@ -252,7 +252,7 @@ class Trainer:
                     continue
 
                 set_all_seeds(seed=39)
-                progress_bar.set_description(f"Train epoch {epoch}/{self.epochs} (Cur. train loss: {loss:.4f})")
+                progress_bar.set_description(f"Train epoch {epoch}/{self.epochs-1} (Cur. train loss: {loss:.4f})")
 
                 # Move batch of samples to device
                 batch = {key: batch[key].to(self.device) for key in batch}
