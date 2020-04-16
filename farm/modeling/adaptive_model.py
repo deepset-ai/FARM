@@ -396,7 +396,7 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
                 if hasattr(head, "merge"):
                     merge_fn = getattr(head, "merge", None)
             if merge_fn is not None:
-                merge_fn(all_preds)
+                all_preds = merge_fn(all_preds)
 
         return all_preds
 
