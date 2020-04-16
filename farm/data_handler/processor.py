@@ -259,14 +259,6 @@ class Processor(ABC):
     def _sample_to_features(cls, sample: Sample) -> dict:
         raise NotImplementedError()
 
-    def _init_baskets_from_file(self, file):
-        dicts = self.file_to_dicts(file)
-        dataset_name = file.stem
-        baskets = [
-            SampleBasket(raw=tr, id=f"{dataset_name}-{i}") for i, tr in enumerate(dicts)
-        ]
-        return baskets
-
     def _init_samples_in_baskets(self):
         for basket in self.baskets:
             all_dicts = [b.raw for b in self.baskets]

@@ -20,7 +20,10 @@ def embedding_extraction():
     ########## Settings
     ##########################
     set_all_seeds(seed=42)
-    lang_model = Path("../saved_models/glove-converted-small")
+    # load from a local path:
+    #lang_model = Path("../saved_models/glove-german-uncased")
+    # or through s3
+    lang_model = "glove-german-uncased" #only glove or word2vec or converted fasttext (fixed vocab) embeddings supported
     do_lower_case = True
     use_amp = None
     device, n_gpu = initialize_device_settings(use_cuda=True, use_amp=use_amp)

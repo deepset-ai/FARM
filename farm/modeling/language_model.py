@@ -49,6 +49,7 @@ from farm.utils import s3e_pooling
 # in the output vectors
 OUTPUT_DIM_NAMES = ["dim", "hidden_size", "d_model"]
 
+
 class LanguageModel(nn.Module):
     """
     The parent class for any kind of model that can embed language into a semantic vector space. Practically
@@ -259,6 +260,7 @@ class LanguageModel(nn.Module):
         :param ignore_first_token: Whether to include the first token for pooling operations (e.g. reduce_mean).
                                    Many models have here a special token like [CLS] that you don't want to include into your average of token embeddings.
         :param padding_mask: Mask for the padding tokens. Those will also not be included in the pooling operations to prevent a bias by the number of padding tokens.
+        :param input_ids: TODO
         :param kwargs: kwargs
         :return: list of dicts containing preds, e.g. [{"context": "some text", "vec": [-0.01, 0.5 ...]}]
         """
@@ -880,6 +882,10 @@ class XLNet(LanguageModel):
         self.model.output_hidden_states = False
 
 class EmbeddingConfig():
+    """
+    Config for Word Embeddings Models.
+    Necessary to work with Bert and other LM style functionality
+    """
     def __init__(self,
                  name=None,
                  embeddings_filename=None,
@@ -888,12 +894,23 @@ class EmbeddingConfig():
                  hidden_size=None,
                  language=None,
                  **kwargs):
+        """
+        :param name: Name of config
+        :param embeddings_filename:
+        :param vocab_filename:
+        :param vocab_size:
+        :param hidden_size:
+        :param language:
+        :param kwargs:
+        """
         self.name = name
         self.embeddings_filename = embeddings_filename
         self.vocab_filename = vocab_filename
         self.vocab_size = vocab_size
         self.hidden_size = hidden_size
         self.language = language
+        if len(kwargs) > 0:
+            logger.info(f"Passed unused params {str(kwargs)} to the EmbeddingConfig. Might not be a problem.")
 
     def to_dict(self):
         """
@@ -919,10 +936,30 @@ class EmbeddingConfig():
 
 
 class EmbeddingModel():
-    def __init__(self, path, config_dict, vocab_filename):
-        self.config = EmbeddingConfig(**dict(config_dict))
-        self.vocab = load_vocab(vocab_filename)
-        temp = wordembedding_utils.load_embedding_vectors(embedding_filename=path, vocab=self.vocab)
+    """
+    Embedding Model that combines
+    - Embeddings
+    - Config Object
+    - Vocab
+    Necessary to work with Bert and other LM style functionality
+    """
+
+    def __init__(self,
+                 embedding_file,
+                 config_dict,
+                 vocab_file):
+        """
+
+        :param embedding_file: filename of embeddings. Usually in txt format, with the word and associated vector on each line
+        :type embedding_file: str
+        :param config_dict: dictionary containing config elements
+        :type config_dict: dict
+        :param vocab_file: filename of vocab, each line contains a word
+        :type vocab_file: str
+        """
+        self.config = EmbeddingConfig(**config_dict)
+        self.vocab = load_vocab(vocab_file)
+        temp = wordembedding_utils.load_embedding_vectors(embedding_file=embedding_file, vocab=self.vocab)
         self.embeddings = torch.from_numpy(temp).float()
         assert "[UNK]" in self.vocab, "No [UNK] symbol in Wordembeddingmodel! Aborting"
         self.unk_idx = self.vocab["[UNK]"]
@@ -938,7 +975,7 @@ class EmbeddingModel():
 
     def resize_token_embeddings(self, new_num_tokens=None):
         # function is called as a vocab length validation inside FARM
-        # hacky way of returning an object with num_embeddings attribute set
+        # fast way of returning an object with num_embeddings attribute (needed for some checks)
         # TODO add functionality to add words/tokens to a wordembeddingmodel after initialization
         temp = {}
         temp["num_embeddings"] = len(self.vocab)
@@ -949,12 +986,10 @@ class EmbeddingModel():
 
 class WordEmbedding_LM(LanguageModel):
     """
-    A wrapper around EmbeddingModel to fit the LanguageModel class.
-
-    NOTE:
-    - EmbeddingModels just map words to embeddings
-    - Unlike the other LM variants, EmbeddingModel does not output the
-    pooled_output. An additional pooler is initialized.
+    A Language Model based only on word embeddings
+    - Inside FARM, WordEmbedding Language Models must have a fixed vocabulary
+    - Each (known) word in some text input is projected to its vector representation
+    - Pooling operations can be applied for representing whole text sequences
 
     """
 
@@ -979,39 +1014,40 @@ class WordEmbedding_LM(LanguageModel):
         :return: Language Model
 
         """
-        #import fasttext
         wordembedding_LM = cls()
         if "farm_lm_name" in kwargs:
             wordembedding_LM.name = kwargs["farm_lm_name"]
         else:
             wordembedding_LM.name = pretrained_model_name_or_path
-        # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
+        # We need to differentiate between loading model from local or remote
         farm_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(farm_lm_config):
-            # FARM style
+            # local dir
             config = json.load(open(farm_lm_config,"r"))
             farm_lm_model = Path(pretrained_model_name_or_path) / config["embeddings_filename"]
             vocab_filename = Path(pretrained_model_name_or_path) / config["vocab_filename"]
-            wordembedding_LM.model = EmbeddingModel(path=str(farm_lm_model), config_dict=config, vocab_filename=str(vocab_filename))
+            wordembedding_LM.model = EmbeddingModel(embedding_file=str(farm_lm_model), config_dict=config, vocab_file=str(vocab_filename))
             wordembedding_LM.language = config.get("language", None)
         else:
+            # from remote or cache
             config_dict, resolved_vocab_file, resolved_model_file = wordembedding_utils.load_model(pretrained_model_name_or_path, **kwargs)
-            model = EmbeddingModel(path=resolved_model_file,
+            model = EmbeddingModel(embedding_file=resolved_model_file,
                                    config_dict=config_dict,
-                                   vocab_filename=resolved_vocab_file)
+                                   vocab_file=resolved_vocab_file)
             wordembedding_LM.model = model
             wordembedding_LM.language = model.config.language
 
 
         # taking the mean for getting the pooled representation
-        # TODO: extend this to other pooling operations or remove completely
+        # TODO: extend this to other pooling operations or remove
         wordembedding_LM.pooler = lambda x: torch.mean(x, dim=0)
         return wordembedding_LM
 
     def save(self, save_dir):
         """
         Save the model embeddings and its config file so that it can be loaded again.
-        #TODO make embeddings trainable and save trained embeddings
+        # TODO make embeddings trainable and save trained embeddings
+        # TODO save model weights as pytorch model bin for more efficient loading and saving
         :param save_dir: The directory in which the model should be saved.
         :type save_dir: str
         """
@@ -1024,12 +1060,12 @@ class WordEmbedding_LM(LanguageModel):
 
     def forward(self, input_ids, **kwargs,):
         """
-        Perform the forward pass of the fasttext model.
-        This is just the mapping of words to their corresponding (and aggregated) n-gram embeddings
+        Perform the forward pass of the wordembedding model.
+        This is just the mapping of words to their corresponding embeddings
         """
         sequence_output = []
         pooled_output = []
-        # TODO do not use padding items
+        # TODO do not use padding items in pooled output
         for sample in input_ids:
             sample_embeddings = []
             for index in sample:
@@ -1041,6 +1077,6 @@ class WordEmbedding_LM(LanguageModel):
 
         sequence_output = torch.stack(sequence_output)
         pooled_output = torch.stack(pooled_output)
-        m = nn.BatchNorm1d(pooled_output.shape[1])
+        m = nn.BatchNorm1d(pooled_output.shape[1]) # batchnorm for stable learning
         pooled_output = m(pooled_output)
         return sequence_output, pooled_output
