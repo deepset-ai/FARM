@@ -188,7 +188,7 @@ def to_numpy(container):
 
 
 def convert_iob_to_simple_tags(preds, spans):
-    contains_named_entity = len([x for x in preds if x != "O"]) != 0
+    contains_named_entity = len([x for x in preds if "B-" in x]) != 0
     simple_tags = []
     merged_spans = []
     open_tag = False
