@@ -416,6 +416,7 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, answer_ty
     # If there are no answers
     if len(answers) == 0:
         label_idxs[0, :] = 0
+        answer_types[:] = 0
         return label_idxs, answer_types
 
     for i, answer in enumerate(answers):

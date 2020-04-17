@@ -29,80 +29,80 @@ def question_answering():
     ##########################
     ########## Settings
     ##########################
-    # set_all_seeds(seed=42)
-    # device, n_gpu = initialize_device_settings(use_cuda=True)
-    # batch_size = 16
-    # n_epochs = 1
-    # evaluate_every = 20
-    # lang_model = "bert-base-cased"
-    # do_lower_case = False # roberta is a cased model
-    # train_filename = "train_sample_small.jsonl"
-    # dev_filename = "dev-v2.0.json"
-    #
-    # # 1.Create a tokenizer
-    # tokenizer = Tokenizer.load(
-    #     pretrained_model_name_or_path=lang_model, do_lower_case=do_lower_case
-    # )
-    # # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
-    # label_list = ["start_token", "end_token"]
-    # metric = "squad"
-    # processor = NaturalQuestionsProcessor(
-    #     tokenizer=tokenizer,
-    #     max_seq_len=384,
-    #     train_filename=train_filename,
-    #     dev_filename=None,
-    #     dev_split=0.1,
-    #     test_filename=None,
-    #     data_dir=Path("../data/natural_questions"),
-    # )
-    #
-    # # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
-    # # NOTE: In FARM, the dev set metrics differ from test set metrics in that they are calculated on a token level instead of a word level
-    # data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=False)
-    #
-    # # 4. Create an AdaptiveModel
-    # # a) which consists of a pretrained language model as a basis
-    # language_model = LanguageModel.load(lang_model)
-    # # b) and a prediction head on top that is suited for our task => Question Answering
-    # qa_head = QuestionAnsweringHead()
-    # classification_head = TextClassificationHead(num_labels=len(processor.answer_type_list))
-    #
-    # model = AdaptiveModel(
-    #     language_model=language_model,
-    #     prediction_heads=[qa_head, classification_head],
-    #     embeds_dropout_prob=0.1,
-    #     lm_output_types=["per_token", "per_sequence"],
-    #     device=device,
-    # )
-    #
-    # # 5. Create an optimizer
-    # model, optimizer, lr_schedule = initialize_optimizer(
-    #     model=model,
-    #     learning_rate=3e-5,
-    #     schedule_opts={"name": "LinearWarmup", "warmup_proportion": 0.2},
-    #     n_batches=len(data_silo.loaders["train"]),
-    #     n_epochs=n_epochs,
-    #     device=device
-    # )
-    # # 6. Feed everything to the Trainer, which keeps care of growing our model and evaluates it from time to time
-    # trainer = Trainer(
-    #     model=model,
-    #     optimizer=optimizer,
-    #     data_silo=data_silo,
-    #     epochs=n_epochs,
-    #     n_gpu=n_gpu,
-    #     lr_schedule=lr_schedule,
-    #     evaluate_every=evaluate_every,
-    #     device=device,
-    # )
-    # # 7. Let it grow! Watch the tracked metrics live on the public mlflow server: https://public-mlflow.deepset.ai
-    # trainer.train()
+    set_all_seeds(seed=42)
+    device, n_gpu = initialize_device_settings(use_cuda=True)
+    batch_size = 16
+    n_epochs = 1
+    evaluate_every = 20
+    lang_model = "bert-base-cased"
+    do_lower_case = False # roberta is a cased model
+    train_filename = "train_sample_small.jsonl"
+    dev_filename = "dev-v2.0.json"
+
+    # 1.Create a tokenizer
+    tokenizer = Tokenizer.load(
+        pretrained_model_name_or_path=lang_model, do_lower_case=do_lower_case
+    )
+    # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
+    label_list = ["start_token", "end_token"]
+    metric = "squad"
+    processor = NaturalQuestionsProcessor(
+        tokenizer=tokenizer,
+        max_seq_len=384,
+        train_filename=train_filename,
+        dev_filename=None,
+        dev_split=0.1,
+        test_filename=None,
+        data_dir=Path("../data/natural_questions"),
+    )
+
+    # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
+    # NOTE: In FARM, the dev set metrics differ from test set metrics in that they are calculated on a token level instead of a word level
+    data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=False)
+
+    # 4. Create an AdaptiveModel
+    # a) which consists of a pretrained language model as a basis
+    language_model = LanguageModel.load(lang_model)
+    # b) and a prediction head on top that is suited for our task => Question Answering
+    qa_head = QuestionAnsweringHead()
+    classification_head = TextClassificationHead(num_labels=len(processor.answer_type_list))
+
+    model = AdaptiveModel(
+        language_model=language_model,
+        prediction_heads=[qa_head, classification_head],
+        embeds_dropout_prob=0.1,
+        lm_output_types=["per_token", "per_sequence"],
+        device=device,
+    )
+
+    # 5. Create an optimizer
+    model, optimizer, lr_schedule = initialize_optimizer(
+        model=model,
+        learning_rate=3e-5,
+        schedule_opts={"name": "LinearWarmup", "warmup_proportion": 0.2},
+        n_batches=len(data_silo.loaders["train"]),
+        n_epochs=n_epochs,
+        device=device
+    )
+    # 6. Feed everything to the Trainer, which keeps care of growing our model and evaluates it from time to time
+    trainer = Trainer(
+        model=model,
+        optimizer=optimizer,
+        data_silo=data_silo,
+        epochs=n_epochs,
+        n_gpu=n_gpu,
+        lr_schedule=lr_schedule,
+        evaluate_every=evaluate_every,
+        device=device,
+    )
+    # 7. Let it grow! Watch the tracked metrics live on the public mlflow server: https://public-mlflow.deepset.ai
+    trainer.train()
 
     # 8. Hooray! You have a model. Store it:
     save_dir = Path("../saved_models/bert_nq")
-    # model.save(save_dir)
-    # processor.save(save_dir)
-    #
+    model.save(save_dir)
+    processor.save(save_dir)
+
     # 9. Load it & harvest your fruits (Inference)
     QA_input = [
         {
@@ -119,7 +119,7 @@ def question_answering():
         }
     ]
 
-    model = Inferencer.load(save_dir, batch_size=1, gpu=True)
+    model = Inferencer.load(save_dir, batch_size=1, gpu=True, max_seq_len=10)
     result = model.inference_from_dicts(dicts=QA_input)
 
     pprint.pprint(result)

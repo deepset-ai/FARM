@@ -380,5 +380,10 @@ def write_msmarco_results(results, output_filename):
             out_file.write(str(score))
             out_file.write("\n")
 
-
-
+def stack(list_of_lists):
+    n_lists_final = len(list_of_lists[0])
+    ret = [list() for _ in range(n_lists_final)]
+    for l in list_of_lists:
+        for i, x in enumerate(l):
+            ret[i] += (x)
+    return ret

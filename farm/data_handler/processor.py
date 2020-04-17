@@ -1003,8 +1003,13 @@ class SquadProcessor(Processor):
                 squad_id = question["id"]
                 question_text = question["question"]
                 for answer in question["answers"]:
+                    if answer["text"] == "":
+                        answer_type = "is_impossible"
+                    else:
+                        answer_type = "span"
                     a = {"text": answer["text"],
-                         "offset": answer["answer_start"]}
+                         "offset": answer["answer_start"],
+                         "answer_type": answer_type}
                     answers.append(a)
             # For inference where samples are read in as dicts without an id or answers
             except TypeError:
@@ -1014,9 +1019,12 @@ class SquadProcessor(Processor):
             question_start_of_word = [int(x) for x in question_tokenized["start_of_word"]]
 
             if "is_impossible" not in question:
-                is_impossible = False
+                answer_type = "span"
             else:
-                is_impossible = question["is_impossible"]
+                if question["is_impossible"]:
+                    answer_type = "is_impossible"
+                else:
+                    answer_type = "span"
             raw = {"document_text": document_text,
                    "document_tokens": document_tokenized["tokens"],
                    "document_offsets": document_tokenized["offsets"],
@@ -1027,7 +1035,7 @@ class SquadProcessor(Processor):
                    "question_offsets": question_tokenized["offsets"],
                    "question_start_of_word": question_start_of_word,
                    "answers": answers,
-                   "is_impossible": is_impossible,
+                   "answer_type": answer_type,
                    "squad_id": squad_id}
             raw_baskets.append(raw)
         return raw_baskets
@@ -1167,7 +1175,7 @@ class NaturalQuestionsProcessor(Processor):
             else:
                 ret.append(s)
         if len(ret) == 0:
-            ret = random.choice(samples)
+            ret = [random.choice(samples)]
         return ret
 
     @staticmethod

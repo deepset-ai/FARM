@@ -185,7 +185,7 @@ def create_samples_squad(dictionary, max_query_len, max_seq_len, doc_stride, n_s
                       "question_text": dictionary["question_text"],
                       "passage_id": passage_id,
                       "answers": answers_clear,
-                      "is_impossible": dictionary["is_impossible"]}
+                      "answer_type": dictionary["answer_type"]}
         tokenized = {"passage_start_t": passage_start_t,
                      "passage_tokens": passage_tokens,
                      "passage_offsets": passage_offsets,

@@ -16,7 +16,7 @@ from farm.data_handler.processor import SquadProcessor
 from farm.modeling.language_model import LanguageModel
 from farm.modeling.prediction_head import PredictionHead, QuestionAnsweringHead, TokenClassificationHead, TextClassificationHead
 from farm.modeling.tokenization import Tokenizer
-from farm.utils import MLFlowLogger as MlLogger
+from farm.utils import MLFlowLogger as MlLogger, stack
 
 logger = logging.getLogger(__name__)
 
@@ -360,45 +360,45 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         :return: predictions in the right format
         """
         n_heads = len(self.prediction_heads)
-        all_preds = [list() for _ in range(n_heads)]
+        preds_final = [list() for _ in range(n_heads)]
 
         if n_heads == 0:
             # just return LM output (e.g. useful for extracting embeddings at inference time)
-            all_preds = self.language_model.formatted_preds(logits=logits, **kwargs)
+            preds_final = self.language_model.formatted_preds(logits=logits, **kwargs)
         elif n_heads == 1:
             # collect preds from all heads (default)
             for head, logits_for_head in zip(self.prediction_heads, logits):
                 preds = head.formatted_preds(logits=logits_for_head, **kwargs)
-                all_preds.append(preds)
+                preds_final.append(preds)
         else:
-            # TODO this should be done elsewhere
-            # Currently this case is triggered only by Natural Questions which requires 2 prediction_heads
-            preds_p = kwargs.get("preds_p", None)
-            preds_p_for_heads = [list() for _ in range(n_heads)]
+            preds = kwargs["preds_p"]
+            preds_for_heads = stack(preds)
 
             samples = [s for b in kwargs["baskets"] for s in b.samples]
             kwargs["samples"] = samples
 
-            if preds_p is None:
-                preds_p_for_heads = [None] * n_heads
-            else:
-                for preds_p_sample in preds_p:
-                    for i, p in enumerate(preds_p_sample):
-                        preds_p_for_heads[i] += p
-
             del kwargs["preds_p"]
 
-            merge_fn = None
-            # TODO Exception if there are multiple merge fns
-            for i, (head, preds_p_for_head, logits_for_head) in enumerate(zip(self.prediction_heads, preds_p_for_heads, logits)):
+            merge_fns = []
+            for i, (head, preds_p_for_head, logits_for_head) in enumerate(zip(self.prediction_heads, preds_for_heads, logits)):
                 preds = head.formatted_preds(logits=logits_for_head, preds_p=preds_p_for_head, **kwargs)
-                all_preds[i].append(preds)
-                if hasattr(head, "merge"):
-                    merge_fn = getattr(head, "merge", None)
-            if merge_fn is not None:
-                all_preds = merge_fn(all_preds)
+                preds_final[i].append(preds)
+                merge_fns.append(getattr(head, "merge", None))
 
-        return all_preds
+            merge_fns = [x for x in merge_fns if x is not None]
+            if len(merge_fns) == 0:
+                pass
+            elif len(merge_fns) == 1:
+                merge_fn = merge_fns[0]
+                preds_final = merge_fn(preds_final)
+            else:
+                raise Exception("More than one of the prediction heads have a merge() function")
+
+        # try:
+        #     preds_final = [ap.to_json() for ap in preds_final]
+        # except AttributeError:
+        #     pass
+        return preds_final
 
     def forward(self, **kwargs):
         """
@@ -452,7 +452,10 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
 
         # Run forward pass of language model
         if extraction_layer == -1:
-            sequence_output, pooled_output = self.language_model(**kwargs, output_all_encoded_layers=False)
+            try:
+                sequence_output, pooled_output = self.language_model(**kwargs, output_all_encoded_layers=False)
+            except:
+                print()
         else:
             # get output from an earlier layer
             self.language_model.enable_hidden_states_output()
