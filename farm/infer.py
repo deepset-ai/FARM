@@ -14,7 +14,7 @@ from farm.data_handler.utils import grouper
 from farm.modeling.tokenization import Tokenizer
 from farm.modeling.adaptive_model import AdaptiveModel, BaseAdaptiveModel
 from farm.utils import initialize_device_settings
-from farm.utils import set_all_seeds, calc_chunksize, log_ascii_workers
+from farm.utils import set_all_seeds, calc_chunksize
 
 
 logger = logging.getLogger(__name__)
@@ -51,7 +51,8 @@ class Inferencer:
         name=None,
         return_class_probs=False,
         extraction_strategy=None,
-        extraction_layer=None
+        extraction_layer=None,
+        num_processes=None,
     ):
         """
         Initializes Inferencer from an AdaptiveModel and a Processor instance.
@@ -76,6 +77,10 @@ class Inferencer:
         :type extraction_strategy: str
         :param extraction_layer: number of layer from which the embeddings shall be extracted. Default: -1 (very last layer).
         :type extraction_layer: int
+        :param num_processes: the number of processes for `multiprocessing.Pool`. Set to value of 0 to disable
+                              multiprocessing. Set to None to let Inferencer use all CPU cores. If you want to
+                              debug the Language Model, you might need to disable multiprocessing!
+        :type num_processes: int
         :return: An instance of the Inferencer.
 
         """
@@ -106,6 +111,14 @@ class Inferencer:
         model.connect_heads_with_processor(processor.tasks, require_labels=False)
         set_all_seeds(42)
 
+        self.process_pool = None
+        if num_processes == 0:  # disable multiprocessing
+            self.process_pool = None
+        else:
+            if num_processes is None:  # use all CPU cores
+                num_processes = mp.cpu_count() - 1
+            self.process_pool = mp.Pool(processes=num_processes)
+
     @classmethod
     def load(
         cls,
@@ -118,7 +131,8 @@ class Inferencer:
         max_seq_len=256,
         doc_stride=128,
         extraction_layer=None,
-        extraction_strategy=None
+        extraction_strategy=None,
+        num_processes=None,
     ):
         """
         Load an Inferencer incl. all relevant components (model, tokenizer, processor ...) either by
@@ -148,6 +162,10 @@ class Inferencer:
         :type extraction_strategy: str
         :param extraction_layer: number of layer from which the embeddings shall be extracted. Default: -1 (very last layer).
         :type extraction_layer: int
+        :param num_processes: the number of processes for `multiprocessing.Pool`. Set to value of 0 to disable
+                              multiprocessing. Set to None to let Inferencer use all CPU cores. If you want to
+                              debug the Language Model, you might need to disable multiprocessing!
+        :type num_processes: int
         :return: An instance of the Inferencer.
 
         """
@@ -223,14 +241,15 @@ class Inferencer:
             name=name,
             return_class_probs=return_class_probs,
             extraction_strategy=extraction_strategy,
-            extraction_layer=extraction_layer
+            extraction_layer=extraction_layer,
+            num_processes=num_processes,
         )
 
     def save(self, path):
         self.model.save(path)
         self.processor.save(path)
 
-    def inference_from_file(self, file, num_processes=None, multiprocessing_chunksize=None, streaming=False):
+    def inference_from_file(self, file, multiprocessing_chunksize=None, streaming=False):
         """
         Run down-stream inference on samples created from an input file.
         The file should be in the same format as the ones used during training
@@ -238,10 +257,6 @@ class Inferencer:
 
         :param file: path of the input file for Inference
         :type file: str
-        :param num_processes: the number of processes for `multiprocessing.Pool`. Set to value of 0 to disable
-                              multiprocessing. Set to None to let Inferencer determine optimum number. If you
-                              want to debug the Language Model, you might need to disable multiprocessing!
-        :type num_processes: int
         :param multiprocessing_chunksize: number of dicts to put together in one chunk and feed to one process
         :type multiprocessing_chunksize: int
         :param streaming: return a Python generator object that yield results as they get computed, instead of
@@ -257,7 +272,6 @@ class Inferencer:
         preds_all = self.inference_from_dicts(
             dicts,
             rest_api_schema=False,
-            num_processes=num_processes,
             multiprocessing_chunksize=multiprocessing_chunksize,
             streaming=streaming,
         )
@@ -267,7 +281,7 @@ class Inferencer:
             return list(preds_all)
 
     def inference_from_dicts(
-        self, dicts, rest_api_schema=False, num_processes=None, multiprocessing_chunksize=None, streaming=False
+        self, dicts, rest_api_schema=False, multiprocessing_chunksize=None, streaming=False
     ):
         """
         Runs down-stream inference on samples created from input dictionaries.
@@ -291,14 +305,6 @@ class Inferencer:
                                 While input is almost the same, output contains additional meta data(offset, context..)
         :type rest_api_schema: bool
         :return: dict of predictions
-        :param num_processes: the number of processes for `multiprocessing.Pool`. Set to value of 0 to disable
-                              multiprocessing. Set to None to let inferencer determine optimum number. If you want
-                              to debug the Language Model, you might need to disable multiprocessing!
-                              For very small number of dicts, time incurred in spawning processes could outweigh
-                              performance boost, eg, in the case of HTTP APIs for Inference. For such cases
-                              multiprocessing should be disabled. This argument is mandatory if used with `streaming`
-                              set to True.
-        :type num_processes: int
         :param multiprocessing_chunksize: number of dicts to put together in one chunk and feed to one process
                                           (only relevant if you do multiprocessing)
         :type multiprocessing_chunksize: int
@@ -317,29 +323,26 @@ class Inferencer:
         if len(self.model.prediction_heads) > 0:
             aggregate_preds = hasattr(self.model.prediction_heads[0], "aggregate_preds")
 
-        if num_processes == 0:  # multiprocessing disabled (helpful for debugging or using in web frameworks)
+        if self.process_pool is None:  # multiprocessing disabled (helpful for debugging or using in web frameworks)
             predictions = self._inference_without_multiprocessing(dicts, rest_api_schema, aggregate_preds)
             return predictions
-
         else:  # use multiprocessing for inference
             # Calculate values of multiprocessing_chunksize and num_processes if not supplied in the parameters.
             # The calculation of the values is based on whether streaming mode is enabled. This is only for speed
             # optimization and do not impact the results of inference.
             if streaming:
-                if not multiprocessing_chunksize:
+                if multiprocessing_chunksize is None:
                     logger.warning("Streaming mode is enabled for the Inferencer but multiprocessing_chunksize is not "
                                    "supplied. Continuing with a default value of 20. Perform benchmarking on your data "
                                    "to get the optimal chunksize.")
                     multiprocessing_chunksize = 20
-                if not num_processes:  # use all CPU cores if num_processes not set.
-                    num_processes = mp.cpu_count()
             else:
-                _chunk_size, _num_processes = calc_chunksize(len(dicts))
-                multiprocessing_chunksize = multiprocessing_chunksize or _chunk_size
-                num_processes = num_processes or _num_processes
+                if multiprocessing_chunksize is None:
+                    _chunk_size, _ = calc_chunksize(len(dicts))
+                    multiprocessing_chunksize = _chunk_size
 
             predictions = self._inference_with_multiprocessing(
-                dicts, rest_api_schema, aggregate_preds, multiprocessing_chunksize, num_processes,
+                dicts, rest_api_schema, aggregate_preds, multiprocessing_chunksize,
             )
 
             # return a generator object if streaming is enabled, else, cast the generator to a list.
@@ -376,7 +379,7 @@ class Inferencer:
         return preds_all
 
     def _inference_with_multiprocessing(
-        self, dicts, rest_api_schema, aggregate_preds, multiprocessing_chunksize, num_processes
+        self, dicts, rest_api_schema, aggregate_preds, multiprocessing_chunksize
     ):
         """
         Implementation of inference. This method is a generator that yields the results.
@@ -391,21 +394,13 @@ class Inferencer:
         :type aggregate_preds: bool
         :param multiprocessing_chunksize: number of dicts to put together in one chunk and feed to one process
         :type multiprocessing_chunksize: int
-        :param num_processes: size of multiprocessing.Pool
-        :type num_processes: int
         :return: generator object that yield predictions
         :rtype: iter
         """
-        # Get us some workers (i.e. processes)
-        p = mp.Pool(processes=num_processes)
-        logger.info(
-            f"Got ya {num_processes} parallel workers to do inference on dicts (chunksize = {multiprocessing_chunksize})..."
-        )
-        log_ascii_workers(num_processes, logger)
 
-        # We group the input dicts into chunks and feed each chunk to a different process,
-        # where it gets converted to a pytorch dataset
-        results = p.imap(
+        # We group the input dicts into chunks and feed each chunk to a different process
+        # in the pool, where it gets converted to a pytorch dataset
+        results = self.process_pool.imap(
             partial(self._create_datasets_chunkwise, processor=self.processor, rest_api_schema=rest_api_schema),
             grouper(iterable=dicts, n=multiprocessing_chunksize),
             1,
@@ -422,9 +417,6 @@ class Inferencer:
             else:
                 predictions = self._get_predictions(dataset, tensor_names, baskets, rest_api_schema, disable_tqdm=True)
             yield from predictions
-
-        p.close()
-        p.join()
 
     @classmethod
     def _create_datasets_chunkwise(cls, chunk, processor, rest_api_schema):
@@ -525,9 +517,7 @@ class Inferencer:
                                                rest_api_schema=rest_api_schema)[0]
         return preds_all
 
-    def extract_vectors(
-        self, dicts, extraction_strategy="cls_token", extraction_layer=-1, num_processes=None
-    ):
+    def extract_vectors(self, dicts, extraction_strategy="cls_token", extraction_layer=-1):
         """
         Converts a text into vector(s) using the language model only (no prediction head involved).
 
@@ -542,8 +532,6 @@ class Inferencer:
         :type extraction_strategy: str
         :param extraction_layer: number of layer from which the embeddings shall be extracted. Default: -1 (very last layer).
         :type extraction_layer: int
-        :param num_processes: number of parallel processes for multiprocessing
-        :type num_processes: int
         :return: dict of predictions
         """
 
@@ -552,7 +540,7 @@ class Inferencer:
         self.model.language_model.extraction_layer = extraction_layer
         self.model.language_model.extraction_strategy = extraction_strategy
 
-        return self.inference_from_dicts(dicts, rest_api_schema=False, num_processes=num_processes)
+        return self.inference_from_dicts(dicts, rest_api_schema=False)
 
 
 class FasttextInferencer:

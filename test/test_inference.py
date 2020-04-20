@@ -2,10 +2,12 @@ import pytest
 
 
 @pytest.mark.parametrize("streaming", [True, False])
-@pytest.mark.parametrize("multiprocessing_chunksize", [None, 0, 2])
-@pytest.mark.parametrize("num_processes", [None, 0, 2])
+@pytest.mark.parametrize("multiprocessing_chunksize", [None, 2])
 @pytest.mark.parametrize("rest_api_schema", [True, False])
-def test_qa_format_and_results(adaptive_model_qa, streaming, multiprocessing_chunksize, num_processes, rest_api_schema):
+@pytest.mark.parametrize(
+    "adaptive_model_qa,num_processes", ([(None, None), (None, 0), (None, 2)]), indirect=["adaptive_model_qa"]
+)  # TODO prevent re-load of adaptive_model fixture for each test case
+def test_qa_format_and_results(adaptive_model_qa, streaming, multiprocessing_chunksize, rest_api_schema):
 
     qa_inputs_dicts = [
         {
@@ -27,7 +29,6 @@ def test_qa_format_and_results(adaptive_model_qa, streaming, multiprocessing_chu
 
     results = adaptive_model_qa.inference_from_dicts(
         dicts=qa_inputs_dicts,
-        num_processes=num_processes,
         multiprocessing_chunksize=multiprocessing_chunksize,
         streaming=streaming,
         rest_api_schema=True,
