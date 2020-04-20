@@ -3,11 +3,9 @@ import pytest
 
 @pytest.mark.parametrize("streaming", [True, False])
 @pytest.mark.parametrize("multiprocessing_chunksize", [None, 2])
-@pytest.mark.parametrize("num_processes", [None, 0, 2])
+# @pytest.mark.parametrize("num_processes", [2, 0, None]) # TODO add test for multiprocessing
 @pytest.mark.parametrize("rest_api_schema", [True, False])
-def test_qa_format_and_results(adaptive_model_qa, streaming, multiprocessing_chunksize, num_processes, rest_api_schema):
-
-    adaptive_model_qa._set_multiprocessing_pool(num_processes)
+def test_qa_format_and_results(adaptive_model_qa, streaming, multiprocessing_chunksize, rest_api_schema):
     qa_inputs_dicts = [
         {
             "questions": ["In what country is Normandy"],
