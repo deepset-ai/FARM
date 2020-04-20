@@ -686,7 +686,7 @@ class TokenClassificationHead(PredictionHead):
                         "probability": prob,
                     }
                 )
-            res["predictions"].extend(seq_res)
+            res["predictions"].append(seq_res)
         return res
 
 
