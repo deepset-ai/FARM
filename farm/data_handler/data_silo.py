@@ -185,6 +185,7 @@ class DataSilo:
         """
         logger.info("\nLoading data into the data silo ..."
                     "{}".format(TRACTOR_SMALL))
+        self.tensor_names = None
         # train data
         if train_dicts:
             # either from supplied dicts
@@ -226,7 +227,10 @@ class DataSilo:
             # or from file (default)
             test_file = self.processor.data_dir / self.processor.test_filename
             logger.info("Loading test set from: {}".format(test_file))
-            self.data["test"], self.tensor_names = self._get_dataset(test_file)
+            if self.tensor_names:
+                self.data["test"], _ = self._get_dataset(test_file)
+            else:
+                self.data["test"], self.tensor_names = self._get_dataset(test_file)
         else:
             logger.info("No test set is being loaded")
             self.data["test"] = None

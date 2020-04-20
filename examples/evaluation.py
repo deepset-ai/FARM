@@ -4,6 +4,7 @@ from farm.data_handler.processor import TextClassificationProcessor, SquadProces
 from farm.data_handler.data_silo import DataSilo
 from farm.eval import Evaluator
 from farm.modeling.adaptive_model import AdaptiveModel
+from pathlib import Path
 
 def evaluate_classification():
     device, n_gpu = initialize_device_settings(use_cuda=True)
@@ -27,8 +28,8 @@ def evaluate_classification():
         train_filename=None,
         dev_filename=None,
         dev_split=0,
-        test_filename="test.tsv",
-        data_dir="../data/sentiment",
+        test_filename="test_TIMESTAMP1.tsv",
+        data_dir=Path("../data/germeval17"),
     )
 
     # 3. Create a DataSilo that loads dataset, provides DataLoaders for them and calculates a few descriptive statistics of our datasets
@@ -77,8 +78,8 @@ def evaluate_question_answering():
         train_filename=None,
         dev_filename=None,
         dev_split=0,
-        test_filename="test.json",
-        data_dir="../data/covid",
+        test_filename="dev-v2.0.json",
+        data_dir="../data/squad20",
         doc_stride=192,
     )
 
