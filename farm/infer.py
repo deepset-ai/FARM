@@ -111,13 +111,7 @@ class Inferencer:
         model.connect_heads_with_processor(processor.tasks, require_labels=False)
         set_all_seeds(42)
 
-        self.process_pool = None
-        if num_processes == 0:  # disable multiprocessing
-            self.process_pool = None
-        else:
-            if num_processes is None:  # use all CPU cores
-                num_processes = mp.cpu_count() - 1
-            self.process_pool = mp.Pool(processes=num_processes)
+        self._set_multiprocessing_pool(num_processes)
 
     @classmethod
     def load(
@@ -244,6 +238,24 @@ class Inferencer:
             extraction_layer=extraction_layer,
             num_processes=num_processes,
         )
+
+    def _set_multiprocessing_pool(self, num_processes):
+        """
+        Initialize a multiprocessing.Pool for instances of Inferencer.
+
+         :param num_processes: the number of processes for `multiprocessing.Pool`. Set to value of 0 to disable
+                               multiprocessing. Set to None to let Inferencer use all CPU cores. If you want to
+                               debug the Language Model, you might need to disable multiprocessing!
+        :type num_processes: int
+        :return:
+        """
+        self.process_pool = None
+        if num_processes == 0:  # disable multiprocessing
+            self.process_pool = None
+        else:
+            if num_processes is None:  # use all CPU cores
+                num_processes = mp.cpu_count() - 1
+            self.process_pool = mp.Pool(processes=num_processes)
 
     def save(self, path):
         self.model.save(path)
