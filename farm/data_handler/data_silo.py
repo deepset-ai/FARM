@@ -685,6 +685,48 @@ class DataSiloForCrossVal:
         return self.loaders[which]
 
     @staticmethod
+    def make_question_answering(datasilo, sets=None, n_splits=5, stratified=False, dev_split=0,
+             shuffle=True, random_state=None):
+        """
+        Create number of folds data-silo-like objects which can be used for training from the
+        original data silo passed on.
+
+        :param datasilo: the data silo that contains the original data
+        :param sets: which sets to use to create the xval folds
+        :param n_splits: number of folds to create
+        :param stratified: if class stratificiation should be done
+        :param shuffle: shuffle each class' samples before splitting
+        :param random_state: random state for shuffling
+        :param dev_split: size of the dev set for a fold, held out from the training set
+        """
+        all_data = datasilo.data["train"]
+
+        idxs = list(range(len(all_data.datasets)))
+
+        xval = KFold(n_splits=n_splits, shuffle=shuffle, random_state=random_state)
+        xval_split = xval.split(idxs)
+        silos = []
+        for train_idx, test_idx in xval_split:
+            #Each training set is further divided into actual train and dev set
+            if dev_split > 0:
+                n_dev = int(np.ceil(dev_split * len(train_idx)))
+                assert n_dev > 0, f"dev split of {dev_split} is not large enough to split away a development set"
+                n_actual_train = len(train_idx) - n_dev
+                # we just do this by taking the first/last indices from the train set (which should be
+                # shuffled by default)
+                actual_train_idx = train_idx[:n_actual_train]
+                dev_idx = train_idx[n_actual_train:]
+                ds_dev = ConcatDataset([all_data.datasets[x] for x in dev_idx])
+            else:
+                ds_dev = None
+                actual_train_idx = train_idx
+
+            ds_train = ConcatDataset([all_data.datasets[x] for x in actual_train_idx])
+            ds_test = ConcatDataset([all_data.datasets[x] for x in test_idx])
+            silos.append(DataSiloForCrossVal(datasilo, ds_train, ds_dev, ds_test))
+        return silos
+
+    @staticmethod
     def make(datasilo, sets=["train", "dev", "test"], n_splits=5, stratified=True,
              shuffle=True, random_state=None, dev_split=0.2):
         """

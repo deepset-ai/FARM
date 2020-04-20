@@ -1,5 +1,6 @@
 import logging
 import json
+import torch
 from pathlib import Path
 
 from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
@@ -29,24 +30,30 @@ def question_answering_crossvalidation():
     # reduce verbosity from transformers library
     logging.getLogger('transformers').setLevel(logging.WARNING)
 
-    ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
+    #ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
     # for local logging instead:
     # ml_logger = MLFlowLogger(tracking_uri="logs")
-    ml_logger.init_experiment(experiment_name="Covid_QA_XVAL", run_name="Crossvalidation")
+    #ml_logger.init_experiment(experiment_name="Covid_QA_XVAL", run_name="Crossvalidation")
 
     ##########################
     ########## Settings
     ##########################
-    xval_folds = 5
+    xval_folds = 3
+    timoscores = []
     xval_stratified = False # stratified sampling of prediction labels doesn't make sense with question-answering
 
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)
-    n_epochs = 3
-    batch_size = 24
-    evaluate_every = 100
-    lang_model = "deepset/roberta-base-squad2"
-    do_lower_case = False
+    n_epochs = 2
+    batch_size = 4*4
+    evaluate_every = 600
+    # lang_model = "deepset/roberta-base-squad2"
+    # do_lower_case = True
+
+    lang_model = "deepset/bert-large-uncased-whole-word-masking-squad2"
+    do_lower_case = True
+
+    dev_split = 0.0
     use_amp = None
 
     # 1.Create a tokenizer
@@ -62,9 +69,9 @@ def question_answering_crossvalidation():
         max_seq_len=384,
         label_list=label_list,
         metric=metric,
-        train_filename="answers.json",
+        train_filename="flat_short.json", # "flat_short.json", "200406shortanswers.json", "200406answers.json", "subset.json", "flat_short_shortanswers.json"
         dev_filename=None,
-        dev_split=0.1,
+        dev_split=0,
         test_filename=None,
         data_dir=Path("../data/covid"),
         doc_stride=192,
@@ -76,29 +83,20 @@ def question_answering_crossvalidation():
         batch_size=batch_size)
 
     # Load one silo for each fold in our cross-validation
-    silos = DataSiloForCrossVal.make(data_silo, n_splits=xval_folds, stratified=xval_stratified)
+    silos = DataSiloForCrossVal.make_question_answering(data_silo, sets=["train"], n_splits=xval_folds, stratified=xval_stratified, dev_split=dev_split)
 
     # the following steps should be run for each of the folds of the cross validation, so we put them
     # into a function
     def train_on_split(silo_to_use, n_fold, save_dir):
         logger.info(f"############ Crossvalidation: Fold {n_fold} ############")
-        # Create an AdaptiveModel
-        # a) which consists of a pretrained language model as a basis
-        language_model = LanguageModel.load(lang_model)
-        # b) and a prediction head on top that is suited for our task => Text classification
-        prediction_head = QuestionAnsweringHead()
-
-        model = AdaptiveModel(
-            language_model=language_model,
-            prediction_heads=[prediction_head],
-            embeds_dropout_prob=0.1,
-            lm_output_types=["per_token"],
-            device=device)
+        model = AdaptiveModel.convert_from_transformers(lang_model, device, "question_answering")
+        model.connect_heads_with_processor(data_silo.processor.tasks, require_labels=True)
+        model.prediction_heads[0].no_ans_boost = -100
 
         # Create an optimizer
         model, optimizer, lr_schedule = initialize_optimizer(
             model=model,
-            learning_rate=3e-5,
+            learning_rate=5e-6,
             device=device,
             n_batches=len(silo_to_use.loaders["train"]),
             n_epochs=n_epochs,
@@ -127,7 +125,7 @@ def question_answering_crossvalidation():
             lr_schedule=lr_schedule,
             evaluate_every=evaluate_every,
             device=device,
-            early_stopping=earlystopping,)
+            early_stopping=None,)
 
         # train it
         trainer.train()
@@ -155,26 +153,32 @@ def question_answering_crossvalidation():
             device=device
         )
         result = evaluator_test.eval(model, return_preds_and_labels=True)
-        evaluator_test.log_results(result, "Test", steps=len(silo.get_data_loader("test")), num_fold=num_fold)
+        evaluator_test.log_results(result, "Test", logging=False, steps=len(silo.get_data_loader("test")), num_fold=num_fold)
 
         allresults.append(result)
         all_preds.extend(result[0].get("preds"))
         all_labels.extend(result[0].get("labels"))
 
         # keep track of best fold
+
         squad_score = result[0]["f1"]
+        timoscores.append(squad_score)
+        print(f"Timo scoreing after {num_fold} folds with score: {squad_score}")
         if squad_score > best_squad:
             best_squad = squad_score
             bestfold = num_fold
+
+        model.cpu()
+        torch.cuda.empty_cache()
 
     # calculate overall metrics across all folds
     xval_score = squad(preds=all_preds, labels=all_labels)
 
     logger.info(f"XVAL EM:   {xval_score['EM']}")
     logger.info(f"XVAL f1:   {xval_score['f1']}")
-    ml_logger.log_metrics({"XVAL EM": xval_score["EM"]}, 0)
-    ml_logger.log_metrics({"XVAL f1": xval_score["f1"]}, 0)
+    #ml_logger.log_metrics({"XVAL EM": xval_score["EM"]}, 0)
+    #ml_logger.log_metrics({"XVAL f1": xval_score["f1"]}, 0)
     print(allresults)
-
+    print(timoscores)
 if __name__ == "__main__":
     question_answering_crossvalidation()
