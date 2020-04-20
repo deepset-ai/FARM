@@ -91,8 +91,8 @@ def test_ner_amp(caplog):
     model = Inferencer.load(save_dir, gpu=True)
     result = model.inference_from_dicts(dicts=basic_texts)
 
-    assert result[0]["predictions"][0]["context"] == "Crown"
-    assert isinstance(result[0]["predictions"][0]["probability"], np.float32)
+    assert result[0]["predictions"][0][0]["context"] == "Crown"
+    assert isinstance(result[0]["predictions"][0][0]["probability"], np.float32)
 
 
 if __name__ == "__main__":
