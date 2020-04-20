@@ -25,7 +25,7 @@ def register_metrics(name, implementation):
     registered_metrics[name] = implementation
 
 def register_ph_output_type(name, implementation):
-    registered_metrics[name] = implementation
+    registered_ph_output_types[name] = implementation
 
 def simple_accuracy(preds, labels):
     # works also with nested lists of different lengths (needed for masked LM task)
