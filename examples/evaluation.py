@@ -79,7 +79,7 @@ def evaluate_question_answering():
         dev_filename=None,
         dev_split=0,
         test_filename="dev-v2.0.json",
-        data_dir="../data/squad20",
+        data_dir=Path("../data/squad20"),
         doc_stride=192,
     )
 
