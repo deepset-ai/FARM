@@ -196,7 +196,7 @@ class DataSilo:
             logger.info("Loading train set from: {} ".format(train_file))
             self.data["train"], self.tensor_names = self._get_dataset(train_file)
         else:
-            logger.info("No train ser is being loaded")
+            logger.info("No train set is being loaded")
             self.data["train"] = None
 
         # dev data
@@ -226,10 +226,7 @@ class DataSilo:
             # or from file (default)
             test_file = self.processor.data_dir / self.processor.test_filename
             logger.info("Loading test set from: {}".format(test_file))
-            if self.processor.train_filename:
-                self.data["test"], _ = self._get_dataset(test_file)
-            else:
-                self.data["test"], self.tensor_names = self._get_dataset(test_file)
+            self.data["test"], self.tensor_names = self._get_dataset(test_file)
         else:
             logger.info("No test set is being loaded")
             self.data["test"] = None
