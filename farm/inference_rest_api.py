@@ -27,7 +27,7 @@ for model_dir in MODELS_DIRS:
 
 INFERENCERS = {}
 for idx, model_dir in enumerate(model_paths):
-    INFERENCERS[idx + 1] = Inferencer.load(str(model_dir))
+    INFERENCERS[idx + 1] = Inferencer.load(str(model_dir), num_processes=0)
 
 app = Flask(__name__)
 CORS(app)
@@ -83,7 +83,7 @@ class InferenceEndpoint(Resource):
         dicts = request.get_json().get("input", None)
         if not dicts:
             return {}
-        results = model.inference_from_dicts(dicts=dicts, rest_api_schema=True, num_processes=0)
+        results = model.inference_from_dicts(dicts=dicts, rest_api_schema=True)
         return results[0]
 
 
