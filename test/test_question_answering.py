@@ -75,7 +75,7 @@ def test_qa(caplog=None):
     model.save(save_dir)
     processor.save(save_dir)
 
-    inferencer = Inferencer.load(save_dir, batch_size=2, gpu=False)
+    inferencer = Inferencer.load(save_dir, batch_size=2, gpu=False, num_processes=0)
 
     QA_input_api_format = [
         {
@@ -109,14 +109,14 @@ def test_qa_onnx_inference():
     base_LM_model = "deepset/bert-base-cased-squad2"
 
     # Pytorch
-    inferencer = Inferencer.load(base_LM_model, batch_size=2, gpu=False, task_type="question_answering")
+    inferencer = Inferencer.load(base_LM_model, batch_size=2, gpu=False, task_type="question_answering", num_processes=0)
     result = inferencer.inference_from_dicts(dicts=QA_input_squad)[0]
     result_api_format = inferencer.inference_from_dicts(dicts=QA_input_api_format, rest_api_schema=True)[0]
 
     # ONNX
     onnx_model_export_path = Path("testsave/onnx-export")
     inferencer.model.convert_to_onnx(onnx_model_export_path)
-    inferencer = Inferencer.load(model_name_or_path=onnx_model_export_path, task_type="question_answering")
+    inferencer = Inferencer.load(model_name_or_path=onnx_model_export_path, task_type="question_answering", num_processes=0)
 
     result_onnx = inferencer.inference_from_dicts(QA_input_squad)[0]
     result_onnx_api_format = inferencer.inference_from_dicts(QA_input_api_format, rest_api_schema=True)[0]
