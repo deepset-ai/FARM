@@ -3,15 +3,28 @@ import numpy as np
 import pandas as pd
 from scipy.stats import pearsonr, spearmanr
 from seqeval.metrics import f1_score as ner_f1_score
-from sklearn.metrics import matthews_corrcoef, recall_score, precision_score, f1_score, mean_squared_error, r2_score
+from seqeval.metrics import classification_report as token_classification_report
+from sklearn.metrics import (
+    matthews_corrcoef,
+    recall_score,
+    precision_score,
+    f1_score,
+    mean_squared_error,
+    r2_score,
+    classification_report
+)
 from farm.utils import flatten_list
 import logging
 
 logger = logging.getLogger(__name__)
 
 registered_metrics = {}
+registered_ph_output_types = {}
 
 def register_metrics(name, implementation):
+    registered_metrics[name] = implementation
+
+def register_ph_output_type(name, implementation):
     registered_metrics[name] = implementation
 
 def simple_accuracy(preds, labels):
@@ -71,6 +84,42 @@ def compute_metrics(metric, preds, labels):
         return metric_func(preds, labels)
     else:
         raise KeyError(metric)
+
+
+def compute_report_metrics(head, preds, labels):
+    if head.ph_output_type == "per_token":
+        report_fn = token_classification_report
+    elif head.ph_output_type == "per_sequence":
+        report_fn = classification_report
+    elif head.ph_output_type == "per_token_squad":
+        report_fn = lambda *args, **kwargs: "Not Implemented"
+    elif head.ph_output_type == "per_sequence_continuous":
+        report_fn = r2_score
+    elif head.ph_output_type in registered_ph_output_types:
+        report_fn = register_ph_output_type[head.ph_output_type]
+    else:
+        raise AttributeError(head.ph_output_type)
+
+    # CHANGE PARAMETERS, not all report_fn accept digits
+    if head.ph_output_type in ["per_sequence"]:
+        # supply labels as all possible combination because if ground truth labels do not cover
+        # all values in label_list (maybe dev set is small), the report will break
+        if head.model_type == "multilabel_text_classification":
+            # For multilabel classification, we don't eval with string labels here, but with multihot vectors.
+            # Therefore we need to supply all possible label ids instead of label values.
+            all_possible_labels = list(range(len(head.label_list)))
+        else:
+            all_possible_labels = head.label_list
+        return report_fn(
+            labels,
+            preds,
+            digits=4,
+            labels=all_possible_labels,
+            target_names=head.label_list
+        )
+    else:
+        return report_fn(labels, preds)
+
 
 def squad_EM(preds, labels):
     # TODO write comment describing function
