@@ -31,7 +31,7 @@ def test_conversion_inferencer(caplog):
 
     # Load from model hub
     model = "deepset/bert-base-cased-squad2"
-    nlp = Inferencer.load(model, task_type="question_answering")
+    nlp = Inferencer.load(model, task_type="question_answering", num_processes=0)
 
     assert nlp.processor.tokenizer.basic_tokenizer.do_lower_case == False
 

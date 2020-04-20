@@ -88,7 +88,7 @@ def test_ner_amp(caplog):
     basic_texts = [
         {"text": "1980 kam der Crown von Toyota"},
     ]
-    model = Inferencer.load(save_dir, gpu=True)
+    model = Inferencer.load(save_dir, num_processes=0)
     result = model.inference_from_dicts(dicts=basic_texts)
 
     assert result[0]["predictions"][0]["context"] == "Crown"
