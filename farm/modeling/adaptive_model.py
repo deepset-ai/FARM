@@ -366,10 +366,11 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
             # just return LM output (e.g. useful for extracting embeddings at inference time)
             preds_final = self.language_model.formatted_preds(logits=logits, **kwargs)
         elif n_heads == 1:
-            # collect preds from all heads (default)
-            for head, logits_for_head in zip(self.prediction_heads, logits):
-                preds = head.formatted_preds(logits=logits_for_head, **kwargs)
-                preds_final.append(preds)
+            kwargs["preds_p"] = kwargs["preds_p"][0][0]
+            head = self.prediction_heads[0]
+            logits_for_head = logits[0]
+            preds = head.formatted_preds(logits=logits_for_head, **kwargs)
+            preds_final.append(preds)
         else:
             preds = kwargs["preds_p"]
             preds_for_heads = stack(preds)
@@ -452,10 +453,7 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
 
         # Run forward pass of language model
         if extraction_layer == -1:
-            try:
-                sequence_output, pooled_output = self.language_model(**kwargs, output_all_encoded_layers=False)
-            except:
-                print()
+            sequence_output, pooled_output = self.language_model(**kwargs, output_all_encoded_layers=False)
         else:
             # get output from an earlier layer
             self.language_model.enable_hidden_states_output()
