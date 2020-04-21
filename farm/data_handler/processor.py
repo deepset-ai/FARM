@@ -358,10 +358,7 @@ class Processor(ABC):
         for name in names:
             value = getattr(self, name)
             params.update({name: str(value)})
-        try:
-            MlLogger.log_params(params)
-        except Exception as e:
-            logger.warning(f"ML logging didn't work: {e}")
+        MlLogger.log_params(params)
 
 
 #########################################
