@@ -19,13 +19,28 @@ import logging
 logger = logging.getLogger(__name__)
 
 registered_metrics = {}
-registered_ph_output_types = {}
+registered_reports = {}
 
 def register_metrics(name, implementation):
     registered_metrics[name] = implementation
 
-def register_ph_output_type(name, implementation):
-    registered_ph_output_types[name] = implementation
+def register_report(name, implementation):
+    """
+    Register a custom reporting function to be used during eval.
+
+    This can be useful:
+    - if you want to overwrite a report for an existing output type of prediction head (e.g. "per_token")
+    - if you have a new type of prediction head and want to add a custom report for it
+
+    :param name: This must match the `ph_output_type` attribute of the PredictionHead for which the report should be used.
+                 (e.g. TokenPredictionHead => `per_token`, YourCustomHead => `some_new_type`).
+    :type name: str
+    :param implementation: Function to be executed. It must take lists of `y_true` and `y_pred` as input and return a
+                           printable object (e.g. string or dict).
+                           See sklearns.metrics.classification_report for an example.
+    :type implementation: function
+    """
+    registered_reports[name] = implementation
 
 def simple_accuracy(preds, labels):
     # works also with nested lists of different lengths (needed for masked LM task)
@@ -87,7 +102,9 @@ def compute_metrics(metric, preds, labels):
 
 
 def compute_report_metrics(head, preds, labels):
-    if head.ph_output_type == "per_token":
+    if head.ph_output_type in registered_reports:
+        report_fn = register_report[head.ph_output_type]
+    elif head.ph_output_type == "per_token":
         report_fn = token_classification_report
     elif head.ph_output_type == "per_sequence":
         report_fn = classification_report
@@ -95,10 +112,9 @@ def compute_report_metrics(head, preds, labels):
         report_fn = lambda *args, **kwargs: "Not Implemented"
     elif head.ph_output_type == "per_sequence_continuous":
         report_fn = r2_score
-    elif head.ph_output_type in registered_ph_output_types:
-        report_fn = register_ph_output_type[head.ph_output_type]
     else:
-        raise AttributeError(head.ph_output_type)
+        raise AttributeError(f"No report function for head.ph_output_type '{head.ph_output_type}'. "
+                             f"You can register a custom one via register_report(name='{head.ph_output_type}', implementation=<your_report_function>")
 
     # CHANGE PARAMETERS, not all report_fn accept digits
     if head.ph_output_type in ["per_sequence"]:
