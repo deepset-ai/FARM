@@ -33,7 +33,7 @@ def question_answering():
     device, n_gpu = initialize_device_settings(use_cuda=True)
     batch_size = 24
     n_epochs = 2
-    evaluate_every = 2000
+    evaluate_every = 200
     lang_model = "roberta-base"
     do_lower_case = False # roberta is a cased model
     train_filename = "train-v2.0.json"
@@ -106,21 +106,23 @@ def question_answering():
     # 9. Load it & harvest your fruits (Inference)
     QA_input = [
             {
-                "qas": ["Who counted the game among the best ever made?"],
-                "context":  "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
-            }]
+                "questions": ["Who counted the game among the best ever made?"],
+                "text":  "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
+            }
+    ]
 
     model = Inferencer.load(save_dir, batch_size=40, gpu=True)
-    result = model.inference_from_dicts(dicts=QA_input)
+    result = model.inference_from_dicts(dicts=QA_input)[0]
 
     pprint.pprint(result)
 
     # 10. Do Inference on whole SQuAD Dataset & write the predictions file to disk
     filename = os.path.join(processor.data_dir,processor.dev_filename)
-    result = model.inference_from_file(file=filename)
+    result = model.inference_from_file(file=filename, return_json=False)
+    result_squad = [x.to_squad_eval() for x in result]
 
     write_squad_predictions(
-        predictions=result,
+        predictions=result_squad,
         predictions_filename=filename,
         out_filename="predictions.json"
     )

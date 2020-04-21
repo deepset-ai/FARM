@@ -33,7 +33,9 @@ from farm.data_handler.utils import (
     read_squad_file,
     is_json,
     get_sentence_pair,
-    split_with_metadata
+    split_with_metadata,
+    convert_rest_api_dict
+
 )
 from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
 from farm.utils import MLFlowLogger as MlLogger
@@ -948,13 +950,12 @@ class SquadProcessor(Processor):
             logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
                         "using the default task or add a custom task later via processor.add_task()")
 
-    def dataset_from_dicts(self, dicts, indices=None, rest_api_schema=False, return_baskets=False):
+    def dataset_from_dicts(self, dicts, indices=None, return_baskets=False):
         """ Overwrites the method from the base class since Question Answering processing is quite different.
         This method allows for documents and questions to be tokenized earlier. Then SampleBaskets are initialized
         with one document and one question. """
 
-        if rest_api_schema:
-            dicts = [self._convert_rest_api_dict(x) for x in dicts]
+        dicts = [convert_rest_api_dict(x) for x in dicts]
         self.baskets = self._dicts_to_baskets(dicts, indices)
         self._init_samples_in_baskets()
         self._featurize_samples()
@@ -970,7 +971,7 @@ class SquadProcessor(Processor):
             return dataset, tensor_names
 
     def _dicts_to_baskets(self, dicts, indices):
-        # Perform tokenization on documents and questions resulting in a nested list of doc-question pairs
+        # Perform tokenization on documents and questions resulting in an unnested list of doc-question pairs
         dicts_tokenized = [self.apply_tokenization(d) for d in dicts]
 
         baskets = []
@@ -1018,6 +1019,8 @@ class SquadProcessor(Processor):
             question_tokenized = tokenize_with_metadata(question_text, self.tokenizer)
             question_start_of_word = [int(x) for x in question_tokenized["start_of_word"]]
 
+            # TODO for Squad and NQ, answer_type should be paired with the question and not the passage
+            # TODO make this change for both processors
             if "is_impossible" not in question:
                 answer_type = "span"
             else:
@@ -1039,20 +1042,6 @@ class SquadProcessor(Processor):
                    "squad_id": squad_id}
             raw_baskets.append(raw)
         return raw_baskets
-
-    def _convert_rest_api_dict(self, infer_dict):
-        # converts dicts from inference mode to data structure used in FARM
-        questions = infer_dict.get("questions", None)
-        text = infer_dict.get("text", None)
-        document_id = infer_dict.get("document_id", None)
-        qas = [{"question": q,
-                "id": i,
-                "answers": [],
-                "is_impossible": False} for i, q in enumerate(questions)]
-        converted = {"qas": qas,
-                     "context": text,
-                     "document_id":document_id}
-        return converted
 
     def file_to_dicts(self, file: str) -> [dict]:
         nested_dicts = read_squad_file(filename=file)
@@ -1096,33 +1085,40 @@ class NaturalQuestionsProcessor(Processor):
             :type max_seq_len: int
             :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
             :type data_dir: str
-            :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
-            :type label_list: list
-            :param metric: name of metric that shall be used for evaluation
-            :type metric: str
             :param train_filename: The name of the file containing training data.
             :type train_filename: str
             :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
                                  will be a slice of the train set.
             :type dev_filename: str or None
-            :param test_filename: None
+            :param test_filename: The name of the file containing the test data.
             :type test_filename: str
             :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
             :type dev_split: float
-            :param doc_stride: When the document containing the answer is too long it gets split into part, strided by doc_stride
+            :param doc_stride: When the document containing the answer is too long it gets split into parts, strided by doc_stride
             :type doc_stride: int
             :param max_query_length: Maximum length of the question (in number of subword tokens)
             :type max_query_length: int
+            :param keep_is_impossible: The probability that a sample with an is_impossible label is kept
+                                        (0.0 < keep_is_impossible <= 1.0). Only works if inference is False
+            :type keep_is_impossible: float
+            :param inference: Whether we are currently using the Processsor for model inference. If True, the
+                              keep_is_impossible will be overridden and set to 1
+            :type inference: bool
             :param kwargs: placeholder for passing generic parameters
             :type kwargs: object
             """
 
             self.target = "classification"
             self.ph_output_type = "per_token_squad"
+
+            # These are classification labels from Natural Questions. Note that in this implementation, we are merging
+            # the "long_answer" and "short_answer" labels into the one "span" label
             self.answer_type_list = ["is_impossible", "span", "yes", "no"]
 
             self.doc_stride = doc_stride
             self.max_query_length = max_query_length
+
+            # If we are performing inference, we want to keep all samples
             if not inference:
                 self.keep_is_impossible = keep_is_impossible
             else:
@@ -1140,12 +1136,14 @@ class NaturalQuestionsProcessor(Processor):
                 proxies=proxies
             )
 
+            # Todo rename metric from squad to maybe QA spans or something like that
             self.add_task("question_answering", "squad", ["start_token", "end_token"])
             self.add_task("text_classification", "f1_macro", self.answer_type_list, label_name="answer_type")
 
 
     def file_to_dicts(self, file: str) -> [dict]:
         dicts = [json.loads(l) for l in open(file)]
+        # Turns a NQ dictionaries into a SQuAD style dictionaries
         dicts = [self.prepare_dict(d) for d in dicts]
         return dicts
 
@@ -1153,9 +1151,12 @@ class NaturalQuestionsProcessor(Processor):
     def _dict_to_samples(self, dictionary: dict, all_dicts=None) -> [Sample]:
         """
             This method will split question-document pairs from the SampleBasket into question-passage pairs which will
-        each form one sample. The "t" and "c" in variables stand for token and character respectively.
+        each form one sample. The "t" and "c" in variables stand for token and character respectively. This uses many
+        methods that the SquadProcessor calls but note that the SquadProcessor overwrites Processor._dicts_to_baskets()
+        while the NaturalQuestionsProcessor does not. This was done in Squad to avoid retokenizing documents that are
+        paired with multiple questions. This is not necessary for Natural Questions since there is generally a 1 to 1
+        mapping from document to question
         """
-        # dictionary_converted = self.prepare_dict(dictionary)
         dictionary_tokenized = self.apply_tokenization(dictionary)[0]
         n_special_tokens = self.tokenizer.num_added_tokens(pair=True)
         samples = create_samples_qa(dictionary_tokenized,
@@ -1195,6 +1196,8 @@ class NaturalQuestionsProcessor(Processor):
 
 
     def prepare_dict(self, dictionary):
+        """ Casts a Natural Questions dictionary that is loaded from a jsonl file into SQuAD format so that
+        the same QuestionAnsweringHead methods can be called for both tasks"""
         converted_answers = []
         doc_text = dictionary["document_text"]
         _, tok_to_ch = split_with_metadata(doc_text)
@@ -1285,8 +1288,10 @@ class NaturalQuestionsProcessor(Processor):
 
         raw_baskets = []
         if "text" in dictionary and "context" not in dictionary:
-            raise Exception("It seems that your input is in rest API format. Try setting rest_api_schema=True "
-                            "when calling inference from dicts")
+            try:
+                dictionary = convert_rest_api_dict(dictionary)
+            except:
+                raise Exception("Input does not have the expected format")
         document_text = dictionary["context"]
         document_id = dictionary.get("document_id",None)
 
@@ -1297,7 +1302,7 @@ class NaturalQuestionsProcessor(Processor):
             answers = []
             # For training and dev where labelled samples are read in from a SQuAD style file
             try:
-                squad_id = question["id"]
+                nq_id = question["id"]
                 question_text = question["question"]
                 for answer in question["answers"]:
                     a = {"text": answer["text"],
@@ -1306,16 +1311,16 @@ class NaturalQuestionsProcessor(Processor):
                     answers.append(a)
             # For inference where samples are read in as dicts without an id or answers
             except TypeError:
-                squad_id = None
+                nq_id = None
                 question_text = question
             question_tokenized = tokenize_with_metadata(question_text, self.tokenizer)
             question_start_of_word = [int(x) for x in question_tokenized["start_of_word"]]
 
             # TODO: Get rid of is_impossible key for NQ and SQUAD
             if "is_impossible" not in question:
-                is_impossible = False
+                answer_type = "span"
             else:
-                is_impossible = question["is_impossible"]
+                answer_type = question["is_impossible"]
 
             raw = {"document_text": document_text,
                    "document_tokens": document_tokenized["tokens"],
@@ -1327,8 +1332,8 @@ class NaturalQuestionsProcessor(Processor):
                    "question_offsets": question_tokenized["offsets"],
                    "question_start_of_word": question_start_of_word,
                    "answers": answers,
-                   "is_impossible": is_impossible,
-                   "squad_id": squad_id}
+                   "answer_type": answer_type,
+                   "nq_id": nq_id}
             raw_baskets.append(raw)
         return raw_baskets
 

@@ -44,15 +44,12 @@ def question_answering():
         pretrained_model_name_or_path=lang_model, do_lower_case=do_lower_case
     )
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
-    label_list = ["start_token", "end_token"]
-    metric = "squad"
     processor = NaturalQuestionsProcessor(
         tokenizer=tokenizer,
         max_seq_len=384,
         train_filename=train_filename,
-        dev_filename=None,
+        dev_filename=dev_filename,
         dev_split=0.1,
-        test_filename=None,
         data_dir=Path("../data/natural_questions"),
     )
 
@@ -106,20 +103,12 @@ def question_answering():
     # 9. Load it & harvest your fruits (Inference)
     QA_input = [
         {
-            "qas": ["1 Who counted the game among the best ever made?"],
+            "qas": ["Who counted the game among the best ever made?"],
             "context":  "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
-        },
-        {
-            "qas": ["2 Who counted the game among the best ever made?"],
-            "context": "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
-        },
-        {
-            "qas": ["3 Who counted the game among the best ever made?"],
-            "context": "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
         }
     ]
 
-    model = Inferencer.load(save_dir, batch_size=1, gpu=True, max_seq_len=10)
+    model = Inferencer.load(save_dir, batch_size=batch_size, gpu=True)
     result = model.inference_from_dicts(dicts=QA_input)
 
     pprint.pprint(result)

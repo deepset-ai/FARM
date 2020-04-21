@@ -370,7 +370,8 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
             head = self.prediction_heads[0]
             logits_for_head = logits[0]
             preds = head.formatted_preds(logits=logits_for_head, **kwargs)
-            preds_final.append(preds)
+            preds_final[0] += preds
+
         else:
             preds = kwargs["preds_p"]
             preds_for_heads = stack(preds)
@@ -395,10 +396,6 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
             else:
                 raise Exception("More than one of the prediction heads have a merge() function")
 
-        # try:
-        #     preds_final = [ap.to_json() for ap in preds_final]
-        # except AttributeError:
-        #     pass
         return preds_final
 
     def forward(self, **kwargs):

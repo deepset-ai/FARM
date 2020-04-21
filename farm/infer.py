@@ -225,7 +225,7 @@ class Inferencer:
         self.model.save(path)
         self.processor.save(path)
 
-    def inference_from_file(self, file, num_processes=None, multiprocessing_chunksize=None, streaming=False):
+    def inference_from_file(self, file, num_processes=None, multiprocessing_chunksize=None, streaming=False, return_json=True):
         """
         Run down-stream inference on samples created from an input file.
         The file should be in the same format as the ones used during training
@@ -251,7 +251,7 @@ class Inferencer:
         dicts = self.processor.file_to_dicts(file)
         preds_all = self.inference_from_dicts(
             dicts,
-            rest_api_schema=False,
+            return_json=return_json,
             num_processes=num_processes,
             multiprocessing_chunksize=multiprocessing_chunksize,
             streaming=streaming,
@@ -262,12 +262,13 @@ class Inferencer:
             return list(preds_all)
 
     def inference_from_dicts(
-        self, dicts, rest_api_schema=False, num_processes=None, multiprocessing_chunksize=None, streaming=False
+        self, dicts, return_json=True, num_processes=None, multiprocessing_chunksize=None, streaming=False
     ):
         """
         Runs down-stream inference on samples created from input dictionaries.
         The format of the input `dicts` depends on the task:
 
+        # TODO THIS COMMENT NEEDS TO BE UPDATED
         * QA (SQuAD):    [{"qas": ["What is X?"], "context":  "Some context containing the answer"}]
         * QA (rest_api): [{"questions": ["What is X?"], "text":  "Some context containing the answer"}]
         * Classification / NER / embeddings: [{"text": "Some input text"}]
@@ -282,6 +283,7 @@ class Inferencer:
         :param dicts: Samples to run inference on provided as a list(or a generator object) of dicts.
                       One dict per sample.
         :type dicts: iter(dict)
+        #TODO THIS COMMENT IS OUTDATED
         :param rest_api_schema: Whether input dicts use the format that complies with the FARM REST API.
                                 Currently only used for QA to switch from squad to a more useful format in production.
                                 While input is almost the same, output contains additional meta data(offset, context..)
@@ -314,7 +316,7 @@ class Inferencer:
             aggregate_preds = hasattr(self.model.prediction_heads[0], "aggregate_preds")
 
         if num_processes == 0:  # multiprocessing disabled (helpful for debugging or using in web frameworks)
-            predictions = self._inference_without_multiprocessing(dicts, rest_api_schema, aggregate_preds)
+            predictions = self._inference_without_multiprocessing(dicts, return_json, aggregate_preds)
             return predictions
 
         else:  # use multiprocessing for inference
@@ -335,7 +337,7 @@ class Inferencer:
                 num_processes = num_processes or _num_processes
 
             predictions = self._inference_with_multiprocessing(
-                dicts, rest_api_schema, aggregate_preds, multiprocessing_chunksize, num_processes,
+                dicts, return_json, aggregate_preds, multiprocessing_chunksize, num_processes,
             )
 
             # return a generator object if streaming is enabled, else, cast the generator to a list.
@@ -344,7 +346,7 @@ class Inferencer:
             else:
                 return predictions
 
-    def _inference_without_multiprocessing(self, dicts, rest_api_schema, aggregate_preds):
+    def _inference_without_multiprocessing(self, dicts, return_json, aggregate_preds):
         """
         Implementation of inference from dicts without using Python multiprocessing. Useful for debugging or in API
         framework where spawning new processes could be expensive.
@@ -362,23 +364,28 @@ class Inferencer:
         :rtype: list
         """
         dataset, tensor_names, baskets = self.processor.dataset_from_dicts(
-            dicts, indices=[i for i in range(len(dicts))], rest_api_schema=rest_api_schema, return_baskets=True
+            dicts, indices=[i for i in range(len(dicts))], return_baskets=True
         )
         # TODO change format of formatted_preds in QA (list of dicts)
         if aggregate_preds:
-            preds_all = self._get_predictions_and_aggregate(dataset, tensor_names, baskets, rest_api_schema)
+            preds_all = self._get_predictions_and_aggregate(dataset, tensor_names, baskets)
         else:
-            preds_all = self._get_predictions(dataset, tensor_names, baskets, rest_api_schema)
+            preds_all = self._get_predictions(dataset, tensor_names, baskets)
+
+        if return_json:
+            preds_all = [x.to_json() for x in preds_all]
+
         return preds_all
 
     def _inference_with_multiprocessing(
-        self, dicts, rest_api_schema, aggregate_preds, multiprocessing_chunksize, num_processes
+        self, dicts, return_json, aggregate_preds, multiprocessing_chunksize, num_processes
     ):
         """
         Implementation of inference. This method is a generator that yields the results.
 
         :param dicts: Samples to run inference on provided as a list of dicts or a generator object that yield dicts.
         :type dicts: iter(dict)
+        # TODO this comment is outdated
         :param rest_api_schema: Whether input dicts use the format that complies with the FARM REST API.
                                 Currently only used for QA to switch from squad to a more useful format in production.
                                 While input is almost the same, output contains additional meta data(offset, context..)
@@ -402,7 +409,7 @@ class Inferencer:
         # We group the input dicts into chunks and feed each chunk to a different process,
         # where it gets converted to a pytorch dataset
         results = p.imap(
-            partial(self._create_datasets_chunkwise, processor=self.processor, rest_api_schema=rest_api_schema),
+            partial(self._create_datasets_chunkwise, processor=self.processor),
             grouper(iterable=dicts, n=multiprocessing_chunksize),
             1,
         )
@@ -413,26 +420,34 @@ class Inferencer:
             # TODO change format of formatted_preds in QA (list of dicts)
             if aggregate_preds:
                 predictions = self._get_predictions_and_aggregate(
-                    dataset, tensor_names, baskets, rest_api_schema, disable_tqdm=True
+                    dataset, tensor_names, baskets, disable_tqdm=True
                 )
             else:
-                predictions = self._get_predictions(dataset, tensor_names, baskets, rest_api_schema, disable_tqdm=True)
+                predictions = self._get_predictions(dataset, tensor_names, baskets, disable_tqdm=True)
+
+            if return_json:
+                # TODO this try catch should be removed when all tasks return prediction objects
+                try:
+                    predictions = [x.to_json() for x in predictions]
+                except AttributeError:
+                    pass
+
             yield from predictions
 
         p.close()
         p.join()
 
     @classmethod
-    def _create_datasets_chunkwise(cls, chunk, processor, rest_api_schema):
+    def _create_datasets_chunkwise(cls, chunk, processor):
         """Convert ONE chunk of data (i.e. dictionaries) into ONE pytorch dataset.
         This is usually executed in one of many parallel processes.
         The resulting datasets of the processes are merged together afterwards"""
         dicts = [d[1] for d in chunk]
         indices = [d[0] for d in chunk]
-        dataset, tensor_names, baskets = processor.dataset_from_dicts(dicts, indices, rest_api_schema, return_baskets=True)
+        dataset, tensor_names, baskets = processor.dataset_from_dicts(dicts, indices, return_baskets=True)
         return dataset, tensor_names, baskets
 
-    def _get_predictions(self, dataset, tensor_names, baskets, rest_api_schema=False, disable_tqdm=False):
+    def _get_predictions(self, dataset, tensor_names, baskets, disable_tqdm=False):
         """
         Feed a preprocessed dataset to the model and get the actual predictions (forward pass + formatting).
 
@@ -466,13 +481,12 @@ class Inferencer:
                     logits=[logits],
                     samples=batch_samples,
                     tokenizer=self.processor.tokenizer,
-                    rest_api_schema=rest_api_schema,
                     return_class_probs=self.return_class_probs,
                     **batch)
                 preds_all += preds
         return preds_all
 
-    def _get_predictions_and_aggregate(self, dataset, tensor_names, baskets, rest_api_schema=False, disable_tqdm=False):
+    def _get_predictions_and_aggregate(self, dataset, tensor_names, baskets, disable_tqdm=False):
         """
         Feed a preprocessed dataset to the model and get the actual predictions (forward pass + logits_to_preds + formatted_preds).
 
@@ -517,10 +531,10 @@ class Inferencer:
         # and then aggregating them here.
 
         # can assume that we have only complete docs i.e. all the samples of one doc are in the current chunk
-        preds_all = self.model.formatted_preds(logits=[None, None], # For QA we collected preds per batch and do not want to pass logits
+        logits = [None] * len(unaggregated_preds_all)
+        preds_all = self.model.formatted_preds(logits=logits, # For QA we collected preds per batch and do not want to pass logits
                                                preds_p=unaggregated_preds_all,
-                                               baskets=baskets,
-                                               rest_api_schema=rest_api_schema)
+                                               baskets=baskets)
         return preds_all
 
     def extract_vectors(

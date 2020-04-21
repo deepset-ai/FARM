@@ -646,7 +646,23 @@ def convert_id(id_string):
             ret.append(int(x))
     return ret
 
-
+def convert_rest_api_dict(infer_dict):
+    # TODO WRITE docstring
+    # Check if infer_dict is already in internal json format
+    if set(infer_dict.keys()) == set(["context", "qas"]):
+        return infer_dict
+    # converts dicts from inference mode to data structure used in FARM
+    questions = infer_dict["questions"]
+    text = infer_dict["text"]
+    document_id = infer_dict.get("document_id", None)
+    qas = [{"question": q,
+            "id": i,
+            "answers": [],
+            "is_impossible": False} for i, q in enumerate(questions)]
+    converted = {"qas": qas,
+                 "context": text,
+                 "document_id":document_id}
+    return converted
 
 
 
