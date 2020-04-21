@@ -77,6 +77,7 @@ class DataSilo:
         self.max_multiprocessing_chunksize = max_multiprocessing_chunksize
         self.caching = caching
         self.cache_path = cache_path
+        self.tensor_names = None
 
         if len(self.processor.tasks) == 0:
             raise Exception("No task initialized. Try initializing the processor with a metric and a label list. "
@@ -185,7 +186,6 @@ class DataSilo:
         """
         logger.info("\nLoading data into the data silo ..."
                     "{}".format(TRACTOR_SMALL))
-        self.tensor_names = None
         # train data
         if train_dicts:
             # either from supplied dicts

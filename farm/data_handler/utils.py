@@ -289,6 +289,9 @@ def _download_extract_downstream_data(input_file, proxies=None):
             elif "gnad" in taskname:
                 if "ef62fe3f59c1ad54cf0271d8532b8f22" != _get_md5checksum(temp_file.name):
                     logger.error(f"Someone has changed the file for {taskname}. Please make sure the correct file is used and update the md5sum in farm/data_handler/utils.py")
+            elif "germeval17" in taskname:
+                if "f1bf67247dcfe7c3c919b7b20b3f736e" != _get_md5checksum(temp_file.name):
+                    logger.error(f"Someone has changed the file for {taskname}. Please make sure the correct file is used and update the md5sum in farm/data_handler/utils.py")
             tfile = tarfile.open(temp_file.name)
             tfile.extractall(datadir)
         # temp_file gets deleted here
