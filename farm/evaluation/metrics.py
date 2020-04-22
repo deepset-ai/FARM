@@ -103,7 +103,7 @@ def compute_metrics(metric, preds, labels):
 
 def compute_report_metrics(head, preds, labels):
     if head.ph_output_type in registered_reports:
-        report_fn = register_report[head.ph_output_type]
+        report_fn = registered_reports[head.ph_output_type]
     elif head.ph_output_type == "per_token":
         report_fn = token_classification_report
     elif head.ph_output_type == "per_sequence":
