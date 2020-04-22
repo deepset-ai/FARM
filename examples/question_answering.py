@@ -33,7 +33,7 @@ def question_answering():
     device, n_gpu = initialize_device_settings(use_cuda=True)
     batch_size = 24
     n_epochs = 2
-    evaluate_every = 200
+    evaluate_every = 2000
     lang_model = "roberta-base"
     do_lower_case = False # roberta is a cased model
     train_filename = "train-v2.0.json"
@@ -106,10 +106,9 @@ def question_answering():
     # 9. Load it & harvest your fruits (Inference)
     QA_input = [
             {
-                "questions": ["Who counted the game among the best ever made?"],
-                "text":  "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
-            }
-    ]
+                "qas": ["Who counted the game among the best ever made?"],
+                "context":  "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
+            }]
 
     model = Inferencer.load(save_dir, batch_size=40, gpu=True)
     result = model.inference_from_dicts(dicts=QA_input)[0]
