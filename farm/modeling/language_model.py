@@ -21,8 +21,8 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import json
 import logging
 import os
-import io
 from pathlib import Path
+from collections import OrderedDict
 
 from dotmap import DotMap
 from tqdm import tqdm
@@ -318,9 +318,12 @@ class LanguageModel(nn.Module):
             pooled_vecs = np.ma.array(data=token_vecs, mask=ignore_mask_3d).mean(axis=1).data
         if strategy == "s3e":
             input_ids = input_ids.cpu().numpy()
-            pooled_vecs = s3e_pooling(token_embs=token_vecs, token_ids=input_ids,
-                               token_weights=s3e_stats["token_weights"], centroids=s3e_stats["centroids"],
-                               token_to_cluster=s3e_stats["token_to_cluster"])
+            pooled_vecs = s3e_pooling(token_embs=token_vecs,
+                                      token_ids=input_ids,
+                                      token_weights=s3e_stats["token_weights"],
+                                      centroids=s3e_stats["centroids"],
+                                      token_to_cluster=s3e_stats["token_to_cluster"],
+                                      mask=padding_mask == 0)
         return pooled_vecs
 
 
@@ -964,7 +967,7 @@ class EmbeddingModel():
         assert "[UNK]" in self.vocab, "No [UNK] symbol in Wordembeddingmodel! Aborting"
         self.unk_idx = self.vocab["[UNK]"]
 
-    def save(self,save_dir):
+    def save(self, save_dir):
         # Save Weights
         save_name = Path(save_dir) / self.config.embeddings_filename
         with open(save_name, "w") as f:
@@ -972,6 +975,23 @@ class EmbeddingModel():
                 f.write(w + " " + " ".join(["%.6f" % v for v in vec]) + "\n")
         f.close()
 
+        # Save vocab
+        save_name = Path(save_dir) / self.config.vocab_filename
+        with open(save_name, "w") as f:
+            for w in self.vocab:
+                f.write(w + "\n")
+        f.close()
+
+        # Save config
+        # self.save_config(save_dir)
+
+    # def save_config(self, save_dir):
+    #     save_filename = Path(save_dir) / "language_model_config.json"
+    #     with open(save_filename, "w") as file:
+    #         setattr(self.config, "name", self.__class__.__name__)
+    #         setattr(self.config, "language", self.language)
+    #         string = self.model.config.to_json_string()
+    #         file.write(string)
 
     def resize_token_embeddings(self, new_num_tokens=None):
         # function is called as a vocab length validation inside FARM
@@ -981,7 +1001,6 @@ class EmbeddingModel():
         temp["num_embeddings"] = len(self.vocab)
         temp = DotMap(temp)
         return temp
-
 
 
 class WordEmbedding_LM(LanguageModel):
@@ -1080,3 +1099,58 @@ class WordEmbedding_LM(LanguageModel):
         m = nn.BatchNorm1d(pooled_output.shape[1]) # batchnorm for stable learning
         pooled_output = m(pooled_output)
         return sequence_output, pooled_output
+
+    def trim_vocab(self, token_counts, min_threshold):
+        """ Remove embeddings for rare tokens in your corpus (< `min_threshold` occurrences) to reduce model size"""
+        logger.info(f"Remove tokens with less than {min_threshold} occurrences from model vocab")
+        new_vocab = OrderedDict()
+        valid_tok_indices = []
+        cnt = 0
+        old_num_emb = self.model.embeddings.shape[0]
+        for token, tok_idx in self.model.vocab.items():
+            if token_counts.get(token, 0) >= min_threshold or token in ("[CLS]","[SEP]","[UNK]","[PAD]","[MASK]"):
+                new_vocab[token] = cnt
+                valid_tok_indices.append(tok_idx)
+                cnt += 1
+
+        self.model.vocab = new_vocab
+        self.model.embeddings = self.model.embeddings[valid_tok_indices, :]
+        logger.info(f"Reduced vocab from {old_num_emb} to {self.model.embeddings.shape[0]}")
+
+    def normalize_embeddings(self, zero_mean=True, pca_removal=False, pca_n_components=300, pca_n_top_components=10):
+        """ Normalize word embeddings as in https://arxiv.org/pdf/1808.06305.pdf
+
+        :param zero_mean:
+        :param pca_removal:
+        :param pca_n_components:
+        :param pca_n_top_components:
+        :return:
+        """
+
+        # For example, used for S3E pooling
+        self.model.embeddings[:5, :] = torch.zeros((5, 300))
+
+        if zero_mean:
+            logger.info('Removing mean from embeddings')
+            mean_vec = torch.mean(self.model.embeddings, 0)
+            self.model.embeddings = self.model.embeddings - mean_vec
+            #TODO use this one again after testing
+            # self.model.embeddings = self.model.embeddings - torch.mean(self.model.embeddings, 0)
+            #self.model.embeddings[:5, :] = mean_vec
+
+        if pca_removal:
+            from sklearn.decomposition import PCA
+            logger.info('Removing projections on top PCA components from embeddings (see https://arxiv.org/pdf/1808.06305.pdf)')
+            pca = PCA(n_components=pca_n_components)
+            pca.fit(self.model.embeddings.cpu().numpy())
+
+            U1 = pca.components_
+            explained_variance = pca.explained_variance_
+
+            # Removing Projections on Top Components
+            PVN_dims = pca_n_top_components
+            for emb_idx in tqdm(range(self.model.embeddings.shape[0]), desc="Removing projections"):
+                for pca_idx, u in enumerate(U1[0:PVN_dims]):
+                    ratio = (explained_variance[pca_idx] - explained_variance[PVN_dims]) / explained_variance[pca_idx]
+                    self.model.embeddings[emb_idx] = self.model.embeddings[emb_idx] - ratio * np.dot(u.transpose(), self.model.embeddings[emb_idx]) * u
+            logger.info("Done with normalization")

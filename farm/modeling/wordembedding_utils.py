@@ -233,7 +233,7 @@ def load_embedding_vectors(embedding_file, vocab):
     embeddings_dimensionality = None
     vectors = {}
 
-    for line in tqdm(f):
+    for line in tqdm(f, desc="Loading embeddings"):
         line = line.strip()
         if line:
             word, vec = line.split(' ', 1)

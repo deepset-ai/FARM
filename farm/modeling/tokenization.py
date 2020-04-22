@@ -152,7 +152,7 @@ class EmbeddingTokenizer(PreTrainedTokenizer):
             logger.info(
                 f"Model name '{pretrained_model_name_or_path}' not found in model shortcut name "
                 f"list ({', '.join(EMBEDDING_VOCAB_FILES_MAP['vocab_file'].keys())}). "
-                "Assuming '{pretrained_model_name_or_path}' is a path to a directory containing tokenizer files.")
+                f"Assuming '{pretrained_model_name_or_path}' is a path to a directory containing tokenizer files.")
 
             temp = open(str(Path(pretrained_model_name_or_path) / "language_model_config.json"), "r",
                         encoding="utf-8").read()

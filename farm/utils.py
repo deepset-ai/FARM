@@ -382,7 +382,7 @@ def write_msmarco_results(results, output_filename):
             out_file.write("\n")
 
 
-def s3e_pooling(token_embs, token_ids, token_weights, centroids, token_to_cluster):
+def s3e_pooling(token_embs, token_ids, token_weights, centroids, token_to_cluster, mask):
     """
     Pooling of word/token embeddings as described by Wang et al in their paper
     "Efficient Sentence Embedding via Semantic Subspace Analysis"
@@ -402,14 +402,16 @@ def s3e_pooling(token_embs, token_ids, token_weights, centroids, token_to_cluste
     emb_dim = token_embs.shape[2]
     # n_tokens = token_embs.shape[1]
     n_samples = token_embs.shape[0]
+    # Mask tokens that should be ignored (e.g. Padding, CLS ...)
+    token_ids[mask] = -1
 
     # Process each sentence in the batch at a time
     for sample_idx in range(n_samples):
         stage_vec = [{}]
         # 1) create a dict with key=tok_id, value = embedding
         for tok_idx, tok_id in enumerate(token_ids[sample_idx, :]):
-            # TODO Normalize word vector (mean + PCA)
-            stage_vec[-1][tok_id] = token_embs[sample_idx, tok_idx]
+            if tok_id != -1:
+                stage_vec[-1][tok_id] = token_embs[sample_idx, tok_idx]
 
         # 2) create a second dict with key=cluster_id, val=[embeddings] (= C)
         stage_vec.append({})
@@ -435,6 +437,7 @@ def s3e_pooling(token_embs, token_ids, token_weights, centroids, token_to_cluste
         sentvec = []
         vec = np.zeros((emb_dim))
         for key, value in stage_vec[0].items():
+            # print(token_weights[key])
             vec = vec + value * token_weights[key]
         sentvec.append(vec / len(stage_vec[0].keys()))
 
@@ -462,4 +465,18 @@ def s3e_pooling(token_embs, token_ids, token_weights, centroids, token_to_cluste
         embeddings.append(sentvec)
 
     embeddings = np.vstack(embeddings)
+
+    # Post processing
+    #TODO
+    # if args.postprocessing:
+    #     # Principal Component Removal
+    #     print('post processing sentence embedding using principal component removal')
+    #     svd = TruncatedSVD(n_components=args.postprocessing, n_iter=7, random_state=0)
+    #     svd.fit(embeddings)
+    #     args.svd_comp = svd.components_
+    #
+    #     if args.postprocessing==1:
+    #         embeddings = embeddings - embeddings.dot(args.svd_comp.transpose()) * args.svd_comp
+    #     else:
+    #         embeddings = embeddings - embeddings.dot(args.svd_comp.transpose()).dot(args.svd_comp)
     return embeddings
