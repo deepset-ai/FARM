@@ -32,27 +32,21 @@ def question_answering_crossvalidation():
 
     #ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
     # for local logging instead:
-    # ml_logger = MLFlowLogger(tracking_uri="logs")
-    #ml_logger.init_experiment(experiment_name="Covid_QA_XVAL", run_name="Crossvalidation")
+    ml_logger = MLFlowLogger(tracking_uri="logs")
+    #ml_logger.init_experiment(experiment_name="QA_X-Validation", run_name="Squad_Roberta_Base")
 
     ##########################
     ########## Settings
     ##########################
-    xval_folds = 3
-    timoscores = []
-    xval_stratified = False # stratified sampling of prediction labels doesn't make sense with question-answering
+    xval_folds = 5
 
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)
-    n_epochs = 2
-    batch_size = 4*4
-    evaluate_every = 600
-    # lang_model = "deepset/roberta-base-squad2"
-    # do_lower_case = True
-
-    lang_model = "deepset/bert-large-uncased-whole-word-masking-squad2"
+    n_epochs = 3
+    batch_size = 20
+    evaluate_every = 0
+    lang_model = "deepset/roberta-base-squad2"
     do_lower_case = True
-
     dev_split = 0.0
     use_amp = None
 
@@ -69,11 +63,11 @@ def question_answering_crossvalidation():
         max_seq_len=384,
         label_list=label_list,
         metric=metric,
-        train_filename="flat_short.json", # "flat_short.json", "200406shortanswers.json", "200406answers.json", "subset.json", "flat_short_shortanswers.json"
+        train_filename="dev-v2.0.json", # "flat_short.json", "200406shortanswers.json", "200406answers.json", "subset.json", "flat_short_shortanswers.json"
         dev_filename=None,
         dev_split=0,
         test_filename=None,
-        data_dir=Path("../data/covid"),
+        data_dir=Path("../data/squad20"),
         doc_stride=192,
     )
 
@@ -83,15 +77,30 @@ def question_answering_crossvalidation():
         batch_size=batch_size)
 
     # Load one silo for each fold in our cross-validation
-    silos = DataSiloForCrossVal.make_question_answering(data_silo, sets=["train"], n_splits=xval_folds, stratified=xval_stratified, dev_split=dev_split)
+    silos = DataSiloForCrossVal.make_question_answering(data_silo, n_splits=xval_folds, dev_split=dev_split)
 
     # the following steps should be run for each of the folds of the cross validation, so we put them
     # into a function
     def train_on_split(silo_to_use, n_fold, save_dir):
         logger.info(f"############ Crossvalidation: Fold {n_fold} ############")
+
+        # fine-tune pre-trained question-answering model
         model = AdaptiveModel.convert_from_transformers(lang_model, device, "question_answering")
         model.connect_heads_with_processor(data_silo.processor.tasks, require_labels=True)
-        model.prediction_heads[0].no_ans_boost = -100
+
+        # or train question-answering models from scratch
+        ## Create an AdaptiveModel
+        ## a) which consists of a pretrained language model as a basis
+        ## language_model = LanguageModel.load(lang_model)
+        ## b) and a prediction head on top that is suited for our task => Question-answering
+        ## prediction_head = QuestionAnsweringHead()
+        ## model = AdaptiveModel(
+        ##    language_model=language_model,
+        ##    prediction_heads=[prediction_head],
+        ##    embeds_dropout_prob=0.1,
+        ##    lm_output_types=["per_token"],
+        ##    device=device,)
+
 
         # Create an optimizer
         model, optimizer, lr_schedule = initialize_optimizer(
@@ -105,17 +114,6 @@ def question_answering_crossvalidation():
         # Feed everything to the Trainer, which keeps care of growing our model into powerful plant and evaluates it from time to time
         # Also create an EarlyStopping instance and pass it on to the trainer
 
-        # An early stopping instance can be used to save the model that performs best on the dev set
-        # according to some metric and stop training when no improvement is happening for some iterations.
-        # NOTE: Using a different save directory for each fold, allows us afterwards to use the
-        # nfolds best models in an ensemble!
-        save_dir = Path(str(save_dir) + f"-{n_fold}")
-        earlystopping = EarlyStopping(
-            metric="f1", mode="max",  # use the metric from our own metrics function instead of loss
-            save_dir=save_dir,  # where to save the best model
-            patience=2  # number of evaluations to wait for improvement before terminating the training
-        )
-
         trainer = Trainer(
             model=model,
             optimizer=optimizer,
@@ -124,23 +122,23 @@ def question_answering_crossvalidation():
             n_gpu=n_gpu,
             lr_schedule=lr_schedule,
             evaluate_every=evaluate_every,
-            device=device,
-            early_stopping=None,)
+            device=device)
 
         # train it
         trainer.train()
 
         return trainer.model
 
-    # for each fold, run the whole training, earlystopping to get a model, then evaluate the model
-    # on the test set of each fold
+    # for each fold, run the whole training, then evaluate the model on the test set of each fold
     # Remember all the results for overall metrics over all predictions of all folds and for averaging
     allresults = []
     all_preds = []
     all_labels = []
+    all_f1 = []
+    all_em = []
     bestfold = None
     best_squad = -1
-    save_dir = Path("saved_models/roberta-qa-covid")
+    save_dir = Path("saved_models/roberta-qa-squad")
 
     for num_fold, silo in enumerate(silos):
         model = train_on_split(silo, num_fold, save_dir)
@@ -158,27 +156,30 @@ def question_answering_crossvalidation():
         allresults.append(result)
         all_preds.extend(result[0].get("preds"))
         all_labels.extend(result[0].get("labels"))
+        all_f1.append(result[0]["f1"])
+        all_em.append(result[0]["EM"])
 
         # keep track of best fold
-
         squad_score = result[0]["f1"]
-        timoscores.append(squad_score)
-        print(f"Timo scoreing after {num_fold} folds with score: {squad_score}")
         if squad_score > best_squad:
             best_squad = squad_score
             bestfold = num_fold
 
-        model.cpu()
-        torch.cuda.empty_cache()
+    # Save the per-fold results to json for a separate, more detailed analysis
+    # with open("qa_xval.results.json", "wt") as fp:
+    #     json.dump(allresults, fp)
+
+        # model.cpu()
+        # torch.cuda.empty_cache()
 
     # calculate overall metrics across all folds
     xval_score = squad(preds=all_preds, labels=all_labels)
 
+    logger.info(f"Single EM-Scores:   {all_em}")
+    logger.info(f"Single F1-Scores:   {all_f1}")
     logger.info(f"XVAL EM:   {xval_score['EM']}")
     logger.info(f"XVAL f1:   {xval_score['f1']}")
-    #ml_logger.log_metrics({"XVAL EM": xval_score["EM"]}, 0)
-    #ml_logger.log_metrics({"XVAL f1": xval_score["f1"]}, 0)
-    print(allresults)
-    print(timoscores)
+    ml_logger.log_metrics({"XVAL EM": xval_score["EM"]}, 0)
+    ml_logger.log_metrics({"XVAL f1": xval_score["f1"]}, 0)
 if __name__ == "__main__":
     question_answering_crossvalidation()

@@ -5,6 +5,7 @@ from contextlib import ExitStack
 from functools import partial
 import random
 from pathlib import Path
+from itertools import groupby
 
 import numpy as np
 from sklearn.utils.class_weight import compute_class_weight
@@ -685,29 +686,49 @@ class DataSiloForCrossVal:
         return self.loaders[which]
 
     @staticmethod
-    def make_question_answering(datasilo, sets=None, n_splits=5, stratified=False, dev_split=0,
-             shuffle=True, random_state=None):
+    def make_question_answering(datasilo, sets=["train", "dev", "test"], n_splits=5, n_neg_answers_per_question=1,
+                                dev_split=0, shuffle=True, random_state=None):
         """
         Create number of folds data-silo-like objects which can be used for training from the
-        original data silo passed on.
+        original data silo passed on. This function takes into account the characteristics of the
+        data for question-answering-
 
         :param datasilo: the data silo that contains the original data
-        :param sets: which sets to use to create the xval folds
+        :type datasilo: DataSilo
+        :param sets: which sets to use to create the xval folds (strings
+        :type sets: list
         :param n_splits: number of folds to create
-        :param stratified: if class stratificiation should be done
-        :param shuffle: shuffle each class' samples before splitting
-        :param random_state: random state for shuffling
+        :type n_splits: int
+        :param n_neg_answers_per_question: number of negative answers per question to include for training
+        :type n_neg_answers_per_question: int
         :param dev_split: size of the dev set for a fold, held out from the training set
+        :type dev_split: float
+        :param shuffle: shuffle each class' samples before splitting
+        :type shuffle: bool
+        :param random_state: random state for shuffling
+        :type random_state: int
         """
-        all_data = datasilo.data["train"]
+        sets_to_concat = []
+        for setname in sets:
+            if datasilo.data[setname]:
+                sets_to_concat.extend(datasilo.data[setname])
+        all_data = ConcatDataset(sets_to_concat)
 
-        idxs = list(range(len(all_data.datasets)))
+        documents = []
+        keyfunc = lambda x: x[4][0]
+        all_data = sorted(all_data.datasets, key=keyfunc)
+        for key, document in groupby(all_data, key=keyfunc):
+            documents.append(list(document))
 
+        idxs = list(range(len(documents)))
+
+        # split documents into train and test sets
         xval = KFold(n_splits=n_splits, shuffle=shuffle, random_state=random_state)
         xval_split = xval.split(idxs)
         silos = []
+
         for train_idx, test_idx in xval_split:
-            #Each training set is further divided into actual train and dev set
+            # Each training set is further divided into actual train and dev set
             if dev_split > 0:
                 n_dev = int(np.ceil(dev_split * len(train_idx)))
                 assert n_dev > 0, f"dev split of {dev_split} is not large enough to split away a development set"
@@ -716,13 +737,37 @@ class DataSiloForCrossVal:
                 # shuffled by default)
                 actual_train_idx = train_idx[:n_actual_train]
                 dev_idx = train_idx[n_actual_train:]
-                ds_dev = ConcatDataset([all_data.datasets[x] for x in dev_idx])
+                ds_dev = [sample for idx in dev_idx for sample in documents[idx]]
             else:
                 ds_dev = None
                 actual_train_idx = train_idx
 
-            ds_train = ConcatDataset([all_data.datasets[x] for x in actual_train_idx])
-            ds_test = ConcatDataset([all_data.datasets[x] for x in test_idx])
+            train_docs = [documents[x] for x in actual_train_idx]
+            train_samples = []
+            # for each question, include answer samples and n_neg_answers_per_question samples to train set
+            for doc in train_docs:
+                # group samples in current doc by question id
+                keyfunc = lambda x: x[4][1]
+                doc = sorted(doc, key=keyfunc)
+                for key, question in groupby(doc, key=keyfunc):
+                    # add all available answers to train set
+                    sample_list = list(question)
+                    neg_answer_idx = []
+                    for index, sample in enumerate(sample_list):
+                        # start and end can't be 0 if sample contains answer
+                        if sample[7][0][0] or sample[7][0][1]:
+                            train_samples.append(sample)
+                        else:
+                            neg_answer_idx.append(index)
+                    # add random n_neg_answers_per_question samples to train set
+                    if len(neg_answer_idx) <= n_neg_answers_per_question:
+                        train_samples.extend([sample_list[idx] for idx in neg_answer_idx])
+                    else:
+                        neg_answer_idx = random.sample(neg_answer_idx, n_neg_answers_per_question)
+                        train_samples.extend([sample_list[idx] for idx in neg_answer_idx])
+
+            ds_train = train_samples
+            ds_test = [sample for idx in test_idx for sample in documents[idx]]
             silos.append(DataSiloForCrossVal(datasilo, ds_train, ds_dev, ds_test))
         return silos
 

@@ -1,9 +1,0 @@
-* Results of PotTS (Preprocessed) Experiments:
-
-
-| System                 | Micro-F1 | Macro-F1 | Accuracy |
-|------------------------+----------+----------+----------|
-| Baseline               |          |          |          |
-| Mohammad & Kiritchenko |          |          |          |
-| Severyn                |          |          |          |
-
