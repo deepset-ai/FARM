@@ -34,6 +34,7 @@ def lm_finetuning():
     evaluate_every = 30
     lang_model = "bert-base-cased"
     do_lower_case = False
+    next_sent_pred_style = "bert-style"
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
@@ -42,8 +43,13 @@ def lm_finetuning():
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
     processor = BertStyleLMProcessor(
-        data_dir=Path("../data/lm_finetune_nips"), tokenizer=tokenizer, max_seq_len=128, max_docs=20
+        data_dir=Path("../data/lm_finetune_nips"),
+        tokenizer=tokenizer,
+        max_seq_len=128,
+        max_docs=20, # We have set max_docs to 20 to speed up data processing
+        next_sent_pred_style=next_sent_pred_style
     )
+
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
     data_silo = DataSilo(processor=processor, batch_size=batch_size, max_multiprocessing_chunksize=20)
 

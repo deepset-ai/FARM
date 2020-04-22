@@ -31,7 +31,7 @@ def ner():
     n_epochs = 4
     batch_size = 32
     evaluate_every = 400
-    lang_model =  "bert-base-german-cased"
+    lang_model = "bert-base-german-cased"
     do_lower_case = False
 
     # 1.Create a tokenizer
@@ -40,6 +40,7 @@ def ner():
     )
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
+    # See test/sample/ner/train-sample.txt for an example of the data format that is expected by the Processor
     ner_labels = ["[PAD]", "X", "O", "B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-OTH", "I-OTH"]
 
     processor = NERProcessor(
