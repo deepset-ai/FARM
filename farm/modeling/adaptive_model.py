@@ -16,7 +16,7 @@ from farm.data_handler.processor import SquadProcessor
 from farm.modeling.language_model import LanguageModel
 from farm.modeling.prediction_head import PredictionHead, QuestionAnsweringHead, TokenClassificationHead, TextClassificationHead
 from farm.modeling.tokenization import Tokenizer
-from farm.utils import MLFlowLogger as MlLogger, stack
+from farm.utils import MLFlowLogger as MlLogger, stack, pick_single_fn
 
 logger = logging.getLogger(__name__)
 
@@ -365,6 +365,7 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         if n_heads == 0:
             # just return LM output (e.g. useful for extracting embeddings at inference time)
             preds_final = self.language_model.formatted_preds(logits=logits, **kwargs)
+
         elif n_heads == 1:
             kwargs["preds_p"] = kwargs["preds_p"][0][0]
             head = self.prediction_heads[0]
@@ -372,6 +373,7 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
             preds = head.formatted_preds(logits=logits_for_head, **kwargs)
             preds_final[0] += preds
 
+        # This case is triggered by Natural Questions
         else:
             preds = kwargs["preds_p"]
             preds_for_heads = stack(preds)
@@ -381,20 +383,14 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
 
             del kwargs["preds_p"]
 
-            merge_fns = []
             for i, (head, preds_p_for_head, logits_for_head) in enumerate(zip(self.prediction_heads, preds_for_heads, logits)):
                 preds = head.formatted_preds(logits=logits_for_head, preds_p=preds_p_for_head, **kwargs)
                 preds_final[i].append(preds)
-                merge_fns.append(getattr(head, "merge", None))
 
-            merge_fns = [x for x in merge_fns if x is not None]
-            if len(merge_fns) == 0:
-                pass
-            elif len(merge_fns) == 1:
-                merge_fn = merge_fns[0]
+            # Look for a merge() function amongst the heads and if a single one exists, apply it to preds_final
+            merge_fn = pick_single_fn(self.prediction_heads, "merge")
+            if merge_fn:
                 preds_final = merge_fn(preds_final)
-            else:
-                raise Exception("More than one of the prediction heads have a merge() function")
 
         return preds_final
 
