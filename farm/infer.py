@@ -268,11 +268,9 @@ class Inferencer:
         Runs down-stream inference on samples created from input dictionaries.
         The format of the input `dicts` depends on the task:
 
-        # TODO THIS COMMENT NEEDS TO BE UPDATED
-        * QA (SQuAD):    [{"qas": ["What is X?"], "context":  "Some context containing the answer"}]
+        * QA (internal):    [{"qas": ["What is X?"], "context":  "Some context containing the answer"}]
         * QA (rest_api): [{"questions": ["What is X?"], "text":  "Some context containing the answer"}]
         * Classification / NER / embeddings: [{"text": "Some input text"}]
-
 
         Inferencer has a high performance non-blocking streaming mode for large scale inference use cases. With this
         mode, the dicts parameter can optionally be a Python generator object that yield dicts, thus avoiding loading
@@ -283,11 +281,9 @@ class Inferencer:
         :param dicts: Samples to run inference on provided as a list(or a generator object) of dicts.
                       One dict per sample.
         :type dicts: iter(dict)
-        #TODO THIS COMMENT IS OUTDATED
-        :param rest_api_schema: Whether input dicts use the format that complies with the FARM REST API.
-                                Currently only used for QA to switch from squad to a more useful format in production.
-                                While input is almost the same, output contains additional meta data(offset, context..)
-        :type rest_api_schema: bool
+        :param return_json: Whether the output should be in a json appropriate format. If False, it returns the prediction
+                            object where applicable, else it returns PredObj.to_json()
+        :type return_json: bool
         :return: dict of predictions
         :param num_processes: the number of processes for `multiprocessing.Pool`. Set to value of 0 to disable
                               multiprocessing. Set to None to let inferencer determine optimum number. If you want
@@ -353,10 +349,9 @@ class Inferencer:
 
         :param dicts: Samples to run inference on provided as a list of dicts. One dict per sample.
         :type dicts: iter(dict)
-        :param rest_api_schema: Whether input dicts use the format that complies with the FARM REST API.
-                                Currently only used for QA to switch from squad to a more useful format in production.
-                                While input is almost the same, output contains additional meta data(offset, context..)
-        :type rest_api_schema: bool
+        :param return_json: Whether the output should be in a json appropriate format. If False, it returns the prediction
+                            object where applicable, else it returns PredObj.to_json()
+        :type return_json: bool
         :param aggregate_preds: whether to aggregate predictions across different samples (e.g. for QA on long texts)
         :type aggregate_preds: bool
 
@@ -385,11 +380,9 @@ class Inferencer:
 
         :param dicts: Samples to run inference on provided as a list of dicts or a generator object that yield dicts.
         :type dicts: iter(dict)
-        # TODO this comment is outdated
-        :param rest_api_schema: Whether input dicts use the format that complies with the FARM REST API.
-                                Currently only used for QA to switch from squad to a more useful format in production.
-                                While input is almost the same, output contains additional meta data(offset, context..)
-        :type rest_api_schema: bool
+        :param return_json: Whether the output should be in a json appropriate format. If False, it returns the prediction
+                            object where applicable, else it returns PredObj.to_json()
+        :type return_json: bool
         :param aggregate_preds: whether to aggregate predictions across different samples (e.g. for QA on long texts)
         :type aggregate_preds: bool
         :param multiprocessing_chunksize: number of dicts to put together in one chunk and feed to one process

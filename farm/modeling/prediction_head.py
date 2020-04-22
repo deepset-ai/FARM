@@ -17,6 +17,7 @@ from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
 
 from farm.data_handler.utils import is_json
 from farm.utils import convert_iob_to_simple_tags, span_to_string
+from farm.modeling.predictions import Span, DocumentPred
 
 logger = logging.getLogger(__name__)
 
@@ -365,15 +366,23 @@ class TextClassificationHead(PredictionHead):
         return labels
 
     def formatted_preds(self, logits=None, preds_p=None, samples=None, return_class_probs=False, **kwargs):
+        """ Like QuestionAnsweringHead.formatted_preds(), this fn can operate on either logits or preds_p. This
+        is needed since at inference, the order of operations is very different depending on whether we are performing
+        aggregation or not (compare Inferencer._get_predictions() vs Inferencer._get_predictions_and_aggregate())
+
+        TODO: Preds_p should be renamed to preds"""
+
         assert (logits is not None) or (preds_p is not None)
 
-        # TODO This means that in inference we have no probs
+        # When this method is used along side a QAHead at inference (e.g. Natural Questions), preds_p is the input and
+        # there is currently no good way of generating probs
         if logits:
             preds_p = self.logits_to_preds(logits)
             probs = self.logits_to_probs(logits, return_class_probs)
         else:
             probs = [None] * len(preds_p)
 
+        # TODO this block has to do with the difference in Basket and Sample structure between SQuAD and NQ
         try:
             contexts = [sample.clear_text["text"] for sample in samples]
         # This case covers Natural Questions where the sample is in a QA style
@@ -949,9 +958,7 @@ class QuestionAnsweringHead(PredictionHead):
         logger.info(f"Prediction head initialized with size {self.layer_dims}")
         self.num_labels = self.layer_dims[-1]
         self.ph_output_type = "per_token_squad"
-        self.model_type = (
-            "span_classification"
-        )  # predicts start and end token of answer
+        self.model_type = ("span_classification")  # predicts start and end token of answer
         self.task_name = task_name
         self.no_ans_boost = no_ans_boost
         self.context_window_size = context_window_size
@@ -1071,7 +1078,6 @@ class QuestionAnsweringHead(PredictionHead):
         # disqualify answers where start=0, but end != 0
         start_end_matrix[:, 0, 1:] = -999
 
-
         # TODO continue vectorization of valid_answer_idxs
         # # disqualify where answers < seq_2_start_t and idx != 0
         # # disqualify where answer falls into padding
@@ -1107,9 +1113,9 @@ class QuestionAnsweringHead(PredictionHead):
 
     def get_top_candidates(self, sorted_candidates, start_end_matrix,
                            n_non_padding, max_answer_length, seq_2_start_t):
-        """ Returns top candidate answers. Operates on a matrix of summed start and end logits. This matrix corresponds
-        to a single sample (includes special tokens, question tokens, passage tokens). This method always returns a
-        list of len n_best + 1 (it is comprised of the n_best positive answers along with the one no_answer)"""
+        """ Returns top candidate answers as a list of Span objects. Operates on a matrix of summed start and end logits.
+        This matrix corresponds to a single sample (includes special tokens, question tokens, passage tokens).
+        This method always returns a list of len n_best + 1 (it is comprised of the n_best positive answers along with the one no_answer)"""
 
         # Initialize some variables
         top_candidates = []
@@ -1176,7 +1182,8 @@ class QuestionAnsweringHead(PredictionHead):
         """ Takes a list of predictions, each corresponding to one sample, and converts them into document level
         predictions. Leverages information in the SampleBaskets. Assumes that we are being passed predictions from
         ALL samples in the one SampleBasket i.e. all passages of a document. Logits should be None, because we have
-        already converted the logits to predictions before calling formatted_preds.
+        already converted the logits to predictions before calling formatted_preds
+        (see Inferencer._get_predictions_and_aggregate()).
         """
 
         # Unpack some useful variables
@@ -1211,6 +1218,8 @@ class QuestionAnsweringHead(PredictionHead):
 
         # Iterate over each set of document level prediction
         for pred_d, no_ans_gap, basket in zip(top_preds, no_ans_gaps, baskets):
+            # TODO the follow try catch is because of difference in Basket structure between NQ and SQuAD - resolve this!!!
+
             # Unpack document offsets, clear text and squad_id
             try:
                 token_offsets = basket.samples[0].tokenized["document_offsets"] # NQ style
@@ -1226,7 +1235,6 @@ class QuestionAnsweringHead(PredictionHead):
                 question = basket.raw["question_text"]  # SQuAD style
             except KeyError:
                 question = basket.raw["qas"][0]         # NQ style
-
 
             basket_id = basket.id
 
@@ -1341,10 +1349,10 @@ class QuestionAnsweringHead(PredictionHead):
 
         # Get all predictions in flattened list and sort by score
         pos_answers_flat = [
-            Span(start, end, score, sample_idx, n_samples, unit="token")
+            Span(span.start, span.end, span.score, sample_idx, n_samples, unit="token", level="passage")
             for sample_idx, passage_preds in enumerate(preds)
-            for start, end, score in passage_preds
-            if not (start == -1 and end == -1)
+            for span in passage_preds
+            if not (span.start == -1 and span.end == -1)
         ]
 
         # TODO add switch for more variation in answers, e.g. if varied_ans then never return overlapping answers
@@ -1406,7 +1414,10 @@ class QuestionAnsweringHead(PredictionHead):
 
     @staticmethod
     def get_no_answer_score(preds):
-        for start, end, score in preds:
+        for span in preds:
+            start = span.start
+            end = span.end
+            score = span.score
             if start == -1 and end == -1:
                 return score
         raise Exception
@@ -1431,7 +1442,7 @@ class QuestionAnsweringHead(PredictionHead):
             else:
                 end += passage_start_t
                 assert start >= 0
-            new_pred.append([start, end, score])
+            new_pred.append(Span(start, end, score, level="doc"))
         return new_pred
 
     @staticmethod
@@ -1453,9 +1464,16 @@ class QuestionAnsweringHead(PredictionHead):
     def prepare_labels(self, labels, start_of_word, **kwargs):
         return labels
 
-    def merge(self, preds_all):
+    @staticmethod
+    def merge(preds_all):
+        """ Merges results from the two prediction heads used for NQ style QA. Takes the prediction from QA head and
+        assigns it the appropriate classification label. This mapping is achieved through sample_idx.
+        preds_all should contain [QuestionAnsweringHead.formatted_preds(), TextClassificationHead()]. The first item
+        of this list should be of len=n_documents while the second item should be of len=n_passages"""
+
         ret = []
 
+        # This fn is used to align QA output of len=n_docs and Classification output of len=n_passages
         def chunk(iterable, lengths):
             assert sum(lengths) == len(iterable)
             cumsum = list(np.cumsum(lengths))
@@ -1476,6 +1494,7 @@ class QuestionAnsweringHead(PredictionHead):
                 sample_idx = pred_span.sample_idx
                 if sample_idx is not None:
                     cls_pred = cls_preds[sample_idx]["label"]
+                # i.e. if is_impossible
                 else:
                     cls_pred = None
                 pred_span.classification = cls_pred

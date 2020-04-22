@@ -9,7 +9,8 @@ class Span:
                  classification=None,
                  unit=None,
                  pred_str=None,
-                 id=None):
+                 id=None,
+                 level=None):
         self.start = start
         self.end = end
         self.score = score
@@ -19,6 +20,7 @@ class Span:
         self.n_samples = n_samples
         self.pred_str = pred_str
         self.id = id
+        self.level = level
 
     def to_list(self):
         return [self.pred_str, self.start, self.end, self.score, self.sample_idx]

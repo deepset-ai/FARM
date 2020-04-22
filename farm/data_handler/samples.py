@@ -280,7 +280,7 @@ def create_samples_qa(dictionary, max_query_len, max_seq_len, doc_stride, n_spec
         passage_tokens = doc_tokens[passage_start_t: passage_end_t]
         passage_text = dictionary["document_text"][passage_start_c: passage_end_c]
 
-        # Deal with the potentially many answers (e.g. Squad dev set)
+        # Deal with the potentially many answers (e.g. Squad or NQ dev set)
         answers_clear, answers_tokenized = process_answers(dictionary["answers"],
                                                            doc_offsets,
                                                            passage_start_c,

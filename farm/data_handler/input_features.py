@@ -309,7 +309,7 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
     return [feature_dict]
 
 
-def sample_to_features_squad(sample, tokenizer, max_seq_len, answer_type_list=None, max_answers=6):
+def sample_to_features_qa(sample, tokenizer, max_seq_len, answer_type_list=None, max_answers=6):
     """ Prepares data for processing by the model. Supports cases where there are
     multiple answers for the one question/document pair. max_answers is by default set to 6 since
     that is the most number of answers in the squad2.0 dev set."""
@@ -323,8 +323,6 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, answer_type_list=No
     passage_start_of_word = sample.tokenized["passage_start_of_word"]
     passage_len_t = len(passage_tokens)
     answers = sample.tokenized["answers"]
-
-    # TODO Comment
     sample_id = convert_id(sample.id)
 
     # Generates a numpy array of shape (max_answers, 2) where (i, 2) indexes into the start and end indices
@@ -400,7 +398,7 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, answer_type_list=No
     return [feature_dict]
 
 
-def generate_labels(answers, passage_len_t, question_len_t, tokenizer, answer_type_list, max_answers):
+def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answers, answer_type_list=None):
     """
     Creates QA label for each answer in answers. The labels are the index of the start and end token
     relative to the passage. They are contained in an array of size (max_answers, 2).
@@ -408,7 +406,8 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, answer_ty
     The index values take in to consideration the question tokens, and also special tokens such as [CLS].
     When the answer is not fully contained in the passage, or the question
     is impossible to answer, the start_idx and end_idx are 0 i.e. start and end are on the very first token
-    (in most models, this is the [CLS] token). """
+    (in most models, this is the [CLS] token). Note that in our implementation NQ has 4 labels
+    ["is_impossible", "yes", "no", "span"] and this is what answer_type_list should look like"""
 
     label_idxs = np.full((max_answers, 2), fill_value=-1)
     answer_types = np.full((max_answers), fill_value=-1)
@@ -420,7 +419,6 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, answer_ty
         return label_idxs, answer_types
 
     for i, answer in enumerate(answers):
-        # TODO THIS SECTION NEEDS A LOT MORE COMMENTING SO IT IS NOT CONFUSED WITH SQUAD
         answer_type = answer["answer_type"]
         start_idx = answer["start_t"]
         end_idx = answer["end_t"]
@@ -473,7 +471,8 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, answer_ty
         label_idxs[i, 0] = start_idx
         label_idxs[i, 1] = end_idx
 
-        # TODO COMMENT
+        # Only Natural Questions trains a classification head on answer_type, SQuAD only has the QA head. answer_type_list
+        # will be None for SQuAD but something like
         if answer_type_list:
             answer_types[i] = answer_type_list.index(answer_type)
 

@@ -17,7 +17,7 @@ from farm.data_handler.input_features import (
     samples_to_features_ner,
     samples_to_features_bert_lm,
     sample_to_features_text,
-    sample_to_features_squad,
+    sample_to_features_qa,
 )
 from farm.data_handler.samples import (
     Sample,
@@ -34,7 +34,7 @@ from farm.data_handler.utils import (
     is_json,
     get_sentence_pair,
     split_with_metadata,
-    convert_rest_api_dict
+    convert_qa_input_dict
 
 )
 from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
@@ -955,7 +955,7 @@ class SquadProcessor(Processor):
         This method allows for documents and questions to be tokenized earlier. Then SampleBaskets are initialized
         with one document and one question. """
 
-        dicts = [convert_rest_api_dict(x) for x in dicts]
+        dicts = [convert_qa_input_dict(x) for x in dicts]
         self.baskets = self._dicts_to_baskets(dicts, indices)
         self._init_samples_in_baskets()
         self._featurize_samples()
@@ -1059,9 +1059,9 @@ class SquadProcessor(Processor):
 
     def _sample_to_features(self, sample) -> dict:
         # TODO, make this function return one set of features per sample
-        features = sample_to_features_squad(sample=sample,
-                                            tokenizer=self.tokenizer,
-                                            max_seq_len=self.max_seq_len)
+        features = sample_to_features_qa(sample=sample,
+                                         tokenizer=self.tokenizer,
+                                         max_seq_len=self.max_seq_len)
         return features
 
 class NaturalQuestionsProcessor(Processor):
@@ -1080,6 +1080,10 @@ class NaturalQuestionsProcessor(Processor):
                  inference=False,
                  **kwargs):
             """
+            Deals with all the preprocessing steps needed for Natural Questions. Follows Alberti 2019 et al. (https://arxiv.org/abs/1901.08634)
+            in merging multiple disjoint short answers into the one longer label span and also by downsampling
+            samples of is_impossible during training
+
             :param tokenizer: Used to split a sentence (str) into tokens.
             :param max_seq_len: Samples are truncated after this many tokens.
             :type max_seq_len: int
@@ -1117,12 +1121,8 @@ class NaturalQuestionsProcessor(Processor):
 
             self.doc_stride = doc_stride
             self.max_query_length = max_query_length
-
-            # If we are performing inference, we want to keep all samples
-            if not inference:
-                self.keep_is_impossible = keep_is_impossible
-            else:
-                self.keep_is_impossible = 1
+            self.keep_is_impossible = keep_is_impossible
+            self.inference = inference
 
             super(NaturalQuestionsProcessor, self).__init__(
                 tokenizer=tokenizer,
@@ -1155,7 +1155,8 @@ class NaturalQuestionsProcessor(Processor):
         methods that the SquadProcessor calls but note that the SquadProcessor overwrites Processor._dicts_to_baskets()
         while the NaturalQuestionsProcessor does not. This was done in Squad to avoid retokenizing documents that are
         paired with multiple questions. This is not necessary for Natural Questions since there is generally a 1 to 1
-        mapping from document to question
+        mapping from document to question. Input dictionaries can have either ["context", "qas"] (internal format) as
+        keys or ["text", "questions"] (api format). Both are supported.
         """
         dictionary_tokenized = self.apply_tokenization(dictionary)[0]
         n_special_tokens = self.tokenizer.num_added_tokens(pair=True)
@@ -1164,10 +1165,16 @@ class NaturalQuestionsProcessor(Processor):
                                     self.max_seq_len,
                                     self.doc_stride,
                                     n_special_tokens)
-        samples = self.downsample(samples, self.keep_is_impossible)
+        # Downsample the number of samples with an is_impossible label. This fn will always return at least one sample
+        # so that we don't end up with a basket with 0 samples
+        if not self.inference:
+            samples = self.downsample(samples, self.keep_is_impossible)
         return samples
 
     def downsample(self, samples, keep_prob):
+        # Downsamples samples with a is_impossible label (since there is an overrepresentation of these in NQ)
+        # This method will always return at least one sample. This is done so that we don't end up with SampleBaskets
+        # with 0 samples
         ret = []
         for s in samples:
             if self.check_is_impossible(s):
@@ -1197,7 +1204,8 @@ class NaturalQuestionsProcessor(Processor):
 
     def prepare_dict(self, dictionary):
         """ Casts a Natural Questions dictionary that is loaded from a jsonl file into SQuAD format so that
-        the same QuestionAnsweringHead methods can be called for both tasks"""
+        the same featurization functions can be called for both tasks. Each annotation can be one of four answer types,
+        ["yes", "no", "span", "is_impossible"]"""
         converted_answers = []
         doc_text = dictionary["document_text"]
         _, tok_to_ch = split_with_metadata(doc_text)
@@ -1210,14 +1218,14 @@ class NaturalQuestionsProcessor(Processor):
                                                             annotation["long_answer"]["end_token"],
                                                             tok_to_ch,
                                                             doc_text)
+            # Picks the span to be considered as annotation by choosing between short answer, long answer and is_impossible
             text, start_c = self.choose_span(sa_text, sa_start_c, la_text, la_start_c)
             converted_answers.append({"text": text,
                                       "answer_start": start_c})
         if len(converted_answers) == 0:
             answer_type = "is_impossible"
         else:
-            answer_type = dictionary["annotations"][0]["yes_no_answer"]
-            answer_type = answer_type.lower()
+            answer_type = dictionary["annotations"][0]["yes_no_answer"].lower()
             if answer_type == "none":
                 answer_type = "span"
         converted = {"id": dictionary["example_id"],
@@ -1239,6 +1247,7 @@ class NaturalQuestionsProcessor(Processor):
             return True
 
     def retrieve_long_answer(self, start_t, end_t, tok_to_ch, doc_text):
+        """ Retrieves the string long answer and also its starting character index"""
         start_c, end_c = self.convert_tok_to_ch(start_t, end_t, tok_to_ch, doc_text)
         text = doc_text[start_c: end_c]
         return text, start_c
@@ -1253,6 +1262,8 @@ class NaturalQuestionsProcessor(Processor):
             return "", -1
 
     def unify_short_answers(self, short_answers, doc_text, tok_to_ch):
+        """ In cases where an NQ sample has multiple disjoint short answers, this fn generates the single shortest
+        span that contains all the answers"""
         if not short_answers:
             return "", -1
         short_answer_idxs = []
@@ -1283,24 +1294,28 @@ class NaturalQuestionsProcessor(Processor):
         return start_c, end_c
 
     def apply_tokenization(self, dictionary):
-        """ This performs tokenization on all documents and questions. The result is a list (unnested)
-        where each entry is a dictionary for one document-question pair (potentially mutliple answers). """
+        """ This performs tokenization on all documents and questions. The result is a list
+        where each entry is a dictionary for one document-question pair (potentially mutliple answers). This is based on
+        the apply_tokenization method of SquadProcessor but slightly modified.
+
+        TODO: See if this can be merged with SquadProcessor.apply_tokenization()"""
 
         raw_baskets = []
-        if "text" in dictionary and "context" not in dictionary:
-            try:
-                dictionary = convert_rest_api_dict(dictionary)
-            except:
-                raise Exception("Input does not have the expected format")
+        # Input dictionaries can have ["context", "qas"] (internal format) as keys or
+        # ["text", "questions"] (api format). Both are supported
+        try:
+            dictionary = convert_qa_input_dict(dictionary)
+        except:
+            raise Exception("Input does not have the expected format")
         document_text = dictionary["context"]
-        document_id = dictionary.get("document_id",None)
+        document_id = dictionary.get("document_id", None)
 
         document_tokenized = tokenize_with_metadata(document_text, self.tokenizer)
         document_start_of_word = [int(x) for x in document_tokenized["start_of_word"]]
         questions = dictionary["qas"]
         for question in questions:
             answers = []
-            # For training and dev where labelled samples are read in from a SQuAD style file
+            # For training and dev with labelled examples
             try:
                 nq_id = question["id"]
                 question_text = question["question"]
@@ -1309,14 +1324,15 @@ class NaturalQuestionsProcessor(Processor):
                          "offset": answer["answer_start"],
                          "answer_type": question["answer_type"]}
                     answers.append(a)
-            # For inference where samples are read in as dicts without an id or answers
+            # For inference where samples are read in without an id or answers
             except TypeError:
                 nq_id = None
                 question_text = question
             question_tokenized = tokenize_with_metadata(question_text, self.tokenizer)
             question_start_of_word = [int(x) for x in question_tokenized["start_of_word"]]
 
-            # TODO: Get rid of is_impossible key for NQ and SQUAD
+            # TODO compare data format with Squad to explain what this section is doing exactly
+            # TODO suspect that this might not be right for NQ
             if "is_impossible" not in question:
                 answer_type = "span"
             else:
@@ -1338,10 +1354,10 @@ class NaturalQuestionsProcessor(Processor):
         return raw_baskets
 
     def _sample_to_features(self, sample: Sample) -> dict:
-        features = sample_to_features_squad(sample=sample,
-                                            tokenizer=self.tokenizer,
-                                            max_seq_len=self.max_seq_len,
-                                            answer_type_list=self.answer_type_list)
+        features = sample_to_features_qa(sample=sample,
+                                         tokenizer=self.tokenizer,
+                                         max_seq_len=self.max_seq_len,
+                                         answer_type_list=self.answer_type_list)
         return features
 
 
