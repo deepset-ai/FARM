@@ -892,46 +892,45 @@ class BertStyleLMProcessor(Processor):
 
             # reached end of document or max_num_tokens
             if (i == len(doc_tokenized) - 1) or (current_length >= max_num_tokens):
-                if current_chunk:
-                    sequence_a, sequence_b, sample_in_clear_text, num_unused_segments = get_sequence_pair(
-                        doc,
-                        current_chunk,
-                        current_chunk_clear_text,
-                        all_dicts,
-                        self.tokenizer,
-                        max_num_tokens,
+                sequence_a, sequence_b, sample_in_clear_text, num_unused_segments = get_sequence_pair(
+                    doc,
+                    current_chunk,
+                    current_chunk_clear_text,
+                    all_dicts,
+                    self.tokenizer,
+                    max_num_tokens,
+                )
+                sequence_a = join_sentences(sequence_a)
+                sequence_b = join_sentences(sequence_b)
+
+                for seq_name in ["tokens", "offsets", "start_of_word"]:
+                    sequence_a[seq_name], sequence_b[seq_name], _ = truncate_sequences(
+                        seq_a=sequence_a[seq_name],
+                        seq_b=sequence_b[seq_name],
+                        tokenizer=self.tokenizer,
+                        max_seq_len=max_num_tokens,
+                        with_special_tokens=False,
+                        truncation_strategy="only_second",
                     )
-                    sequence_a = join_sentences(sequence_a)
-                    sequence_b = join_sentences(sequence_b)
+                tokenized = {"text_a" : sequence_a, "text_b" : sequence_b}
+                samples.append(Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized))
 
-                    for seq_name in ["tokens", "offsets", "start_of_word"]:
-                        sequence_a[seq_name], sequence_b[seq_name], _ = truncate_sequences(
-                            seq_a=sequence_a[seq_name],
-                            seq_b=sequence_b[seq_name],
-                            tokenizer=self.tokenizer,
-                            max_seq_len=max_num_tokens,
-                            with_special_tokens=False,
-                            truncation_strategy="only_second",
-                        )
-                    tokenized = {"text_a" : sequence_a, "text_b" : sequence_b}
-                    samples.append(Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized))
+                if len(tokenized["text_a"]["tokens"]) == 0:
+                    logger.warning(
+                        f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text_a}")
+                    continue
+                if len(tokenized["text_b"]["tokens"]) == 0:
+                    logger.warning(
+                        f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text_b}")
+                    continue
 
-                    if len(tokenized["text_a"]["tokens"]) == 0:
-                        logger.warning(
-                            f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text_a}")
-                        continue
-                    if len(tokenized["text_b"]["tokens"]) == 0:
-                        logger.warning(
-                            f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text_b}")
-                        continue
-
-                    i -= num_unused_segments
+                i -= num_unused_segments
 
                 current_chunk = []
                 current_chunk_clear_text = []
                 current_length = 0
             i += 1
-            
+
         return samples
 
     def _dict_to_samples_no_next_sent(self, doc):
