@@ -1070,11 +1070,11 @@ class WordEmbedding_LM(LanguageModel):
         :param save_dir: The directory in which the model should be saved.
         :type save_dir: str
         """
-        raise NotImplementedError
+        # raise NotImplementedError
         #save model
-        # self.model.save(save_dir=save_dir)
-        # #save config
-        # self.save_config(save_dir=save_dir)
+        self.model.save(save_dir=save_dir)
+        #save config
+        self.save_config(save_dir=save_dir)
 
 
     def forward(self, input_ids, **kwargs,):
@@ -1100,7 +1100,7 @@ class WordEmbedding_LM(LanguageModel):
         pooled_output = m(pooled_output)
         return sequence_output, pooled_output
 
-    def trim_vocab(self, token_counts, min_threshold):
+    def trim_vocab(self, token_counts, processor, min_threshold):
         """ Remove embeddings for rare tokens in your corpus (< `min_threshold` occurrences) to reduce model size"""
         logger.info(f"Remove tokens with less than {min_threshold} occurrences from model vocab")
         new_vocab = OrderedDict()
@@ -1115,11 +1115,19 @@ class WordEmbedding_LM(LanguageModel):
 
         self.model.vocab = new_vocab
         self.model.embeddings = self.model.embeddings[valid_tok_indices, :]
+
+        # update tokenizer vocab in place
+        processor.tokenizer.vocab = self.model.vocab
+        processor.tokenizer.ids_to_tokens = OrderedDict()
+        for k, v in processor.tokenizer.vocab.items():
+            processor.tokenizer.ids_to_tokens[v] = k
+
         logger.info(f"Reduced vocab from {old_num_emb} to {self.model.embeddings.shape[0]}")
 
-    def normalize_embeddings(self, zero_mean=True, pca_removal=False, pca_n_components=300, pca_n_top_components=10):
+    def normalize_embeddings(self, zero_mean=True, pca_removal=False, pca_n_components=300, pca_n_top_components=10,
+                             n_special_tokens=5, use_mean_vec_for_special_tokens=True):
         """ Normalize word embeddings as in https://arxiv.org/pdf/1808.06305.pdf
-
+            (e.g. used for S3E Pooling of sentence embeddings)
         :param zero_mean:
         :param pca_removal:
         :param pca_n_components:
@@ -1127,16 +1135,14 @@ class WordEmbedding_LM(LanguageModel):
         :return:
         """
 
-        # For example, used for S3E pooling
-        self.model.embeddings[:5, :] = torch.zeros((5, 300))
-
         if zero_mean:
             logger.info('Removing mean from embeddings')
+            # self.model.embeddings[:n_special_tokens, :] = torch.zeros((n_special_tokens, 300))
             mean_vec = torch.mean(self.model.embeddings, 0)
             self.model.embeddings = self.model.embeddings - mean_vec
-            #TODO use this one again after testing
-            # self.model.embeddings = self.model.embeddings - torch.mean(self.model.embeddings, 0)
-            #self.model.embeddings[:5, :] = mean_vec
+
+            if use_mean_vec_for_special_tokens:
+                self.model.embeddings[:n_special_tokens, :] = mean_vec
 
         if pca_removal:
             from sklearn.decomposition import PCA
@@ -1153,4 +1159,3 @@ class WordEmbedding_LM(LanguageModel):
                 for pca_idx, u in enumerate(U1[0:PVN_dims]):
                     ratio = (explained_variance[pca_idx] - explained_variance[PVN_dims]) / explained_variance[pca_idx]
                     self.model.embeddings[emb_idx] = self.model.embeddings[emb_idx] - ratio * np.dot(u.transpose(), self.model.embeddings[emb_idx]) * u
-            logger.info("Done with normalization")

@@ -382,7 +382,7 @@ def write_msmarco_results(results, output_filename):
             out_file.write("\n")
 
 
-def s3e_pooling(token_embs, token_ids, token_weights, centroids, token_to_cluster, mask):
+def s3e_pooling(token_embs, token_ids, token_weights, centroids, token_to_cluster, mask, svd_components=None):
     """
     Pooling of word/token embeddings as described by Wang et al in their paper
     "Efficient Sentence Embedding via Semantic Subspace Analysis"
@@ -394,6 +394,11 @@ def s3e_pooling(token_embs, token_ids, token_weights, centroids, token_to_cluste
     :param token_weights: dict with key=token_id, value= weight in corpus
     :param centroids: numpy array of shape (n_cluster, emb_dim) that describes the centroids of our clusters in the embedding space
     :param token_to_cluster: numpy array of shape (vocab_size, 1) where token_to_cluster[i] = cluster_id that token with id i belongs to
+    :param svd_components: Components from a truncated singular value decomposition (SVD, aka LSA) to be
+                           removed from the final sentence embeddings in a postprocessing step.
+                           SVD must be fit on representative sample of sentence embeddings first and can
+                           then be removed from all subsequent embeddings in this function.
+                           We expect the sklearn.decomposition.TruncatedSVD.fit(<your_embeddings>)._components to be passed here.
     :return: embeddings matrix of shape (batch_size, emb_dim + (n_clusters*n_clusters+1)/2)
     """
 
@@ -467,16 +472,6 @@ def s3e_pooling(token_embs, token_ids, token_weights, centroids, token_to_cluste
     embeddings = np.vstack(embeddings)
 
     # Post processing
-    #TODO
-    # if args.postprocessing:
-    #     # Principal Component Removal
-    #     print('post processing sentence embedding using principal component removal')
-    #     svd = TruncatedSVD(n_components=args.postprocessing, n_iter=7, random_state=0)
-    #     svd.fit(embeddings)
-    #     args.svd_comp = svd.components_
-    #
-    #     if args.postprocessing==1:
-    #         embeddings = embeddings - embeddings.dot(args.svd_comp.transpose()) * args.svd_comp
-    #     else:
-    #         embeddings = embeddings - embeddings.dot(args.svd_comp.transpose()).dot(args.svd_comp)
+    if svd_components:
+        embeddings = embeddings - embeddings.dot(svd_components.transpose()) * svd_components
     return embeddings

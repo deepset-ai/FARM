@@ -120,7 +120,8 @@ class Inferencer:
         max_seq_len=256,
         doc_stride=128,
         extraction_layer=None,
-        extraction_strategy=None
+        extraction_strategy=None,
+        s3e_stats=None
     ):
         """
         Load an Inferencer incl. all relevant components (model, tokenizer, processor ...) either by
@@ -220,7 +221,8 @@ class Inferencer:
             name=name,
             return_class_probs=return_class_probs,
             extraction_strategy=extraction_strategy,
-            extraction_layer=extraction_layer
+            extraction_layer=extraction_layer,
+            s3e_stats=s3e_stats
         )
 
     def save(self, path):
