@@ -11,11 +11,9 @@ from farm.modeling.language_model import LanguageModel
 from farm.modeling.prediction_head import QuestionAnsweringHead
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.optimization import initialize_optimizer
-from farm.train import Trainer, EarlyStopping
+from farm.train import Trainer
 from farm.eval import Evaluator
 from farm.evaluation.metrics import squad
-from farm.infer import Inferencer
-from farm.data_handler.utils import write_squad_predictions
 
 
 def question_answering_crossvalidation():
@@ -39,6 +37,7 @@ def question_answering_crossvalidation():
     ########## Settings
     ##########################
     xval_folds = 5
+    save_per_fold_results = True
 
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)
@@ -63,7 +62,7 @@ def question_answering_crossvalidation():
         max_seq_len=384,
         label_list=label_list,
         metric=metric,
-        train_filename="dev-v2.0.json", # "flat_short.json", "200406shortanswers.json", "200406answers.json", "subset.json", "flat_short_shortanswers.json"
+        train_filename="dev-v2.0.json",
         dev_filename=None,
         dev_split=0,
         test_filename=None,
@@ -77,7 +76,7 @@ def question_answering_crossvalidation():
         batch_size=batch_size)
 
     # Load one silo for each fold in our cross-validation
-    silos = DataSiloForCrossVal.make_question_answering(data_silo, n_splits=xval_folds, dev_split=dev_split)
+    silos = DataSiloForCrossVal.make(data_silo, n_splits=xval_folds)
 
     # the following steps should be run for each of the folds of the cross validation, so we put them
     # into a function
@@ -122,7 +121,8 @@ def question_answering_crossvalidation():
             n_gpu=n_gpu,
             lr_schedule=lr_schedule,
             evaluate_every=evaluate_every,
-            device=device)
+            device=device,
+            evaluator_test=False)
 
         # train it
         trainer.train()
@@ -131,7 +131,7 @@ def question_answering_crossvalidation():
 
     # for each fold, run the whole training, then evaluate the model on the test set of each fold
     # Remember all the results for overall metrics over all predictions of all folds and for averaging
-    allresults = []
+    all_results = []
     all_preds = []
     all_labels = []
     all_f1 = []
@@ -153,7 +153,7 @@ def question_answering_crossvalidation():
         result = evaluator_test.eval(model, return_preds_and_labels=True)
         evaluator_test.log_results(result, "Test", logging=False, steps=len(silo.get_data_loader("test")), num_fold=num_fold)
 
-        allresults.append(result)
+        all_results.append(result)
         all_preds.extend(result[0].get("preds"))
         all_labels.extend(result[0].get("labels"))
         all_f1.append(result[0]["f1"])
@@ -165,12 +165,19 @@ def question_answering_crossvalidation():
             best_squad = squad_score
             bestfold = num_fold
 
-    # Save the per-fold results to json for a separate, more detailed analysis
-    # with open("qa_xval.results.json", "wt") as fp:
-    #     json.dump(allresults, fp)
+        model.cpu()
+        torch.cuda.empty_cache()
 
-        # model.cpu()
-        # torch.cuda.empty_cache()
+    # Save the per-fold results to json for a separate, more detailed analysis
+    if save_per_fold_results:
+        def convert_numpy_dtype(obj):
+            if type(obj).__module__ == "numpy":
+                return obj.item()
+
+            raise TypeError("Unknown type:", type(obj))
+
+        with open("qa_xval.results.json", "wt") as fp:
+             json.dump(all_results, fp, default=convert_numpy_dtype)
 
     # calculate overall metrics across all folds
     xval_score = squad(preds=all_preds, labels=all_labels)

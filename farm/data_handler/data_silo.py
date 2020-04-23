@@ -685,9 +685,37 @@ class DataSiloForCrossVal:
     def get_data_loader(self, which):
         return self.loaders[which]
 
-    @staticmethod
-    def make_question_answering(datasilo, sets=["train", "dev", "test"], n_splits=5, n_neg_answers_per_question=1,
-                                dev_split=0, shuffle=True, random_state=None):
+    @classmethod
+    def make(cls, datasilo, sets=["train", "dev", "test"], n_splits=5, shuffle=True, random_state=None,
+             stratified=True, n_neg_answers_per_question=1):
+        """
+        Create number of folds data-silo-like objects which can be used for training from the
+        original data silo passed on.
+
+        :param datasilo: the data silo that contains the original data
+        :type datasilo: DataSilo
+        :param sets: which sets to use to create the xval folds (strings)
+        :type sets: list
+        :param n_splits: number of folds to create
+        :type n_splits: int
+        :param shuffle: shuffle each class' samples before splitting
+        :type shuffle: bool
+        :param random_state: random state for shuffling
+        :type random_state: int
+        :param stratified: if class stratification should be done
+        :type stratified: bool
+        :param n_neg_answers_per_question: number of negative answers per question to include for training
+        :type n_neg_answers_per_question: int
+        """
+
+        if "question_answering" in datasilo.processor.tasks:
+            return cls._make_question_answering(datasilo, sets, n_splits, shuffle, random_state, n_neg_answers_per_question)
+        else:
+            return cls._make(datasilo, sets, n_splits, shuffle, random_state, stratified)
+
+    @classmethod
+    def _make_question_answering(cls, datasilo, sets=["train", "dev", "test"], n_splits=5, shuffle=True,
+                                 random_state=None, n_neg_answers_per_question=1):
         """
         Create number of folds data-silo-like objects which can be used for training from the
         original data silo passed on. This function takes into account the characteristics of the
@@ -695,18 +723,16 @@ class DataSiloForCrossVal:
 
         :param datasilo: the data silo that contains the original data
         :type datasilo: DataSilo
-        :param sets: which sets to use to create the xval folds (strings
+        :param sets: which sets to use to create the xval folds (strings)
         :type sets: list
         :param n_splits: number of folds to create
         :type n_splits: int
-        :param n_neg_answers_per_question: number of negative answers per question to include for training
-        :type n_neg_answers_per_question: int
-        :param dev_split: size of the dev set for a fold, held out from the training set
-        :type dev_split: float
         :param shuffle: shuffle each class' samples before splitting
         :type shuffle: bool
         :param random_state: random state for shuffling
         :type random_state: int
+        :param n_neg_answers_per_question: number of negative answers per question to include for training
+        :type n_neg_answers_per_question: int
         """
         sets_to_concat = []
         for setname in sets:
@@ -729,7 +755,7 @@ class DataSiloForCrossVal:
 
         for train_idx, test_idx in xval_split:
             # Each training set is further divided into actual train and dev set
-            if dev_split > 0:
+            if datasilo.processor.dev_split > 0:
                 n_dev = int(np.ceil(dev_split * len(train_idx)))
                 assert n_dev > 0, f"dev split of {dev_split} is not large enough to split away a development set"
                 n_actual_train = len(train_idx) - n_dev
@@ -772,8 +798,8 @@ class DataSiloForCrossVal:
         return silos
 
     @staticmethod
-    def make(datasilo, sets=["train", "dev", "test"], n_splits=5, stratified=True,
-             shuffle=True, random_state=None, dev_split=0.2):
+    def _make(datasilo, sets=["train", "dev", "test"], n_splits=5, shuffle=True,
+              random_state=None, stratified=True):
         """
         Create number of folds data-silo-like objects which can be used for training from the
         original data silo passed on.
@@ -781,14 +807,14 @@ class DataSiloForCrossVal:
         :param datasilo: the data silo that contains the original data
         :param sets: which sets to use to create the xval folds
         :param n_splits: number of folds to create
-        :param stratified: if class stratificiation should be done
         :param shuffle: shuffle each class' samples before splitting
         :param random_state: random state for shuffling
-        :param dev_split: size of the dev set for a fold, held out from the training set
+        :param stratified: if class stratification should be done
         """
         setstoconcat = [datasilo.data[setname] for setname in sets]
         ds_all = ConcatDataset(setstoconcat)
         idxs = list(range(len(ds_all)))
+        dev_split = datasilo.processor.dev_split
         if stratified:
             # get all the labels for stratification
             ytensors = [t[3][0] for t in ds_all]
@@ -815,3 +841,37 @@ class DataSiloForCrossVal:
             ds_test = Subset(ds_all, test_idx)
             silos.append(DataSiloForCrossVal(datasilo, ds_train, ds_dev, ds_test))
         return silos
+
+    @staticmethod
+    def _split_for_qa(documents, n_splits=5, shuffle=True, random_state=None):
+        keyfunc = lambda x: x[4][1]
+
+        if shuffle:
+            random.shuffle(documents, random_state)
+
+        number_of_questions = 0
+        for doc in documents:
+            # group samples in current doc by question id
+            doc = sorted(doc, key=keyfunc)
+            questions =  list(groupby(doc, key=keyfunc))
+            number_of_questions += len(questions)
+
+        questions_per_test_set = int(number_of_questions / n_splits)
+        questions_in_current_test_set = 0
+        train_right_part_idx = 0
+        current_test_set = []
+        for idx, doc in enumerate(documents):
+            doc_questions = list(groupby(doc, key=keyfunc))
+            questions_in_current_test_set += len(doc_questions)
+            current_test_set.append(doc)
+            if questions_in_current_test_set >= questions_per_test_set:
+                current_train_set = documents[:train_right_part_idx] + documents[idx+1:]
+                train_right_part_idx = idx + 1
+                current_test_set = []
+                questions_in_current_test_set = 0
+
+                yield current_train_set, current_test_set
+
+        current_train_set = documents[:train_right_part_idx]
+        yield current_train_set, current_test_set
+
