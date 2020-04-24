@@ -21,6 +21,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import json
 import logging
 import os
+import io
 from pathlib import Path
 from collections import OrderedDict
 
@@ -267,7 +268,7 @@ class LanguageModel(nn.Module):
         :param ignore_first_token: Whether to include the first token for pooling operations (e.g. reduce_mean).
                                    Many models have here a special token like [CLS] that you don't want to include into your average of token embeddings.
         :param padding_mask: Mask for the padding tokens. Those will also not be included in the pooling operations to prevent a bias by the number of padding tokens.
-        :param input_ids: TODO
+        :param input_ids: ids of the tokens in the vocab
         :param kwargs: kwargs
         :return: list of dicts containing preds, e.g. [{"context": "some text", "vec": [-0.01, 0.5 ...]}]
         """
@@ -975,7 +976,7 @@ class EmbeddingModel():
         assert "[UNK]" in self.vocab, "No [UNK] symbol in Wordembeddingmodel! Aborting"
         self.unk_idx = self.vocab["[UNK]"]
 
-    def save(self, save_dir):
+    def save(self,save_dir):
         # Save Weights
         save_name = Path(save_dir) / self.config.embeddings_filename
         with open(save_name, "w") as f:
@@ -990,16 +991,6 @@ class EmbeddingModel():
                 f.write(w + "\n")
         f.close()
 
-        # Save config
-        # self.save_config(save_dir)
-
-    # def save_config(self, save_dir):
-    #     save_filename = Path(save_dir) / "language_model_config.json"
-    #     with open(save_filename, "w") as file:
-    #         setattr(self.config, "name", self.__class__.__name__)
-    #         setattr(self.config, "language", self.language)
-    #         string = self.model.config.to_json_string()
-    #         file.write(string)
 
     def resize_token_embeddings(self, new_num_tokens=None):
         # function is called as a vocab length validation inside FARM
@@ -1009,6 +1000,7 @@ class EmbeddingModel():
         temp["num_embeddings"] = len(self.vocab)
         temp = DotMap(temp)
         return temp
+
 
 
 class WordEmbedding_LM(LanguageModel):
@@ -1078,7 +1070,6 @@ class WordEmbedding_LM(LanguageModel):
         :param save_dir: The directory in which the model should be saved.
         :type save_dir: str
         """
-        # raise NotImplementedError
         #save model
         self.model.save(save_dir=save_dir)
         #save config
