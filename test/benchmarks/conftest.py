@@ -7,7 +7,7 @@ from farm.modeling.adaptive_model import AdaptiveModel
 
 
 @pytest.fixture(scope="module")
-def onnx_adaptive_model_qa():
+def onnx_adaptive_model_qa(num_processes=0):
     model_name_or_path = "deepset/bert-base-cased-squad2"
     onnx_model_export_path = Path("benchmarks/onnx-export")
     if not (onnx_model_export_path / "model.onnx").is_file():
@@ -16,6 +16,8 @@ def onnx_adaptive_model_qa():
         )
         model.convert_to_onnx(onnx_model_export_path)
 
-    model = Inferencer.load(onnx_model_export_path, task_type="question_answering", batch_size=1)
+    model = Inferencer.load(
+        onnx_model_export_path, task_type="question_answering", batch_size=1, num_processes=num_processes
+    )
 
     return model
