@@ -62,11 +62,11 @@ def question_answering_crossvalidation():
         max_seq_len=384,
         label_list=label_list,
         metric=metric,
-        train_filename="dev-v2.0.json",
+        train_filename="test.json",
         dev_filename=None,
         dev_split=0,
         test_filename=None,
-        data_dir=Path("../data/squad20"),
+        data_dir=Path("../data/covid"),
         doc_stride=192,
     )
 
@@ -86,6 +86,7 @@ def question_answering_crossvalidation():
         # fine-tune pre-trained question-answering model
         model = AdaptiveModel.convert_from_transformers(lang_model, device, "question_answering")
         model.connect_heads_with_processor(data_silo.processor.tasks, require_labels=True)
+        model.prediction_heads[0].no_ans_boost = -100
 
         # or train question-answering models from scratch
         ## Create an AdaptiveModel

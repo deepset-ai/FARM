@@ -746,41 +746,32 @@ class DataSiloForCrossVal:
         for key, document in groupby(all_data, key=keyfunc):
             documents.append(list(document))
 
-        idxs = list(range(len(documents)))
-
-        # split documents into train and test sets
-        xval = KFold(n_splits=n_splits, shuffle=shuffle, random_state=random_state)
-        xval_split = xval.split(idxs)
+        xval_split = cls._split_for_qa(documents, n_splits, shuffle, random_state)
         silos = []
 
-        for train_idx, test_idx in xval_split:
+        for train_set, test_set in xval_split:
             # Each training set is further divided into actual train and dev set
             if datasilo.processor.dev_split > 0:
-                n_dev = int(np.ceil(dev_split * len(train_idx)))
+                dev_split = datasilo.processor.dev_split
+                n_dev = int(np.ceil(dev_split * len(train_set)))
                 assert n_dev > 0, f"dev split of {dev_split} is not large enough to split away a development set"
-                n_actual_train = len(train_idx) - n_dev
-                # we just do this by taking the first/last indices from the train set (which should be
-                # shuffled by default)
-                actual_train_idx = train_idx[:n_actual_train]
-                dev_idx = train_idx[n_actual_train:]
-                ds_dev = [sample for idx in dev_idx for sample in documents[idx]]
+                n_actual_train = len(train_set) - n_dev
+                actual_train_set = train_set[:n_actual_train]
+                dev_set = train_set[n_actual_train:]
+                ds_dev = [sample for document in dev_set for sample in document]
             else:
                 ds_dev = None
-                actual_train_idx = train_idx
+                actual_train_set = train_set
 
-            train_docs = [documents[x] for x in actual_train_idx]
             train_samples = []
-            # for each question, include answer samples and n_neg_answers_per_question samples to train set
-            for doc in train_docs:
-                # group samples in current doc by question id
+            for doc in actual_train_set:
                 keyfunc = lambda x: x[4][1]
                 doc = sorted(doc, key=keyfunc)
                 for key, question in groupby(doc, key=keyfunc):
-                    # add all available answers to train set
+                    # add all available answrs to train set
                     sample_list = list(question)
                     neg_answer_idx = []
                     for index, sample in enumerate(sample_list):
-                        # start and end can't be 0 if sample contains answer
                         if sample[7][0][0] or sample[7][0][1]:
                             train_samples.append(sample)
                         else:
@@ -793,7 +784,7 @@ class DataSiloForCrossVal:
                         train_samples.extend([sample_list[idx] for idx in neg_answer_idx])
 
             ds_train = train_samples
-            ds_test = [sample for idx in test_idx for sample in documents[idx]]
+            ds_test = [sample for document in test_set for sample in document]
             silos.append(DataSiloForCrossVal(datasilo, ds_train, ds_dev, ds_test))
         return silos
 
@@ -845,33 +836,32 @@ class DataSiloForCrossVal:
     @staticmethod
     def _split_for_qa(documents, n_splits=5, shuffle=True, random_state=None):
         keyfunc = lambda x: x[4][1]
-
         if shuffle:
             random.shuffle(documents, random_state)
 
-        number_of_questions = 0
+        questions_per_doc = []
         for doc in documents:
             # group samples in current doc by question id
             doc = sorted(doc, key=keyfunc)
-            questions =  list(groupby(doc, key=keyfunc))
-            number_of_questions += len(questions)
+            questions = list(groupby(doc, key=keyfunc))
+            questions_per_doc.append(len(questions))
 
-        questions_per_test_set = int(number_of_questions / n_splits)
-        questions_in_current_test_set = 0
-        train_right_part_idx = 0
-        current_test_set = []
-        for idx, doc in enumerate(documents):
-            doc_questions = list(groupby(doc, key=keyfunc))
-            questions_in_current_test_set += len(doc_questions)
-            current_test_set.append(doc)
-            if questions_in_current_test_set >= questions_per_test_set:
-                current_train_set = documents[:train_right_part_idx] + documents[idx+1:]
-                train_right_part_idx = idx + 1
-                current_test_set = []
-                questions_in_current_test_set = 0
+        # split documents into n_splits splits with approximately same number of questions per split
+        questions_per_doc = np.array(questions_per_doc)
+        accumulated_questions_per_doc = questions_per_doc.cumsum()
+        questions_per_fold = accumulated_questions_per_doc[-1] // n_splits
+        accumulated_questions_per_fold = np.array(range(1, n_splits)) * questions_per_fold
+        if accumulated_questions_per_fold[0] < accumulated_questions_per_doc[0]:
+            accumulated_questions_per_fold[0] = accumulated_questions_per_doc[0] + 1
+        indices_to_split_at = np.searchsorted(accumulated_questions_per_doc, accumulated_questions_per_fold, side="right")
+        splits = np.split(documents, indices_to_split_at)
 
-                yield current_train_set, current_test_set
+        for split in splits:
+            assert len(split) > 0
 
-        current_train_set = documents[:train_right_part_idx]
-        yield current_train_set, current_test_set
+        for idx, split in enumerate(splits):
+            current_test_set = split
+            current_train_set = np.delete(documents, idx, axis=0)
+            current_train_set = current_train_set.flatten()
 
+            yield current_train_set, current_test_set
