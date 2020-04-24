@@ -5,13 +5,9 @@ Copyright by the AllenNLP authors.
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
 from pathlib import Path
-import fnmatch
 import json
 import logging
 import os
-import shutil
-import sys
-import tempfile
 from functools import wraps
 from hashlib import sha256
 from io import open
@@ -22,6 +18,8 @@ import requests
 from botocore.exceptions import ClientError
 from dotmap import DotMap
 from tqdm import tqdm
+
+from transformers.file_utils import cached_path
 
 try:
     from torch.hub import _get_torch_home
@@ -93,38 +91,6 @@ def filename_to_url(filename, cache_dir=None):
     return url, etag
 
 
-def cached_path(url_or_filename, cache_dir=None):
-    """
-    Given something that might be a URL (or might be a local path),
-    determine which. If it's a URL, download the file and cache it, and
-    return the path to the cached file. If it's already a local path,
-    make sure the file exists and then return the path.
-    """
-    if cache_dir is None:
-        cache_dir = FARM_CACHE
-    if sys.version_info[0] == 3 and isinstance(url_or_filename, Path):
-        url_or_filename = str(url_or_filename)
-    if sys.version_info[0] == 3 and isinstance(cache_dir, Path):
-        cache_dir = str(cache_dir)
-
-    parsed = urlparse(url_or_filename)
-
-    if parsed.scheme in ("http", "https", "s3"):
-        # URL, so get it from the cache (downloading if necessary)
-        return get_from_cache(url_or_filename, cache_dir)
-    elif os.path.exists(url_or_filename):
-        # File, and it exists.
-        return url_or_filename
-    elif parsed.scheme == "":
-        # File, but it doesn't exist.
-        raise EnvironmentError("file {} not found".format(url_or_filename))
-    else:
-        # Something unknown
-        raise ValueError(
-            "unable to parse {} as a URL or as a local path".format(url_or_filename)
-        )
-
-
 def split_s3_path(url):
     """Split a full s3 path into the bucket name and path."""
     parsed = urlparse(url)
@@ -185,83 +151,48 @@ def http_get(url, temp_file, proxies=None):
             temp_file.write(chunk)
     progress.close()
 
+def load_from_cache(pretrained_model_name_or_path, s3_dict, **kwargs):
+    # Adjusted from HF Transformers to fit loading WordEmbeddings from deepsets s3
+    # Load from URL or cache if already cached
+    cache_dir = kwargs.pop("cache_dir", None)
+    force_download = kwargs.pop("force_download", False)
+    resume_download = kwargs.pop("resume_download", False)
+    proxies = kwargs.pop("proxies", None)
 
-def get_from_cache(url, cache_dir=None):
-    """
-    Given a URL, look for the corresponding dataset in the local cache.
-    If it's not there, download it. Then return the path to the cached file.
-    """
-    if cache_dir is None:
-        cache_dir = FARM_CACHE
-    if sys.version_info[0] == 3 and isinstance(cache_dir, Path):
-        cache_dir = str(cache_dir)
+    s3_file = s3_dict[pretrained_model_name_or_path]
+    try:
+        resolved_file = cached_path(
+                        s3_file,
+                        cache_dir=cache_dir,
+                        force_download=force_download,
+                        proxies=proxies,
+                        resume_download=resume_download,
+                    )
 
-    if not os.path.exists(cache_dir):
-        os.makedirs(cache_dir)
+        if resolved_file is None:
+            raise EnvironmentError
 
-    # Get eTag to add to filename, if it exists.
-    if url.startswith("s3://"):
-        etag = s3_etag(url)
+    except EnvironmentError:
+        if pretrained_model_name_or_path in s3_dict:
+            msg = "Couldn't reach server at '{}' to download data.".format(
+                s3_file
+            )
+        else:
+            msg = (
+                "Model name '{}' was not found in model name list. "
+                "We assumed '{}' was a path, a model identifier, or url to a configuration file or "
+                "a directory containing such a file but couldn't find any such file at this path or url.".format(
+                    pretrained_model_name_or_path, s3_file,
+                )
+            )
+        raise EnvironmentError(msg)
+
+    if resolved_file == s3_file:
+        logger.info("loading file {}".format(s3_file))
     else:
-        try:
-            response = requests.head(url, allow_redirects=True)
-            if response.status_code != 200:
-                etag = None
-            else:
-                etag = response.headers.get("ETag")
-        except EnvironmentError:
-            etag = None
+        logger.info("loading file {} from cache at {}".format(s3_file, resolved_file))
 
-    if sys.version_info[0] == 2 and etag is not None:
-        etag = etag.decode("utf-8")
-    filename = url_to_filename(url, etag)
-
-    # get cache path to put the file
-    cache_path = cache_dir / filename
-
-    # If we don't have a connection (etag is None) and can't identify the file
-    # try to get the last downloaded one
-    if not os.path.exists(cache_path) and etag is None:
-        matching_files = fnmatch.filter(os.listdir(cache_dir), filename + ".*")
-        matching_files = list(filter(lambda s: not s.endswith(".json"), matching_files))
-        if matching_files:
-            cache_path = cache_dir / matching_files[-1]
-
-    if not os.path.exists(cache_path):
-        # Download to temporary file, then copy to cache dir once finished.
-        # Otherwise you get corrupt cache entries if the download gets interrupted.
-        with tempfile.NamedTemporaryFile() as temp_file:
-            logger.info("%s not found in cache, downloading to %s", url, temp_file.name)
-
-            # GET file object
-            if url.startswith("s3://"):
-                s3_get(url, temp_file)
-            else:
-                http_get(url, temp_file)
-
-            # we are copying the file before closing it, so flush to avoid truncation
-            temp_file.flush()
-            # shutil.copyfileobj() starts at the current position, so go to the start
-            temp_file.seek(0)
-
-            logger.info("copying %s to cache at %s", temp_file.name, cache_path)
-            with open(cache_path, "wb") as cache_file:
-                shutil.copyfileobj(temp_file, cache_file)
-
-            logger.info("creating metadata file for %s", cache_path)
-            meta = {"url": url, "etag": etag}
-            meta_path = cache_path + ".json"
-            with open(meta_path, "w") as meta_file:
-                output_string = json.dumps(meta)
-                if sys.version_info[0] == 2 and isinstance(output_string, str):
-                    output_string = unicode(
-                        output_string, "utf-8"
-                    )  # The beauty of python 2
-                meta_file.write(output_string)
-
-            logger.info("removing temp file %s", temp_file.name)
-
-    return cache_path
+    return resolved_file
 
 
 def read_set_from_file(filename):
