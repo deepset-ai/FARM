@@ -6,8 +6,8 @@ from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
 
 
-@pytest.fixture(scope="module")
-def onnx_adaptive_model_qa(num_processes=0):
+@pytest.fixture(scope="session")
+def onnx_adaptive_model_qa(use_gpu, num_processes):
     model_name_or_path = "deepset/bert-base-cased-squad2"
     onnx_model_export_path = Path("benchmarks/onnx-export")
     if not (onnx_model_export_path / "model.onnx").is_file():
@@ -17,7 +17,7 @@ def onnx_adaptive_model_qa(num_processes=0):
         model.convert_to_onnx(onnx_model_export_path)
 
     model = Inferencer.load(
-        onnx_model_export_path, task_type="question_answering", batch_size=1, num_processes=num_processes
+        onnx_model_export_path, task_type="question_answering", batch_size=1, num_processes=num_processes, gpu=use_gpu
     )
 
     return model

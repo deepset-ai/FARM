@@ -7,9 +7,10 @@ logger = logging.getLogger(__name__)
 
 
 @pytest.mark.parametrize("framework", ["pytorch", "onnx"])
-@pytest.mark.parametrize("use_gpu", [False, True])
 @pytest.mark.parametrize("max_seq_len", [128, 256, 384])
 @pytest.mark.parametrize("batch_size", [1, 2, 4, 8, 16, 32, 64])
+@pytest.mark.parametrize('num_processes', [0], scope="session")
+@pytest.mark.parametrize('use_gpu', [True, False], scope="session")
 def test_question_answering(
     adaptive_model_qa, onnx_adaptive_model_qa, benchmark, framework, max_seq_len, batch_size, use_gpu
 ):
