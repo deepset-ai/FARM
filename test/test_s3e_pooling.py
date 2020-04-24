@@ -58,7 +58,7 @@ def test_s3e_fit():
     # Load model, tokenizer and processor directly into Inferencer
     inferencer = Inferencer(model=model, processor=processor, task_type="embeddings", gpu=use_gpu,
                        batch_size=batch_size, extraction_strategy="s3e", extraction_layer=-1,
-                       s3e_stats=s3e_stats)
+                       s3e_stats=s3e_stats, num_processes=0)
 
     # Input
     basic_texts = [
@@ -67,7 +67,7 @@ def test_s3e_fit():
     ]
 
     # Get embeddings for input text (you can vary the strategy and layer)
-    result = inferencer.inference_from_dicts(dicts=basic_texts, max_processes=1)
+    result = inferencer.inference_from_dicts(dicts=basic_texts)
     assert result[0]["context"] == ['a', 'man', 'is', 'walking', 'on', 'the', 'street', '.']
     assert result[0]["vec"][0] - 0.00527727306941057 < 1e-6
     assert result[0]["vec"][-2] + 0.21376857861379997 < 1e-6
@@ -84,7 +84,7 @@ def test_load_extract_s3e_embeddings():
     # Init inferencer
     inferencer = Inferencer.load(model_name_or_path=load_dir, task_type="embeddings", gpu=use_gpu,
                        batch_size=batch_size, extraction_strategy="s3e", extraction_layer=-1,
-                       s3e_stats=s3e_stats)
+                       s3e_stats=s3e_stats, num_processes=0)
 
     # Input
     basic_texts = [
@@ -93,7 +93,7 @@ def test_load_extract_s3e_embeddings():
     ]
 
     # Get embeddings for input text
-    result = inferencer.inference_from_dicts(dicts=basic_texts, max_processes=1)
+    result = inferencer.inference_from_dicts(dicts=basic_texts)
     assert result[0]["context"] == ['a', 'man', 'is', 'walking', 'on', 'the', 'street', '.']
     assert result[0]["vec"][0] - 0.00527727306941057 < 1e-6
     assert result[0]["vec"][-2] + 0.21376857861379997 < 1e-6

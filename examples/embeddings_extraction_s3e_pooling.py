@@ -50,7 +50,7 @@ def fit(language_model, corpus_path, save_dir, do_lower_case, batch_size=4, use_
                                                     model=model,
                                                     corpus=corpus_path,
                                                     n_clusters=10,
-                                                    pca_n_components=30,  #300
+                                                    pca_n_components=300,
                                                     svd_postprocessing=True,
                                                     min_token_occurrences=1)
 
@@ -72,7 +72,7 @@ def fit(language_model, corpus_path, save_dir, do_lower_case, batch_size=4, use_
     ]
 
     # Get embeddings for input text (you can vary the strategy and layer)
-    result = inferencer.inference_from_dicts(dicts=basic_texts, max_processes=1)
+    result = inferencer.inference_from_dicts(dicts=basic_texts)
     print(result)
 
 
@@ -92,7 +92,7 @@ def extract_embeddings(load_dir, use_gpu, batch_size):
     ]
 
     # Get embeddings for input text
-    result = inferencer.inference_from_dicts(dicts=basic_texts, max_processes=1)
+    result = inferencer.inference_from_dicts(dicts=basic_texts)
     print(result)
 
 

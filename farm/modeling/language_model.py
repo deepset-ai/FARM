@@ -1110,7 +1110,7 @@ class WordEmbedding_LM(LanguageModel):
 
     def trim_vocab(self, token_counts, processor, min_threshold):
         """ Remove embeddings for rare tokens in your corpus (< `min_threshold` occurrences) to reduce model size"""
-        logger.info(f"Remove tokens with less than {min_threshold} occurrences from model vocab")
+        logger.info(f"Removing tokens with less than {min_threshold} occurrences from model vocab")
         new_vocab = OrderedDict()
         valid_tok_indices = []
         cnt = 0
