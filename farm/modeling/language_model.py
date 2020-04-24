@@ -43,7 +43,8 @@ from transformers.modeling_utils import SequenceSummary
 from transformers.tokenization_bert import load_vocab
 
 from farm.modeling import wordembedding_utils
-from farm.utils import s3e_pooling
+from farm.modeling.wordembedding_utils import s3e_pooling
+
 
 # These are the names of the attributes in various model configs which refer to the number of dimensions
 # in the output vectors
@@ -323,6 +324,7 @@ class LanguageModel(nn.Module):
                                       token_weights=s3e_stats["token_weights"],
                                       centroids=s3e_stats["centroids"],
                                       token_to_cluster=s3e_stats["token_to_cluster"],
+                                      svd_components=s3e_stats.get("svd_components", None),
                                       mask=padding_mask == 0)
         return pooled_vecs
 
@@ -1153,9 +1155,10 @@ class WordEmbedding_LM(LanguageModel):
             U1 = pca.components_
             explained_variance = pca.explained_variance_
 
-            # Removing Projections on Top Components
+            # Removing projections on top components
             PVN_dims = pca_n_top_components
             for emb_idx in tqdm(range(self.model.embeddings.shape[0]), desc="Removing projections"):
                 for pca_idx, u in enumerate(U1[0:PVN_dims]):
                     ratio = (explained_variance[pca_idx] - explained_variance[PVN_dims]) / explained_variance[pca_idx]
                     self.model.embeddings[emb_idx] = self.model.embeddings[emb_idx] - ratio * np.dot(u.transpose(), self.model.embeddings[emb_idx]) * u
+

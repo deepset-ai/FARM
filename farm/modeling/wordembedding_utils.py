@@ -11,8 +11,12 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 from transformers.tokenization_bert import BertTokenizer
+from sklearn.decomposition import TruncatedSVD
+from sklearn.cluster import KMeans
+from collections import Counter
 
 from farm.file_utils import load_from_cache
+
 
 # create dictionaries with links to wordembeddings stored on deepset s3
 # the dicts need to be used with HF transformers to use their data + modelling functionality
@@ -397,6 +401,168 @@ def _is_punctuation(char):
     if cat.startswith("P"):
         return True
     return False
+
+def s3e_pooling(token_embs, token_ids, token_weights, centroids, token_to_cluster, mask, svd_components=None):
+    """
+    Pooling of word/token embeddings as described by Wang et al in their paper
+    "Efficient Sentence Embedding via Semantic Subspace Analysis"
+    (https://arxiv.org/abs/2002.09620)
+    Adjusted their implementation from here: https://github.com/BinWang28/Sentence-Embedding-S3E
+
+    :param token_embs: numpy array of shape (batch_size, max_seq_len, emb_dim) containing the embeddings for each token
+    :param token_ids: numpy array of shape (batch_size, max_seq_len) containing the ids for each token in the vocab
+    :param token_weights: dict with key=token_id, value= weight in corpus
+    :param centroids: numpy array of shape (n_cluster, emb_dim) that describes the centroids of our clusters in the embedding space
+    :param token_to_cluster: numpy array of shape (vocab_size, 1) where token_to_cluster[i] = cluster_id that token with id i belongs to
+    :param svd_components: Components from a truncated singular value decomposition (SVD, aka LSA) to be
+                           removed from the final sentence embeddings in a postprocessing step.
+                           SVD must be fit on representative sample of sentence embeddings first and can
+                           then be removed from all subsequent embeddings in this function.
+                           We expect the sklearn.decomposition.TruncatedSVD.fit(<your_embeddings>)._components to be passed here.
+    :return: embeddings matrix of shape (batch_size, emb_dim + (n_clusters*n_clusters+1)/2)
+    """
+
+    embeddings = []
+    n_clusters = centroids.shape[0]
+    emb_dim = token_embs.shape[2]
+    # n_tokens = token_embs.shape[1]
+    n_samples = token_embs.shape[0]
+    # Mask tokens that should be ignored (e.g. Padding, CLS ...)
+    token_ids[mask] = -1
+
+    # Process each sentence in the batch at a time
+    for sample_idx in range(n_samples):
+        stage_vec = [{}]
+        # 1) create a dict with key=tok_id, value = embedding
+        for tok_idx, tok_id in enumerate(token_ids[sample_idx, :]):
+            if tok_id != -1:
+                stage_vec[-1][tok_id] = token_embs[sample_idx, tok_idx]
+
+        # 2) create a second dict with key=cluster_id, val=[embeddings] (= C)
+        stage_vec.append({})
+        for k, v in stage_vec[-2].items():
+            cluster = token_to_cluster[k]
+
+            if cluster in stage_vec[-1]:
+                stage_vec[-1][cluster].append(stage_vec[-2][k] * token_weights[k])
+            else:
+                stage_vec[-1][cluster] = []
+                stage_vec[-1][cluster].append(stage_vec[-2][k] * token_weights[k])
+
+        # VLAD for each cluster
+        for k, v in stage_vec[-1].items():
+            # Centroids
+            centroid_vec = centroids[k]
+
+            # Residual
+            v = [wv - centroid_vec for wv in v]
+            stage_vec[-1][k] = np.sum(v, 0)
+
+        # Compute Sentence Embedding (weighted avg, dim = original embedding dim)
+        sentvec = []
+        vec = np.zeros((emb_dim))
+        for key, value in stage_vec[0].items():
+            # print(token_weights[key])
+            vec = vec + value * token_weights[key]
+        sentvec.append(vec / len(stage_vec[0].keys()))
+
+        # Covariance Descriptor (dim = k*(k+1)/2, with k=n_clusters)
+        matrix = np.zeros((n_clusters, emb_dim))
+        for j in range(n_clusters):
+            if j in stage_vec[-1]:
+                matrix[j, :] = stage_vec[-1][j]
+        matrix_no_mean = matrix - matrix.mean(1)[:, np.newaxis]
+        cov = matrix_no_mean.dot(matrix_no_mean.T)
+
+        # Generate Embedding
+        iu1 = np.triu_indices(cov.shape[0])
+        iu2 = np.triu_indices(cov.shape[0], 1)
+        cov[iu2] = cov[iu2] * np.sqrt(2)
+        vec = cov[iu1]
+
+        vec = vec / np.linalg.norm(vec)
+
+        sentvec.append(vec)
+
+        # Concatenate weighted avg + covariance descriptors
+        sentvec = np.concatenate(sentvec)
+
+        embeddings.append(sentvec)
+
+    embeddings = np.vstack(embeddings)
+
+    # Post processing (removal of first principal component)
+    if svd_components is not None:
+        embeddings = embeddings - embeddings.dot(svd_components.transpose()) * svd_components
+    return embeddings
+
+
+def fit_s3e_on_corpus(processor, model, corpus_path, n_clusters=10, eps=1e-3,
+                      center_embeddings=True, pca_removal=True,
+                      pca_n_components=300, pca_n_top_components=10,
+                      default_tok_weight=1, min_token_occurrences=0,
+                      svd_postprocessing=False,
+                      use_gpu=False, batch_size=50):
+
+    from farm.infer import Inferencer
+    from farm.modeling.tokenization import tokenize_with_metadata
+
+    # Get tokens of corpus
+    logger.info("Reading corpus for fitting S3E ")
+    with open(corpus_path, "r") as f:
+        corpus = f.read()
+    tokenized_corpus = tokenize_with_metadata(corpus, processor.tokenizer)["tokens"]
+    token_counts = dict(Counter(tokenized_corpus))
+    n_tokens = sum(token_counts.values())
+
+    # Trim vocab & embeddings to most frequent tokens (only to improve speed & ram consumption)
+    model.language_model.trim_vocab(token_counts, processor, min_threshold=min_token_occurrences)
+
+    # Normalize embeddings
+    model.language_model.normalize_embeddings(zero_mean=center_embeddings, pca_removal=pca_removal,
+                                              pca_n_components=pca_n_components,
+                                              pca_n_top_components=pca_n_top_components)
+    normalized_word_embs = model.language_model.model.embeddings.cpu().numpy()
+
+    # Get token weights
+    token_weights = {}
+    for word, id in processor.tokenizer.vocab.items():
+        if word in token_counts:
+            token_weights[id] = eps / (eps + token_counts[word] / n_tokens)
+        else:
+            # words that are in vocab but not present in corpus get the default weight
+            token_weights[id] = default_tok_weight
+
+    # Construct Cluster
+    weight_list = np.array(list(token_weights.values()))
+    logger.info('Creating clusters for S3E embeddings')
+    kmeans = KMeans(n_clusters=n_clusters, random_state=42).fit(normalized_word_embs, sample_weight=weight_list)
+
+    s3e_stats = {"token_to_cluster": kmeans.labels_,
+                 "centroids": kmeans.cluster_centers_,
+                 "token_weights": token_weights,
+                 "svd_components": None}
+
+    if svd_postprocessing:
+        logger.info('Post processing sentence embeddings using principal component removal')
+
+        # Input
+        sentences = [{"text": s} for s in corpus.split("\n") if len(s.strip()) > 0]
+
+        # Get embeddings
+        inferencer = Inferencer(model=model, processor=processor, task_type="embeddings", gpu=use_gpu,
+                                batch_size=batch_size, extraction_strategy="s3e", extraction_layer=-1,
+                                s3e_stats=s3e_stats)
+        result = inferencer.inference_from_dicts(dicts=sentences, max_processes=4)
+        sentence_embeddings = [s["vec"] for s in result]
+        sentence_embeddings = np.vstack(sentence_embeddings)
+
+        # Principal Component Removal
+        svd = TruncatedSVD(n_components=1, n_iter=7, random_state=0)
+        svd.fit(sentence_embeddings)
+        s3e_stats["svd_components"] = svd.components_
+
+    return model, processor, s3e_stats
 
 
 if __name__ == "__main__":

@@ -122,6 +122,8 @@ class EmbeddingTokenizer(PreTrainedTokenizer):
         :param do_lower_case: Flag whether to lower case the input
         :type do_lower_case: bool
         """
+        # TODO check why EmbeddingTokenizer.tokenize gives many UNK, while tokenize_with_metadata() works fine
+
         super().__init__(
             unk_token=unk_token,
             sep_token=sep_token,
@@ -226,7 +228,6 @@ def tokenize_with_metadata(text, tokenizer):
     words = text.split(" ")
     word_offsets = []
     cumulated = 0
-    logger.info(len(words))
     for idx, word in enumerate(words):
         word_offsets.append(cumulated)
         cumulated += len(word) + 1  # 1 because we so far have whitespace tokenizer
