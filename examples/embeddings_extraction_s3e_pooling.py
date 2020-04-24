@@ -10,9 +10,22 @@ from farm.modeling.tokenization import Tokenizer
 from farm.utils import set_all_seeds, initialize_device_settings
 from farm.modeling.wordembedding_utils import fit_s3e_on_corpus
 
-
 logger = logging.getLogger(__name__)
 
+"""
+    Example for generating sentence embeddings via the S3E pooling approach as described by Wang et al in the paper
+    "Efficient Sentence Embedding via Semantic Subspace Analysis"
+    (https://arxiv.org/abs/2002.09620)
+    
+    You can use classical models like fasttext, glove or word2vec and apply S3E on top. 
+    This can be a powerful benchmark for plain transformer-based embeddings.   
+
+    First, we fit the required stats on a custom corpus. This includes the derivation of token_weights depending on
+    token occurences in the corpus, creation of the semantic clusters via k-means and a couple of
+    pre-/post-processing steps to normalize the embeddings.
+    
+    Second, we feed the resulting objects into our Inferencer to extract the actual sentence embeddings for our sentences. 
+"""
 
 def fit(language_model, corpus_path, save_dir, do_lower_case, batch_size=4, use_gpu=False):
     # Fit S3E on a corpus
@@ -35,9 +48,9 @@ def fit(language_model, corpus_path, save_dir, do_lower_case, batch_size=4, use_
 
     model, processor, s3e_stats = fit_s3e_on_corpus(processor=processor,
                                                     model=model,
-                                                    corpus_path=corpus_path,
+                                                    corpus=corpus_path,
                                                     n_clusters=10,
-                                                    pca_n_components=30, #300
+                                                    pca_n_components=30,  #300
                                                     svd_postprocessing=True,
                                                     min_token_occurrences=1)
 
@@ -84,15 +97,10 @@ def extract_embeddings(load_dir, use_gpu, batch_size):
 
 
 if __name__ == "__main__":
-    # lang_model = "glove-german-uncased"
-    # lang_model = Path("saved_models/glove-german-uncased")
-
+    #TODO update to public model / data
     lang_model = Path("saved_models/s3e_fasttext")
     corpus_path = Path("data/lm_finetune_nips/train.txt")
 
-    # small test
-    lang_model = Path("saved_models/smaller_s3e_fasttext")
-    corpus_path = Path("/home/mp/deepset/dev/FARM/test/samples/s3e/tiny_corpus.txt")
     s3e_dir = Path("saved_models/fitted_s3e/")
 
     fit(language_model=lang_model,

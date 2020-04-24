@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import unicodedata
-from pathlib import Path
+from pathlib import Path, PurePath
 
 import numpy as np
 import pandas as pd
@@ -409,6 +409,11 @@ def s3e_pooling(token_embs, token_ids, token_weights, centroids, token_to_cluste
     (https://arxiv.org/abs/2002.09620)
     Adjusted their implementation from here: https://github.com/BinWang28/Sentence-Embedding-S3E
 
+    This method takes a fitted "s3e model" and token embeddings from a language model and returns sentence embeddings
+    using the S3E Method. The model can be fitted via `fit_s3e_on_corpus()`.
+
+    Usage: See `examples/embeddings_extraction_s3e_pooling.py`
+
     :param token_embs: numpy array of shape (batch_size, max_seq_len, emb_dim) containing the embeddings for each token
     :param token_ids: numpy array of shape (batch_size, max_seq_len) containing the ids for each token in the vocab
     :param token_weights: dict with key=token_id, value= weight in corpus
@@ -497,20 +502,55 @@ def s3e_pooling(token_embs, token_ids, token_weights, centroids, token_to_cluste
     return embeddings
 
 
-def fit_s3e_on_corpus(processor, model, corpus_path, n_clusters=10, eps=1e-3,
-                      center_embeddings=True, pca_removal=True,
+def fit_s3e_on_corpus(processor, model, corpus, n_clusters=10,
+                      mean_removal=True, pca_removal=True,
                       pca_n_components=300, pca_n_top_components=10,
-                      default_tok_weight=1, min_token_occurrences=0,
+                      default_token_weight=1, min_token_occurrences=0,
                       svd_postprocessing=False,
                       use_gpu=False, batch_size=50):
+    """
+    Pooling of word/token embeddings as described by Wang et al in the paper
+    "Efficient Sentence Embedding via Semantic Subspace Analysis"
+    (https://arxiv.org/abs/2002.09620)
+    Adjusted their implementation from here: https://github.com/BinWang28/Sentence-Embedding-S3E
+
+    This method fits the "model" on a custom corpus. This includes the derivation of token_weights depending on
+    token occurences in the corpus, creation of the semantic clusters via k-means and a couple of
+    pre-/post-processing steps to normalize the embeddings.
+
+    The resulting objects can be saved or directly passed to the Inferencer to get the actual embeddings for your sentences.
+    Note: Some operations like `mean_removal` imply changes on the AdaptiveModel or Processor. That's why we return them.
+
+    :param processor: FARM Processor with a Tokenizer used for reading the corpus (e.g. Inference Processor)
+    :param model: FARM AdaptiveModel with an embedding layer in the LM (currently only supporting 'WordEmbedding_LM' as a language model)
+    :param corpus: Path to a text file or a str 
+    :param n_clusters: Number of clusters for S3E. The more clusters, the higher the dimensionality of the resulting embeddings.
+    :param mean_removal: Bool, whether to remove the mean from the token embeddings (preprocessing) 
+    :param pca_removal: Bool, whether to remove pca components from the token embeddings (preprocessing)
+    :param pca_n_components: int, how many PCA components to fit if `pca_removal` is enabled 
+    :param pca_n_top_components: int, how many top PCA components to remove if `pca_removal` is enabled 
+    :param default_token_weight: float, what weight to assign for tokens that are in vocab but not in corpus
+    :param min_token_occurrences: int, mininum number of token occurrences in the corpus for keeping it in the vocab.
+                                  Helps to shrink the model & speed it up.
+    :param svd_postprocessing: Bool, whether to remove the top truncated SVD / LSA components from the sentence embeddings (postprocessing).
+                               Note: Requires creating all sentence embeddings once for the corpus slowing down this method substantially.
+                                     Doesn't impact later inference speed though.
+    :param use_gpu: bool, whether to use a GPU
+    :param batch_size: int, size of batch for the inferencer (only needed when `svd_postprocessing` is enabled)
+    :return: model, processor, s3e_stats
+    """
 
     from farm.infer import Inferencer
     from farm.modeling.tokenization import tokenize_with_metadata
 
     # Get tokens of corpus
-    logger.info("Reading corpus for fitting S3E ")
-    with open(corpus_path, "r") as f:
-        corpus = f.read()
+    if isinstance(corpus, Path):
+        logger.info("Reading corpus for fitting S3E ")
+        with open(corpus, "r") as f:
+            corpus = f.read()
+    else:
+        assert type(corpus) == str, "`corpus` must be of type str or Path()"
+
     tokenized_corpus = tokenize_with_metadata(corpus, processor.tokenizer)["tokens"]
     token_counts = dict(Counter(tokenized_corpus))
     n_tokens = sum(token_counts.values())
@@ -519,19 +559,20 @@ def fit_s3e_on_corpus(processor, model, corpus_path, n_clusters=10, eps=1e-3,
     model.language_model.trim_vocab(token_counts, processor, min_threshold=min_token_occurrences)
 
     # Normalize embeddings
-    model.language_model.normalize_embeddings(zero_mean=center_embeddings, pca_removal=pca_removal,
+    model.language_model.normalize_embeddings(zero_mean=mean_removal, pca_removal=pca_removal,
                                               pca_n_components=pca_n_components,
                                               pca_n_top_components=pca_n_top_components)
     normalized_word_embs = model.language_model.model.embeddings.cpu().numpy()
 
     # Get token weights
     token_weights = {}
+    eps = 1e-3
     for word, id in processor.tokenizer.vocab.items():
         if word in token_counts:
             token_weights[id] = eps / (eps + token_counts[word] / n_tokens)
         else:
             # words that are in vocab but not present in corpus get the default weight
-            token_weights[id] = default_tok_weight
+            token_weights[id] = default_token_weight
 
     # Construct Cluster
     weight_list = np.array(list(token_weights.values()))

@@ -43,7 +43,7 @@ def test_s3e_fit():
 
     model, processor, s3e_stats = fit_s3e_on_corpus(processor=processor,
                                                     model=model,
-                                                    corpus_path=corpus_path,
+                                                    corpus=corpus_path,
                                                     n_clusters=3,
                                                     pca_n_components=30,
                                                     svd_postprocessing=True,
