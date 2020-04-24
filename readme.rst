@@ -35,7 +35,7 @@
 What is it?
 ############
 FARM makes **Transfer Learning** with BERT & Co **simple, fast and enterprise-ready**.
-It's build upon `transformers <https://github.com/huggingface/pytorch-transformers>`_ and provides additional features to simplify the life of developers:
+It's built upon `transformers <https://github.com/huggingface/pytorch-transformers>`_ and provides additional features to simplify the life of developers:
 Parallelized preprocessing, highly modular design, multi-task learning, experiment tracking, easy debugging and close integration with AWS SageMaker.
 
 With FARM you can build **fast proof-of-concepts** for tasks like text classification, NER or question answering and **transfer them easily into production**.
@@ -83,6 +83,10 @@ Core features
 | Extracting embeddings        | x                 |  x                |  x                |  x                |  x                |  x                |
 +------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
 | LM from scratch (beta)       | x                 |                   |                   |                   |                   |                   |
++------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
+| Text Pair Classification     | x                 |  x                |  x                |  x                |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
+| Passage Ranking              | x                 |  x                |  x                |  x                |  x                |  x                |
 +------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
 
 ****NEW**** Interested in doing Question Answering at scale? Checkout `Haystack <https://github.com/deepset-ai/haystack>`_!

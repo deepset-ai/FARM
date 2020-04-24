@@ -82,7 +82,7 @@ def test_doc_regression(caplog):
         {"text": "it just did not fit right. The top is very thin showing everything."},
     ]
 
-    model = Inferencer.load(save_dir)
+    model = Inferencer.load(save_dir, num_processes=0)
     result = model.inference_from_dicts(dicts=basic_texts)
     assert isinstance(result[0]["predictions"][0]["pred"], np.float32)
 

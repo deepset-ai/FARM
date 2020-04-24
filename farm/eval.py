@@ -3,12 +3,9 @@ import torch
 import numbers
 import logging
 import numpy as np
-from seqeval.metrics import classification_report as token_classification_report
-from sklearn.metrics import classification_report
-from sklearn.metrics import r2_score
 from torch.utils.data import DataLoader
 
-from farm.evaluation.metrics import compute_metrics
+from farm.evaluation.metrics import compute_metrics, compute_report_metrics
 from farm.utils import to_numpy
 from farm.utils import MLFlowLogger as MlLogger
 from farm.modeling.adaptive_model import AdaptiveModel
@@ -106,38 +103,7 @@ class Evaluator:
 
             # Select type of report depending on prediction head output type
             if self.report:
-                if head.ph_output_type == "per_token":
-                    report_fn = token_classification_report
-                elif head.ph_output_type == "per_sequence":
-                    report_fn = classification_report
-                elif head.ph_output_type == "per_token_squad":
-                    report_fn = lambda *args, **kwargs: "not Implemented"
-                elif head.ph_output_type == "per_sequence_continuous":
-                    report_fn = r2_score
-                else:
-                    raise NotImplementedError
-
-                # CHANGE PARAMETERS, not all report_fn accept digits
-                if head.ph_output_type in ["per_sequence_continuous","per_token"]:
-                    result["report"] = report_fn(
-                        label_all[head_num], preds_all[head_num]
-                    )
-                else:
-                    # supply labels as all possible combination because if ground truth labels do not cover
-                    # all values in label_list (maybe dev set is small), the report will break
-                    if head.model_type == "multilabel_text_classification":
-                        # For multilabel classification, we don't eval with string labels here, but with multihot vectors.
-                        # Therefore we need to supply all possible label ids instead of label values.
-                        all_possible_labels = list(range(len(head.label_list)))
-                    else:
-                        all_possible_labels = head.label_list
-
-                    result["report"] = report_fn(
-                        label_all[head_num],
-                        preds_all[head_num],
-                        digits=4,
-                        labels=all_possible_labels,
-                        target_names=head.label_list)
+                result["report"] = compute_report_metrics(head, preds_all[head_num], label_all[head_num])
 
             if return_preds_and_labels:
                 result["preds"] = preds_all[head_num]

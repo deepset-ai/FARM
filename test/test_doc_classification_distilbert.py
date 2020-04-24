@@ -81,8 +81,7 @@ def test_doc_classification(caplog):
         {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei."}
     ]
 
-
-    inf = Inferencer.load(save_dir, batch_size=2)
+    inf = Inferencer.load(save_dir, batch_size=2, num_processes=0)
     result = inf.inference_from_dicts(dicts=basic_texts)
     assert isinstance(result[0]["predictions"][0]["probability"], np.float32)
 

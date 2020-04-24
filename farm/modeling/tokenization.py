@@ -78,7 +78,10 @@ class Tokenizer:
                     "fasttext" in pretrained_model_name_or_path.lower():
                 tokenizer_class = "EmbeddingTokenizer"
             else:
-                raise ValueError(f"Could not infer tokenizer_type from name '{pretrained_model_name_or_path}'. Set arg `tokenizer_type` in Tokenizer.load() to one of: 'bert', 'roberta', 'xlnet' ")
+                raise ValueError(f"Could not infer tokenizer_class from name '{pretrained_model_name_or_path}'. Set "
+                                 f"arg `tokenizer_class` in Tokenizer.load() to one of: AlbertTokenizer, "
+                                 f"XLMRobertaTokenizer, RobertaTokenizer, DistilBertTokenizer, BertTokenizer, or "
+                                 f"XLNetTokenizer.")
             logger.info(f"Loading tokenizer of type '{tokenizer_class}'")
         # return appropriate tokenizer object
         if tokenizer_class == "AlbertTokenizer":
@@ -262,10 +265,14 @@ def _words_to_tokens(words, word_offsets, tokenizer):
         if idx % 500000 == 0:
             logger.info(idx)
         # Get (subword) tokens of single word.
+
+        # empty / pure whitespace
+        if len(w) == 0:
+          continue
         # For the first word of a text: we just call the regular tokenize function.
         # For later words: we need to call it with add_prefix_space=True to get the same results with roberta / gpt2 tokenizer
         # see discussion here. https://github.com/huggingface/transformers/issues/1196
-        if len(tokens) == 0:
+        elif len(tokens) == 0:
             tokens_word = tokenizer.tokenize(w)
         else:
             try:

@@ -137,6 +137,8 @@ class MLFlowLogger(BaseMLLogger):
             mlflow.log_metrics(metrics, step=step)
         except ConnectionError:
             logger.warning(f"ConnectionError in logging metrics to MLFlow.")
+        except Exception as e:
+            logger.warning(f"Failed to log metrics: {e}")
 
     @classmethod
     def log_params(cls, params):
@@ -144,6 +146,8 @@ class MLFlowLogger(BaseMLLogger):
             mlflow.log_params(params)
         except ConnectionError:
             logger.warning("ConnectionError in logging params to MLFlow")
+        except Exception as e:
+            logger.warning(f"Failed to log params: {e}")
 
     @classmethod
     def log_artifacts(cls, dir_path, artifact_path=None):
@@ -151,6 +155,8 @@ class MLFlowLogger(BaseMLLogger):
             mlflow.log_artifacts(dir_path, artifact_path)
         except ConnectionError:
             logger.warning(f"ConnectionError in logging artifacts to MLFlow")
+        except Exception as e:
+            logger.warning(f"Failed to log artifacts: {e}")
 
     @classmethod
     def end_run(cls):
@@ -188,6 +194,7 @@ def to_numpy(container):
 
 
 def convert_iob_to_simple_tags(preds, spans):
+    contains_named_entity = len([x for x in preds if "B-" in x]) != 0
     simple_tags = []
     merged_spans = []
     open_tag = False
@@ -224,6 +231,10 @@ def convert_iob_to_simple_tags(preds, spans):
         merged_spans.append(cur_span)
         simple_tags.append(cur_tag)
         open_tag = False
+    if contains_named_entity and len(simple_tags) == 0:
+        raise Exception("Predicted Named Entities lost when converting from IOB to simple tags. Please check the format"
+                        "of the training data adheres to either adheres to IOB2 format or is converted when "
+                        "read_ner_file() is called.")
     return simple_tags, merged_spans
 
 
