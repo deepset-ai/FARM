@@ -930,7 +930,6 @@ class BertStyleLMProcessor(Processor):
                 current_chunk_clear_text = []
                 current_length = 0
             i += 1
-
         return samples
 
     def _dict_to_samples_no_next_sent(self, doc):
