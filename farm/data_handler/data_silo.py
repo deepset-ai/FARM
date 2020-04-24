@@ -861,7 +861,6 @@ class DataSiloForCrossVal:
 
         for idx, split in enumerate(splits):
             current_test_set = split
-            current_train_set = np.delete(documents, idx, axis=0)
-            current_train_set = current_train_set.flatten()
+            current_train_set = np.hstack(np.delete(splits, idx, axis=0))
 
             yield current_train_set, current_test_set

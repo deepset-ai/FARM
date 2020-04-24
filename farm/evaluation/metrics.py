@@ -64,6 +64,8 @@ def compute_metrics(metric, preds, labels):
         return {"mse": mean_squared_error(preds, labels)}
     elif metric == "r2":
         return {"r2": r2_score(preds, labels)}
+    elif metric == "top_n_recall":
+        return {"top_n_recall": top_n_recall(preds, labels)}
     # elif metric == "masked_accuracy":
     #     return simple_accuracy(preds, labels, ignore=-1)
     elif metric in registered_metrics:
@@ -93,9 +95,9 @@ def squad_f1(preds, labels):
     return np.mean(f1_scores)
 
 
-def squad_f1_single(pred, label):
+def squad_f1_single(pred, label, pred_idx=0):
     label_start, label_end = label
-    pred_start, pred_end, _ = pred[0]
+    pred_start, pred_end, _ = pred[pred_idx]
     if (pred_start + pred_end == 0) or (label_start + label_end == 0):
         if pred_start == label_start:
             return 1.0
@@ -116,3 +118,23 @@ def squad(preds, labels):
     f1 = squad_f1(preds=preds, labels=labels)
 
     return {"EM": em, "f1": f1}
+
+def top_n_recall(preds, labels):
+    answer_in_top_n = []
+    n_questions = len(preds)
+    for i in range(n_questions):
+        f1_score = 0
+        current_preds = preds[i][0]
+        for idx, pred in enumerate(current_preds):
+            f1_score = max([squad_f1_single(current_preds, label, pred_idx=idx) for label in labels[i]])
+            if f1_score:
+                break
+        if f1_score:
+            answer_in_top_n.append(1)
+        else:
+            answer_in_top_n.append(0)
+
+    return np.mean(answer_in_top_n)
+
+
+

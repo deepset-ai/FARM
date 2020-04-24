@@ -47,6 +47,7 @@ def question_answering_crossvalidation():
     lang_model = "deepset/roberta-base-squad2"
     do_lower_case = True
     dev_split = 0.0
+    no_ans_boost = 0
     use_amp = None
 
     # 1.Create a tokenizer
@@ -62,11 +63,11 @@ def question_answering_crossvalidation():
         max_seq_len=384,
         label_list=label_list,
         metric=metric,
-        train_filename="test.json",
+        train_filename="dev-v2.0.json",
         dev_filename=None,
         dev_split=0,
         test_filename=None,
-        data_dir=Path("../data/covid"),
+        data_dir=Path("../data/squad20"),
         doc_stride=192,
     )
 
@@ -86,7 +87,9 @@ def question_answering_crossvalidation():
         # fine-tune pre-trained question-answering model
         model = AdaptiveModel.convert_from_transformers(lang_model, device, "question_answering")
         model.connect_heads_with_processor(data_silo.processor.tasks, require_labels=True)
-        model.prediction_heads[0].no_ans_boost = -100
+        # If positive, thjs will boost "No Answer" as prediction.
+        # If negative, this will prevent the model from giving"No Answer" as prediction.
+        model.prediction_heads[0].no_ans_boost = no_ans_boost
 
         # or train question-answering models from scratch
         ## Create an AdaptiveModel
