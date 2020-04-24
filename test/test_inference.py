@@ -1,10 +1,11 @@
 import pytest
 
 
-@pytest.mark.parametrize("max_processes", [2, 1])
+@pytest.mark.parametrize("streaming", [True, False])
+@pytest.mark.parametrize("multiprocessing_chunksize", [None, 2])
+# @pytest.mark.parametrize("num_processes", [2, 0, None]) # TODO add test for multiprocessing
 @pytest.mark.parametrize("rest_api_schema", [True, False])
-def test_qa_format_and_results(adaptive_model_qa, max_processes, rest_api_schema):
-
+def test_qa_format_and_results(adaptive_model_qa, streaming, multiprocessing_chunksize, rest_api_schema):
     qa_inputs_dicts = [
         {
             "questions": ["In what country is Normandy"],
@@ -25,7 +26,8 @@ def test_qa_format_and_results(adaptive_model_qa, max_processes, rest_api_schema
 
     results = adaptive_model_qa.inference_from_dicts(
         dicts=qa_inputs_dicts,
-        max_processes=max_processes,
+        multiprocessing_chunksize=multiprocessing_chunksize,
+        streaming=streaming,
         rest_api_schema=True,
     )
     # sample results
@@ -54,7 +56,7 @@ def test_qa_format_and_results(adaptive_model_qa, max_processes, rest_api_schema
     #         ],
     #     }
     # ]
-    predictions = results[0]["predictions"]
+    predictions = list(results)[0]["predictions"]
 
     for prediction, ground_truth, qa_input_dict in zip(
         predictions, ground_truths, qa_inputs_dicts

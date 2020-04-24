@@ -17,8 +17,9 @@ from tqdm import tqdm
 
 from farm.data_handler.dataloader import NamedDataLoader
 from farm.data_handler.processor import Processor, BertStyleLMProcessor
-from farm.data_handler.utils import grouper, stream_grouper
+from farm.data_handler.utils import grouper
 from farm.modeling.tokenization import EmbeddingTokenizer
+
 from farm.utils import MLFlowLogger as MlLogger
 from farm.utils import log_ascii_workers, calc_chunksize
 from farm.utils import get_dict_checksum
@@ -78,6 +79,7 @@ class DataSilo:
         self.max_multiprocessing_chunksize = max_multiprocessing_chunksize
         self.caching = caching
         self.cache_path = cache_path
+        self.tensor_names = None
 
         if len(self.processor.tasks) == 0:
             raise Exception("No task initialized. Try initializing the processor with a metric and a label list. "
@@ -196,11 +198,14 @@ class DataSilo:
             # either from supplied dicts
             logger.info("Loading train set from supplied dicts ")
             self.data["train"], self.tensor_names = self._get_dataset(filename=None, dicts=train_dicts)
-        else:
+        elif self.processor.train_filename:
             # or from a file (default)
             train_file = self.processor.data_dir / self.processor.train_filename
             logger.info("Loading train set from: {} ".format(train_file))
             self.data["train"], self.tensor_names = self._get_dataset(train_file)
+        else:
+            logger.info("No train set is being loaded")
+            self.data["train"] = None
 
         # dev data
         if dev_dicts:
@@ -229,7 +234,10 @@ class DataSilo:
             # or from file (default)
             test_file = self.processor.data_dir / self.processor.test_filename
             logger.info("Loading test set from: {}".format(test_file))
-            self.data["test"], _ = self._get_dataset(test_file)
+            if self.tensor_names:
+                self.data["test"], _ = self._get_dataset(test_file)
+            else:
+                self.data["test"], self.tensor_names = self._get_dataset(test_file)
         else:
             logger.info("No test set is being loaded")
             self.data["test"] = None
@@ -308,17 +316,20 @@ class DataSilo:
     def _initialize_data_loaders(self):
         """ Initializing train, dev and test data loaders for the already loaded datasets """
 
-        if self.distributed:
-            sampler_train = DistributedSampler(self.data["train"])
-        else:
-            sampler_train = RandomSampler(self.data["train"])
+        if self.processor.train_filename:
+            if self.distributed:
+                sampler_train = DistributedSampler(self.data["train"])
+            else:
+                sampler_train = RandomSampler(self.data["train"])
 
-        data_loader_train = NamedDataLoader(
-            dataset=self.data["train"],
-            sampler=sampler_train,
-            batch_size=self.batch_size,
-            tensor_names=self.tensor_names,
-        )
+            data_loader_train = NamedDataLoader(
+                dataset=self.data["train"],
+                sampler=sampler_train,
+                batch_size=self.batch_size,
+                tensor_names=self.tensor_names,
+            )
+        else:
+            data_loader_train = None
 
         if self.data["dev"] is not None:
             data_loader_dev = NamedDataLoader(
@@ -393,9 +404,12 @@ class DataSilo:
     def _calculate_statistics(self):
         """ Calculate and log simple summary statistics of the datasets """
 
-        self.counts = {
-            "train": len(self.data["train"])
-        }
+        self.counts = {}
+
+        if self.data["train"]:
+            self.counts["train"] = len(self.data["train"])
+        else:
+            self.counts["train"] = 0
 
         if self.data["dev"]:
             self.counts["dev"] = len(self.data["dev"])
@@ -408,26 +422,28 @@ class DataSilo:
             self.counts["test"] = 0
 
         seq_lens = []
-        for dataset in self.data["train"].datasets:
-            train_input_numpy = dataset[:][0].numpy()
-            seq_lens.extend(np.sum(train_input_numpy != self.processor.tokenizer.pad_token_id, axis=1))
-        max_seq_len = dataset[:][0].shape[1]
+        if self.data["train"]:
+            for dataset in self.data["train"].datasets:
+                train_input_numpy = dataset[:][0].numpy()
+                seq_lens.extend(np.sum(train_input_numpy != self.processor.tokenizer.pad_token_id, axis=1))
+            max_seq_len = dataset[:][0].shape[1]
 
-        self.clipped = np.mean(np.array(seq_lens) == max_seq_len)
-        self.ave_len = np.mean(seq_lens)
+        self.clipped = np.mean(np.array(seq_lens) == max_seq_len) if seq_lens else 0
+        self.ave_len = np.mean(seq_lens) if seq_lens else 0
 
         logger.info("Examples in train: {}".format(self.counts["train"]))
         logger.info("Examples in dev  : {}".format(self.counts["dev"]))
         logger.info("Examples in test : {}".format(self.counts["test"]))
         logger.info("")
-        logger.info("Longest sequence length observed after clipping:     {}".format(max(seq_lens)))
-        logger.info("Average sequence length after clipping: {}".format(self.ave_len))
-        logger.info("Proportion clipped:      {}".format(self.clipped))
-        if self.clipped > 0.5:
-            logger.info("[Farmer's Tip] {}% of your samples got cut down to {} tokens. "
-                        "Consider increasing max_seq_len. "
-                        "This will lead to higher memory consumption but is likely to "
-                        "improve your model performance".format(round(self.clipped * 100, 1), max_seq_len))
+        if self.data["train"]:
+            logger.info("Longest sequence length observed after clipping:     {}".format(max(seq_lens)))
+            logger.info("Average sequence length after clipping: {}".format(self.ave_len))
+            logger.info("Proportion clipped:      {}".format(self.clipped))
+            if self.clipped > 0.5:
+                logger.info("[Farmer's Tip] {}% of your samples got cut down to {} tokens. "
+                            "Consider increasing max_seq_len. "
+                            "This will lead to higher memory consumption but is likely to "
+                            "improve your model performance".format(round(self.clipped * 100, 1), max_seq_len))
 
         MlLogger.log_params(
             {
@@ -436,7 +452,7 @@ class DataSilo:
                 "n_samples_test": self.counts["test"],
                 "batch_size": self.batch_size,
                 "ave_seq_len": self.ave_len,
-                "clipped": self.clipped
+                "clipped": self.clipped,
             }
         )
 
@@ -597,18 +613,18 @@ class _StreamingDataSet(IterableDataset):
         #  a Dataloader. Hence, we need to configure the __iter__ to not yield duplicated data
         #  when more than 1 workers are used.
         #
-        #  To avoid duplicates, we need to split the input dicts between the workers. The
-        #  stream_grouper() converts a dict generator given as input and yields only the
+        #  To avoid duplicates, we need to split the input dicts between the workers.
+        #  The grouper() converts a dict generator given as input and yields only the
         #  dicts that are to be processed by the given worker_id.
         #
-        #  For instance, consider input as [dictA, dictB, dictC, ...], then the stream_grouper
+        #  For instance, consider input as [dictA, dictB, dictC, ...], then the grouper
         #  (with n=2) will return, [[dictA, dictB], [dictE, dictF] ...] for worker 1 and
         #  [[dictC, dictD], [dictG, dictH] ...] for worker 2.
 
         if self.dataloader_workers > 1:
             worker_info = torch.utils.data.get_worker_info()
             worker_id = worker_info.id
-            dicts = stream_grouper(
+            dicts = grouper(
                 self.file_to_dicts_generator, n=10, worker_id=worker_id, total_workers=self.dataloader_workers
             )
         else:

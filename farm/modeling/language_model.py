@@ -138,16 +138,22 @@ class LanguageModel(nn.Module):
                 elif "word2vec" in pretrained_model_name_or_path.lower() or "glove" in pretrained_model_name_or_path.lower():
                     language_model_class = 'WordEmbedding_LM'
 
-            language_model = cls.subclasses[language_model_class].load(pretrained_model_name_or_path, **kwargs)
+            if language_model_class:
+                language_model = cls.subclasses[language_model_class].load(pretrained_model_name_or_path, **kwargs)
+            else:
+                language_model = None
+
             if language_model_class == 'XLMRoberta':
                 # TODO: for some reason, the pretrained XLMRoberta has different vocab size in the tokenizer compared to the model this is a hack to resolve that
                 n_added_tokens = 3
 
         if not language_model:
             raise Exception(
-                f"Model not found for {pretrained_model_name_or_path}. Either supply the local path for a saved model "
-                f"or one of bert/roberta/xlnet/albert/distilbert models that can be downloaded from remote. Here's the list of available "
-                f"models: https://farm.deepset.ai/api/modeling.html#farm.modeling.language_model.LanguageModel.load"
+                f"Model not found for {pretrained_model_name_or_path}. Either supply the local path for a saved "
+                f"model or one of bert/roberta/xlnet/albert/distilbert models that can be downloaded from remote. "
+                f"Ensure that the model class name can be inferred from the directory name when loading a "
+                f"Transformers' model. Here's a list of available models: "
+                f"https://farm.deepset.ai/api/modeling.html#farm.modeling.language_model.LanguageModel.load"
             )
 
         # resize embeddings in case of custom vocab
@@ -673,13 +679,13 @@ class DistilBert(LanguageModel):
     A DistilBERT model that wraps HuggingFace's implementation
     (https://github.com/huggingface/transformers) to fit the LanguageModel class.
 
-    NOTE: 
-    - DistilBert doesn’t have token_type_ids, you don’t need to indicate which 
-    token belongs to which segment. Just separate your segments with the separation 
+    NOTE:
+    - DistilBert doesn’t have token_type_ids, you don’t need to indicate which
+    token belongs to which segment. Just separate your segments with the separation
     token tokenizer.sep_token (or [SEP])
     - Unlike the other BERT variants, DistilBert does not output the
     pooled_output. An additional pooler is initialized.
-    
+
     """
 
     def __init__(self):

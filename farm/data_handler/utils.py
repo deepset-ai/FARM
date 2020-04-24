@@ -14,6 +14,7 @@ from tqdm import tqdm
 from typing import List
 
 from farm.file_utils import http_get
+from farm.modeling.tokenization import tokenize_with_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ DOWNSTREAM_TASK_MAP = {
     "toxic-comments": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/toxic-comments.tar.gz",
     'cola': "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/cola.tar.gz",
     "asnq_binary": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/asnq_binary.tar.gz",
+    "germeval17": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/germeval17.tar.gz",
 }
 
 def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=None, header=0, proxies=None, max_samples=None):
@@ -132,7 +134,7 @@ def read_ner_file(filename, sep="\t", proxies=None):
             continue
         if len(line) == 0 or "-DOCSTART-" in line or line[0] == "\n":
             if len(sentence) > 0:
-                if "conll03-de" in str(filename):
+                if "conll03" in str(filename):
                     _convertIOB1_to_IOB2(label)
                 if "germeval14" in str(filename):
                     label = _convert_germeval14_labels(label)
@@ -286,6 +288,9 @@ def _download_extract_downstream_data(input_file, proxies=None):
                     logger.error(f"Someone has changed the file for {taskname}. Please make sure the correct file is used and update the md5sum in farm/data_handler/utils.py")
             elif "gnad" in taskname:
                 if "ef62fe3f59c1ad54cf0271d8532b8f22" != _get_md5checksum(temp_file.name):
+                    logger.error(f"Someone has changed the file for {taskname}. Please make sure the correct file is used and update the md5sum in farm/data_handler/utils.py")
+            elif "germeval17" in taskname:
+                if "f1bf67247dcfe7c3c919b7b20b3f736e" != _get_md5checksum(temp_file.name):
                     logger.error(f"Someone has changed the file for {taskname}. Please make sure the correct file is used and update the md5sum in farm/data_handler/utils.py")
             tfile = tarfile.open(temp_file.name)
             tfile.extractall(datadir)
@@ -445,10 +450,148 @@ def _get_random_sentence(all_baskets, forbidden_doc):
     return sentence
 
 
+def get_sequence_pair(doc, chunk, chunk_clear_text, all_baskets, tokenizer, max_num_tokens, prob_next_sentence=0.5):
+    """
+    Get one sample from corpus consisting of two sequences. A sequence can consist of more than one sentence.
+    With prob. 50% these are two subsequent sequences from one doc. With 50% the second sequence will be a
+    random one from another document.
+
+    :param doc: The current document.
+    :type doc: [str]
+    :param chunk: List of subsequent, tokenized sentences.
+    :type chunk: [dict]
+    :param chunk_clear_text: List of subsequent sentences.
+    :type chunk_clear_text: [str]
+    :param all_baskets: SampleBaskets containing multiple other docs from which we can sample the second sequence
+    if we need a random one.
+    :type all_baskets: [dict]
+    :param tokenizer: Used to split a sentence (str) into tokens.
+    :param max_num_tokens: Samples are truncated after this many tokens.
+    :type max_num_tokens: int
+    :return: (list, list, dict, int)
+        tokenized seq a,
+        tokenized seq b,
+        sample in clear text with label,
+        number of unused sentences in chunk
+    """
+    sequence_a = []
+    sequence_b = []
+    sample_in_clear_text = { "text_a" : "", "text_b" : ""}
+    # determine how many segments from chunk go into sequence_a
+    len_sequence_a = 0
+    a_end = 1
+    if len(chunk) >= 2:
+        a_end = random.randrange(1, len(chunk))
+    for i in range(a_end):
+        sequence_a.append(chunk[i])
+        sample_in_clear_text["text_a"] += f"{chunk_clear_text[i]} "
+        len_sequence_a += len(chunk[i]["tokens"])
+    sample_in_clear_text["text_a"].strip()
+
+    # actual next sequence
+    if (random.random() > prob_next_sentence) and (len(chunk) > 1):
+        label = True
+        for i in range(a_end, len(chunk)):
+            sequence_b.append(chunk[i])
+            sample_in_clear_text["text_b"] += f"{chunk_clear_text[i]} "
+        sample_in_clear_text["text_b"].strip()
+        sample_in_clear_text["nextsentence_label"] = True
+        num_unused_segments = 0
+    # edge case: split sequence in half
+    elif (len(chunk) == 1) and len_sequence_a >= max_num_tokens:
+        sequence_a = {}
+        sequence_b = {}
+        if int(len(chunk[0]["tokens"])/2) >= max_num_tokens:
+            boundary = int(max_num_tokens/2)
+        else:
+            boundary = int(len(chunk[0]["tokens"])/2)
+        sequence_a["tokens"] = chunk[0]["tokens"][:boundary]
+        sequence_a["offsets"] = chunk[0]["offsets"][:boundary]
+        sequence_a["start_of_word"] = chunk[0]["start_of_word"][:boundary]
+        sequence_b["tokens"] = chunk[0]["tokens"][boundary:]
+        sequence_b["start_of_word"] = chunk[0]["start_of_word"][boundary:]
+        # get offsets for sequence_b right
+        seq_b_offset_start = chunk[0]["offsets"][boundary]
+        sequence_b["offsets"] = [offset - seq_b_offset_start for offset in chunk[0]["offsets"][boundary:]]
+        # get clear text
+        clear_text_boundary = chunk[0]["offsets"][boundary]
+        sample_in_clear_text["text_a"] = chunk_clear_text[0][:clear_text_boundary]
+        sample_in_clear_text["text_b"] = chunk_clear_text[0][clear_text_boundary:]
+        sample_in_clear_text["text_a"].strip()
+        sample_in_clear_text["text_b"].strip()
+        sample_in_clear_text["nextsentence_label"] = True
+        return [sequence_a], [sequence_b], sample_in_clear_text, 0
+    # random next sequence
+    else:
+        label = False
+        sequence_b_length = 0
+        target_b_length = max_num_tokens - len_sequence_a
+        random_doc = _get_random_doc(all_baskets, forbidden_doc=doc)
+
+        random_start = random.randrange(len(random_doc))
+        for i in range(random_start, len(random_doc)):
+            current_sentence_tokenized = tokenize_with_metadata(random_doc[i], tokenizer)
+            sequence_b.append(current_sentence_tokenized)
+            sample_in_clear_text["text_b"] += f"{random_doc[i]} "
+            sequence_b_length += len(current_sentence_tokenized["tokens"])
+            if sequence_b_length >= target_b_length:
+                break
+
+        sample_in_clear_text["text_b"].strip()
+        sample_in_clear_text["nextsentence_label"] = False
+
+        # We didn't use all of the segments in chunk => put them back
+        num_unused_segments = len(chunk) - a_end
+
+    assert len(sequence_a) > 0
+    assert len(sequence_b) > 0
+    return sequence_a, sequence_b, sample_in_clear_text, num_unused_segments
+
+
+def _get_random_doc(all_baskets, forbidden_doc):
+    random_doc = None
+    for _ in range(100):
+        rand_doc_idx = random.randrange(len(all_baskets))
+        random_doc = all_baskets[rand_doc_idx]["doc"]
+
+        # check if random doc is different from initial doc
+        if random_doc != forbidden_doc:
+            break
+
+    if random_doc is None:
+        raise Exception("Failed to pick out a suitable random substitute for next sequence")
+    return random_doc
+
+
+def join_sentences(sequence):
+    """
+    Takes a list of subsequent, tokenized sentences and puts them together into one sequence.
+    :param sequence: List of tokenized sentences.
+    :type sequence: [dict]
+    :return: Tokenized sequence. (Dict with keys 'tokens', 'offsets' and 'start_of_word')
+    """
+    sequence_joined = {
+        "tokens" : [],
+        "offsets" : [],
+        "start_of_word" : []
+    }
+    last_offset = 0
+    for sentence in sequence:
+        sequence_joined["tokens"].extend(sentence["tokens"])
+        sequence_joined["start_of_word"].extend(sentence["start_of_word"])
+        # get offsets right
+        current_offsets = [offset + last_offset for offset in sentence["offsets"]]
+        sequence_joined["offsets"].extend(current_offsets)
+        last_offset += sentence["offsets"][-1] + 2
+
+    return sequence_joined
+
+
 def mask_random_words(tokens, vocab, token_groups=None, max_predictions_per_seq=20, masked_lm_prob=0.15):
     """
     Masking some random tokens for Language Model task with probabilities as in the original BERT paper.
-    num_masked. If whole_word_mask is set to true, *all* tokens of a word are either masked or not.
+    num_masked.
+    If token_groups is supplied, whole word masking is applied, so *all* tokens of a word are either masked or not.
     This option was added by the BERT authors later and showed solid improvements compared to the original objective.
     Whole Word Masking means that if we mask all of the wordpieces corresponding to an original word.
     When a word has been split intoWordPieces, the first token does not have any marker and any subsequence
@@ -537,18 +680,19 @@ def is_json(x):
     except:
         return False
 
-def grouper(iterable, n):
+
+def grouper(iterable, n, worker_id=0, total_workers=1):
     """
+    Split an iterable into a list of n-sized chunks. Each element in the chunk is a tuple of (index_num, element).
+
+    Example:
+
     >>> list(grouper('ABCDEFG', 3))
     [[(0, 'A'), (1, 'B'), (2, 'C')], [(3, 'D'), (4, 'E'), (5, 'F')], [(6, 'G')]]
-    """
-    iterable = iter(enumerate(iterable))
-    return iter(lambda: list(islice(iterable, n)), [])
 
 
-def stream_grouper(iterable, n, worker_id, total_workers):
-    """
-    This method is an extension of grouper() for use with StreamingDataSilo.
+
+    Use with the StreamingDataSilo
 
     When StreamingDataSilo is used with multiple PyTorch DataLoader workers, the generator
     yielding dicts(that gets converted to datasets) is replicated across the workers.
@@ -599,6 +743,7 @@ def stream_grouper(iterable, n, worker_id, total_workers):
 
     iterable = iter(enumerate(iterable))
     iterable = get_iter_start_pos(iterable)
-    iterable = filter_elements_per_worker(iterable)
+    if total_workers > 1:
+        iterable = filter_elements_per_worker(iterable)
 
     return iter(lambda: list(islice(iterable, n)), [])
