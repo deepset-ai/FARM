@@ -734,6 +734,9 @@ class DataSiloForCrossVal:
         :param n_neg_answers_per_question: number of negative answers per question to include for training
         :type n_neg_answers_per_question: int
         """
+        assert datasilo.tensor_names[4] == "id", f"Expected tensor 'id' at index 4, found {datasilo.tensor_names[4]}"
+        assert datasilo.tensor_names[7] == "labels", f"Expected tensor 'labels' at index 7, found {datasilo.tensor_names[7]}"
+
         sets_to_concat = []
         for setname in sets:
             if datasilo.data[setname]:
