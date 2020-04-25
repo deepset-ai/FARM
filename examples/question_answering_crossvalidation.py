@@ -36,18 +36,25 @@ def question_answering_crossvalidation():
     ##########################
     ########## Settings
     ##########################
-    xval_folds = 5
     save_per_fold_results = True
-
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)
-    n_epochs = 3
-    batch_size = 20
-    evaluate_every = 0
+
     lang_model = "deepset/roberta-base-squad2"
     do_lower_case = True
-    dev_split = 0.0
-    no_ans_boost = 0
+
+    n_epochs = 3
+    batch_size = 24
+    learning_rate = 3e-5
+
+
+    data_dir = Path("../data/squad20")
+    filename = "dev-v2.0.json"
+    xval_folds = 4
+    dev_split = 0.1
+    evaluate_every = 50
+    no_ans_boost = 0 # use large negative values to disable giving "no answer" option
+    recall_at = 3 # recall at n is only useful for answers inside long documents
     use_amp = None
 
     # 1.Create a tokenizer
@@ -56,19 +63,17 @@ def question_answering_crossvalidation():
         do_lower_case=do_lower_case)
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
-    label_list = ["start_token", "end_token"]
-    metric = "squad"
     processor = SquadProcessor(
         tokenizer=tokenizer,
-        max_seq_len=384,
-        label_list=label_list,
-        metric=metric,
-        train_filename="dev-v2.0.json",
+        max_seq_len=256,
+        label_list=["start_token", "end_token"],
+        metric="squad",
+        train_filename=filename,
         dev_filename=None,
-        dev_split=0,
+        dev_split=dev_split,
         test_filename=None,
-        data_dir=Path("../data/squad20"),
-        doc_stride=192,
+        data_dir=data_dir,
+        doc_stride=128,
     )
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
@@ -81,34 +86,37 @@ def question_answering_crossvalidation():
 
     # the following steps should be run for each of the folds of the cross validation, so we put them
     # into a function
-    def train_on_split(silo_to_use, n_fold, save_dir):
+    def train_on_split(silo_to_use, n_fold):
         logger.info(f"############ Crossvalidation: Fold {n_fold} ############")
 
         # fine-tune pre-trained question-answering model
         model = AdaptiveModel.convert_from_transformers(lang_model, device, "question_answering")
         model.connect_heads_with_processor(data_silo.processor.tasks, require_labels=True)
         # If positive, thjs will boost "No Answer" as prediction.
-        # If negative, this will prevent the model from giving"No Answer" as prediction.
+        # If negative, this will prevent the model from giving "No Answer" as prediction.
         model.prediction_heads[0].no_ans_boost = no_ans_boost
+        # Number of predictions the model will make per Question.
+        # The multiple predictions are used for evaluating top n recall.
+        model.prediction_heads[0].n_best = recall_at
 
-        # or train question-answering models from scratch
-        ## Create an AdaptiveModel
-        ## a) which consists of a pretrained language model as a basis
-        ## language_model = LanguageModel.load(lang_model)
-        ## b) and a prediction head on top that is suited for our task => Question-answering
-        ## prediction_head = QuestionAnsweringHead()
-        ## model = AdaptiveModel(
-        ##    language_model=language_model,
-        ##    prediction_heads=[prediction_head],
-        ##    embeds_dropout_prob=0.1,
-        ##    lm_output_types=["per_token"],
-        ##    device=device,)
+        # # or train question-answering models from scratch
+        # # Create an AdaptiveModel
+        # # a) which consists of a pretrained language model as a basis
+        # language_model = LanguageModel.load(lang_model)
+        # # b) and a prediction head on top that is suited for our task => Question-answering
+        # prediction_head = QuestionAnsweringHead(no_ans_boost=no_ans_boost, n_best=recall_at)
+        # model = AdaptiveModel(
+        #    language_model=language_model,
+        #    prediction_heads=[prediction_head],
+        #    embeds_dropout_prob=0.1,
+        #    lm_output_types=["per_token"],
+        #    device=device,)
 
 
         # Create an optimizer
         model, optimizer, lr_schedule = initialize_optimizer(
             model=model,
-            learning_rate=5e-6,
+            learning_rate=learning_rate,
             device=device,
             n_batches=len(silo_to_use.loaders["train"]),
             n_epochs=n_epochs,
@@ -140,12 +148,10 @@ def question_answering_crossvalidation():
     all_labels = []
     all_f1 = []
     all_em = []
-    bestfold = None
-    best_squad = -1
-    save_dir = Path("saved_models/roberta-qa-squad")
+    all_topnrecall = []
 
     for num_fold, silo in enumerate(silos):
-        model = train_on_split(silo, num_fold, save_dir)
+        model = train_on_split(silo, num_fold)
 
         # do eval on test set here (and not in Trainer),
         # so that we can easily store the actual preds and labels for a "global" eval across all folds.
@@ -162,13 +168,9 @@ def question_answering_crossvalidation():
         all_labels.extend(result[0].get("labels"))
         all_f1.append(result[0]["f1"])
         all_em.append(result[0]["EM"])
+        all_topnrecall.append(result[0]["top_n_recall"])
 
-        # keep track of best fold
-        squad_score = result[0]["f1"]
-        if squad_score > best_squad:
-            best_squad = squad_score
-            bestfold = num_fold
-
+        # emtpy cache to avoid memory leak and cuda OOM across multiple folds
         model.cpu()
         torch.cuda.empty_cache()
 
@@ -186,11 +188,15 @@ def question_answering_crossvalidation():
     # calculate overall metrics across all folds
     xval_score = squad(preds=all_preds, labels=all_labels)
 
+
     logger.info(f"Single EM-Scores:   {all_em}")
     logger.info(f"Single F1-Scores:   {all_f1}")
+    logger.info(f"Single top_{recall_at}_recall Scores:   {all_topnrecall}")
     logger.info(f"XVAL EM:   {xval_score['EM']}")
     logger.info(f"XVAL f1:   {xval_score['f1']}")
+    logger.info(f"XVAL top_{recall_at}_recall:   {xval_score['top_n_recall']}")
     ml_logger.log_metrics({"XVAL EM": xval_score["EM"]}, 0)
     ml_logger.log_metrics({"XVAL f1": xval_score["f1"]}, 0)
+    ml_logger.log_metrics({f"XVAL top_{recall_at}_recall": xval_score["top_n_recall"]}, 0)
 if __name__ == "__main__":
     question_answering_crossvalidation()

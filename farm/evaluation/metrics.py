@@ -181,8 +181,8 @@ def squad_f1_single(pred, label, pred_idx=0):
 def squad(preds, labels):
     em = squad_EM(preds=preds, labels=labels)
     f1 = squad_f1(preds=preds, labels=labels)
-
-    return {"EM": em, "f1": f1}
+    top_recall = top_n_recall(preds=preds, labels=labels)
+    return {"EM": em, "f1": f1, "top_n_recall": top_recall}
 
 def top_n_recall(preds, labels):
     answer_in_top_n = []
