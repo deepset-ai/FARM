@@ -125,6 +125,7 @@ class Trainer:
         from_epoch=0,
         from_step=0,
         global_step=0,
+        evaluator_test=True,
     ):
         """
         :param optimizer: An optimizer object that determines the learning strategy to be used during training
@@ -170,6 +171,8 @@ class Trainer:
         :type from_step: int
         :param global_step: the global step number across the training epochs.
         :type global_step: int
+        :param evaluator_test: whether to perform evaluation on the test set
+        :type evaluator_test: bool
         """
 
         self.model = model
@@ -187,6 +190,7 @@ class Trainer:
         self.log_params()
         self.early_stopping = early_stopping
         self.log_learning_rate = log_learning_rate
+        self.evaluator_test = evaluator_test
 
         if use_amp and not AMP_AVAILABLE:
             raise ImportError(f'Got use_amp = {use_amp}, but cannot find apex. '
@@ -299,13 +303,14 @@ class Trainer:
             model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
 
         # Eval on test set
-        test_data_loader = self.data_silo.get_data_loader("test")
-        if test_data_loader is not None:
-            evaluator_test = Evaluator(
-                data_loader=test_data_loader, tasks=self.data_silo.processor.tasks, device=self.device
-            )
-            result = evaluator_test.eval(self.model)
-            evaluator_test.log_results(result, "Test", self.global_step)
+        if self.evaluator_test:
+            test_data_loader = self.data_silo.get_data_loader("test")
+            if test_data_loader is not None:
+                evaluator_test = Evaluator(
+                    data_loader=test_data_loader, tasks=self.data_silo.processor.tasks, device=self.device
+                )
+                result = evaluator_test.eval(self.model)
+                evaluator_test.log_results(result, "Test", self.global_step)
         return self.model
 
     def backward_propagate(self, loss, step):
