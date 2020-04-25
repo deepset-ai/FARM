@@ -112,6 +112,7 @@ class Trainer:
         device,
         lr_schedule=None,
         evaluate_every=100,
+        eval_report=True,
         use_amp=None,
         grad_acc_steps=1,
         local_rank=-1,
@@ -138,6 +139,8 @@ class Trainer:
         :param lr_schedule: An optional scheduler object that can regulate the learning rate of the optimizer
         :param evaluate_every: Perform dev set evaluation after this many steps of training.
         :type evaluate_every: int
+        :param eval_report: If evaluate_every is not 0, specifies if an eval report should be generated when evaluating
+        :type eval_report: bool
         :param use_amp: Whether to use automatic mixed precision with Apex. One of the optimization levels must be chosen.
                         "O1" is recommended in almost all cases.
         :type use_amp: str
@@ -177,6 +180,7 @@ class Trainer:
         self.epochs = int(epochs)
         self.optimizer = optimizer
         self.evaluate_every = evaluate_every
+        self.eval_report = eval_report
         self.n_gpu = n_gpu
         self.grad_acc_steps = grad_acc_steps
         self.use_amp = use_amp
@@ -257,7 +261,7 @@ class Trainer:
                     dev_data_loader = self.data_silo.get_data_loader("dev")
                     if dev_data_loader is not None:
                         evaluator_dev = Evaluator(
-                            data_loader=dev_data_loader, tasks=self.data_silo.processor.tasks, device=self.device
+                            data_loader=dev_data_loader, tasks=self.data_silo.processor.tasks, device=self.device, report=self.eval_report
                         )
                         evalnr += 1
                         result = evaluator_dev.eval(self.model)
