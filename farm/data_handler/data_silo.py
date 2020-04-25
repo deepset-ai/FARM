@@ -5,6 +5,7 @@ from contextlib import ExitStack
 from functools import partial
 import random
 from pathlib import Path
+from itertools import groupby
 
 import numpy as np
 from sklearn.utils.class_weight import compute_class_weight
@@ -706,9 +707,115 @@ class DataSiloForCrossVal:
     def get_data_loader(self, which):
         return self.loaders[which]
 
+    @classmethod
+    def make(cls, datasilo, sets=["train", "dev", "test"], n_splits=5, shuffle=True, random_state=None,
+             stratified=True, n_neg_answers_per_question=1):
+        """
+        Create number of folds data-silo-like objects which can be used for training from the
+        original data silo passed on.
+
+        :param datasilo: the data silo that contains the original data
+        :type datasilo: DataSilo
+        :param sets: which sets to use to create the xval folds (strings)
+        :type sets: list
+        :param n_splits: number of folds to create
+        :type n_splits: int
+        :param shuffle: shuffle each class' samples before splitting
+        :type shuffle: bool
+        :param random_state: random state for shuffling
+        :type random_state: int
+        :param stratified: if class stratification should be done
+        :type stratified: bool
+        :param n_neg_answers_per_question: number of negative answers per question to include for training
+        :type n_neg_answers_per_question: int
+        """
+
+        if "question_answering" in datasilo.processor.tasks:
+            return cls._make_question_answering(datasilo, sets, n_splits, shuffle, random_state, n_neg_answers_per_question)
+        else:
+            return cls._make(datasilo, sets, n_splits, shuffle, random_state, stratified)
+
+    @classmethod
+    def _make_question_answering(cls, datasilo, sets=["train", "dev", "test"], n_splits=5, shuffle=True,
+                                 random_state=None, n_neg_answers_per_question=1):
+        """
+        Create number of folds data-silo-like objects which can be used for training from the
+        original data silo passed on. This function takes into account the characteristics of the
+        data for question-answering-
+
+        :param datasilo: the data silo that contains the original data
+        :type datasilo: DataSilo
+        :param sets: which sets to use to create the xval folds (strings)
+        :type sets: list
+        :param n_splits: number of folds to create
+        :type n_splits: int
+        :param shuffle: shuffle each class' samples before splitting
+        :type shuffle: bool
+        :param random_state: random state for shuffling
+        :type random_state: int
+        :param n_neg_answers_per_question: number of negative answers per question to include for training
+        :type n_neg_answers_per_question: int
+        """
+        assert datasilo.tensor_names[4] == "id", f"Expected tensor 'id' at index 4, found {datasilo.tensor_names[4]}"
+        assert datasilo.tensor_names[7] == "labels", f"Expected tensor 'labels' at index 7, found {datasilo.tensor_names[7]}"
+
+        sets_to_concat = []
+        for setname in sets:
+            if datasilo.data[setname]:
+                sets_to_concat.extend(datasilo.data[setname])
+        all_data = ConcatDataset(sets_to_concat)
+
+        documents = []
+        keyfunc = lambda x: x[4][0]
+        all_data = sorted(all_data.datasets, key=keyfunc)
+        for key, document in groupby(all_data, key=keyfunc):
+            documents.append(list(document))
+
+        xval_split = cls._split_for_qa(documents, n_splits, shuffle, random_state)
+        silos = []
+
+        for train_set, test_set in xval_split:
+            # Each training set is further divided into actual train and dev set
+            if datasilo.processor.dev_split > 0:
+                dev_split = datasilo.processor.dev_split
+                n_dev = int(np.ceil(dev_split * len(train_set)))
+                assert n_dev > 0, f"dev split of {dev_split} is not large enough to split away a development set"
+                n_actual_train = len(train_set) - n_dev
+                actual_train_set = train_set[:n_actual_train]
+                dev_set = train_set[n_actual_train:]
+                ds_dev = [sample for document in dev_set for sample in document]
+            else:
+                ds_dev = None
+                actual_train_set = train_set
+
+            train_samples = []
+            for doc in actual_train_set:
+                keyfunc = lambda x: x[4][1]
+                doc = sorted(doc, key=keyfunc)
+                for key, question in groupby(doc, key=keyfunc):
+                    # add all available answrs to train set
+                    sample_list = list(question)
+                    neg_answer_idx = []
+                    for index, sample in enumerate(sample_list):
+                        if sample[7][0][0] or sample[7][0][1]:
+                            train_samples.append(sample)
+                        else:
+                            neg_answer_idx.append(index)
+                    # add random n_neg_answers_per_question samples to train set
+                    if len(neg_answer_idx) <= n_neg_answers_per_question:
+                        train_samples.extend([sample_list[idx] for idx in neg_answer_idx])
+                    else:
+                        neg_answer_idx = random.sample(neg_answer_idx, n_neg_answers_per_question)
+                        train_samples.extend([sample_list[idx] for idx in neg_answer_idx])
+
+            ds_train = train_samples
+            ds_test = [sample for document in test_set for sample in document]
+            silos.append(DataSiloForCrossVal(datasilo, ds_train, ds_dev, ds_test))
+        return silos
+
     @staticmethod
-    def make(datasilo, sets=["train", "dev", "test"], n_splits=5, stratified=True,
-             shuffle=True, random_state=None, dev_split=0.2):
+    def _make(datasilo, sets=["train", "dev", "test"], n_splits=5, shuffle=True,
+              random_state=None, stratified=True):
         """
         Create number of folds data-silo-like objects which can be used for training from the
         original data silo passed on.
@@ -716,14 +823,14 @@ class DataSiloForCrossVal:
         :param datasilo: the data silo that contains the original data
         :param sets: which sets to use to create the xval folds
         :param n_splits: number of folds to create
-        :param stratified: if class stratificiation should be done
         :param shuffle: shuffle each class' samples before splitting
         :param random_state: random state for shuffling
-        :param dev_split: size of the dev set for a fold, held out from the training set
+        :param stratified: if class stratification should be done
         """
         setstoconcat = [datasilo.data[setname] for setname in sets]
         ds_all = ConcatDataset(setstoconcat)
         idxs = list(range(len(ds_all)))
+        dev_split = datasilo.processor.dev_split
         if stratified:
             # get all the labels for stratification
             ytensors = [t[3][0] for t in ds_all]
@@ -750,3 +857,35 @@ class DataSiloForCrossVal:
             ds_test = Subset(ds_all, test_idx)
             silos.append(DataSiloForCrossVal(datasilo, ds_train, ds_dev, ds_test))
         return silos
+
+    @staticmethod
+    def _split_for_qa(documents, n_splits=5, shuffle=True, random_state=None):
+        keyfunc = lambda x: x[4][1]
+        if shuffle:
+            random.shuffle(documents, random_state)
+
+        questions_per_doc = []
+        for doc in documents:
+            # group samples in current doc by question id
+            doc = sorted(doc, key=keyfunc)
+            questions = list(groupby(doc, key=keyfunc))
+            questions_per_doc.append(len(questions))
+
+        # split documents into n_splits splits with approximately same number of questions per split
+        questions_per_doc = np.array(questions_per_doc)
+        accumulated_questions_per_doc = questions_per_doc.cumsum()
+        questions_per_fold = accumulated_questions_per_doc[-1] // n_splits
+        accumulated_questions_per_fold = np.array(range(1, n_splits)) * questions_per_fold
+        if accumulated_questions_per_fold[0] < accumulated_questions_per_doc[0]:
+            accumulated_questions_per_fold[0] = accumulated_questions_per_doc[0] + 1
+        indices_to_split_at = np.searchsorted(accumulated_questions_per_doc, accumulated_questions_per_fold, side="right")
+        splits = np.split(documents, indices_to_split_at)
+
+        for split in splits:
+            assert len(split) > 0
+
+        for idx, split in enumerate(splits):
+            current_test_set = split
+            current_train_set = np.hstack(np.delete(splits, idx, axis=0))
+
+            yield current_train_set, current_test_set
