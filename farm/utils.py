@@ -403,7 +403,7 @@ def span_to_string(start_t, end_t, token_offsets, clear_text):
 
     # If it is a no_answer prediction
     if start_t == -1 and end_t == -1:
-        return None, 0, 0
+        return "", 0, 0
 
     n_tokens = len(token_offsets)
 

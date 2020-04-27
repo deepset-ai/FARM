@@ -376,7 +376,7 @@ class TextClassificationHead(PredictionHead):
 
         # When this method is used along side a QAHead at inference (e.g. Natural Questions), preds_p is the input and
         # there is currently no good way of generating probs
-        if logits:
+        if logits is not None:
             preds_p = self.logits_to_preds(logits)
             probs = self.logits_to_probs(logits, return_class_probs)
         else:
@@ -1135,10 +1135,10 @@ class QuestionAnsweringHead(PredictionHead):
                 # Check that the candidate's indices are valid and save them if they are
                 if self.valid_answer_idxs(start_idx, end_idx, n_non_padding, max_answer_length, seq_2_start_t):
                     score = start_end_matrix[start_idx, end_idx].item()
-                    top_candidates.append(Span(start_idx, end_idx, score, unit="token"))
+                    top_candidates.append(Span(start_idx, end_idx, score, unit="token", level="passage"))
 
         no_answer_score = start_end_matrix[0, 0].item()
-        top_candidates.append(Span(0, 0, no_answer_score, unit="token"))
+        top_candidates.append(Span(0, 0, no_answer_score, unit="token", pred_str="", level="passage"))
 
         return top_candidates
 
@@ -1340,7 +1340,7 @@ class QuestionAnsweringHead(PredictionHead):
         # Iterate over the top predictions for each sample
         for sample_idx, sample_preds in enumerate(preds):
             best_pred = sample_preds[0]
-            best_pred_score = best_pred[2]
+            best_pred_score = best_pred.score
             no_answer_score = self.get_no_answer_score(sample_preds) + self.no_ans_boost
             no_answer = no_answer_score > best_pred_score
             passage_no_answer.append(no_answer)

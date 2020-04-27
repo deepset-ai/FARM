@@ -1,3 +1,4 @@
+from farm.utils import span_to_string
 
 class Span:
     def __init__(self,
@@ -109,7 +110,7 @@ class DocumentPred:
 
     def create_context(self, ans_start_ch, ans_end_ch, clear_text):
         if ans_start_ch == 0 and ans_end_ch == 0:
-            return None, 0, 0
+            return "", 0, 0
         else:
             len_text = len(clear_text)
             midpoint = int((ans_end_ch - ans_start_ch) / 2) + ans_start_ch

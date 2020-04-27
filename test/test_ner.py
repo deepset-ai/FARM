@@ -90,7 +90,7 @@ def test_ner(caplog):
     #print(result)
     #assert result[0]["predictions"][0]["context"] == "sagte"
     #assert isinstance(result[0]["predictions"][0]["probability"], np.float32)
-    result2 = model.inference_from_dicts(dicts=basic_texts, rest_api_schema=True)
+    result2 = model.inference_from_dicts(dicts=basic_texts, return_json=True)
     assert result == result2
 
 if __name__ == "__main__":

@@ -360,21 +360,30 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         :return: predictions in the right format
         """
         n_heads = len(self.prediction_heads)
-        preds_final = [list() for _ in range(n_heads)]
 
         if n_heads == 0:
             # just return LM output (e.g. useful for extracting embeddings at inference time)
             preds_final = self.language_model.formatted_preds(logits=logits, **kwargs)
 
         elif n_heads == 1:
-            kwargs["preds_p"] = kwargs["preds_p"][0][0]
+            preds_final = []
+            # TODO This is very specific to QA, make more general
+            try:
+                kwargs["preds_p"] = kwargs["preds_p"][0][0]
+            except KeyError:
+                kwargs["preds_p"] = None
             head = self.prediction_heads[0]
             logits_for_head = logits[0]
             preds = head.formatted_preds(logits=logits_for_head, **kwargs)
-            preds_final[0] += preds
+            # TODO This is very messy - we need better definition of what the output should look like
+            if type(preds) == list:
+                preds_final += preds
+            elif type(preds) == dict and "predictions" in preds:
+                preds_final.append(preds)
 
         # This case is triggered by Natural Questions
         else:
+            preds_final = [list() for _ in range(n_heads)]
             preds = kwargs["preds_p"]
             preds_for_heads = stack(preds)
 

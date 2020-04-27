@@ -1134,7 +1134,7 @@ class SquadProcessor(Processor):
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
         n_special_tokens = self.tokenizer.num_added_tokens(pair=True)
-        samples = create_samples_squad(dictionary=dictionary,
+        samples = create_samples_qa(dictionary=dictionary,
                                        max_query_len=self.max_query_length,
                                        max_seq_len=self.max_seq_len,
                                        doc_stride=self.doc_stride,

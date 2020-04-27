@@ -261,7 +261,7 @@ class Inferencer:
         self.model.save(path)
         self.processor.save(path)
 
-    def inference_from_file(self, file, num_processes=None, multiprocessing_chunksize=None, streaming=False, return_json=True):
+    def inference_from_file(self, file, multiprocessing_chunksize=None, streaming=False, return_json=True):
         """
         Run down-stream inference on samples created from an input file.
         The file should be in the same format as the ones used during training
@@ -284,7 +284,6 @@ class Inferencer:
         preds_all = self.inference_from_dicts(
             dicts,
             return_json=return_json,
-            num_processes=num_processes,
             multiprocessing_chunksize=multiprocessing_chunksize,
             streaming=streaming,
         )
@@ -294,7 +293,7 @@ class Inferencer:
             return list(preds_all)
 
     def inference_from_dicts(
-        self, dicts, return_json=True, num_processes=None, multiprocessing_chunksize=None, streaming=False
+        self, dicts, return_json=True, multiprocessing_chunksize=None, streaming=False
     ):
         """
         Runs down-stream inference on samples created from input dictionaries.
@@ -335,7 +334,7 @@ class Inferencer:
         if len(self.model.prediction_heads) > 0:
             aggregate_preds = hasattr(self.model.prediction_heads[0], "aggregate_preds")
 
-        if num_processes == 0:  # multiprocessing disabled (helpful for debugging or using in web frameworks)
+        if self.process_pool is None:  # multiprocessing disabled (helpful for debugging or using in web frameworks)
             predictions = self._inference_without_multiprocessing(dicts, return_json, aggregate_preds)
             return predictions
         else:  # use multiprocessing for inference
@@ -354,7 +353,7 @@ class Inferencer:
                     multiprocessing_chunksize = _chunk_size
 
             predictions = self._inference_with_multiprocessing(
-                dicts, return_json, aggregate_preds, multiprocessing_chunksize, num_processes,
+                dicts, return_json, aggregate_preds, multiprocessing_chunksize,
             )
 
             # return a generator object if streaming is enabled, else, cast the generator to a list.
@@ -389,7 +388,11 @@ class Inferencer:
             preds_all = self._get_predictions(dataset, tensor_names, baskets)
 
         if return_json:
-            preds_all = [x.to_json() for x in preds_all]
+            # TODO this try catch should be removed when all tasks return prediction objects
+            try:
+                preds_all = [x.to_json() for x in preds_all]
+            except AttributeError:
+                pass
 
         return preds_all
 
@@ -412,9 +415,9 @@ class Inferencer:
         :rtype: iter
         """
 
-        # We group the input dicts into chunks and feed each chunk to a different process,
-        # where it gets converted to a pytorch dataset
-        results = p.imap(
+        # We group the input dicts into chunks and feed each chunk to a different process
+        # in the pool, where it gets converted to a pytorch dataset
+        results = self.process_pool.imap(
             partial(self._create_datasets_chunkwise, processor=self.processor),
             grouper(iterable=dicts, n=multiprocessing_chunksize),
             1,
@@ -563,7 +566,7 @@ class Inferencer:
         self.model.language_model.extraction_layer = extraction_layer
         self.model.language_model.extraction_strategy = extraction_strategy
 
-        return self.inference_from_dicts(dicts, rest_api_schema=False)
+        return self.inference_from_dicts(dicts)
 
 
 class FasttextInferencer:

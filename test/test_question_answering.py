@@ -77,23 +77,19 @@ def test_qa(caplog=None):
 
     inferencer = Inferencer.load(save_dir, batch_size=2, gpu=False, num_processes=0)
 
-    QA_input_api_format = [
+    qa_format_1 = [
         {
             "questions": ["Who counted the game among the best ever made?"],
             "text": "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
         }]
-    QA_input_squad = [{"qas":["Who counted the game among the best ever made?"],
+    qa_format_2 = [{"qas":["Who counted the game among the best ever made?"],
                  "context": "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created.",
                 }]
 
 
-    result = inferencer.inference_from_dicts(dicts=QA_input_squad)
-    result_api_format = inferencer.inference_from_dicts(dicts=QA_input_api_format, rest_api_schema=True)
-
-    # top answer
-    assert result[0]["preds"][0][0] == result_api_format[0]["predictions"][0]["answers"][0]["answer"]
-    # top score
-    assert result[0]["preds"][0][3] == result_api_format[0]["predictions"][0]["answers"][0]["score"]
+    result1 = inferencer.inference_from_dicts(dicts=qa_format_1)
+    result2 = inferencer.inference_from_dicts(dicts=qa_format_2)
+    assert result1 == result2
 
 
 def test_qa_onnx_inference():
@@ -111,7 +107,7 @@ def test_qa_onnx_inference():
     # Pytorch
     inferencer = Inferencer.load(base_LM_model, batch_size=2, gpu=False, task_type="question_answering", num_processes=0)
     result = inferencer.inference_from_dicts(dicts=QA_input_squad)[0]
-    result_api_format = inferencer.inference_from_dicts(dicts=QA_input_api_format, rest_api_schema=True)[0]
+    result_api_format = inferencer.inference_from_dicts(dicts=QA_input_api_format)[0]
 
     # ONNX
     onnx_model_export_path = Path("testsave/onnx-export")
