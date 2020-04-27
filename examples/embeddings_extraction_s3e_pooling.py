@@ -46,6 +46,9 @@ def fit(language_model, corpus_path, save_dir, do_lower_case, batch_size=4, use_
         lm_output_types=["per_sequence"],
         device=device)
 
+    logger.info("start saving")
+    model.save(save_dir)
+    logger.info("Done saving")
     model, processor, s3e_stats = fit_s3e_on_corpus(processor=processor,
                                                     model=model,
                                                     corpus=corpus_path,
@@ -98,10 +101,11 @@ def extract_embeddings(load_dir, use_gpu, batch_size):
 
 if __name__ == "__main__":
     #TODO update to public model / data
-    lang_model = Path("saved_models/s3e_fasttext")
-    corpus_path = Path("data/lm_finetune_nips/train.txt")
+    # lang_model = Path("../saved_models/s3e_fasttext")
+    lang_model = "glove-german-uncased"
+    corpus_path = Path("../data/lm_finetune_nips/train.txt")
 
-    s3e_dir = Path("saved_models/fitted_s3e/")
+    s3e_dir = Path("../saved_models/fitted_s3e/")
 
     fit(language_model=lang_model,
         do_lower_case=False,

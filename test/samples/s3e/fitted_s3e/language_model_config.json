@@ -4,5 +4,5 @@
   "language": "German",
   "name": "WordEmbedding_LM",
   "vocab_filename": "vocab.txt",
-  "vocab_size": 4008
+  "vocab_size": 113
 }
