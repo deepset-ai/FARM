@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 # Special characters used by the different tokenizers to indicate start of word / whitespace
 SPECIAL_TOKENIZER_CHARS = r"^(##|Ġ|▁)"
 
+
 class Tokenizer:
     """
     Simple Wrapper for Tokenizers from the transformers package. Enables loading of different Tokenizer classes with a uniform interface.
@@ -125,6 +126,8 @@ class EmbeddingTokenizer(PreTrainedTokenizer):
         :param do_lower_case: Flag whether to lower case the input
         :type do_lower_case: bool
         """
+        # TODO check why EmbeddingTokenizer.tokenize gives many UNK, while tokenize_with_metadata() works fine
+
         super().__init__(
             unk_token=unk_token,
             sep_token=sep_token,
@@ -155,7 +158,7 @@ class EmbeddingTokenizer(PreTrainedTokenizer):
             logger.info(
                 f"Model name '{pretrained_model_name_or_path}' not found in model shortcut name "
                 f"list ({', '.join(EMBEDDING_VOCAB_FILES_MAP['vocab_file'].keys())}). "
-                "Assuming '{pretrained_model_name_or_path}' is a path to a directory containing tokenizer files.")
+                f"Assuming '{pretrained_model_name_or_path}' is a path to a directory containing tokenizer files.")
 
             temp = open(str(Path(pretrained_model_name_or_path) / "language_model_config.json"), "r",
                         encoding="utf-8").read()
@@ -163,6 +166,9 @@ class EmbeddingTokenizer(PreTrainedTokenizer):
 
             resolved_vocab_file = str(Path(pretrained_model_name_or_path) / config_dict["vocab_filename"])
         else:
+            logger.error(
+                f"Model name '{pretrained_model_name_or_path}' not found in model shortcut name "
+                f"list ({', '.join(EMBEDDING_VOCAB_FILES_MAP['vocab_file'].keys())}) nor as local folder ")
             raise NotImplementedError
 
         tokenizer = cls(vocab_file=resolved_vocab_file, **kwargs)
@@ -257,7 +263,11 @@ def _words_to_tokens(words, word_offsets, tokenizer):
     tokens = []
     token_offsets = []
     start_of_word = []
+    idx = 0
     for w, w_off in zip(words, word_offsets):
+        idx += 1
+        if idx % 500000 == 0:
+            logger.info(idx)
         # Get (subword) tokens of single word.
 
         # empty / pure whitespace
