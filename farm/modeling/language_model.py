@@ -980,7 +980,7 @@ class EmbeddingModel():
         # Save Weights
         save_name = Path(save_dir) / self.config.embeddings_filename
         with open(save_name, "w") as f:
-            for w, vec in zip(self.vocab, self.embeddings):
+            for w, vec in tqdm(zip(self.vocab, self.embeddings), total=len(self.vocab), desc="Saving embeddings"):
                 f.write(w + " " + " ".join(["%.6f" % v for v in vec]) + "\n")
         f.close()
 
