@@ -166,6 +166,9 @@ class EmbeddingTokenizer(PreTrainedTokenizer):
 
             resolved_vocab_file = str(Path(pretrained_model_name_or_path) / config_dict["vocab_filename"])
         else:
+            logger.error(
+                f"Model name '{pretrained_model_name_or_path}' not found in model shortcut name "
+                f"list ({', '.join(EMBEDDING_VOCAB_FILES_MAP['vocab_file'].keys())}) nor as local folder ")
             raise NotImplementedError
 
         tokenizer = cls(vocab_file=resolved_vocab_file, **kwargs)
