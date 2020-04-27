@@ -100,7 +100,8 @@ class Processor(ABC):
         self.dev_split = dev_split
         if data_dir:
             self.data_dir = Path(data_dir)
-
+        else:
+            self.data_dir = None
         self.baskets = []
 
         self._log_params()

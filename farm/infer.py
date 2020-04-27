@@ -52,6 +52,7 @@ class Inferencer:
         return_class_probs=False,
         extraction_strategy=None,
         extraction_layer=None,
+        s3e_stats=None,
         num_processes=None,
     ):
         """
@@ -73,10 +74,14 @@ class Inferencer:
         :param return_class_probs: either return probability distribution over all labels or the prob of the associated label
         :type return_class_probs: bool
         :param extraction_strategy: Strategy to extract vectors. Choices: 'cls_token' (sentence vector), 'reduce_mean'
-                               (sentence vector), reduce_max (sentence vector), 'per_token' (individual token vectors)
+                               (sentence vector), reduce_max (sentence vector), 'per_token' (individual token vectors),
+                               's3e' (sentence vector via S3E pooling, see https://arxiv.org/abs/2002.09620)
         :type extraction_strategy: str
         :param extraction_layer: number of layer from which the embeddings shall be extracted. Default: -1 (very last layer).
         :type extraction_layer: int
+        :param s3e_stats: Stats of a fitted S3E model as returned by `fit_s3e_on_corpus()`
+                          (only needed for task_type="embeddings" and extraction_strategy = "s3e")
+        :type s3e_stats: dict
         :param num_processes: the number of processes for `multiprocessing.Pool`. Set to value of 0 to disable
                               multiprocessing. Set to None to let Inferencer use all CPU cores. If you want to
                               debug the Language Model, you might need to disable multiprocessing!
@@ -102,6 +107,7 @@ class Inferencer:
             self.model.prediction_heads = torch.nn.ModuleList([])
             self.model.language_model.extraction_layer = extraction_layer
             self.model.language_model.extraction_strategy = extraction_strategy
+            self.model.language_model.s3e_stats = s3e_stats
 
         # TODO add support for multiple prediction heads
 
@@ -126,6 +132,7 @@ class Inferencer:
         doc_stride=128,
         extraction_layer=None,
         extraction_strategy=None,
+        s3e_stats=None,
         num_processes=None,
     ):
         """
@@ -156,6 +163,9 @@ class Inferencer:
         :type extraction_strategy: str
         :param extraction_layer: number of layer from which the embeddings shall be extracted. Default: -1 (very last layer).
         :type extraction_layer: int
+        :param s3e_stats: Stats of a fitted S3E model as returned by `fit_s3e_on_corpus()`
+                          (only needed for task_type="embeddings" and extraction_strategy = "s3e")
+        :type s3e_stats: dict
         :param num_processes: the number of processes for `multiprocessing.Pool`. Set to value of 0 to disable
                               multiprocessing. Set to None to let Inferencer use all CPU cores. If you want to
                               debug the Language Model, you might need to disable multiprocessing!
@@ -236,6 +246,7 @@ class Inferencer:
             return_class_probs=return_class_probs,
             extraction_strategy=extraction_strategy,
             extraction_layer=extraction_layer,
+            s3e_stats=s3e_stats,
             num_processes=num_processes,
         )
 
