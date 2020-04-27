@@ -241,7 +241,7 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
             # Need to save config and pipeline
 
     @classmethod
-    def load(cls, load_dir, device, strict=True, lm_name=None):
+    def load(cls, load_dir, device, strict=True, lm_name=None, processor=None):
         """
         Loads an AdaptiveModel from a directory. The directory must contain:
 
@@ -262,6 +262,8 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
                        the PredictionHead (see torch.nn.module.load_state_dict()).
                        Set to `False` for backwards compatibility with PHs saved with older version of FARM.
         :type strict: bool
+        :param processor: populates prediction head with information coming from tasks
+        :type processor: Processor
         """
 
         # Language Model
@@ -279,7 +281,11 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
             prediction_heads.append(head)
             ph_output_type.append(head.ph_output_type)
 
-        return cls(language_model, prediction_heads, 0.1, ph_output_type, device)
+        model = cls(language_model, prediction_heads, 0.1, ph_output_type, device)
+        if processor:
+            model.connect_heads_with_processor(processor.tasks)
+
+        return model
 
     def logits_to_loss_per_head(self, logits, **kwargs):
 
@@ -544,7 +550,7 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         return transformers_model
 
     @classmethod
-    def convert_from_transformers(cls, model_name_or_path, device, task_type):
+    def convert_from_transformers(cls, model_name_or_path, device, task_type, processor=None):
         """
         Load a (downstream) model from huggingface's transformers format. Use cases:
          - continue training in FARM (e.g. take a squad QA model and fine-tune on your own data)
@@ -563,6 +569,8 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
                           - 'text_classification'
                           - 'embeddings'
                           More tasks coming soon ...
+        :param processor: populates prediction head with information coming from tasks
+        :type processor: Processor
         :return: AdaptiveModel
         """
         lm = LanguageModel.load(model_name_or_path)
@@ -590,6 +598,9 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
                                  lm_output_types=["per_token", "per_sequence"], device=device)
         else:
             raise NotImplementedError(f"Huggingface's transformer models of type {task_type} are not supported yet")
+
+        if processor:
+            adaptive_model.connect_heads_with_processor(processor.tasks)
 
         return adaptive_model
 
