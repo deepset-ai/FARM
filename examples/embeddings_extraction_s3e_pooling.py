@@ -97,9 +97,11 @@ def extract_embeddings(load_dir, use_gpu, batch_size):
 
 
 if __name__ == "__main__":
-    #TODO update to public model / data
-    # lang_model = Path("../saved_models/s3e_fasttext")
+    #TODO update to an english public model
     lang_model = "glove-german-uncased"
+
+    # You can download this from:
+    # "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/lm_finetune_nips.tar.gz"
     corpus_path = Path("../data/lm_finetune_nips/train.txt")
 
     s3e_dir = Path("../saved_models/fitted_s3e/")
