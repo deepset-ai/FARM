@@ -112,6 +112,7 @@ class Trainer:
         device,
         lr_schedule=None,
         evaluate_every=100,
+        eval_report=True,
         use_amp=None,
         grad_acc_steps=1,
         local_rank=-1,
@@ -124,6 +125,7 @@ class Trainer:
         from_epoch=0,
         from_step=0,
         global_step=0,
+        evaluator_test=True,
     ):
         """
         :param optimizer: An optimizer object that determines the learning strategy to be used during training
@@ -137,6 +139,8 @@ class Trainer:
         :param lr_schedule: An optional scheduler object that can regulate the learning rate of the optimizer
         :param evaluate_every: Perform dev set evaluation after this many steps of training.
         :type evaluate_every: int
+        :param eval_report: If evaluate_every is not 0, specifies if an eval report should be generated when evaluating
+        :type eval_report: bool
         :param use_amp: Whether to use automatic mixed precision with Apex. One of the optimization levels must be chosen.
                         "O1" is recommended in almost all cases.
         :type use_amp: str
@@ -167,6 +171,8 @@ class Trainer:
         :type from_step: int
         :param global_step: the global step number across the training epochs.
         :type global_step: int
+        :param evaluator_test: whether to perform evaluation on the test set
+        :type evaluator_test: bool
         """
 
         self.model = model
@@ -174,6 +180,7 @@ class Trainer:
         self.epochs = int(epochs)
         self.optimizer = optimizer
         self.evaluate_every = evaluate_every
+        self.eval_report = eval_report
         self.n_gpu = n_gpu
         self.grad_acc_steps = grad_acc_steps
         self.use_amp = use_amp
@@ -183,6 +190,7 @@ class Trainer:
         self.log_params()
         self.early_stopping = early_stopping
         self.log_learning_rate = log_learning_rate
+        self.evaluator_test = evaluator_test
 
         if use_amp and not AMP_AVAILABLE:
             raise ImportError(f'Got use_amp = {use_amp}, but cannot find apex. '
@@ -253,7 +261,7 @@ class Trainer:
                     dev_data_loader = self.data_silo.get_data_loader("dev")
                     if dev_data_loader is not None:
                         evaluator_dev = Evaluator(
-                            data_loader=dev_data_loader, tasks=self.data_silo.processor.tasks, device=self.device
+                            data_loader=dev_data_loader, tasks=self.data_silo.processor.tasks, device=self.device, report=self.eval_report
                         )
                         evalnr += 1
                         result = evaluator_dev.eval(self.model)
@@ -295,13 +303,14 @@ class Trainer:
             model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
 
         # Eval on test set
-        test_data_loader = self.data_silo.get_data_loader("test")
-        if test_data_loader is not None:
-            evaluator_test = Evaluator(
-                data_loader=test_data_loader, tasks=self.data_silo.processor.tasks, device=self.device
-            )
-            result = evaluator_test.eval(self.model)
-            evaluator_test.log_results(result, "Test", self.global_step)
+        if self.evaluator_test:
+            test_data_loader = self.data_silo.get_data_loader("test")
+            if test_data_loader is not None:
+                evaluator_test = Evaluator(
+                    data_loader=test_data_loader, tasks=self.data_silo.processor.tasks, device=self.device
+                )
+                result = evaluator_test.eval(self.model)
+                evaluator_test.log_results(result, "Test", self.global_step)
         return self.model
 
     def backward_propagate(self, loss, step):
