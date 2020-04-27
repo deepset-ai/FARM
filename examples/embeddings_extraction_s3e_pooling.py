@@ -46,9 +46,6 @@ def fit(language_model, corpus_path, save_dir, do_lower_case, batch_size=4, use_
         lm_output_types=["per_sequence"],
         device=device)
 
-    logger.info("start saving")
-    model.save(save_dir)
-    logger.info("Done saving")
     model, processor, s3e_stats = fit_s3e_on_corpus(processor=processor,
                                                     model=model,
                                                     corpus=corpus_path,
