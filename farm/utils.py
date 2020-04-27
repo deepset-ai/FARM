@@ -424,16 +424,3 @@ def span_to_string(start_t, end_t, token_offsets, clear_text):
         end_ch = token_offsets[end_t]
 
     return clear_text[start_ch: end_ch].strip(), start_ch, end_ch
-
-def pick_single_fn(heads, fn_name):
-    merge_fns = []
-    for h in heads():
-        merge_fns.append(getattr(h, fn_name, None))
-
-    merge_fns = [x for x in merge_fns if x is not None]
-    if len(merge_fns) == 0:
-        pass
-    elif len(merge_fns) == 1:
-        return merge_fns[0]
-    else:
-        raise Exception(f"More than one of the prediction heads have a {fn_name}() function")

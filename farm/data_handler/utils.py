@@ -765,6 +765,8 @@ def generate_tok_to_ch_map(text):
     return map
 
 def split_with_metadata(text):
+    """" Splits a string text by whitespace and also returns indexes which is a mapping from token index
+    to character index"""
     split_text = text.split()
     indexes = generate_tok_to_ch_map(text)
     assert len(split_text) == len(indexes)

@@ -66,6 +66,8 @@ class PredictionHead(nn.Module):
         :param head_num: Which head to save
         :type head_num: int
         """
+        # updating config in case the parameters have been changed
+        self.generate_config()
         output_config_file = Path(save_dir) / f"prediction_head_{head_num}_config.json"
         with open(output_config_file, "w") as file:
             json.dump(self.config, file)
@@ -1502,3 +1504,20 @@ class QuestionAnsweringHead(PredictionHead):
             qa_doc_pred.preds = pred_spans_new
             ret.append(qa_doc_pred)
         return ret
+
+
+def pick_single_fn(heads, fn_name):
+    """ Iterates over heads and returns a static method called fn_name
+    if and only if one head has a method of that name. If no heads have such a method, None is returned.
+    If more than one head has such a method, an Exception is thrown"""
+    merge_fns = []
+    for h in heads():
+        merge_fns.append(getattr(h, fn_name, None))
+
+    merge_fns = [x for x in merge_fns if x is not None]
+    if len(merge_fns) == 0:
+        pass
+    elif len(merge_fns) == 1:
+        return merge_fns[0]
+    else:
+        raise Exception(f"More than one of the prediction heads have a {fn_name}() function")

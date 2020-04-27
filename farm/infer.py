@@ -397,7 +397,7 @@ class Inferencer:
         return preds_all
 
     def _inference_with_multiprocessing(
-        self, dicts, return_json, aggregate_preds, multiprocessing_chunksize, num_processes
+        self, dicts, return_json, aggregate_preds, multiprocessing_chunksize
     ):
         """
         Implementation of inference. This method is a generator that yields the results.

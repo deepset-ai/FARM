@@ -472,7 +472,7 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
         label_idxs[i, 1] = end_idx
 
         # Only Natural Questions trains a classification head on answer_type, SQuAD only has the QA head. answer_type_list
-        # will be None for SQuAD but something like
+        # will be None for SQuAD but something like ["is_impossible", "span", "yes", "no"] for Natural Questions
         if answer_type_list:
             answer_types[i] = answer_type_list.index(answer_type)
 
