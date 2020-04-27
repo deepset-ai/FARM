@@ -1124,14 +1124,24 @@ class WordEmbedding_LM(LanguageModel):
         logger.info(f"Reduced vocab from {old_num_emb} to {self.model.embeddings.shape[0]}")
 
     def normalize_embeddings(self, zero_mean=True, pca_removal=False, pca_n_components=300, pca_n_top_components=10,
-                             n_special_tokens=5, use_mean_vec_for_special_tokens=True):
+                             use_mean_vec_for_special_tokens=True, n_special_tokens=5):
         """ Normalize word embeddings as in https://arxiv.org/pdf/1808.06305.pdf
             (e.g. used for S3E Pooling of sentence embeddings)
-        :param zero_mean:
-        :param pca_removal:
-        :param pca_n_components:
-        :param pca_n_top_components:
-        :return:
+            
+        :param zero_mean: Whether to center embeddings via subtracting mean
+        :type zero_mean: bool
+        :param pca_removal: Whether to remove PCA components
+        :type pca_removal: bool
+        :param pca_n_components: Number of PCA components to use for fitting
+        :type pca_n_components: int
+        :param pca_n_top_components: Number of PCA components to remove
+        :type pca_n_top_components: int
+        :param use_mean_vec_for_special_tokens: Whether to replace embedding of special tokens with the mean embedding
+        :type use_mean_vec_for_special_tokens: bool
+        :param n_special_tokens: Number of special tokens like CLS, UNK etc. (used if `use_mean_vec_for_special_tokens`). 
+                                 Note: We expect the special tokens to be the first `n_special_tokens` entries of the vocab.
+        :type n_special_tokens: int
+        :return: None
         """
 
         if zero_mean:
