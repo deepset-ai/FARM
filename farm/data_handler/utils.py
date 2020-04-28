@@ -796,7 +796,7 @@ def convert_qa_input_dict(infer_dict):
     ["text", "questions"] (api format). This function converts the latter into the former"""
     try:
         # Check if infer_dict is already in internal json format
-        if set(infer_dict.keys()) == set(["context", "qas"]):
+        if "context" in infer_dict and "qas" in infer_dict:
             return infer_dict
         # converts dicts from inference mode to data structure used in FARM
         questions = infer_dict["questions"]
