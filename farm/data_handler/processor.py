@@ -22,9 +22,9 @@ from farm.data_handler.input_features import (
 from farm.data_handler.samples import (
     Sample,
     SampleBasket,
-    create_samples_squad,
     create_samples_qa
 )
+
 from farm.data_handler.utils import (
     read_tsv,
     read_tsv_sentence_pair,
@@ -1072,9 +1072,7 @@ class SquadProcessor(Processor):
         where each entry is a dictionary for one document-question pair (potentially mutliple answers). """
 
         raw_baskets = []
-        if "text" in dictionary and "context" not in dictionary:
-            raise Exception("It seems that your input is in rest API format. Try setting rest_api_schema=True "
-                            "when calling inference from dicts")
+        dictionary = convert_qa_input_dict(dictionary)
         document_text = dictionary["context"]
         document_id = dictionary.get("document_id",None)
 
@@ -1385,12 +1383,9 @@ class NaturalQuestionsProcessor(Processor):
         TODO: See if this can be merged with SquadProcessor.apply_tokenization()"""
 
         raw_baskets = []
-        # Input dictionaries can have ["context", "qas"] (internal format) as keys or
-        # ["text", "questions"] (api format). Both are supported
-        try:
-            dictionary = convert_qa_input_dict(dictionary)
-        except:
-            raise Exception("Input does not have the expected format")
+        # Input dictionaries can have ["context", "qas"] (SQuAD format) as keys or
+        # ["text", "questions"] (FARM format). Both are supported
+        dictionary = convert_qa_input_dict(dictionary)
         document_text = dictionary["context"]
         document_id = dictionary.get("document_id", None)
 

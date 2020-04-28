@@ -1467,7 +1467,7 @@ class QuestionAnsweringHead(PredictionHead):
         return labels
 
     @staticmethod
-    def merge(preds_all):
+    def merge_formatted_preds(preds_all):
         """ Merges results from the two prediction heads used for NQ style QA. Takes the prediction from QA head and
         assigns it the appropriate classification label. This mapping is achieved through sample_idx.
         preds_all should contain [QuestionAnsweringHead.formatted_preds(), TextClassificationHead()]. The first item

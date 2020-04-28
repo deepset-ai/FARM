@@ -14,9 +14,9 @@ from transformers.modeling_auto import AutoModelForQuestionAnswering, AutoModelF
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import SquadProcessor
 from farm.modeling.language_model import LanguageModel
-from farm.modeling.prediction_head import PredictionHead, QuestionAnsweringHead, TokenClassificationHead, TextClassificationHead
+from farm.modeling.prediction_head import PredictionHead, QuestionAnsweringHead, TokenClassificationHead, TextClassificationHead, pick_single_fn
 from farm.modeling.tokenization import Tokenizer
-from farm.utils import MLFlowLogger as MlLogger, stack, pick_single_fn
+from farm.utils import MLFlowLogger as MlLogger, stack
 
 logger = logging.getLogger(__name__)
 
@@ -397,7 +397,7 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
                 preds_final[i].append(preds)
 
             # Look for a merge() function amongst the heads and if a single one exists, apply it to preds_final
-            merge_fn = pick_single_fn(self.prediction_heads, "merge")
+            merge_fn = pick_single_fn(self.prediction_heads, "merge_formatted_preds")
             if merge_fn:
                 preds_final = merge_fn(preds_final)
 
