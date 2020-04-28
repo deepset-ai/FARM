@@ -45,10 +45,6 @@ class Fasttext_converter():
     Class to use fasttext inside FARM by converting embeddings to format usable by preprocessing pipeline.
     Farm needs fixed vocab and embeddings. We can construct a vocab for the data we wish to embed.
     """
-    try:
-        import fasttext  # fasttext import is optional in requirements. So we just load it when needed.
-    except ModuleNotFoundError:
-        logger.error("Could not find fasttext. Please install through 'pip install fasttext==0.9.1'.")
 
     def __init__(self,
                  pretrained_model_name_or_path,
@@ -77,6 +73,10 @@ class Fasttext_converter():
         :param min_vocab_count: when constructing the vocab, words with less than min_vocab_count occurrences are ignored
         :param max_features: maximum number of words to use in vocab
         """
+        try:
+            import fasttext  # fasttext import is optional in requirements. So we just load it when needed.
+        except ModuleNotFoundError:
+            logger.error("Could not find fasttext. Please install through 'pip install fasttext==0.9.1'.")
 
         self.pretrained_model_name_or_path = pretrained_model_name_or_path
         self.do_lower_case = do_lower_case
