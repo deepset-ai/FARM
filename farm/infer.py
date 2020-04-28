@@ -14,7 +14,7 @@ from farm.data_handler.utils import grouper
 from farm.modeling.tokenization import Tokenizer
 from farm.modeling.adaptive_model import AdaptiveModel, BaseAdaptiveModel
 from farm.utils import initialize_device_settings
-from farm.utils import set_all_seeds, calc_chunksize
+from farm.utils import set_all_seeds, calc_chunksize, log_ascii_workers
 
 
 logger = logging.getLogger(__name__)
@@ -276,6 +276,10 @@ class Inferencer:
             if num_processes is None:  # use all CPU cores
                 num_processes = mp.cpu_count() - 1
             self.process_pool = mp.Pool(processes=num_processes)
+            logger.info(
+                f"Got ya {num_processes} parallel workers to do inference ..."
+            )
+            log_ascii_workers(n=num_processes,logger=logger)
 
     def save(self, path):
         self.model.save(path)
