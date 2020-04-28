@@ -23,8 +23,8 @@ from farm.file_utils import load_from_cache
 # language model config
 PRETRAINED_CONFIG_ARCHIVE_MAP = {
     "glove-german-uncased": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/glove-german-uncased/language_model_config.json",
-    "glove-english-uncased-6B": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/glove-english-uncased-6B/language_model_config.txt",
-    "glove-english-cased-840B": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/glove-english-cased-840B/language_model_config.txt",
+    "glove-english-uncased-6B": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/glove-english-uncased-6B/language_model_config.json",
+    "glove-english-cased-840B": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/glove-english-cased-840B/language_model_config.json",
 }
 # tokenization
 EMBEDDING_VOCAB_FILES_MAP = {}
