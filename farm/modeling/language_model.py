@@ -23,6 +23,7 @@ import logging
 import os
 import io
 from pathlib import Path
+from collections import OrderedDict
 
 from dotmap import DotMap
 from tqdm import tqdm
@@ -43,6 +44,8 @@ from transformers.modeling_utils import SequenceSummary
 from transformers.tokenization_bert import load_vocab
 
 from farm.modeling import wordembedding_utils
+from farm.modeling.wordembedding_utils import s3e_pooling
+
 
 # These are the names of the attributes in various model configs which refer to the number of dimensions
 # in the output vectors
@@ -251,7 +254,7 @@ class LanguageModel(nn.Module):
         return language
 
     def formatted_preds(self, logits, samples, ignore_first_token=True,
-                        padding_mask=None, **kwargs):
+                        padding_mask=None, input_ids=None, **kwargs):
         """
         Extracting vectors from language model (e.g. for extracting sentence embeddings).
         Different pooling strategies and layers are available and will be determined from the object attributes
@@ -265,6 +268,7 @@ class LanguageModel(nn.Module):
         :param ignore_first_token: Whether to include the first token for pooling operations (e.g. reduce_mean).
                                    Many models have here a special token like [CLS] that you don't want to include into your average of token embeddings.
         :param padding_mask: Mask for the padding tokens. Those will also not be included in the pooling operations to prevent a bias by the number of padding tokens.
+        :param input_ids: ids of the tokens in the vocab
         :param kwargs: kwargs
         :return: list of dicts containing preds, e.g. [{"context": "some text", "vec": [-0.01, 0.5 ...]}]
         """
@@ -290,6 +294,10 @@ class LanguageModel(nn.Module):
             vecs = self._pool_tokens(sequence_output, padding_mask, self.extraction_strategy, ignore_first_token=ignore_first_token)
         elif self.extraction_strategy == "cls_token":
             vecs = sequence_output[:, 0, :].cpu().numpy()
+        elif self.extraction_strategy == "s3e":
+            vecs = self._pool_tokens(sequence_output, padding_mask, self.extraction_strategy,
+                                     ignore_first_token=ignore_first_token,
+                                     input_ids=input_ids, s3e_stats=self.s3e_stats)
         else:
             raise NotImplementedError
 
@@ -301,7 +309,7 @@ class LanguageModel(nn.Module):
             preds.append(pred)
         return preds
 
-    def _pool_tokens(self, sequence_output, padding_mask, strategy, ignore_first_token):
+    def _pool_tokens(self, sequence_output, padding_mask, strategy, ignore_first_token, input_ids=None, s3e_stats=None):
 
         token_vecs = sequence_output.cpu().numpy()
         # we only take the aggregated value of non-padding tokens
@@ -316,6 +324,15 @@ class LanguageModel(nn.Module):
             pooled_vecs = np.ma.array(data=token_vecs, mask=ignore_mask_3d).max(axis=1).data
         if strategy == "reduce_mean":
             pooled_vecs = np.ma.array(data=token_vecs, mask=ignore_mask_3d).mean(axis=1).data
+        if strategy == "s3e":
+            input_ids = input_ids.cpu().numpy()
+            pooled_vecs = s3e_pooling(token_embs=token_vecs,
+                                      token_ids=input_ids,
+                                      token_weights=s3e_stats["token_weights"],
+                                      centroids=s3e_stats["centroids"],
+                                      token_to_cluster=s3e_stats["token_to_cluster"],
+                                      svd_components=s3e_stats.get("svd_components", None),
+                                      mask=padding_mask == 0)
         return pooled_vecs
 
 
@@ -962,9 +979,17 @@ class EmbeddingModel():
     def save(self,save_dir):
         # Save Weights
         save_name = Path(save_dir) / self.config.embeddings_filename
+        embeddings = self.embeddings.cpu().numpy()
         with open(save_name, "w") as f:
-            for w, vec in zip(self.vocab, self.embeddings):
+            for w, vec in tqdm(zip(self.vocab, embeddings), desc="Saving embeddings", total=embeddings.shape[0]):
                 f.write(w + " " + " ".join(["%.6f" % v for v in vec]) + "\n")
+        f.close()
+
+        # Save vocab
+        save_name = Path(save_dir) / self.config.vocab_filename
+        with open(save_name, "w") as f:
+            for w in self.vocab:
+                f.write(w + "\n")
         f.close()
 
 
@@ -1046,11 +1071,10 @@ class WordEmbedding_LM(LanguageModel):
         :param save_dir: The directory in which the model should be saved.
         :type save_dir: str
         """
-        raise NotImplementedError
         #save model
-        # self.model.save(save_dir=save_dir)
-        # #save config
-        # self.save_config(save_dir=save_dir)
+        self.model.save(save_dir=save_dir)
+        #save config
+        self.save_config(save_dir=save_dir)
 
 
     def forward(self, input_ids, **kwargs,):
@@ -1075,3 +1099,74 @@ class WordEmbedding_LM(LanguageModel):
         m = nn.BatchNorm1d(pooled_output.shape[1]) # batchnorm for stable learning
         pooled_output = m(pooled_output)
         return sequence_output, pooled_output
+
+    def trim_vocab(self, token_counts, processor, min_threshold):
+        """ Remove embeddings for rare tokens in your corpus (< `min_threshold` occurrences) to reduce model size"""
+        logger.info(f"Removing tokens with less than {min_threshold} occurrences from model vocab")
+        new_vocab = OrderedDict()
+        valid_tok_indices = []
+        cnt = 0
+        old_num_emb = self.model.embeddings.shape[0]
+        for token, tok_idx in self.model.vocab.items():
+            if token_counts.get(token, 0) >= min_threshold or token in ("[CLS]","[SEP]","[UNK]","[PAD]","[MASK]"):
+                new_vocab[token] = cnt
+                valid_tok_indices.append(tok_idx)
+                cnt += 1
+
+        self.model.vocab = new_vocab
+        self.model.embeddings = self.model.embeddings[valid_tok_indices, :]
+
+        # update tokenizer vocab in place
+        processor.tokenizer.vocab = self.model.vocab
+        processor.tokenizer.ids_to_tokens = OrderedDict()
+        for k, v in processor.tokenizer.vocab.items():
+            processor.tokenizer.ids_to_tokens[v] = k
+
+        logger.info(f"Reduced vocab from {old_num_emb} to {self.model.embeddings.shape[0]}")
+
+    def normalize_embeddings(self, zero_mean=True, pca_removal=False, pca_n_components=300, pca_n_top_components=10,
+                             use_mean_vec_for_special_tokens=True, n_special_tokens=5):
+        """ Normalize word embeddings as in https://arxiv.org/pdf/1808.06305.pdf
+            (e.g. used for S3E Pooling of sentence embeddings)
+            
+        :param zero_mean: Whether to center embeddings via subtracting mean
+        :type zero_mean: bool
+        :param pca_removal: Whether to remove PCA components
+        :type pca_removal: bool
+        :param pca_n_components: Number of PCA components to use for fitting
+        :type pca_n_components: int
+        :param pca_n_top_components: Number of PCA components to remove
+        :type pca_n_top_components: int
+        :param use_mean_vec_for_special_tokens: Whether to replace embedding of special tokens with the mean embedding
+        :type use_mean_vec_for_special_tokens: bool
+        :param n_special_tokens: Number of special tokens like CLS, UNK etc. (used if `use_mean_vec_for_special_tokens`). 
+                                 Note: We expect the special tokens to be the first `n_special_tokens` entries of the vocab.
+        :type n_special_tokens: int
+        :return: None
+        """
+
+        if zero_mean:
+            logger.info('Removing mean from embeddings')
+            # self.model.embeddings[:n_special_tokens, :] = torch.zeros((n_special_tokens, 300))
+            mean_vec = torch.mean(self.model.embeddings, 0)
+            self.model.embeddings = self.model.embeddings - mean_vec
+
+            if use_mean_vec_for_special_tokens:
+                self.model.embeddings[:n_special_tokens, :] = mean_vec
+
+        if pca_removal:
+            from sklearn.decomposition import PCA
+            logger.info('Removing projections on top PCA components from embeddings (see https://arxiv.org/pdf/1808.06305.pdf)')
+            pca = PCA(n_components=pca_n_components)
+            pca.fit(self.model.embeddings.cpu().numpy())
+
+            U1 = pca.components_
+            explained_variance = pca.explained_variance_
+
+            # Removing projections on top components
+            PVN_dims = pca_n_top_components
+            for emb_idx in tqdm(range(self.model.embeddings.shape[0]), desc="Removing projections"):
+                for pca_idx, u in enumerate(U1[0:PVN_dims]):
+                    ratio = (explained_variance[pca_idx] - explained_variance[PVN_dims]) / explained_variance[pca_idx]
+                    self.model.embeddings[emb_idx] = self.model.embeddings[emb_idx] - ratio * np.dot(u.transpose(), self.model.embeddings[emb_idx]) * u
+
