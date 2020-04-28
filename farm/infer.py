@@ -14,7 +14,7 @@ from farm.data_handler.utils import grouper
 from farm.modeling.tokenization import Tokenizer
 from farm.modeling.adaptive_model import AdaptiveModel, BaseAdaptiveModel
 from farm.utils import initialize_device_settings
-from farm.utils import set_all_seeds, calc_chunksize
+from farm.utils import set_all_seeds, calc_chunksize, log_ascii_workers
 
 
 logger = logging.getLogger(__name__)
@@ -54,6 +54,7 @@ class Inferencer:
         extraction_layer=None,
         s3e_stats=None,
         num_processes=None,
+        disable_tqdm=False
     ):
         """
         Initializes Inferencer from an AdaptiveModel and a Processor instance.
@@ -86,6 +87,8 @@ class Inferencer:
                               multiprocessing. Set to None to let Inferencer use all CPU cores. If you want to
                               debug the Language Model, you might need to disable multiprocessing!
         :type num_processes: int
+        :param disable_tqdm: Whether to disable tqdm logging (can get very verbose in multiprocessing)
+        :type disable_tqdm: bool
         :return: An instance of the Inferencer.
 
         """
@@ -99,6 +102,7 @@ class Inferencer:
         self.device = device
         self.language = self.model.get_language()
         self.task_type = task_type
+        self.disable_tqdm = disable_tqdm
 
         if task_type == "embeddings":
             if not extraction_layer or not extraction_strategy:
@@ -134,6 +138,8 @@ class Inferencer:
         extraction_strategy=None,
         s3e_stats=None,
         num_processes=None,
+        disable_tqdm=False
+
     ):
         """
         Load an Inferencer incl. all relevant components (model, tokenizer, processor ...) either by
@@ -170,6 +176,8 @@ class Inferencer:
                               multiprocessing. Set to None to let Inferencer use all CPU cores. If you want to
                               debug the Language Model, you might need to disable multiprocessing!
         :type num_processes: int
+        :param disable_tqdm: Whether to disable tqdm logging (can get very verbose in multiprocessing)
+        :type disable_tqdm: bool
         :return: An instance of the Inferencer.
 
         """
@@ -248,6 +256,7 @@ class Inferencer:
             extraction_layer=extraction_layer,
             s3e_stats=s3e_stats,
             num_processes=num_processes,
+            disable_tqdm=disable_tqdm
         )
 
     def _set_multiprocessing_pool(self, num_processes):
@@ -267,6 +276,10 @@ class Inferencer:
             if num_processes is None:  # use all CPU cores
                 num_processes = mp.cpu_count() - 1
             self.process_pool = mp.Pool(processes=num_processes)
+            logger.info(
+                f"Got ya {num_processes} parallel workers to do inference ..."
+            )
+            log_ascii_workers(n=num_processes,logger=logger)
 
     def save(self, path):
         self.model.save(path)
@@ -435,10 +448,10 @@ class Inferencer:
             # TODO change format of formatted_preds in QA (list of dicts)
             if aggregate_preds:
                 predictions = self._get_predictions_and_aggregate(
-                    dataset, tensor_names, baskets, rest_api_schema, disable_tqdm=True
+                    dataset, tensor_names, baskets, rest_api_schema
                 )
             else:
-                predictions = self._get_predictions(dataset, tensor_names, baskets, rest_api_schema, disable_tqdm=True)
+                predictions = self._get_predictions(dataset, tensor_names, baskets, rest_api_schema)
             yield from predictions
 
     @classmethod
@@ -451,7 +464,7 @@ class Inferencer:
         dataset, tensor_names, baskets = processor.dataset_from_dicts(dicts, indices, rest_api_schema, return_baskets=True)
         return dataset, tensor_names, baskets
 
-    def _get_predictions(self, dataset, tensor_names, baskets, rest_api_schema=False, disable_tqdm=False):
+    def _get_predictions(self, dataset, tensor_names, baskets, rest_api_schema=False):
         """
         Feed a preprocessed dataset to the model and get the actual predictions (forward pass + formatting).
 
@@ -464,8 +477,6 @@ class Inferencer:
                                 Currently only used for QA to switch from squad to a more useful format in production.
                                 While input is almost the same, output contains additional meta data(offset, context..)
         :type rest_api_schema: bool
-        :param disable_tqdm: Whether to disable tqdm logging (can get very verbose in multiprocessing)
-        :type disable_tqdm: bool
         :return: list of predictions
         """
         samples = [s for b in baskets for s in b.samples]
@@ -474,7 +485,7 @@ class Inferencer:
             dataset=dataset, sampler=SequentialSampler(dataset), batch_size=self.batch_size, tensor_names=tensor_names
         )
         preds_all = []
-        for i, batch in enumerate(tqdm(data_loader, desc=f"Inferencing Samples", unit=" Batches", disable=disable_tqdm)):
+        for i, batch in enumerate(tqdm(data_loader, desc=f"Inferencing Samples", unit=" Batches", disable=self.disable_tqdm)):
             batch = {key: batch[key].to(self.device) for key in batch}
             batch_samples = samples[i * self.batch_size : (i + 1) * self.batch_size]
 
@@ -491,7 +502,7 @@ class Inferencer:
                 preds_all += preds
         return preds_all
 
-    def _get_predictions_and_aggregate(self, dataset, tensor_names, baskets, rest_api_schema=False, disable_tqdm=False):
+    def _get_predictions_and_aggregate(self, dataset, tensor_names, baskets, rest_api_schema=False):
         """
         Feed a preprocessed dataset to the model and get the actual predictions (forward pass + logits_to_preds + formatted_preds).
 
@@ -508,8 +519,6 @@ class Inferencer:
                                 Currently only used for QA to switch from squad to a more useful format in production.
                                 While input is almost the same, output contains additional meta data(offset, context..)
         :type rest_api_schema: bool
-        :param disable_tqdm: Whether to disable tqdm logging (can get very verbose in multiprocessing)
-        :type disable_tqdm: bool
         :return: list of predictions
         """
 
@@ -517,7 +526,7 @@ class Inferencer:
             dataset=dataset, sampler=SequentialSampler(dataset), batch_size=self.batch_size, tensor_names=tensor_names
         )
         unaggregated_preds_all = []
-        for i, batch in enumerate(tqdm(data_loader, desc=f"Inferencing Samples", unit=" Batches", disable=disable_tqdm)):
+        for i, batch in enumerate(tqdm(data_loader, desc=f"Inferencing Samples", unit=" Batches", disable=self.disable_tqdm)):
             batch = {key: batch[key].to(self.device) for key in batch}
 
             # get logits
