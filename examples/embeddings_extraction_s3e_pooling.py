@@ -97,9 +97,9 @@ def extract_embeddings(load_dir, use_gpu, batch_size):
 
 
 if __name__ == "__main__":
-    #TODO update to an english public model
-    lang_model = "glove-german-uncased"
-
+    lang_model = "glove-english-uncased-6B"
+    do_lower_case = True
+    
     # You can download this from:
     # "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/lm_finetune_nips.tar.gz"
     corpus_path = Path("../data/lm_finetune_nips/train.txt")
@@ -107,7 +107,7 @@ if __name__ == "__main__":
     s3e_dir = Path("../saved_models/fitted_s3e/")
 
     fit(language_model=lang_model,
-        do_lower_case=False,
+        do_lower_case=do_lower_case,
         corpus_path=corpus_path,
         save_dir=s3e_dir
         )

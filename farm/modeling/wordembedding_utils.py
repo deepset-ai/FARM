@@ -5,7 +5,7 @@ import json
 import logging
 import os
 import unicodedata
-from pathlib import Path, PurePath
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -22,16 +22,30 @@ from farm.file_utils import load_from_cache
 # the dicts need to be used with HF transformers to use their data + modelling functionality
 # language model config
 PRETRAINED_CONFIG_ARCHIVE_MAP = {
-    "glove-german-uncased": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/glove-german-uncased/language_model_config.json"}
+    "glove-german-uncased": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/glove-german-uncased/language_model_config.json",
+    "glove-english-uncased-6B": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/glove-english-uncased-6B/language_model_config.json",
+    "glove-english-cased-840B": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/glove-english-cased-840B/language_model_config.json",
+}
 # tokenization
 EMBEDDING_VOCAB_FILES_MAP = {}
 EMBEDDING_VOCAB_FILES_MAP["vocab_file"] = {
-    "glove-german-uncased": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/glove-german-uncased/vocab.txt"}
-MAX_MODEL_INPU_SIZES = {"glove-german-uncased": 10000}
-PRETRAINED_INIT_CONFIGURATION = {"glove-german-uncased": {"do_lower_case": False}}
+    "glove-german-uncased": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/glove-german-uncased/vocab.txt",
+    "glove-english-uncased-6B": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/glove-english-uncased-6B/vocab.txt",
+    "glove-english-cased-840B": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/glove-english-cased-840B/vocab.txt",
+}
+MAX_MODEL_INPU_SIZES = {
+    "glove-german-uncased": 10000,
+    "glove-english-uncased-6B": 10000,
+    "glove-english-cased-840B": 10000,
+}
+PRETRAINED_INIT_CONFIGURATION = {"glove-german-uncased": {"do_lower_case": True},
+                                 "glove-english-uncased-6B": {"do_lower_case": True},
+                                 "glove-english-cased-840B": {"do_lower_case": False}}
 # model
 EMBEDDING_MODEL_MAP = {
     "glove-german-uncased": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/glove-german-uncased/vectors.txt",
+    "glove-english-uncased-6B": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/glove-english-uncased-6B/vectors.txt",
+    "glove-english-cased-840B": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/glove-english-cased-840B/vectors.txt",
     "fasttext-german-uncased": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-models/0.4.1/fasttext-german-uncased/language_model.bin",
 }
 # conversion
