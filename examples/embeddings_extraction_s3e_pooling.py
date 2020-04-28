@@ -97,8 +97,7 @@ def extract_embeddings(load_dir, use_gpu, batch_size):
 
 
 if __name__ == "__main__":
-    #TODO update to an english public model
-    lang_model = "glove-german-uncased"
+    lang_model = "glove-english-uncased-6B"
 
     # You can download this from:
     # "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/lm_finetune_nips.tar.gz"
