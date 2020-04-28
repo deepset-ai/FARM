@@ -298,7 +298,10 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         all_losses = []
         for head, logits_for_one_head in zip(self.prediction_heads, logits):
             # check if PredictionHead connected to Processor
-            assert hasattr(head, "label_tensor_name"), "PredictionHead has to be connected to Processor"
+            assert hasattr(head, "label_tensor_name"), \
+                (f"Label_tensor_names are missing inside the {head.task_name} Prediction Head. Did you connect the model"
+                " with the processor through either 'model.connect_heads_with_processor(processor.tasks)'"
+                " or by passing the processor to the Adaptive Model?")
             all_losses.append(head.logits_to_loss(logits=logits_for_one_head, **kwargs))
         return all_losses
 
