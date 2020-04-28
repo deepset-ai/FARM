@@ -288,7 +288,6 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         return model
 
     def logits_to_loss_per_head(self, logits, **kwargs):
-
         """
         Collect losses from each prediction head.
 
@@ -298,6 +297,8 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         """
         all_losses = []
         for head, logits_for_one_head in zip(self.prediction_heads, logits):
+            # check if PredictionHead connected to Processor
+            assert hasattr(head, "label_tensor_name"), "PredictionHead has to be connected to Processor"
             all_losses.append(head.logits_to_loss(logits=logits_for_one_head, **kwargs))
         return all_losses
 
