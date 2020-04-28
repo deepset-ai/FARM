@@ -15,7 +15,7 @@ def evaluate_classification():
     do_lower_case = False
     batch_size = 100
 
-    data_dir = Path("../data/germeval17"),
+    data_dir = Path("../data/germeval17")
     evaluation_filename = "test_TIMESTAMP1.tsv"
     label_list = ["negative", "neutral", "positive"]
     metric = "f1_macro"
