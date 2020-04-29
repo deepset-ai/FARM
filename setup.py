@@ -14,7 +14,7 @@ parsed_requirements = [
 
 setup(
     name="farm",
-    version="0.4.2",
+    version="0.4.3",
     author="Malte Pietsch, Timo Moeller, Branden Chan, Tanay Soni, Huggingface Team Authors, Google AI Language Team Authors, Open AI team Authors",
     author_email="malte.pietsch@deepset.ai",
     description="Toolkit for finetuning and evaluating transformer based language models",
