@@ -213,7 +213,7 @@ class Trainer:
         self.from_step = from_step
         self.global_step = global_step
 
-    def train(self):
+    def train(self, evaluate_after_training=False):
         """ Perform the training procedure. """
 
         # connect the prediction heads with the right output from processor
@@ -303,14 +303,15 @@ class Trainer:
             model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
 
         # Eval on test set
-        if self.evaluator_test:
-            test_data_loader = self.data_silo.get_data_loader("test")
-            if test_data_loader is not None:
-                evaluator_test = Evaluator(
-                    data_loader=test_data_loader, tasks=self.data_silo.processor.tasks, device=self.device
-                )
-                result = evaluator_test.eval(self.model)
-                evaluator_test.log_results(result, "Test", self.global_step)
+        if evaluate_after_training:
+            if self.evaluator_test:
+                test_data_loader = self.data_silo.get_data_loader("test")
+                if test_data_loader is not None:
+                    evaluator_test = Evaluator(
+                        data_loader=test_data_loader, tasks=self.data_silo.processor.tasks, device=self.device
+                    )
+                    result = evaluator_test.eval(self.model)
+                    evaluator_test.log_results(result, "Test", self.global_step)
         return self.model
 
     def backward_propagate(self, loss, step):

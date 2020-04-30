@@ -44,6 +44,8 @@ class DataSilo:
         automatic_loading=True,
         max_multiprocessing_chunksize=2000,
         max_processes=128,
+        max_multiprocessing_chunksize_test=None,
+        max_processes_test=None,
         caching=False,
         cache_path=Path("cache/data_silo"),
     ):
@@ -77,6 +79,8 @@ class DataSilo:
         self.class_weights = None
         self.max_processes = max_processes
         self.max_multiprocessing_chunksize = max_multiprocessing_chunksize
+        self.max_processes_test = max_processes_test
+        self.max_multiprocessing_chunksize_test = max_multiprocessing_chunksize_test
         self.caching = caching
         self.cache_path = cache_path
         self.tensor_names = None
@@ -124,9 +128,15 @@ class DataSilo:
         dataset = processor.dataset_from_dicts(dicts=dicts, indices=indices)
         return dataset
 
-    def _get_dataset(self, filename, dicts=None):
+    def _get_dataset(self, filename, dicts=None, max_processes=None, max_multiprocessing_chunksize=None):
         if not filename and not dicts:
             raise ValueError("You must either supply `filename` or `dicts`")
+
+        if max_processes is None:
+            max_processes = self.max_processes
+
+        if max_multiprocessing_chunksize is None:
+            max_multiprocessing_chunksize = self.max_multiprocessing_chunksize
 
         # loading dicts from file (default)
         if dicts is None:
@@ -140,12 +150,12 @@ class DataSilo:
         num_dicts = len(dicts)
         multiprocessing_chunk_size, num_cpus_used = calc_chunksize(
             num_dicts=num_dicts,
-            max_processes=self.max_processes,
-            max_chunksize=self.max_multiprocessing_chunksize,
+            max_processes=max_processes,
+            max_chunksize=max_multiprocessing_chunksize,
         )
 
         with ExitStack() as stack:
-            if self.max_processes > 1:  # use multiprocessing only when max_processes > 1
+            if max_processes > 1:  # use multiprocessing only when max_processes > 1
                 p = stack.enter_context(mp.Pool(processes=num_cpus_used))
 
                 logger.info(
@@ -234,10 +244,12 @@ class DataSilo:
             # or from file (default)
             test_file = self.processor.data_dir / self.processor.test_filename
             logger.info("Loading test set from: {}".format(test_file))
-            if self.tensor_names:
-                self.data["test"], _ = self._get_dataset(test_file)
-            else:
-                self.data["test"], self.tensor_names = self._get_dataset(test_file)
+
+            self.data["test"], _tensor_names = self._get_dataset(test_file, max_processes=self.max_processes_test,
+                                                     max_multiprocessing_chunksize=self.max_multiprocessing_chunksize_test)
+
+            if not self.tensor_names:
+                self.tensor_names = _tensor_names
         else:
             logger.info("No test set is being loaded")
             self.data["test"] = None

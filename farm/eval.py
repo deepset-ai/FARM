@@ -36,7 +36,7 @@ class Evaluator:
         self.device = device
         self.report = report
 
-    def eval(self, model, return_preds_and_labels=False):
+    def eval(self, model, return_preds_and_labels=False, report_output_dict=False, return_logits=False):
         """
         Performs evaluation on a given model.
 
@@ -56,6 +56,7 @@ class Evaluator:
         label_all = [[] for _ in model.prediction_heads]
         ids_all = [[] for _ in model.prediction_heads]
         passage_start_t_all = [[] for _ in model.prediction_heads]
+        logits_all = [[] for _ in model.prediction_heads]
 
         for step, batch in enumerate(
             tqdm(self.data_loader, desc="Evaluating", mininterval=10)
@@ -73,6 +74,7 @@ class Evaluator:
             for head_num, head in enumerate(model.prediction_heads):
                 loss_all[head_num] += np.sum(to_numpy(losses_per_head[head_num]))
                 preds_all[head_num] += list(to_numpy(preds[head_num]))
+                logits_all[head_num] += list(to_numpy(logits[head_num]).tolist())
                 label_all[head_num] += list(to_numpy(labels[head_num]))
                 if head.model_type == "span_classification":
                     ids_all[head_num] += list(to_numpy(batch["id"]))
@@ -103,11 +105,15 @@ class Evaluator:
 
             # Select type of report depending on prediction head output type
             if self.report:
-                result["report"] = compute_report_metrics(head, preds_all[head_num], label_all[head_num])
+                result["report"] = compute_report_metrics(head, preds_all[head_num], label_all[head_num], output_dict=report_output_dict)
 
             if return_preds_and_labels:
-                result["preds"] = preds_all[head_num]
-                result["labels"] = label_all[head_num]
+                # Convert numpy arrays to lists (result should be JSON-serializable)
+                result["preds"] = preds_all[head_num].tolist()
+                result["labels"] = label_all[head_num].tolist()
+
+            if return_logits:
+                result["logits"] = logits_all[head_num]
 
             all_results.append(result)
 

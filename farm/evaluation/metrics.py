@@ -103,7 +103,7 @@ def compute_metrics(metric, preds, labels):
         raise KeyError(metric)
 
 
-def compute_report_metrics(head, preds, labels):
+def compute_report_metrics(head, preds, labels, output_dict=False):
     if head.ph_output_type in registered_reports:
         report_fn = registered_reports[head.ph_output_type]
     elif head.ph_output_type == "per_token":
@@ -133,7 +133,8 @@ def compute_report_metrics(head, preds, labels):
             preds,
             digits=4,
             labels=all_possible_labels,
-            target_names=head.label_list
+            target_names=head.label_list,
+            output_dict=output_dict
         )
     else:
         return report_fn(labels, preds)
