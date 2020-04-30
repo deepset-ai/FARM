@@ -115,7 +115,7 @@ def test_qa_onnx_inference():
     inferencer = Inferencer.load(model_name_or_path=onnx_model_export_path, task_type="question_answering", num_processes=0)
 
     result_onnx = inferencer.inference_from_dicts(QA_input_squad)[0]
-    result_onnx_api_format = inferencer.inference_from_dicts(QA_input_api_format, rest_api_schema=True)[0]
+    result_onnx_api_format = inferencer.inference_from_dicts(QA_input_api_format)[0]
 
     # Standard squad format
     for pred in range(len(result["preds"])):
