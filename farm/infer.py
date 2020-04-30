@@ -536,6 +536,8 @@ class Inferencer:
         data_loader = NamedDataLoader(
             dataset=dataset, sampler=SequentialSampler(dataset), batch_size=self.batch_size, tensor_names=tensor_names
         )
+        # TODO Sometimes this is the preds of one head, sometimes of two. We need a more advanced stacking operation
+        # TODO so that preds of the right shape are passed in to formatted_preds
         unaggregated_preds_all = []
 
         for i, batch in enumerate(tqdm(data_loader, desc=f"Inferencing Samples", unit=" Batches", disable=self.disable_tqdm)):

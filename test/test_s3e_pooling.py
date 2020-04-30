@@ -38,7 +38,7 @@ def test_s3e_fit():
         language_model=language_model,
         prediction_heads=[],
         embeds_dropout_prob=0.1,
-        lm_output_types=["per_sequence"],
+        lm_output_types=[],
         device=device)
 
     model, processor, s3e_stats = fit_s3e_on_corpus(processor=processor,

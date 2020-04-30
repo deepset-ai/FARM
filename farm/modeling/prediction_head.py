@@ -1231,10 +1231,10 @@ class QuestionAnsweringHead(PredictionHead):
             try:
                 document_text = basket.raw["context"]       # SQuAD style
             except KeyError:
-                document_text = basket.raw["document_text"] # NQ style
+                document_text = basket.raw["text"] # NQ style
 
             try:
-                question = basket.raw["question_text"]  # SQuAD style
+                question = basket.raw["questions"]  # SQuAD style
             except KeyError:
                 question = basket.raw["qas"][0]         # NQ style
 
@@ -1511,12 +1511,12 @@ def pick_single_fn(heads, fn_name):
     if and only if one head has a method of that name. If no heads have such a method, None is returned.
     If more than one head has such a method, an Exception is thrown"""
     merge_fns = []
-    for h in heads():
+    for h in heads:
         merge_fns.append(getattr(h, fn_name, None))
 
     merge_fns = [x for x in merge_fns if x is not None]
     if len(merge_fns) == 0:
-        pass
+        return None
     elif len(merge_fns) == 1:
         return merge_fns[0]
     else:

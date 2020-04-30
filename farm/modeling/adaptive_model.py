@@ -80,17 +80,49 @@ class BaseAdaptiveModel:
         :type kwargs: object
         :return: predictions in the right format
         """
-        all_preds = []
-        # collect preds from all heads
-        # TODO add switch between single vs multiple prediction heads
-        for head, logits_for_head in zip(
-            self.prediction_heads, logits
-        ):
-            preds = head.formatted_preds(
-                logits=logits_for_head, **kwargs
-            )
-            all_preds.append(preds)
-        return all_preds
+        n_heads = len(self.prediction_heads)
+
+        if n_heads == 0:
+            # just return LM output (e.g. useful for extracting embeddings at inference time)
+            preds_final = self.language_model.formatted_preds(logits=logits, **kwargs)
+
+        elif n_heads == 1:
+            preds_final = []
+            # TODO This is very specific to QA, make more general
+            try:
+                kwargs["preds_p"] = kwargs["preds_p"][0][0]
+            except KeyError:
+                kwargs["preds_p"] = None
+            head = self.prediction_heads[0]
+            logits_for_head = logits[0]
+            preds = head.formatted_preds(logits=logits_for_head, **kwargs)
+            # TODO This is very messy - we need better definition of what the output should look like
+            if type(preds) == list:
+                preds_final += preds
+            elif type(preds) == dict and "predictions" in preds:
+                preds_final.append(preds)
+
+        # This case is triggered by Natural Questions
+        else:
+            preds_final = [list() for _ in range(n_heads)]
+            preds = kwargs["preds_p"]
+            preds_for_heads = stack(preds)
+
+            samples = [s for b in kwargs["baskets"] for s in b.samples]
+            kwargs["samples"] = samples
+
+            del kwargs["preds_p"]
+
+            for i, (head, preds_p_for_head, logits_for_head) in enumerate(zip(self.prediction_heads, preds_for_heads, logits)):
+                preds = head.formatted_preds(logits=logits_for_head, preds_p=preds_p_for_head, **kwargs)
+                preds_final[i].append(preds)
+
+            # Look for a merge() function amongst the heads and if a single one exists, apply it to preds_final
+            merge_fn = pick_single_fn(self.prediction_heads, "merge_formatted_preds")
+            if merge_fn:
+                preds_final = merge_fn(preds_final)
+
+        return preds_final
 
     def connect_heads_with_processor(self, tasks, require_labels=True):
         """
@@ -358,60 +390,6 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
             labels = head.prepare_labels(**kwargs)
             all_labels.append(labels)
         return all_labels
-
-    def formatted_preds(self, logits, **kwargs):
-        """
-        Format predictions for inference.
-
-        :param logits: model logits
-        :type logits: torch.tensor
-        :param kwargs: placeholder for passing generic parameters
-        :type kwargs: object
-        :return: predictions in the right format
-        """
-        n_heads = len(self.prediction_heads)
-
-        if n_heads == 0:
-            # just return LM output (e.g. useful for extracting embeddings at inference time)
-            preds_final = self.language_model.formatted_preds(logits=logits, **kwargs)
-
-        elif n_heads == 1:
-            preds_final = []
-            # TODO This is very specific to QA, make more general
-            try:
-                kwargs["preds_p"] = kwargs["preds_p"][0][0]
-            except KeyError:
-                kwargs["preds_p"] = None
-            head = self.prediction_heads[0]
-            logits_for_head = logits[0]
-            preds = head.formatted_preds(logits=logits_for_head, **kwargs)
-            # TODO This is very messy - we need better definition of what the output should look like
-            if type(preds) == list:
-                preds_final += preds
-            elif type(preds) == dict and "predictions" in preds:
-                preds_final.append(preds)
-
-        # This case is triggered by Natural Questions
-        else:
-            preds_final = [list() for _ in range(n_heads)]
-            preds = kwargs["preds_p"]
-            preds_for_heads = stack(preds)
-
-            samples = [s for b in kwargs["baskets"] for s in b.samples]
-            kwargs["samples"] = samples
-
-            del kwargs["preds_p"]
-
-            for i, (head, preds_p_for_head, logits_for_head) in enumerate(zip(self.prediction_heads, preds_for_heads, logits)):
-                preds = head.formatted_preds(logits=logits_for_head, preds_p=preds_p_for_head, **kwargs)
-                preds_final[i].append(preds)
-
-            # Look for a merge() function amongst the heads and if a single one exists, apply it to preds_final
-            merge_fn = pick_single_fn(self.prediction_heads, "merge_formatted_preds")
-            if merge_fn:
-                preds_final = merge_fn(preds_final)
-
-        return preds_final
 
     def forward(self, **kwargs):
         """
