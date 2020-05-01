@@ -157,6 +157,12 @@ class BaseAdaptiveModel:
 
         return model_files, config_files
 
+def loss_per_head_sum(loss_per_head, global_step=None, batch=None):
+    """
+    Input: loss_per_head (list of tensors), global_step (int), batch (dict)
+    Output: aggregated loss (tensor)
+    """
+    return sum(loss_per_head)
 
 class AdaptiveModel(nn.Module, BaseAdaptiveModel):
     """ PyTorch implementation containing all the modelling needed for your NLP task. Combines a language
@@ -216,7 +222,7 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         self.log_params()
         # default loss aggregation function is a simple sum (without using any of the optional params)
         if not loss_aggregation_fn:
-            loss_aggregation_fn = lambda loss_per_head, global_step=None, batch=None: sum(loss_per_head)
+            loss_aggregation_fn = loss_per_head_sum
         self.loss_aggregation_fn = loss_aggregation_fn
 
     def fit_heads_to_lm(self):
