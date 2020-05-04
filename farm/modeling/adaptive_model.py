@@ -6,7 +6,6 @@ from pathlib import Path
 
 import multiprocessing
 import numpy
-import onnxruntime
 import torch
 from torch import nn
 from transformers.modeling_auto import AutoModelForQuestionAnswering, AutoModelForSequenceClassification, AutoModelForTokenClassification, AutoModelWithLMHead
@@ -737,6 +736,7 @@ class ONNXAdaptiveModel(BaseAdaptiveModel):
 
     @classmethod
     def load(cls, load_dir, device, **kwargs):
+        import onnxruntime
         sess_options = onnxruntime.SessionOptions()
         # Set graph optimization level to ORT_ENABLE_EXTENDED to enable bert optimization.
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
