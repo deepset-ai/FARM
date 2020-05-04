@@ -357,23 +357,6 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         loss = self.loss_aggregation_fn(all_losses, global_step=global_step, batch=kwargs)
         return loss
 
-    def logits_to_preds(self, logits, **kwargs):
-        """
-        Get predictions from all prediction heads.
-
-        :param logits: logits, can vary in shape and type, depending on task
-        :type logits: object
-        :param label_maps: Maps from label encoding to label string
-        :param label_maps: dict
-        :return: A list of all predictions from all prediction heads
-        """
-        all_preds = []
-        # collect preds from all heads
-        for head, logits_for_head in zip(self.prediction_heads, logits):
-            preds = head.logits_to_preds(logits=logits_for_head, **kwargs)
-            all_preds.append(preds)
-        return all_preds
-
     def prepare_labels(self, **kwargs):
         """
         Label conversion to original label space, per prediction head.
