@@ -107,13 +107,14 @@ class BaseAdaptiveModel:
             preds_final = [list() for _ in range(n_heads)]
             preds = kwargs["preds_p"]
             preds_for_heads = stack(preds)
+            logits_for_heads = [None] * n_heads
 
             samples = [s for b in kwargs["baskets"] for s in b.samples]
             kwargs["samples"] = samples
 
             del kwargs["preds_p"]
 
-            for i, (head, preds_p_for_head, logits_for_head) in enumerate(zip(self.prediction_heads, preds_for_heads, logits)):
+            for i, (head, preds_p_for_head, logits_for_head) in enumerate(zip(self.prediction_heads, preds_for_heads, logits_for_heads)):
                 preds = head.formatted_preds(logits=logits_for_head, preds_p=preds_p_for_head, **kwargs)
                 preds_final[i].append(preds)
 

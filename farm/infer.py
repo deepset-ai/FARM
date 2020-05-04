@@ -558,8 +558,10 @@ class Inferencer:
         # In QA we can use this to get answers from long input texts by first getting predictions for smaller passages
         # and then aggregating them here.
 
+        # At this point unaggregated preds has shape [n_batches][n_heads][n_samples]
+
         # can assume that we have only complete docs i.e. all the samples of one doc are in the current chunk
-        logits = [None] * len(unaggregated_preds_all)
+        logits = [None]
         preds_all = self.model.formatted_preds(logits=logits, # For QA we collected preds per batch and do not want to pass logits
                                                preds_p=unaggregated_preds_all,
                                                baskets=baskets)

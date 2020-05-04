@@ -1204,6 +1204,7 @@ class QuestionAnsweringHead(PredictionHead):
         # i.e. that there are no incomplete documents. The output of this step
         # are prediction spans
         preds_d = self.aggregate_preds(preds_p, passage_start_t, ids, seq_2_start_t)
+
         assert len(preds_d) == len(baskets)
 
         # Separate top_preds list from the no_ans_gap float.
@@ -1221,6 +1222,7 @@ class QuestionAnsweringHead(PredictionHead):
         # Iterate over each set of document level prediction
         for pred_d, no_ans_gap, basket in zip(top_preds, no_ans_gaps, baskets):
             # TODO the follow try catch is because of difference in Basket structure between NQ and SQuAD - resolve this!!!
+            # TODO This code is horrible - will be cleaned soon
 
             # Unpack document offsets, clear text and squad_id
             try:
@@ -1231,12 +1233,18 @@ class QuestionAnsweringHead(PredictionHead):
             try:
                 document_text = basket.raw["context"]       # SQuAD style
             except KeyError:
-                document_text = basket.raw["text"] # NQ style
+                try:
+                    document_text = basket.raw["text"] # NQ style
+                except KeyError:
+                    document_text = basket.raw["document_text"]
 
             try:
-                question = basket.raw["questions"]  # SQuAD style
+                question = basket.raw["questions"][0]  # SQuAD style
             except KeyError:
-                question = basket.raw["qas"][0]         # NQ style
+                try:
+                    question = basket.raw["qas"][0]         # NQ style
+                except KeyError:
+                    question = basket.raw["question_text"]
 
             basket_id = basket.id
 
