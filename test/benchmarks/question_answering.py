@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 @pytest.mark.parametrize("max_seq_len", [128, 256, 384])
 @pytest.mark.parametrize("batch_size", [1, 4, 16, 64])
-@pytest.mark.parametrize("document_size", [10, 100_000])
+@pytest.mark.parametrize("document_size", [10_000, 100_000])
 @pytest.mark.parametrize("num_processes", [0], scope="session")
 def test_question_answering_pytorch(adaptive_model_qa, benchmark, max_seq_len, batch_size, use_gpu, document_size):
     if use_gpu and not torch.cuda.is_available():
@@ -30,7 +30,7 @@ def test_question_answering_pytorch(adaptive_model_qa, benchmark, max_seq_len, b
 
 @pytest.mark.parametrize("max_seq_len", [128, 256, 384])
 @pytest.mark.parametrize("batch_size", [1, 4, 16, 64])
-@pytest.mark.parametrize("document_size", [10, 100_000])
+@pytest.mark.parametrize("document_size", [10_000, 100_000])
 @pytest.mark.parametrize("num_processes", [0], scope="session")
 def test_question_answering_onnx(onnx_adaptive_model_qa, benchmark, max_seq_len, batch_size, use_gpu, document_size):
     if use_gpu and not torch.cuda.is_available():
