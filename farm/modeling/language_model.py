@@ -1096,8 +1096,11 @@ class WordEmbedding_LM(LanguageModel):
 
         sequence_output = torch.stack(sequence_output)
         pooled_output = torch.stack(pooled_output)
-        m = nn.BatchNorm1d(pooled_output.shape[1]) # batchnorm for stable learning
-        pooled_output = m(pooled_output)
+        m = nn.BatchNorm1d(pooled_output.shape[1])
+        # use batchnorm for more stable learning
+        # but disable it, if we have batch size of one (cannot compute batchnorm stats with only one sample)
+        if pooled_output.shape[0] > 1:
+            pooled_output = m(pooled_output)
         return sequence_output, pooled_output
 
     def trim_vocab(self, token_counts, processor, min_threshold):
