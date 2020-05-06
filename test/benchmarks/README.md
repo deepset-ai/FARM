@@ -3,7 +3,7 @@
 FARM provides an automated speed benchmarking pipeline with options to parameterize the benchmarks with batch_size, 
 max sequence length, document size, and so on.
 
-The pipeline is implemented using pytest-benchmark. It provides configurable warmup/iterations for each test and the
+The pipeline is implemented using [pytest-benchmark](https://github.com/ionelmc/pytest-benchmark). The warmup/iterations for each benchmark are configurable and the
 results can be exported to a JSON file.
 
  
