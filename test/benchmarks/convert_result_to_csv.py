@@ -1,10 +1,10 @@
 import json
 import csv
 
-with open("res.json") as f:
+with open("result.json") as f:
     results = json.load(f)
 
-with open("res.csv", "w") as f:
+with open("result.csv", "w") as f:
     fieldnames = list(results["benchmarks"][0]["params"].keys())
     fieldnames.append("time")
     writer = csv.DictWriter(f, fieldnames=fieldnames)
