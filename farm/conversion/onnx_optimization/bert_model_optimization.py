@@ -23,7 +23,7 @@
 #      PyTorch 1.2 or above, and exported to Onnx using opset version 10 or 11.
 
 import logging
-import coloredlogs
+# import coloredlogs
 import onnx
 import os
 import sys
@@ -218,10 +218,11 @@ def optimize_model(input,
 
 
 def setup_logger(verbose):
-    if verbose:
-        coloredlogs.install(level='DEBUG', fmt='[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s')
-    else:
-        coloredlogs.install(fmt='%(funcName)20s: %(message)s')
+    pass
+    # if verbose:
+    #     coloredlogs.install(level='DEBUG', fmt='[%(filename)s:%(lineno)s - %(funcName)20s()] %(message)s')
+    # else:
+    #     coloredlogs.install(fmt='%(funcName)20s: %(message)s')
 
 
 def main(args=None):
