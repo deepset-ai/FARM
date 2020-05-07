@@ -131,6 +131,10 @@ From PyPi::
 
     pip install farm
 
+
+FARM provides `optional dependencies <https://packaging.python.org/tutorials/installing-packages/#installing-setuptools-extras/>`_ for Inference with ONNXRuntime and FastText.
+You can install them using :code:`pip install farm[onnx]` and :code:`pip install farm[fasttext]` respectively.
+
 Basic Usage
 ############
 1. Train a downstream model
@@ -250,6 +254,11 @@ Much of the heavy lifting is then handled behind the scenes to make it fast & si
 `(Learn more) <https://farm.deepset.ai/data_handling.html>`__
 
 .. image:: https://raw.githubusercontent.com/deepset-ai/FARM/master/docs/img/data_silo_no_bg_small.jpg
+
+Inference Time Benchmarks
+##########################
+
+FARM has a configurable `test suite <https://github.com/deepset-ai/FARM/blob/master/test/benchmarks/README.md>`__ for benchmarking inference times with combinations of inference engine(PyTorch, `ONNXRuntime <https://github.com/microsoft/onnxruntime>`__), batch size, document length, maximum sequence length, and other parameters. `Here <https://docs.google.com/spreadsheets/d/1ak9Cxj1zcNBDtjf7qn2j_ydKDDzpBgWiyJ7cO-7BPvA/edit?usp=sharing>`__ is a benchmark for Question Answering inference with the current FARM version.
 
 FAQ
 ####
