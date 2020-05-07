@@ -131,10 +131,6 @@ From PyPi::
 
     pip install farm
 
-
-FARM provides `optional dependencies <https://packaging.python.org/tutorials/installing-packages/#installing-setuptools-extras/>`_ for Inference with ONNXRuntime and FastText.
-You can install them using :code:`pip install farm[onnx]` and :code:`pip install farm[fasttext]` respectively.
-
 Basic Usage
 ############
 1. Train a downstream model
