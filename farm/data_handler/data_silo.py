@@ -477,7 +477,8 @@ class DataSilo:
             raise Exception("source argument expects one of [\"train\", \"all\"]")
         for dataset in datasets:
             if dataset is not None:
-                observed_labels += [label_list[x[tensor_idx].item()] for x in dataset]
+                for x in dataset:
+                    observed_labels += [label_list[label_id] for label_id in (x[tensor_idx] == 1).nonzero()]
         #TODO scale e.g. via logarithm to avoid crazy spikes for rare classes
         class_weights = list(compute_class_weight("balanced", np.asarray(label_list), observed_labels))
         return class_weights
