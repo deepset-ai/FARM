@@ -27,6 +27,10 @@ setup(
     packages=find_packages(exclude=["*.tests", "*.tests.*", "tests.*", "tests"]),
     install_requires=parsed_requirements,
     python_requires=">=3.5.0",
+    extras_require={
+        "fasttext": ["fasttext==0.9.1"],
+        "onnx": ["onnxruntime"],
+    },
     tests_require=["pytest"],
     classifiers=[
         "Intended Audience :: Science/Research",
