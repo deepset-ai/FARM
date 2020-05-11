@@ -1,3 +1,4 @@
+# Source: https://github.com/microsoft/onnxruntime/blob/master/onnxruntime/python/tools/bert/BertOnnxModel.py
 #-------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.
