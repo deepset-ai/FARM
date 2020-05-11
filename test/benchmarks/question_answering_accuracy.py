@@ -88,7 +88,7 @@ def test_evaluation():
 
     elapsed = time() - starttime
 
-    os.makedirs("testsave", exist_ok=True)
+    os.makedirs("../testsave", exist_ok=True)
     write_squad_predictions(
         predictions=result,
         predictions_filename=filename,
