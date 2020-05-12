@@ -152,10 +152,6 @@ class LanguageModel(nn.Module):
             else:
                 language_model = None
 
-            if language_model_class == 'XLMRoberta':
-                # TODO: for some reason, the pretrained XLMRoberta has different vocab size in the tokenizer compared to the model this is a hack to resolve that
-                n_added_tokens = 3
-
         if not language_model:
             raise Exception(
                 f"Model not found for {pretrained_model_name_or_path}. Either supply the local path for a saved "
