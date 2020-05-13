@@ -1234,10 +1234,11 @@ class Electra(LanguageModel):
         # ELECTRA does not provide a pooled_output by default. Therefore, we need to initialize an extra pooler.
         # The pooler takes the first hidden representation & feeds it to a dense layer of (hidden_dim x hidden_dim).
         # We don't want a dropout in the end of the pooler, since we do that already in the adaptive model before we
-        # feed everything to the prediction head
+        # feed everything to the prediction head.
+        # Note: ELECTRA uses gelu as activation (BERT uses tanh instead)
         config.summary_last_dropout = 0
         config.summary_type = 'first'
-        config.summary_activation = 'tanh'
+        config.summary_activation = 'gelu'
         electra.pooler = SequenceSummary(config)
         electra.pooler.apply(electra.model._init_weights)
         return electra
