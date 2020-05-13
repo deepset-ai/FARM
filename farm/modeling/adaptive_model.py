@@ -90,7 +90,10 @@ class BaseAdaptiveModel:
             preds_final = []
             # TODO This is very specific to QA, make more general
             try:
-                kwargs["preds_p"] = kwargs["preds_p"][0][0]
+                preds_p = kwargs["preds_p"]
+                temp = [y[0] for y in preds_p]
+                preds_p_flat = [item for sublist in temp for item in sublist]
+                kwargs["preds_p"] = preds_p_flat
             except KeyError:
                 kwargs["preds_p"] = None
             head = self.prediction_heads[0]
