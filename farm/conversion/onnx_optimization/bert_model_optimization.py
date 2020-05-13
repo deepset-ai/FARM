@@ -25,17 +25,21 @@
 
 import logging
 # import coloredlogs
-import onnx
 import os
 import sys
 import argparse
 import numpy as np
 from collections import deque
-from onnx import ModelProto, TensorProto, numpy_helper
 from .BertOnnxModel import BertOnnxModel, BertOptimizationOptions
 # from .BertOnnxModelTF import BertOnnxModelTF
 # from BertOnnxModelKeras import BertOnnxModelKeras
 # from Gpt2OnnxModel import Gpt2OnnxModel
+
+try:
+    import onnx
+    from onnx import ModelProto, TensorProto, numpy_helper
+except:
+    pass
 
 logger = logging.getLogger('')
 
