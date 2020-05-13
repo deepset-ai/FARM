@@ -594,6 +594,7 @@ class _StreamingDataSet(IterableDataset):
 
 
     def __len__(self):
+        #TODO In distributed env we have to divide this by world_size
         return self.n_samples
 
     def __iter__(self):
@@ -609,6 +610,8 @@ class _StreamingDataSet(IterableDataset):
         #  (with n=2) will return, [[dictA, dictB], [dictE, dictF] ...] for worker 1 and
         #  [[dictC, dictD], [dictG, dictH] ...] for worker 2.
 
+        #TODO add shuffling to ensure different batches across epochs (e.g. some seed in grouper + randomizing order)
+
         if self.dataloader_workers > 1:
             worker_info = torch.utils.data.get_worker_info()
             if self.distributed:
@@ -623,6 +626,7 @@ class _StreamingDataSet(IterableDataset):
                 dicts = grouper(self.file_to_dicts_generator, n=10, worker_id=worker_id, total_workers=self.dataloader_workers)
 
         else:
+            #TODO what about distributed case here?
             dicts = grouper(self.file_to_dicts_generator, n=10)
 
         results = map(self._dataset_from_chunk, dicts)

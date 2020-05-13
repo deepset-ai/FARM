@@ -702,7 +702,7 @@ def grouper(iterable, n, worker_id=0, total_workers=1):
     Output for worker 2: [(dictC, dictD), (dictI, dictJ), ...]
     Output for worker 3: [(dictE, dictF), (dictK, dictL), ...]
 
-    This method also adds an index number to every dict yielded similar to the grouper().
+    This method also adds an index number to every dict yielded.
 
     :param iterable: a generator object that yields dicts
     :type iterable: generator

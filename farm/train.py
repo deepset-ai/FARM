@@ -236,18 +236,34 @@ class Trainer:
             logger.info(f"\n {GROWING_TREE}")
 
         for epoch in range(self.from_epoch, self.epochs):
+            early_break = False
             self.from_epoch = epoch
             train_data_loader = self.data_silo.get_data_loader("train")
             progress_bar = tqdm(train_data_loader, disable=self.local_rank not in [0, -1] or self.disable_tqdm)
             for step, batch in enumerate(progress_bar):
+
+                # Only for distributed training: we need to ensure that all ranks still have a batch left for training
+                if self.local_rank != -1:
+                    # We send a "1" from here (we have data) and a "0" if a process is at the end of the loop
+                    # If all ranks have data, they'll all send a 1 and our sum equals world_size
+                    ranks_with_data = torch.ones(1).to(self.device)
+                    torch.distributed.all_reduce(ranks_with_data, op=torch.distributed.ReduceOp.SUM)
+                    if ranks_with_data < torch.distributed.get_world_size():
+                        early_break = True
+                        logger.info(f"Stopping epoch {epoch} at step {step} for rank {self.local_rank} since at least one other rank "
+                                    f"(~ one GPU) in distributed training doesn't have any more batches... ")
+                        break
+
                 # when resuming training from a checkpoint, we want to fast forward to the step of the checkpoint
                 if resume_from_step and step <= resume_from_step:
                     # TODO: Improve skipping for StreamingDataSilo
                     # The seeds before and within the loop are currently needed, if you need full reproducibility
                     # of runs with vs. without checkpointing using StreamingDataSilo. Reason: While skipping steps in StreamingDataSilo,
                     # we update the state of the random number generator (e.g. due to masking words), which can impact the model behaviour (e.g. dropout)
+                    if step % 10000 == 0:
+                        logger.info(f"Skipping {step} out of {resume_from_step} steps ...")
                     if resume_from_step == step:
-                        logger.info(f"Skipped {resume_from_step} steps ...")
+                        logger.info(f"Finished skipping {resume_from_step} steps ...")
                         resume_from_step = None
                     continue
 
@@ -257,10 +273,9 @@ class Trainer:
                 # Move batch of samples to device
                 batch = {key: batch[key].to(self.device) for key in batch}
 
-                # Forward pass through model
+                # Forward & backward pass through model
                 logits = self.model.forward(**batch)
                 per_sample_loss = self.model.logits_to_loss(logits=logits, global_step=self.global_step, **batch)
-
                 loss = self.backward_propagate(per_sample_loss, step)
 
                 # Perform  evaluation
@@ -315,6 +330,13 @@ class Trainer:
 
             if do_stopping:
                 break
+
+            # Only for distributed training: we need to ensure that all ranks still have a batch left for training
+            if self.local_rank != -1 and not early_break:
+                # We send a "0" from here (we don't have data left in epoch) causing all other ranks that are still
+                # in the above epoch to leave the loop and avoid desynchronization issues
+                ranks_with_data = torch.zeros(1).to(self.device)
+                torch.distributed.all_reduce(ranks_with_data, op=torch.distributed.ReduceOp.SUM)
 
         # With early stopping we want to restore the best model
         if self.early_stopping and self.early_stopping.save_dir:

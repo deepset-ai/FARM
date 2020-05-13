@@ -11,7 +11,7 @@ from farm.modeling.optimization import initialize_optimizer
 from farm.modeling.prediction_head import BertLMHead, NextSentenceHead
 from farm.train import Trainer
 from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
-
+import torch
 
 # To get the best speed in a multi-GPU environment, launch the script via
 # python -m torch.distributed.launch --nproc_per_node=<NUM_GPUS> train_from_scratch.py
@@ -26,8 +26,15 @@ def parse_arguments():
     return args
 
 
-def train_from_scratch():
+def train_from_scratch(rank=None, worldsize=None):
     # We need the local rank argument for DDP
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '123254'
+    os.environ['RANK'] = str(rank)
+    os.environ['LOCAL_RANK'] = str(rank)
+    os.environ['WORLD_SIZE'] = str(worldsize)
+    os.environ['NCCL_BLOCKING_WAIT'] ="1"
+
     args = parse_arguments()
     use_amp = None  # using "O2" here allows roughly 30% larger batch_sizes and 45% speed up
 
@@ -36,6 +43,9 @@ def train_from_scratch():
         datefmt="%m/%d/%Y %H:%M:%S",
         level=logging.INFO,
     )
+
+    # print(f"rank: {os.getenv('RANK')}, local_rank: {os.getenv('LOCAL_RANK')}")
+    args.local_rank = rank
 
     # Only the main process should log here
     if args.local_rank in [-1, 0]:
@@ -47,25 +57,26 @@ def train_from_scratch():
 
     save_dir = Path("saved_models/train_from_scratch")
     data_dir = Path("data/lm_finetune_nips")
-    train_filename = "train.txt"
+    train_filename = "train_small_split.txt"
     dev_filename = "dev.txt"
 
     distributed = True
     max_seq_len = 128
-    batch_size = 70 # if distributed: this is per_gpu
-    grad_acc = 4
+    batch_size = 8 #70 # if distributed: this is per_gpu
+    grad_acc = 1# 4
     learning_rate = 1e-4
     warmup_proportion = 0.05
-    n_epochs = 3
+    n_epochs = 2
     evaluate_every = 15000
     checkpoint_every = 1000
     checkpoint_root_dir = Path("checkpoints")
     checkpoints_to_keep = 4
     next_sent_pred_style = "bert-style" #or "sentence"
+    max_docs=None
     # Choose enough workers to queue sufficient batches during training.
     # Optimal number depends on your GPU speed, CPU speed and number of cores
     # 16 works well on a 4x V100 machine with 16 cores (AWS: p3.8xlarge). For a single GPU you will need less.
-    data_loader_workers = 4
+    data_loader_workers = 2
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load("bert-base-uncased", do_lower_case=True)
@@ -77,7 +88,8 @@ def train_from_scratch():
         train_filename=train_filename,
         dev_filename=dev_filename,
         test_filename=None,
-        next_sent_pred_style=next_sent_pred_style
+        next_sent_pred_style=next_sent_pred_style,
+        max_docs=max_docs
     )
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and
@@ -106,7 +118,7 @@ def train_from_scratch():
         model=model,
         learning_rate=learning_rate,
         schedule_opts={"name": "LinearWarmup", "warmup_proportion": warmup_proportion},
-        n_batches=len(stream_data_silo.get_data_loader("train")),
+        n_batches=len(stream_data_silo.get_data_loader("train")), #TODO in distributed this has to be divided by world_size
         n_epochs=n_epochs,
         device=device,
         grad_acc_steps=grad_acc,
@@ -138,7 +150,20 @@ def train_from_scratch():
     # 8. Hooray! You have a model. Store it:
     model.save(save_dir)
     processor.save(save_dir)
-
+    if args.local_rank != -1:
+        torch.distributed.destroy_process_group()
 
 if __name__ == "__main__":
-    train_from_scratch()
+    import os
+    from torch import multiprocessing as mp
+    size = 2
+    processes = []
+    # ctx = mp.get_context('spawn')
+    # mp.set_start_method('spawn')
+    for rank in range(size):
+        p = mp.Process(target=train_from_scratch, args=(rank, size))
+        p.start()
+        processes.append(p)
+
+    for p in processes:
+        p.join()
