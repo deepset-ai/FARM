@@ -7,8 +7,8 @@ import numpy
 import shutil
 import dill
 
-# from farm.utils import MLFlowLogger as MlLogger
-from farm.utils import StdoutLogger as MlLogger
+from farm.utils import MLFlowLogger as MlLogger
+# from farm.utils import StdoutLogger as MlLogger
 from farm.utils import GracefulKiller, set_all_seeds
 from farm.eval import Evaluator
 from farm.data_handler.data_silo import DataSilo
@@ -265,7 +265,8 @@ class Trainer:
                     if resume_from_step == step:
                         logger.info(f"Finished skipping {resume_from_step} steps ...")
                         resume_from_step = None
-                    continue
+                    else:
+                        continue
 
                 set_all_seeds(seed=39)
                 progress_bar.set_description(f"Train epoch {epoch}/{self.epochs-1} (Cur. train loss: {loss:.4f})")
@@ -309,7 +310,7 @@ class Trainer:
                     break
 
                 self.global_step += 1
-                self.from_step = step
+                self.from_step = step + 1
 
                 # save the current state as a checkpoint before exiting if a SIGTERM signal is received
                 if self.sigterm_handler and self.sigterm_handler.kill_now:
@@ -357,7 +358,7 @@ class Trainer:
 
     def backward_propagate(self, loss, step):
         loss = self.adjust_loss(loss)
-        if self.global_step % self.log_loss_every == 1 and self.local_rank in [-1, 0]:
+        if self.global_step % self.log_loss_every == 0 and self.local_rank in [-1, 0]:
             if self.local_rank in [-1, 0]:
                 MlLogger.log_metrics(
                     {"Train_loss_total": float(loss.detach().cpu().numpy())},
@@ -545,7 +546,7 @@ class Trainer:
             pickle_module=dill,
         )
 
-        checkpoint_name = f"epoch_{self.from_epoch}_step_{self.from_step}"
+        checkpoint_name = f"epoch_{self.from_epoch}_step_{self.from_step-1}"
         checkpoint_path.replace(Path(checkpoint_path.parent) / checkpoint_name)
 
         saved_checkpoints = self._get_checkpoints(self.checkpoint_root_dir)
@@ -553,7 +554,7 @@ class Trainer:
             for cp in saved_checkpoints[self.checkpoints_to_keep:]:
                 shutil.rmtree(cp)
 
-        logger.info(f"Saved a training checkpoint at {checkpoint_name}")
+        logger.info(f"Saved a training checkpoint after {checkpoint_name}")
 
     def _get_state_dict(self):
         """
