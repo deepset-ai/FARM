@@ -9,8 +9,12 @@ import sys
 import argparse
 import numpy as np
 from collections import deque
-import onnx
-from onnx import ModelProto, TensorProto, numpy_helper
+try:
+    import onnx
+    from onnx import ModelProto, TensorProto, numpy_helper
+except:
+    pass
+
 
 logger = logging.getLogger(__name__)
 
