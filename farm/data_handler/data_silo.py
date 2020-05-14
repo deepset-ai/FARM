@@ -562,7 +562,7 @@ class StreamingDataSilo:
 
 
 class _StreamingDataSet(IterableDataset):
-    def __init__(self, processor, filepath, batch_size, dataloader_workers, distributed=False):
+    def __init__(self, processor, filepath, batch_size, dataloader_workers, distributed=False, n_samples=None):
         """
         :param processor: A dataset specific Processor object which will turn input file into a Pytorch Dataset.
         :type processor: Processor
@@ -580,10 +580,15 @@ class _StreamingDataSet(IterableDataset):
         self.dataloader_workers = dataloader_workers
         self.distributed = distributed
 
-        # calculate number of samples for __len__()
-        total_lines = sum(1 for line in open(filepath, encoding="utf-8"))
-        empty_lines = sum(1 if line == "\n" else 0 for line in open(filepath, encoding="utf-8"))
-        self.n_samples = total_lines - (2 * empty_lines)
+        # calculate or estimate number of samples so that the data loader can derive number of training steps
+        if n_samples:
+            self.n_samples = n_samples
+        else:
+            try:
+                self.n_samples = self.processor.estimate_n_samples(filepath)
+            except AttributeError:
+                AttributeError(f"Could not estimate n_samples for {self.processor.__class__.__name__} in StreamingDataSilo. "
+                                    f"Make sure that your Processor has `estimate_n_samples()` implemented")
         logger.info(f"Found data for {self.n_samples} samples")
 
         self.file_to_dicts_generator = processor.file_to_dicts(filepath)
@@ -592,10 +597,13 @@ class _StreamingDataSet(IterableDataset):
             self.rank = torch.distributed.get_rank()
             self.world_size = torch.distributed.get_world_size()
 
-
     def __len__(self):
-        #TODO In distributed env we have to divide this by world_size
-        return self.n_samples
+        if self.distributed:
+            # only a heuristic as we don't necessarily split samples equally across ranks
+            len = self.n_samples // self.world_size
+        else:
+            len = self.n_samples
+        return len
 
     def __iter__(self):
         #  With IterableDataset, the same __iter__ is copied over to the multiple workers of
