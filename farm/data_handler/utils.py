@@ -234,10 +234,10 @@ def write_squad_predictions(predictions, out_filename, predictions_filename=None
         for x in not_included:
             predictions_json[x] = ""
 
-    os.makedirs("model_output", exist_ok=True)
-    filepath = Path("model_output") / out_filename
-    json.dump(predictions_json, open(filepath, "w"))
-    logger.info(f"Written Squad predictions to: {filepath}")
+    # os.makedirs("model_output", exist_ok=True)
+    # filepath = Path("model_output") / out_filename
+    json.dump(predictions_json, open(out_filename, "w"))
+    logger.info(f"Written Squad predictions to: {out_filename}")
 
 def _get_md5checksum(fname):
     # solution from stackoverflow: https://stackoverflow.com/a/3431838
