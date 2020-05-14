@@ -219,17 +219,14 @@ class Trainer:
 
         # connect the prediction heads with the right output from processor
         self.model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
-
         # Check that the tokenizer fits the language model
         self.model.verify_vocab_size(vocab_size=len(self.data_silo.processor.tokenizer))
-
         self.model.train()
 
         do_stopping = False
         evalnr = 0
         loss = 0
         resume_from_step = self.from_step
-
         set_all_seeds(seed=39)
 
         if self.local_rank in [0, -1]:
@@ -317,8 +314,7 @@ class Trainer:
                 if self.checkpoint_every and step % self.checkpoint_every == 0:
                     if self.local_rank in [0, -1]:
                         self._save()
-                    # Use a barrier() to make sure that process 1 loads the model after process
-                    # 0 saves it.
+                    # Let other ranks wait until rank 0 has finished saving
                     if self.local_rank != -1:
                         torch.distributed.barrier()
 
@@ -328,9 +324,6 @@ class Trainer:
             # Only for distributed training: we need to ensure that all ranks still have a batch left for training
             if self.local_rank != -1 and not early_break:
                 self._all_ranks_have_data(has_data=False)
-
-                # ranks_with_data = torch.zeros(1).to(self.device)
-                # torch.distributed.all_reduce(ranks_with_data, op=torch.distributed.ReduceOp.SUM)
 
         # With early stopping we want to restore the best model
         if self.early_stopping and self.early_stopping.save_dir:
@@ -348,7 +341,6 @@ class Trainer:
             result = evaluator_test.eval(self.model)
             evaluator_test.log_results(result, "Test", self.global_step)
         return self.model
-
 
     def backward_propagate(self, loss, step):
         loss = self.adjust_loss(loss)
