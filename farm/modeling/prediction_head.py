@@ -1246,6 +1246,11 @@ class QuestionAnsweringHead(PredictionHead):
                 except KeyError:
                     question = basket.raw["question_text"]
 
+            try:
+                question_id = basket.raw["squad_id"]
+            except KeyError:
+                question_id = None # TODO add NQ id here
+
             basket_id = basket.id
 
             # Iterate over each prediction on the one document
@@ -1261,7 +1266,8 @@ class QuestionAnsweringHead(PredictionHead):
                                          question=question,
                                          no_ans_gap=no_ans_gap,
                                          token_offsets=token_offsets,
-                                         context_window_size=self.context_window_size)
+                                         context_window_size=self.context_window_size,
+                                         question_id=question_id)
             ret.append(curr_doc_pred)
         return ret
 
