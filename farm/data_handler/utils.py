@@ -804,7 +804,7 @@ def convert_qa_input_dict(infer_dict):
         text = infer_dict["text"]
         document_id = infer_dict.get("document_id", None)
         qas = [{"question": q,
-                "id": i,
+                "id": None,
                 "answers": [],
                 "is_impossible": False} for i, q in enumerate(questions)]
         converted = {"qas": qas,
