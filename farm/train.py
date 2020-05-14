@@ -241,19 +241,6 @@ class Trainer:
             train_data_loader = self.data_silo.get_data_loader("train")
             progress_bar = tqdm(train_data_loader, disable=self.local_rank not in [0, -1] or self.disable_tqdm)
             for step, batch in enumerate(progress_bar):
-
-                # Only for distributed training: we need to ensure that all ranks still have a batch left for training
-                if self.local_rank != -1:
-                    # We send a "1" from here (we have data) and a "0" if a process is at the end of the loop
-                    # If all ranks have data, they'll all send a 1 and our sum equals world_size
-                    ranks_with_data = torch.ones(1).to(self.device)
-                    torch.distributed.all_reduce(ranks_with_data, op=torch.distributed.ReduceOp.SUM)
-                    if ranks_with_data < torch.distributed.get_world_size():
-                        early_break = True
-                        logger.info(f"Stopping epoch {epoch} at step {step} for rank {self.local_rank} since at least one other rank "
-                                    f"(~ one GPU) in distributed training doesn't have any more batches... ")
-                        break
-
                 # when resuming training from a checkpoint, we want to fast forward to the step of the checkpoint
                 if resume_from_step and step <= resume_from_step:
                     # TODO: Improve skipping for StreamingDataSilo
@@ -270,6 +257,12 @@ class Trainer:
 
                 set_all_seeds(seed=39)
                 progress_bar.set_description(f"Train epoch {epoch}/{self.epochs-1} (Cur. train loss: {loss:.4f})")
+
+                # Only for distributed training: we need to ensure that all ranks still have a batch left for training
+                if self.local_rank != -1:
+                    if not self._all_ranks_have_data(has_data=1, step=step):
+                        early_break = True
+                        break
 
                 # Move batch of samples to device
                 batch = {key: batch[key].to(self.device) for key in batch}
@@ -334,10 +327,10 @@ class Trainer:
 
             # Only for distributed training: we need to ensure that all ranks still have a batch left for training
             if self.local_rank != -1 and not early_break:
-                # We send a "0" from here (we don't have data left in epoch) causing all other ranks that are still
-                # in the above epoch to leave the loop and avoid desynchronization issues
-                ranks_with_data = torch.zeros(1).to(self.device)
-                torch.distributed.all_reduce(ranks_with_data, op=torch.distributed.ReduceOp.SUM)
+                self._all_ranks_have_data(has_data=False)
+
+                # ranks_with_data = torch.zeros(1).to(self.device)
+                # torch.distributed.all_reduce(ranks_with_data, op=torch.distributed.ReduceOp.SUM)
 
         # With early stopping we want to restore the best model
         if self.early_stopping and self.early_stopping.save_dir:
@@ -355,6 +348,7 @@ class Trainer:
             result = evaluator_test.eval(self.model)
             evaluator_test.log_results(result, "Test", self.global_step)
         return self.model
+
 
     def backward_propagate(self, loss, step):
         loss = self.adjust_loss(loss)
@@ -581,3 +575,30 @@ class Trainer:
         }
 
         return state_dict
+
+    def _all_ranks_have_data(self, has_data, step=None):
+        """
+        Verify in distributed training if all ranks still have data left. We send a "1" from here if this rank has data
+        and a "0" if a process has none .
+        If all ranks have data, they'll all send a 1, our sum equals world_size and we continue training.
+        If not, we must break the loop for those who still have data to synchronize again.
+        :param has_data: bool, whether the current rank has still data
+        :param step: int, current step (only used for logging)
+        :return: bool, whether all ranks have training data left
+        """
+
+        if has_data:
+            ranks_with_data = torch.ones(1).to(self.device)
+        else:
+            ranks_with_data = torch.zeros(1).to(self.device)
+
+        torch.distributed.all_reduce(ranks_with_data, op=torch.distributed.ReduceOp.SUM)
+
+        if ranks_with_data < torch.distributed.get_world_size():
+            if step is not None:
+                logger.info(
+                    f"Stopping epoch {self.from_epoch} at step {step} for rank {self.local_rank} since at least one other rank "
+                    f"(~ one GPU) in distributed training doesn't have any more batches... ")
+            return False
+        else:
+            return True
