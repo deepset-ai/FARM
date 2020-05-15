@@ -100,7 +100,8 @@ class Processor(ABC):
         self.dev_split = dev_split
         if data_dir:
             self.data_dir = Path(data_dir)
-
+        else:
+            self.data_dir = None
         self.baskets = []
 
         self._log_params()
@@ -261,14 +262,6 @@ class Processor(ABC):
     def _sample_to_features(cls, sample: Sample) -> dict:
         raise NotImplementedError()
 
-    def _init_baskets_from_file(self, file):
-        dicts = self.file_to_dicts(file)
-        dataset_name = file.stem
-        baskets = [
-            SampleBasket(raw=tr, id=f"{dataset_name}-{i}") for i, tr in enumerate(dicts)
-        ]
-        return baskets
-
     def _init_samples_in_baskets(self):
         for basket in self.baskets:
             all_dicts = [b.raw for b in self.baskets]
@@ -358,10 +351,7 @@ class Processor(ABC):
         for name in names:
             value = getattr(self, name)
             params.update({name: str(value)})
-        try:
-            MlLogger.log_params(params)
-        except Exception as e:
-            logger.warning(f"ML logging didn't work: {e}")
+        MlLogger.log_params(params)
 
 
 #########################################
@@ -930,7 +920,6 @@ class BertStyleLMProcessor(Processor):
                 current_chunk_clear_text = []
                 current_length = 0
             i += 1
-            
         return samples
 
     def _dict_to_samples_no_next_sent(self, doc):

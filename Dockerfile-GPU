@@ -1,0 +1,12 @@
+FROM nvidia/cuda:10.2-base-ubuntu18.04
+RUN apt-get update && apt-get install -y python3-pip && apt-get install -y python3-pip && apt-get install -y git
+WORKDIR /home/user
+# Install FARM
+COPY setup.py requirements.txt readme.rst /home/user/
+RUN pip3 install -r requirements.txt
+COPY farm farm
+RUN pip3 install -e .
+# Copy Training Scripts
+COPY examples examples
+
+CMD FLASK_APP=farm.inference_rest_api flask run --host 0.0.0.0

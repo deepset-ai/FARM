@@ -10,10 +10,10 @@ def streaming_inference_example():
     """
 
     model_name_or_path = "deepset/bert-base-cased-squad2"
-    inferencer = Inferencer.load(model_name_or_path=model_name_or_path, task_type="question_answering")
+    inferencer = Inferencer.load(model_name_or_path=model_name_or_path, task_type="question_answering", num_processes=8)
 
     dicts = sample_dicts_generator()  # it can be a list of dicts or a generator object
-    results = inferencer.inference_from_dicts(dicts, num_processes=8, streaming=True, multiprocessing_chunksize=20)
+    results = inferencer.inference_from_dicts(dicts, streaming=True, multiprocessing_chunksize=20)
 
     for prediction in results:  # results is a generator object that yields predictions
         print(prediction)

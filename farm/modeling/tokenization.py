@@ -15,16 +15,24 @@
 """Tokenization classes."""
 from __future__ import absolute_import, division, print_function, unicode_literals
 
+import collections
+import json
 import logging
+import os
 import re
-import numpy as np
+from pathlib import Path
 
-from transformers.tokenization_bert import BertTokenizer
-from transformers.tokenization_roberta import RobertaTokenizer
-from transformers.tokenization_xlnet import XLNetTokenizer
+import numpy as np
 from transformers.tokenization_albert import AlbertTokenizer
+from transformers.tokenization_bert import BertTokenizer, load_vocab
+from transformers.tokenization_distilbert import DistilBertTokenizer
+from transformers.tokenization_electra import ElectraTokenizer
+from transformers.tokenization_roberta import RobertaTokenizer
+from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_xlm_roberta import XLMRobertaTokenizer
-from transformers.tokenization_distilbert import DistilBertTokenizer 
+from transformers.tokenization_xlnet import XLNetTokenizer
+
+from farm.modeling.wordembedding_utils import load_from_cache, EMBEDDING_VOCAB_FILES_MAP, run_split_on_punc
 
 
 logger = logging.getLogger(__name__)
@@ -67,6 +75,12 @@ class Tokenizer:
                 tokenizer_class = "BertTokenizer"
             elif "xlnet" in pretrained_model_name_or_path.lower():
                 tokenizer_class = "XLNetTokenizer"
+            elif "electra" in pretrained_model_name_or_path.lower():
+                tokenizer_class = "ElectraTokenizer"
+            elif "word2vec" in pretrained_model_name_or_path.lower() or \
+                    "glove" in pretrained_model_name_or_path.lower() or \
+                    "fasttext" in pretrained_model_name_or_path.lower():
+                tokenizer_class = "EmbeddingTokenizer"
             else:
                 raise ValueError(f"Could not infer tokenizer_class from name '{pretrained_model_name_or_path}'. Set "
                                  f"arg `tokenizer_class` in Tokenizer.load() to one of: AlbertTokenizer, "
@@ -86,10 +100,114 @@ class Tokenizer:
             ret = BertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "XLNetTokenizer":
             ret = XLNetTokenizer.from_pretrained(pretrained_model_name_or_path, keep_accents=True, **kwargs)
+        elif tokenizer_class == "ElectraTokenizer":
+            ret = ElectraTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        elif tokenizer_class == "EmbeddingTokenizer":
+            ret = EmbeddingTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         if ret is None:
             raise Exception("Unable to load tokenizer")
         else:
             return ret
+
+
+class EmbeddingTokenizer(PreTrainedTokenizer):
+    """Constructs an EmbeddingTokenizer.
+    """
+
+    def __init__(
+            self,
+            vocab_file,
+            do_lower_case=True,
+            unk_token="[UNK]",
+            sep_token="[SEP]",
+            pad_token="[PAD]",
+            cls_token="[CLS]",
+            mask_token="[MASK]",
+            **kwargs
+    ):
+        """
+        :param vocab_file: Path to a one-word-per-line vocabulary file
+        :type vocab_file: str
+        :param do_lower_case: Flag whether to lower case the input
+        :type do_lower_case: bool
+        """
+        # TODO check why EmbeddingTokenizer.tokenize gives many UNK, while tokenize_with_metadata() works fine
+
+        super().__init__(
+            unk_token=unk_token,
+            sep_token=sep_token,
+            pad_token=pad_token,
+            cls_token=cls_token,
+            mask_token=mask_token,
+            **kwargs,
+        )
+
+        if not os.path.isfile(vocab_file):
+            raise ValueError("Can't find a vocabulary file at path '{}'.".format(vocab_file))
+        self.vocab = load_vocab(vocab_file)
+        self.unk_tok_idx = self.vocab[unk_token]
+        self.ids_to_tokens = collections.OrderedDict([(ids, tok) for tok, ids in self.vocab.items()])
+        self.do_lower_case = do_lower_case
+        self.vocab_size = len(self.vocab)
+
+    @classmethod
+    def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
+        """Load the tokenizer from local path or remote."""
+        if pretrained_model_name_or_path in EMBEDDING_VOCAB_FILES_MAP["vocab_file"]:
+            # Get the vocabulary from AWS S3 bucket or cache
+            resolved_vocab_file = load_from_cache(pretrained_model_name_or_path,
+                                                  EMBEDDING_VOCAB_FILES_MAP["vocab_file"],
+                                                  **kwargs)
+        elif os.path.isdir(pretrained_model_name_or_path):
+            # Get the vocabulary from local files
+            logger.info(
+                f"Model name '{pretrained_model_name_or_path}' not found in model shortcut name "
+                f"list ({', '.join(EMBEDDING_VOCAB_FILES_MAP['vocab_file'].keys())}). "
+                f"Assuming '{pretrained_model_name_or_path}' is a path to a directory containing tokenizer files.")
+
+            temp = open(str(Path(pretrained_model_name_or_path) / "language_model_config.json"), "r",
+                        encoding="utf-8").read()
+            config_dict = json.loads(temp)
+
+            resolved_vocab_file = str(Path(pretrained_model_name_or_path) / config_dict["vocab_filename"])
+        else:
+            logger.error(
+                f"Model name '{pretrained_model_name_or_path}' not found in model shortcut name "
+                f"list ({', '.join(EMBEDDING_VOCAB_FILES_MAP['vocab_file'].keys())}) nor as local folder ")
+            raise NotImplementedError
+
+        tokenizer = cls(vocab_file=resolved_vocab_file, **kwargs)
+        return tokenizer
+
+    def _tokenize(self, text, **kwargs):
+        if self.do_lower_case:
+            text = text.lower()
+        tokens = run_split_on_punc(text)
+        tokens = [t if t in self.vocab else self.unk_token for t in tokens]
+        return tokens
+
+    def save_pretrained(self, vocab_path):
+        """Save the tokenizer vocabulary to a directory or file."""
+        index = 0
+        if os.path.isdir(vocab_path):
+            vocab_file = os.path.join(vocab_path, "vocab.txt")
+        else:
+            vocab_file = vocab_path
+        with open(vocab_file, "w", encoding="utf-8") as writer:
+            for token, token_index in sorted(self.vocab.items(), key=lambda kv: kv[1]):
+                if index != token_index:
+                    logger.warning(
+                        "Saving vocabulary to {}: vocabulary indices are not consecutive."
+                        " Please check that the vocabulary is not corrupted!".format(vocab_file)
+                    )
+                    index = token_index
+                writer.write(token + "\n")
+                index += 1
+        return (vocab_file,)
+
+    def _convert_token_to_id(self, token):
+        return self.vocab.get(token, self.unk_tok_idx)
+
 
 def tokenize_with_metadata(text, tokenizer):
     """
@@ -150,7 +268,11 @@ def _words_to_tokens(words, word_offsets, tokenizer):
     tokens = []
     token_offsets = []
     start_of_word = []
+    idx = 0
     for w, w_off in zip(words, word_offsets):
+        idx += 1
+        if idx % 500000 == 0:
+            logger.info(idx)
         # Get (subword) tokens of single word.
 
         # empty / pure whitespace
@@ -229,9 +351,9 @@ def truncate_sequences(seq_a, seq_b, tokenizer, max_seq_len, truncation_strategy
 
     if max_seq_len and total_len > max_seq_len:
         seq_a, seq_b, overflowing_tokens = tokenizer.truncate_sequences(seq_a, pair_ids=seq_b,
-                                                                    num_tokens_to_remove=total_len - max_seq_len,
-                                                                    truncation_strategy=truncation_strategy,
-                                                                    stride=stride)
+                                                                        num_tokens_to_remove=total_len - max_seq_len,
+                                                                        truncation_strategy=truncation_strategy,
+                                                                        stride=stride)
     return (seq_a, seq_b, overflowing_tokens)
 
 

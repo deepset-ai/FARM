@@ -85,7 +85,7 @@ def test_ner(caplog):
     basic_texts = [
         {"text": "Albrecht Lehman ist eine Person"},
     ]
-    model = Inferencer.load(save_dir)
+    model = Inferencer.load(save_dir, num_processes=0)
     result = model.inference_from_dicts(dicts=basic_texts)
     #print(result)
     #assert result[0]["predictions"][0]["context"] == "sagte"

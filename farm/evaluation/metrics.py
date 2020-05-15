@@ -3,16 +3,44 @@ import numpy as np
 import pandas as pd
 from scipy.stats import pearsonr, spearmanr
 from seqeval.metrics import f1_score as ner_f1_score
-from sklearn.metrics import matthews_corrcoef, recall_score, precision_score, f1_score, mean_squared_error, r2_score
+from seqeval.metrics import classification_report as token_classification_report
+from sklearn.metrics import (
+    matthews_corrcoef,
+    recall_score,
+    precision_score,
+    f1_score,
+    mean_squared_error,
+    r2_score,
+    classification_report
+)
 from farm.utils import flatten_list
 import logging
 
 logger = logging.getLogger(__name__)
 
 registered_metrics = {}
+registered_reports = {}
 
 def register_metrics(name, implementation):
     registered_metrics[name] = implementation
+
+def register_report(name, implementation):
+    """
+    Register a custom reporting function to be used during eval.
+
+    This can be useful:
+    - if you want to overwrite a report for an existing output type of prediction head (e.g. "per_token")
+    - if you have a new type of prediction head and want to add a custom report for it
+
+    :param name: This must match the `ph_output_type` attribute of the PredictionHead for which the report should be used.
+                 (e.g. TokenPredictionHead => `per_token`, YourCustomHead => `some_new_type`).
+    :type name: str
+    :param implementation: Function to be executed. It must take lists of `y_true` and `y_pred` as input and return a
+                           printable object (e.g. string or dict).
+                           See sklearns.metrics.classification_report for an example.
+    :type implementation: function
+    """
+    registered_reports[name] = implementation
 
 def simple_accuracy(preds, labels):
     # works also with nested lists of different lengths (needed for masked LM task)
@@ -64,6 +92,8 @@ def compute_metrics(metric, preds, labels):
         return {"mse": mean_squared_error(preds, labels)}
     elif metric == "r2":
         return {"r2": r2_score(preds, labels)}
+    elif metric == "top_n_recall":
+        return {"top_n_recall": top_n_recall(preds, labels)}
     # elif metric == "masked_accuracy":
     #     return simple_accuracy(preds, labels, ignore=-1)
     elif metric in registered_metrics:
@@ -71,6 +101,43 @@ def compute_metrics(metric, preds, labels):
         return metric_func(preds, labels)
     else:
         raise KeyError(metric)
+
+
+def compute_report_metrics(head, preds, labels):
+    if head.ph_output_type in registered_reports:
+        report_fn = registered_reports[head.ph_output_type]
+    elif head.ph_output_type == "per_token":
+        report_fn = token_classification_report
+    elif head.ph_output_type == "per_sequence":
+        report_fn = classification_report
+    elif head.ph_output_type == "per_token_squad":
+        report_fn = lambda *args, **kwargs: "Not Implemented"
+    elif head.ph_output_type == "per_sequence_continuous":
+        report_fn = r2_score
+    else:
+        raise AttributeError(f"No report function for head.ph_output_type '{head.ph_output_type}'. "
+                             f"You can register a custom one via register_report(name='{head.ph_output_type}', implementation=<your_report_function>")
+
+    # CHANGE PARAMETERS, not all report_fn accept digits
+    if head.ph_output_type in ["per_sequence"]:
+        # supply labels as all possible combination because if ground truth labels do not cover
+        # all values in label_list (maybe dev set is small), the report will break
+        if head.model_type == "multilabel_text_classification":
+            # For multilabel classification, we don't eval with string labels here, but with multihot vectors.
+            # Therefore we need to supply all possible label ids instead of label values.
+            all_possible_labels = list(range(len(head.label_list)))
+        else:
+            all_possible_labels = head.label_list
+        return report_fn(
+            labels,
+            preds,
+            digits=4,
+            labels=all_possible_labels,
+            target_names=head.label_list
+        )
+    else:
+        return report_fn(labels, preds)
+
 
 def squad_EM(preds, labels):
     # TODO write comment describing function
@@ -93,9 +160,9 @@ def squad_f1(preds, labels):
     return np.mean(f1_scores)
 
 
-def squad_f1_single(pred, label):
+def squad_f1_single(pred, label, pred_idx=0):
     label_start, label_end = label
-    pred_start, pred_end, _ = pred[0]
+    pred_start, pred_end, _ = pred[pred_idx]
     if (pred_start + pred_end == 0) or (label_start + label_end == 0):
         if pred_start == label_start:
             return 1.0
@@ -114,5 +181,25 @@ def squad_f1_single(pred, label):
 def squad(preds, labels):
     em = squad_EM(preds=preds, labels=labels)
     f1 = squad_f1(preds=preds, labels=labels)
+    top_recall = top_n_recall(preds=preds, labels=labels)
+    return {"EM": em, "f1": f1, "top_n_recall": top_recall}
 
-    return {"EM": em, "f1": f1}
+def top_n_recall(preds, labels):
+    answer_in_top_n = []
+    n_questions = len(preds)
+    for i in range(n_questions):
+        f1_score = 0
+        current_preds = preds[i][0]
+        for idx, pred in enumerate(current_preds):
+            f1_score = max([squad_f1_single(current_preds, label, pred_idx=idx) for label in labels[i]])
+            if f1_score:
+                break
+        if f1_score:
+            answer_in_top_n.append(1)
+        else:
+            answer_in_top_n.append(0)
+
+    return np.mean(answer_in_top_n)
+
+
+

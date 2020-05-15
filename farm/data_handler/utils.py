@@ -34,6 +34,7 @@ DOWNSTREAM_TASK_MAP = {
     "toxic-comments": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/toxic-comments.tar.gz",
     'cola': "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/cola.tar.gz",
     "asnq_binary": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/asnq_binary.tar.gz",
+    "germeval17": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/germeval17.tar.gz",
 }
 
 def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=None, header=0, proxies=None, max_samples=None):
@@ -133,7 +134,7 @@ def read_ner_file(filename, sep="\t", proxies=None):
             continue
         if len(line) == 0 or "-DOCSTART-" in line or line[0] == "\n":
             if len(sentence) > 0:
-                if "conll03-de" in str(filename):
+                if "conll03" in str(filename):
                     _convertIOB1_to_IOB2(label)
                 if "germeval14" in str(filename):
                     label = _convert_germeval14_labels(label)
@@ -233,10 +234,10 @@ def write_squad_predictions(predictions, out_filename, predictions_filename=None
         for x in not_included:
             predictions_json[x] = ""
 
-    os.makedirs("model_output", exist_ok=True)
-    filepath = Path("model_output") / out_filename
-    json.dump(predictions_json, open(filepath, "w"))
-    logger.info(f"Written Squad predictions to: {filepath}")
+    # os.makedirs("model_output", exist_ok=True)
+    # filepath = Path("model_output") / out_filename
+    json.dump(predictions_json, open(out_filename, "w"))
+    logger.info(f"Written Squad predictions to: {out_filename}")
 
 def _get_md5checksum(fname):
     # solution from stackoverflow: https://stackoverflow.com/a/3431838
@@ -287,6 +288,9 @@ def _download_extract_downstream_data(input_file, proxies=None):
                     logger.error(f"Someone has changed the file for {taskname}. Please make sure the correct file is used and update the md5sum in farm/data_handler/utils.py")
             elif "gnad" in taskname:
                 if "ef62fe3f59c1ad54cf0271d8532b8f22" != _get_md5checksum(temp_file.name):
+                    logger.error(f"Someone has changed the file for {taskname}. Please make sure the correct file is used and update the md5sum in farm/data_handler/utils.py")
+            elif "germeval17" in taskname:
+                if "f1bf67247dcfe7c3c919b7b20b3f736e" != _get_md5checksum(temp_file.name):
                     logger.error(f"Someone has changed the file for {taskname}. Please make sure the correct file is used and update the md5sum in farm/data_handler/utils.py")
             tfile = tarfile.open(temp_file.name)
             tfile.extractall(datadir)

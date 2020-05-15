@@ -27,8 +27,7 @@ jobs:
       displayName: 'Install dependencies'
 
     - script: |
-        pip install pytest pytest-azurepipelines
-        cd test && pytest
+        cd test && pip install -r requirements.txt && pytest
       displayName: 'pytest'
 
     - script: |
