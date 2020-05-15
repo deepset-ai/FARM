@@ -992,7 +992,7 @@ class BertStyleLMProcessor(Processor):
             logging.info(f"Estimating total number of samples ...")
             # read in subset of docs
             temp = self.max_docs
-            self.max_docs = max_docs
+            self.max_docs = min(max_docs, temp)
             dicts = list(self.file_to_dicts(filepath))
             self.max_docs = temp
             # count samples
