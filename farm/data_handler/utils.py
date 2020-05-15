@@ -750,8 +750,7 @@ def grouper(iterable, n, worker_id=0, total_workers=1):
     return iter(lambda: list(islice(iterable, n)), [])
 
 
-def file_splitter(filepath, output_dir, docs_per_file=1_000, delimiter="", encoding="utf-8"):
-    # TODO add randomization within files
+def randomize_and_split_file(filepath, output_dir, docs_per_file=1_000, delimiter="", encoding="utf-8"):
     total_lines = sum(1 for line in open(filepath, encoding=encoding))
     output_file_number = 1
     doc_count = 0
@@ -766,6 +765,7 @@ def file_splitter(filepath, output_dir, docs_per_file=1_000, delimiter="", encod
                     filename = output_dir / f"part_{output_file_number}"
                     os.makedirs(os.path.dirname(filename), exist_ok=True)
                     write_file = stack.enter_context(open(filename, 'w+', buffering=10 * 1024 * 1024))
+                    random.shuffle(lines_to_write)
                     write_file.writelines(lines_to_write)
                     write_file.close()
                     output_file_number += 1
