@@ -43,10 +43,10 @@ def train_from_scratch(args):
         ml_logger.init_experiment(experiment_name="train_from_scratch", run_name="run")
 
     set_all_seeds(seed=39)
-    device, n_gpu = initialize_device_settings(use_cuda=True, local_rank=args["local_rank"])
 
-    distributed = bool(int(args.get("distributed", 0)))
-    evaluate_every = int(args["evaluate_every"])
+    device, n_gpu = initialize_device_settings(use_cuda=True, local_rank=args["local_rank"], use_amp=args.get("use_amp",None))
+
+    distributed = args.local_rank != -1
 
     save_dir = Path("/opt/ml/model")
     data_dir = Path("/opt/ml/input/data/input_channel")
@@ -61,7 +61,8 @@ def train_from_scratch(args):
         train_filename=args["train_file"],
         dev_filename=args.get("dev_file", None),
         test_filename=args.get("test_file", None),
-        next_sent_pred_style=args.get("next_sent_pred_style", "bert-style")
+        next_sent_pred_style=args.get("next_sent_pred_style", "bert-style"),
+        max_docs=args.get("max_docs", None)
     )
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and
@@ -96,7 +97,7 @@ def train_from_scratch(args):
         device=device,
         grad_acc_steps=int(args["gradient_accumulation_steps"]),
         distributed=distributed,
-        use_amp=None,
+        use_amp=args.get("use_amp",None),
         local_rank=args["local_rank"]
     )
 
@@ -115,15 +116,16 @@ def train_from_scratch(args):
         epochs=int(args["n_epochs"]),
         n_gpu=n_gpu,
         lr_schedule=lr_schedule,
-        evaluate_every=evaluate_every,
+        evaluate_every=int(args["evaluate_every"]),
+        log_loss_every=int(args["log_loss_every"], 500),
         device=device,
         local_rank=args["local_rank"],
         grad_acc_steps=int(args["gradient_accumulation_steps"]),
         checkpoint_every=checkpoint_every,
         checkpoint_root_dir=checkpoint_root_dir,
         checkpoints_to_keep=int(args.get("checkpoints_to_keep", 10)),
-        log_loss_every=200,
-        disable_tqdm=True
+        disable_tqdm=True,
+        use_amp=args.get("use_amp", None),
     )
 
     # 7. Let it grow!

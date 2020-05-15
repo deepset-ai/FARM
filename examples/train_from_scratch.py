@@ -26,15 +26,7 @@ def parse_arguments():
     return args
 
 
-def train_from_scratch(rank=None, worldsize=None):
-    # We need the local rank argument for DDP
-    os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '123254'
-    os.environ['RANK'] = str(rank)
-    os.environ['LOCAL_RANK'] = str(rank)
-    os.environ['WORLD_SIZE'] = str(worldsize)
-    os.environ['NCCL_BLOCKING_WAIT'] ="1"
-
+def train_from_scratch():
     args = parse_arguments()
     use_amp = None  # using "O2" here allows roughly 30% larger batch_sizes and 45% speed up
 
@@ -43,9 +35,6 @@ def train_from_scratch(rank=None, worldsize=None):
         datefmt="%m/%d/%Y %H:%M:%S",
         level=logging.INFO,
     )
-
-    # print(f"rank: {os.getenv('RANK')}, local_rank: {os.getenv('LOCAL_RANK')}")
-    args.local_rank = rank
 
     # Only the main process should log here
     if args.local_rank in [-1, 0]:
@@ -57,26 +46,28 @@ def train_from_scratch(rank=None, worldsize=None):
 
     save_dir = Path("saved_models/train_from_scratch")
     data_dir = Path("data/lm_finetune_nips")
-    train_filename = "train_small_split.txt"
+    train_filename = "train.txt"
     dev_filename = "dev.txt"
 
-    distributed = True
+    distributed = args.local_rank != -1
     max_seq_len = 128
-    batch_size = 8 #70 # if distributed: this is per_gpu
-    grad_acc = 1# 4
+    batch_size = 8 #if distributed: this is per_gpu
+    grad_acc = 1
     learning_rate = 1e-4
     warmup_proportion = 0.05
     n_epochs = 2
     evaluate_every = 15000
-    checkpoint_every = 1000
+    log_loss_every=2
+    checkpoint_every = 500
     checkpoint_root_dir = Path("checkpoints")
     checkpoints_to_keep = 4
     next_sent_pred_style = "bert-style" #or "sentence"
-    max_docs=None
+    max_docs = None
+    
     # Choose enough workers to queue sufficient batches during training.
     # Optimal number depends on your GPU speed, CPU speed and number of cores
     # 16 works well on a 4x V100 machine with 16 cores (AWS: p3.8xlarge). For a single GPU you will need less.
-    data_loader_workers = 2
+    data_loader_workers = 1
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load("bert-base-uncased", do_lower_case=True)
@@ -91,9 +82,9 @@ def train_from_scratch(rank=None, worldsize=None):
         next_sent_pred_style=next_sent_pred_style,
         max_docs=max_docs
     )
-
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and
     #    calculates a few descriptive statistics of our datasets
+    # stream_data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=distributed)
     stream_data_silo = StreamingDataSilo(processor=processor, batch_size=batch_size, distributed=distributed,
                                          dataloader_workers=data_loader_workers)
 
@@ -118,7 +109,7 @@ def train_from_scratch(rank=None, worldsize=None):
         model=model,
         learning_rate=learning_rate,
         schedule_opts={"name": "LinearWarmup", "warmup_proportion": warmup_proportion},
-        n_batches=len(stream_data_silo.get_data_loader("train")), #TODO in distributed this has to be divided by world_size
+        n_batches=len(stream_data_silo.get_data_loader("train")),
         n_epochs=n_epochs,
         device=device,
         grad_acc_steps=grad_acc,
@@ -136,6 +127,7 @@ def train_from_scratch(rank=None, worldsize=None):
         n_gpu=n_gpu,
         lr_schedule=lr_schedule,
         evaluate_every=evaluate_every,
+        log_loss_every=log_loss_every,
         device=device,
         grad_acc_steps=grad_acc,
         local_rank=args.local_rank,
@@ -154,16 +146,4 @@ def train_from_scratch(rank=None, worldsize=None):
         torch.distributed.destroy_process_group()
 
 if __name__ == "__main__":
-    import os
-    from torch import multiprocessing as mp
-    size = 2
-    processes = []
-    # ctx = mp.get_context('spawn')
-    # mp.set_start_method('spawn')
-    for rank in range(size):
-        p = mp.Process(target=train_from_scratch, args=(rank, size))
-        p.start()
-        processes.append(p)
-
-    for p in processes:
-        p.join()
+   train_from_scratch()
