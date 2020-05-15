@@ -5,7 +5,7 @@ from contextlib import ExitStack
 from functools import partial
 import random
 from pathlib import Path
-from itertools import groupby
+from itertools import chain, groupby
 
 import numpy as np
 from sklearn.utils.class_weight import compute_class_weight
@@ -569,9 +569,14 @@ class StreamingDataSilo:
         #  Since the batching is now handled within _StreamingDataSet, we disable the batching on DataLoader side
         #  by initializing the data loader with batch_size as 1.
 
+        if isinstance(filename, Path) and filename.is_dir():
+            filepath = filename
+        else:
+            filepath = self.processor.data_dir / filename,
+
         data_set = _StreamingDataSet(
             processor=self.processor,
-            filepath=self.processor.data_dir / filename,
+            filepath=filepath,
             batch_size=self.batch_size,
             dataloader_workers=self.dataloader_workers,
             distributed = self.distributed
@@ -603,17 +608,24 @@ class _StreamingDataSet(IterableDataset):
         self.distributed = distributed
 
         # calculate or estimate number of samples so that the data loader can derive number of training steps
+        if filepath.is_file():
+            files = [filepath]
+        else:
+            files = [file for file in filepath.iterdir()]
+
         if n_samples:
             self.n_samples = n_samples
         else:
             try:
-                self.n_samples = self.processor.estimate_n_samples(filepath)
+                self.n_samples = self.processor.estimate_n_samples(files[0]) * len(files)
             except AttributeError:
                 AttributeError(f"Could not estimate n_samples for {self.processor.__class__.__name__} in StreamingDataSilo. "
                                     f"Make sure that your Processor has `estimate_n_samples()` implemented")
         logger.info(f"Found data for {self.n_samples} samples")
+        self.shuffle_files(files)
 
-        self.file_to_dicts_generator = processor.file_to_dicts(filepath)
+        dicts_from_files = [processor.file_to_dicts(file) for file in files]
+        self.file_to_dicts_generator = chain(*dicts_from_files)
 
         if self.distributed:
             self.rank = torch.distributed.get_rank()
@@ -682,6 +694,13 @@ class _StreamingDataSet(IterableDataset):
         indices = [x[0] for x in chunk]
         datasets, tensor_names = self.processor.dataset_from_dicts(dicts=dicts, indices=indices)
         return datasets, tensor_names
+
+    def shuffle_files(self, files, seed=None):
+        if not seed:
+            seed = random.randrange(100)
+        random.seed(seed)
+        random.shuffle(files)
+        return files
 
 
 class DataSiloForCrossVal:

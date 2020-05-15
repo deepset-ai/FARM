@@ -5,6 +5,7 @@ from pathlib import Path
 from farm.modeling.tokenization import Tokenizer
 from farm.data_handler.data_silo import StreamingDataSilo, DataSilo
 from farm.data_handler.processor import BertStyleLMProcessor
+from farm.data_handler.utils import file_splitter
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import LanguageModel
 from farm.modeling.optimization import initialize_optimizer
@@ -46,7 +47,11 @@ def train_from_scratch():
 
     save_dir = Path("saved_models/train_from_scratch")
     data_dir = Path("data/lm_finetune_nips")
-    train_filename = "train.txt"
+
+    # Split train file
+    # file_splitter(data_dir / "train.txt", output_dir=Path("data/split_files"))
+    train_filename = "train.txt"  # or Path("data/split_files") for multiple files
+
     dev_filename = "dev.txt"
 
     distributed = args.local_rank != -1

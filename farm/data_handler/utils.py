@@ -5,6 +5,7 @@ import os
 import random
 import tarfile
 import tempfile
+from contextlib import ExitStack
 from itertools import islice
 from pathlib import Path
 
@@ -747,3 +748,25 @@ def grouper(iterable, n, worker_id=0, total_workers=1):
         iterable = filter_elements_per_worker(iterable)
 
     return iter(lambda: list(islice(iterable, n)), [])
+
+
+def file_splitter(filepath, output_dir, docs_per_file=1_000, delimiter="", encoding="utf-8"):
+    # TODO add randomization within files
+    total_lines = sum(1 for line in open(filepath, encoding=encoding))
+    output_file_number = 1
+    doc_count = 0
+    lines_to_write = []
+    with ExitStack() as stack:
+        input_file = stack.enter_context(open(filepath, 'r', encoding=encoding))
+        for line_num, line in enumerate(tqdm(input_file, desc="Splitting file ...", total=total_lines)):
+            lines_to_write.append(line)
+            if line.strip() == delimiter:
+                doc_count += 1
+                if doc_count % docs_per_file == 0:
+                    filename = output_dir / f"part_{output_file_number}"
+                    os.makedirs(os.path.dirname(filename), exist_ok=True)
+                    write_file = stack.enter_context(open(filename, 'w+', buffering=10 * 1024 * 1024))
+                    write_file.writelines(lines_to_write)
+                    write_file.close()
+                    output_file_number += 1
+                    lines_to_write = []
