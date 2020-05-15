@@ -620,23 +620,15 @@ class _StreamingDataSet(IterableDataset):
 
         #TODO add shuffling to ensure different batches across epochs (e.g. some seed in grouper + randomizing order)
 
-        if self.dataloader_workers > 1:
-            worker_info = torch.utils.data.get_worker_info()
-            if self.distributed:
-                chunk_id = self.rank * worker_info.num_workers + worker_info.id
-                total_chunks = self.world_size * worker_info.num_workers
-
-                dicts = grouper(
-                    self.file_to_dicts_generator, n=10, worker_id=chunk_id, total_workers=total_chunks
-                )
-            else:
-                worker_id = worker_info.id
-                dicts = grouper(self.file_to_dicts_generator, n=10, worker_id=worker_id, total_workers=self.dataloader_workers)
-
+        worker_info = torch.utils.data.get_worker_info()
+        if self.distributed:
+            worker_id = self.rank * worker_info.num_workers + worker_info.id
+            total_workers = self.world_size * worker_info.num_workers
         else:
-            #TODO what about distributed case here?
-            dicts = grouper(self.file_to_dicts_generator, n=10)
+            worker_id = worker_info.id
+            total_workers = self.dataloader_workers
 
+        dicts = grouper(self.file_to_dicts_generator, n=10, worker_id=worker_id, total_workers=total_workers)
         results = map(self._dataset_from_chunk, dicts)
 
         batch = []

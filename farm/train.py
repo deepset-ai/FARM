@@ -7,8 +7,8 @@ import numpy
 import shutil
 import dill
 
-from farm.utils import MLFlowLogger as MlLogger
-# from farm.utils import StdoutLogger as MlLogger
+from farm.utils import StdoutLogger as MlLogger
+# from farm.utils import MLFlowLogger as MlLogger
 from farm.utils import GracefulKiller, set_all_seeds
 from farm.eval import Evaluator
 from farm.data_handler.data_silo import DataSilo
