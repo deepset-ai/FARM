@@ -88,3 +88,6 @@ def test_nq(caplog=None):
     result1 = inferencer.inference_from_dicts(dicts=qa_format_1)
     result2 = inferencer.inference_from_dicts(dicts=qa_format_2)
     assert result1 == result2
+
+if __name__ == "__main__":
+    test_nq()

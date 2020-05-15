@@ -95,6 +95,7 @@ class DocumentPred:
             start_t = span.start
             end_t = span.end
             score = span.score
+            classification = span.classification
 
             _, ans_start_ch, ans_end_ch = span_to_string(start_t, end_t, self.token_offsets, self.document_text)
             context_string, context_start_ch, context_end_ch = self.create_context(ans_start_ch, ans_end_ch, self.document_text)
@@ -104,6 +105,7 @@ class DocumentPred:
                     "offset_answer_start": ans_start_ch,
                     "offset_answer_end": ans_end_ch,
                     "context": context_string,
+                    "classification": classification,
                     "offset_context_start": context_start_ch,
                     "offset_context_end": context_end_ch,
                     "document_id": self.id}
