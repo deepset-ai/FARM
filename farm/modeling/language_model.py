@@ -40,6 +40,7 @@ from transformers.modeling_xlnet import XLNetModel, XLNetConfig
 from transformers.modeling_albert import AlbertModel, AlbertConfig
 from transformers.modeling_xlm_roberta import XLMRobertaModel, XLMRobertaConfig
 from transformers.modeling_distilbert import DistilBertModel, DistilBertConfig
+from transformers.modeling_electra import ElectraModel, ElectraConfig
 from transformers.modeling_utils import SequenceSummary
 from transformers.tokenization_bert import load_vocab
 
@@ -105,6 +106,9 @@ class LanguageModel(nn.Module):
         * albert-large-v2
         * distilbert-base-german-cased
         * distilbert-base-multilingual-cased
+        * google/electra-small-discriminator
+        * google/electra-base-discriminator
+        * google/electra-large-discriminator
 
         See all supported model variations here: https://huggingface.co/models
 
@@ -138,6 +142,8 @@ class LanguageModel(nn.Module):
                     language_model_class = 'Bert'
                 elif 'xlnet' in pretrained_model_name_or_path:
                     language_model_class = 'XLNet'
+                elif 'electra' in pretrained_model_name_or_path:
+                    language_model_class = 'Electra'
                 elif "word2vec" in pretrained_model_name_or_path.lower() or "glove" in pretrained_model_name_or_path.lower():
                     language_model_class = 'WordEmbedding_LM'
 
@@ -145,10 +151,6 @@ class LanguageModel(nn.Module):
                 language_model = cls.subclasses[language_model_class].load(pretrained_model_name_or_path, **kwargs)
             else:
                 language_model = None
-
-            if language_model_class == 'XLMRoberta':
-                # TODO: for some reason, the pretrained XLMRoberta has different vocab size in the tokenizer compared to the model this is a hack to resolve that
-                n_added_tokens = 3
 
         if not language_model:
             raise Exception(
@@ -1096,8 +1098,11 @@ class WordEmbedding_LM(LanguageModel):
 
         sequence_output = torch.stack(sequence_output)
         pooled_output = torch.stack(pooled_output)
-        m = nn.BatchNorm1d(pooled_output.shape[1]) # batchnorm for stable learning
-        pooled_output = m(pooled_output)
+        m = nn.BatchNorm1d(pooled_output.shape[1])
+        # use batchnorm for more stable learning
+        # but disable it, if we have batch size of one (cannot compute batchnorm stats with only one sample)
+        if pooled_output.shape[0] > 1:
+            pooled_output = m(pooled_output)
         return sequence_output, pooled_output
 
     def trim_vocab(self, token_counts, processor, min_threshold):
@@ -1169,4 +1174,110 @@ class WordEmbedding_LM(LanguageModel):
                 for pca_idx, u in enumerate(U1[0:PVN_dims]):
                     ratio = (explained_variance[pca_idx] - explained_variance[PVN_dims]) / explained_variance[pca_idx]
                     self.model.embeddings[emb_idx] = self.model.embeddings[emb_idx] - ratio * np.dot(u.transpose(), self.model.embeddings[emb_idx]) * u
+
+
+class Electra(LanguageModel):
+    """
+    ELECTRA is a new pre-training approach which trains two transformer models:
+    the generator and the discriminator. The generator replaces tokens in a sequence,
+    and is therefore trained as a masked language model. The discriminator, which is
+    the model we're interested in, tries to identify which tokens were replaced by
+    the generator in the sequence.
+
+    The ELECTRA model here wraps HuggingFace's implementation
+    (https://github.com/huggingface/transformers) to fit the LanguageModel class.
+
+    NOTE:
+    - Electra does not output the pooled_output. An additional pooler is initialized.
+
+    """
+
+    def __init__(self):
+        super(Electra, self).__init__()
+        self.model = None
+        self.name = "electra"
+        self.pooler = None
+
+    @classmethod
+    def load(cls, pretrained_model_name_or_path, language=None, **kwargs):
+        """
+        Load a pretrained model by supplying
+
+        * the name of a remote model on s3 ("google/electra-base-discriminator" ...)
+        * OR a local path of a model trained via transformers ("some_dir/huggingface_model")
+        * OR a local path of a model trained via FARM ("some_dir/farm_model")
+
+        :param pretrained_model_name_or_path: The path of the saved pretrained model or its name.
+        :type pretrained_model_name_or_path: str
+
+        """
+
+        electra = cls()
+        if "farm_lm_name" in kwargs:
+            electra.name = kwargs["farm_lm_name"]
+        else:
+            electra.name = pretrained_model_name_or_path
+        # We need to differentiate between loading model using FARM format and Transformers format
+        farm_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
+        if os.path.exists(farm_lm_config):
+            # FARM style
+            config = ElectraConfig.from_pretrained(farm_lm_config)
+            farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
+            electra.model = ElectraModel.from_pretrained(farm_lm_model, config=config, **kwargs)
+            electra.language = electra.model.config.language
+        else:
+            # Transformers Style
+            electra.model = ElectraModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
+            electra.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
+        config = electra.model.config
+
+        # ELECTRA does not provide a pooled_output by default. Therefore, we need to initialize an extra pooler.
+        # The pooler takes the first hidden representation & feeds it to a dense layer of (hidden_dim x hidden_dim).
+        # We don't want a dropout in the end of the pooler, since we do that already in the adaptive model before we
+        # feed everything to the prediction head
+        config.summary_last_dropout = 0
+        config.summary_type = 'first'
+        config.summary_activation = 'tanh'
+        electra.pooler = SequenceSummary(config)
+        electra.pooler.apply(electra.model._init_weights)
+        return electra
+
+    def forward(
+        self,
+        input_ids,
+        segment_ids,
+        padding_mask,
+        **kwargs,
+    ):
+        """
+        Perform the forward pass of the ELECTRA model.
+
+        :param input_ids: The ids of each token in the input sequence. Is a tensor of shape [batch_size, max_seq_len]
+        :type input_ids: torch.Tensor
+        :param padding_mask: A mask that assigns a 1 to valid input tokens and 0 to padding tokens
+           of shape [batch_size, max_seq_len]
+        :return: Embeddings for each token in the input sequence.
+
+        """
+        output_tuple = self.model(
+            input_ids,
+            token_type_ids=segment_ids,
+            attention_mask=padding_mask,
+        )
+
+        # We need to manually aggregate that to get a pooled output (one vec per seq)
+        pooled_output = self.pooler(output_tuple[0])
+
+        if self.model.config.output_hidden_states == True:
+            sequence_output, all_hidden_states = output_tuple[0], output_tuple[1]
+            return sequence_output, pooled_output
+        else:
+            sequence_output = output_tuple[0]
+            return sequence_output, pooled_output
+
+    def enable_hidden_states_output(self):
+        self.model.config.output_hidden_states = True
+
+    def disable_hidden_states_output(self):
+        self.model.config.output_hidden_states = False
 

@@ -3,7 +3,7 @@ import pytest
 
 @pytest.mark.parametrize("streaming", [True, False])
 @pytest.mark.parametrize("multiprocessing_chunksize", [None, 2])
-# @pytest.mark.parametrize("num_processes", [2, 0, None]) # TODO add test for multiprocessing
+@pytest.mark.parametrize("num_processes", [2, 0, None], scope="session")
 def test_qa_format_and_results(adaptive_model_qa, streaming, multiprocessing_chunksize):
     qa_inputs_dicts = [
         {

@@ -48,12 +48,14 @@ class DocumentPred:
                  preds,
                  no_ans_gap,
                  token_offsets,
-                 context_window_size):
+                 context_window_size,
+                 question_id=None):
         self.id = id
         self.preds = preds
         self.n_samples = preds[0].n_samples
         self.document_text = document_text
         self.question = question
+        self.question_id = question_id
         self.no_ans_gap = no_ans_gap
         self.token_offsets = token_offsets
         self.context_window_size = context_window_size
@@ -75,7 +77,7 @@ class DocumentPred:
             "predictions": [
                 {
                     "question": self.question,
-                    "question_id": self.id,
+                    "question_id": self.question_id,
                     "ground_truth": None,
                     "answers": answers,
                     "no_ans_gap": self.no_ans_gap # Add no_ans_gap to current no_ans_boost for switching top prediction
@@ -93,6 +95,7 @@ class DocumentPred:
             start_t = span.start
             end_t = span.end
             score = span.score
+            classification = span.classification
 
             _, ans_start_ch, ans_end_ch = span_to_string(start_t, end_t, self.token_offsets, self.document_text)
             context_string, context_start_ch, context_end_ch = self.create_context(ans_start_ch, ans_end_ch, self.document_text)
@@ -102,6 +105,7 @@ class DocumentPred:
                     "offset_answer_start": ans_start_ch,
                     "offset_answer_end": ans_end_ch,
                     "context": context_string,
+                    "classification": classification,
                     "offset_context_start": context_start_ch,
                     "offset_context_end": context_end_ch,
                     "document_id": self.id}

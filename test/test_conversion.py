@@ -67,4 +67,5 @@ def test_conversion_inferencer(caplog):
     assert answer_farm == answer_transformers
 
 if __name__ == "__main__":
-    test_conversion_inferencer()
+    test_conversion_inferencer(None)
+    test_conversion_adaptive_model(None)

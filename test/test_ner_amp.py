@@ -16,7 +16,8 @@ import logging
 
 
 def test_ner_amp(caplog):
-    caplog.set_level(logging.CRITICAL)
+    if caplog:
+        caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)
@@ -96,4 +97,4 @@ def test_ner_amp(caplog):
 
 
 if __name__ == "__main__":
-    test_ner_amp()
+    test_ner_amp(None)

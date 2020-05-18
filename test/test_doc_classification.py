@@ -16,7 +16,8 @@ from farm.utils import set_all_seeds, initialize_device_settings
 
 
 def test_doc_classification(caplog):
-    caplog.set_level(logging.CRITICAL)
+    if caplog:
+        caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=False)
@@ -90,4 +91,4 @@ def test_doc_classification(caplog):
     assert result == result2
 
 if __name__ == "__main__":
-    test_doc_classification()
+    test_doc_classification(None)

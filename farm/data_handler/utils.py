@@ -223,11 +223,12 @@ def read_squad_file(filename, proxies=None):
 
 def write_squad_predictions(predictions, out_filename, predictions_filename=None):
     predictions_json = {}
-    for p in predictions:
-        if p["preds"][0][0] is not None:
-            predictions_json[p["id"]] = p["preds"][0][0]
-        else:
-            predictions_json[p["id"]] = "" #convert No answer = None to format understood by the SQuAD eval script
+    for x in predictions:
+        for p in x["predictions"]:
+            if p["answers"][0]["answer"] is not None:
+                predictions_json[p["question_id"]] = p["answers"][0]["answer"]
+            else:
+                predictions_json[p["question_id"]] = "" #convert No answer = None to format understood by the SQuAD eval script
 
     if predictions_filename:
         dev_labels = {}
@@ -245,10 +246,10 @@ def write_squad_predictions(predictions, out_filename, predictions_filename=None
         for x in not_included:
             predictions_json[x] = ""
 
-    os.makedirs("model_output", exist_ok=True)
-    filepath = Path("model_output") / out_filename
-    json.dump(predictions_json, open(filepath, "w"))
-    logger.info(f"Written Squad predictions to: {filepath}")
+    # os.makedirs("model_output", exist_ok=True)
+    # filepath = Path("model_output") / out_filename
+    json.dump(predictions_json, open(out_filename, "w"))
+    logger.info(f"Written Squad predictions to: {out_filename}")
 
 def _get_md5checksum(fname):
     # solution from stackoverflow: https://stackoverflow.com/a/3431838
@@ -813,7 +814,7 @@ def convert_qa_input_dict(infer_dict):
         text = infer_dict["text"]
         document_id = infer_dict.get("document_id", None)
         qas = [{"question": q,
-                "id": i,
+                "id": None,
                 "answers": [],
                 "is_impossible": False} for i, q in enumerate(questions)]
         converted = {"qas": qas,

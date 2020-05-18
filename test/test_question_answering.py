@@ -92,7 +92,11 @@ def test_qa(caplog=None):
     assert result1 == result2
 
 
-def test_qa_onnx_inference():
+def test_qa_onnx_inference(caplog=None):
+    if caplog:
+        caplog.set_level(logging.CRITICAL)
+
+
     QA_input = [
         {
             "questions": ["Who counted the game among the best ever made?"],
@@ -123,4 +127,5 @@ def test_qa_onnx_inference():
 
 
 if(__name__=="__main__"):
+    test_qa()
     test_qa_onnx_inference()
