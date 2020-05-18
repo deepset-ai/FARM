@@ -652,8 +652,6 @@ class _StreamingDataSet(IterableDataset):
         #  (with n=2) will return, [[dictA, dictB], [dictE, dictF] ...] for worker 1 and
         #  [[dictC, dictD], [dictG, dictH] ...] for worker 2.
 
-        #TODO add shuffling to ensure different batches across epochs (e.g. some seed in grouper + randomizing order)
-
         worker_info = torch.utils.data.get_worker_info()
         if self.distributed:
             worker_id = self.rank * worker_info.num_workers + worker_info.id
