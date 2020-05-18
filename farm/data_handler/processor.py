@@ -31,6 +31,7 @@ from farm.data_handler.utils import (
     read_docs_from_txt,
     read_ner_file,
     read_squad_file,
+    read_jsonl,
     is_json,
     get_sentence_pair,
     split_with_metadata,
@@ -1225,7 +1226,7 @@ class NaturalQuestionsProcessor(Processor):
 
 
     def file_to_dicts(self, file: str) -> [dict]:
-        dicts = [json.loads(l) for l in open(file)]
+        dicts = read_jsonl(file, proxies=self.proxies)
         # Turns a NQ dictionaries into a SQuAD style dictionaries
         dicts = [self.prepare_dict(d) for d in dicts]
         return dicts

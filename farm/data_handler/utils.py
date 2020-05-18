@@ -36,6 +36,8 @@ DOWNSTREAM_TASK_MAP = {
     'cola': "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/cola.tar.gz",
     "asnq_binary": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/asnq_binary.tar.gz",
     "germeval17": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/germeval17.tar.gz",
+    "natural_questions": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/natural_questions.tar.gz",
+
 }
 
 def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=None, header=0, proxies=None, max_samples=None):
@@ -102,6 +104,14 @@ def read_tsv_sentence_pair(filename, rename_columns, delimiter="\t", skiprows=No
     # convert df to one dict per row
     raw_dict = df.to_dict(orient="records")
     return raw_dict
+
+def read_jsonl(file, proxies=None):
+    # get remote dataset if needed
+    if not (os.path.exists(file)):
+        logger.info(f" Couldn't find {file} locally. Trying to download ...")
+        _download_extract_downstream_data(file, proxies=proxies)
+    dicts = [json.loads(l) for l in open(file)]
+    return dicts
 
 def read_ner_file(filename, sep="\t", proxies=None):
     """
@@ -812,6 +822,7 @@ def convert_qa_input_dict(infer_dict):
         return converted
     except KeyError:
         raise Exception("Input does not have the expected format")
+
 
 
 

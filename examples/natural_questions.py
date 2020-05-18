@@ -37,7 +37,7 @@ def question_answering():
     lang_model = "bert-base-cased"
     do_lower_case = False # roberta is a cased model
     train_filename = "train_sample_small.jsonl"
-    dev_filename = "dev-v2.0.json"
+    dev_filename = None
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
