@@ -572,7 +572,7 @@ class StreamingDataSilo:
         if isinstance(filename, Path) and filename.is_dir():
             filepath = filename
         else:
-            filepath = self.processor.data_dir / filename,
+            filepath = self.processor.data_dir / filename
 
         data_set = _StreamingDataSet(
             processor=self.processor,
