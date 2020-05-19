@@ -4,7 +4,7 @@ import os
 import pprint
 from pathlib import Path
 
-from farm.data_handler.data_silo import DataSilo
+from farm.data_handler.data_silo import StreamingDataSilo
 from farm.data_handler.processor import NaturalQuestionsProcessor
 from farm.data_handler.utils import write_squad_predictions
 from farm.infer import Inferencer
@@ -33,12 +33,14 @@ def question_answering():
     device, n_gpu = initialize_device_settings(use_cuda=True)
     batch_size = 20
     n_epochs = 1
-    evaluate_every = 5
-    lang_model = "bert-base-cased"
-    do_lower_case = False
+    evaluate_every = 100
+    #lang_model = "roberta-base"
+    lang_model = "deepset/roberta-base-squad2"
+    do_lower_case = False # roberta is a cased model
     train_filename = "train_medium.jsonl"
     dev_filename = "dev_medium.jsonl"
-    keep_is_impossible = 0.02 # downsample negative examples
+    keep_is_impossible = 0.15 # downsample negative examples
+    downsample_context_size = 300 # downsample negative examples before processing
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
@@ -68,12 +70,13 @@ def question_answering():
         train_filename=train_filename,
         dev_filename=dev_filename,
         keep_is_impossible=keep_is_impossible,
+        downsample_context_size=downsample_context_size,
         data_dir=Path("../data/natural_questions"),
     )
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
     # NOTE: In FARM, the dev set metrics differ from test set metrics in that they are calculated on a token level instead of a word level
-    data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=False)
+    streaming_data_silo = StreamingDataSilo(processor=processor, batch_size=batch_size, dataloader_workers=8)
 
     # 4. Create an AdaptiveModel
     # a) which consists of a pretrained language model as a basis
@@ -95,7 +98,7 @@ def question_answering():
         model=model,
         learning_rate=3e-5,
         schedule_opts={"name": "LinearWarmup", "warmup_proportion": 0.2},
-        n_batches=len(data_silo.loaders["train"]),
+        n_batches=len(streaming_data_silo.get_data_loader("train")),
         n_epochs=n_epochs,
         device=device
     )
@@ -103,7 +106,7 @@ def question_answering():
     trainer = Trainer(
         model=model,
         optimizer=optimizer,
-        data_silo=data_silo,
+        data_silo=streaming_data_silo,
         epochs=n_epochs,
         n_gpu=n_gpu,
         lr_schedule=lr_schedule,

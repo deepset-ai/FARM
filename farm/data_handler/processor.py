@@ -7,6 +7,7 @@ import random
 from abc import ABC
 from inspect import signature
 from pathlib import Path
+from random import randint
 
 import numpy as np
 from sklearn.preprocessing import StandardScaler
@@ -1149,86 +1150,91 @@ class SquadProcessor(Processor):
         return features
 
 class NaturalQuestionsProcessor(Processor):
-    def __init__(self,
-                 tokenizer,
-                 max_seq_len,
-                 data_dir,
-                 train_filename=Path("train-v2.0.json"),
-                 dev_filename=Path("dev-v2.0.json"),
-                 test_filename=None,
-                 dev_split=0,
-                 doc_stride=128,
-                 max_query_length=64,
-                 proxies=None,
-                 keep_is_impossible=0.0001,
-                 inference=False,
-                 **kwargs):
-            """
-            Deals with all the preprocessing steps needed for Natural Questions. Follows Alberti 2019 et al. (https://arxiv.org/abs/1901.08634)
-            in merging multiple disjoint short answers into the one longer label span and also by downsampling
-            samples of is_impossible during training
+    """ Used to handle the Natural Question QA dataset"""
 
-            :param tokenizer: Used to split a sentence (str) into tokens.
-            :param max_seq_len: Samples are truncated after this many tokens.
-            :type max_seq_len: int
-            :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
-            :type data_dir: str
-            :param train_filename: The name of the file containing training data.
-            :type train_filename: str
-            :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
-                                 will be a slice of the train set.
-            :type dev_filename: str or None
-            :param test_filename: The name of the file containing the test data.
-            :type test_filename: str
-            :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
-            :type dev_split: float
-            :param doc_stride: When the document containing the answer is too long it gets split into parts, strided by doc_stride
-            :type doc_stride: int
-            :param max_query_length: Maximum length of the question (in number of subword tokens)
-            :type max_query_length: int
-            :param keep_is_impossible: The probability that a sample with an is_impossible label is kept
-                                        (0.0 < keep_is_impossible <= 1.0). Only works if inference is False
-            :type keep_is_impossible: float
-            :param inference: Whether we are currently using the Processsor for model inference. If True, the
-                              keep_is_impossible will be overridden and set to 1
-            :type inference: bool
-            :param kwargs: placeholder for passing generic parameters
-            :type kwargs: object
-            """
+    def __init__(
+        self,
+        tokenizer,
+        max_seq_len,
+        data_dir,
+        train_filename=Path("train-v2.0.json"),
+        dev_filename=Path("dev-v2.0.json"),
+        test_filename=None,
+        dev_split=0,
+        doc_stride=128,
+        max_query_length=64,
+        proxies=None,
+        keep_is_impossible=0.02,
+        downsample_context_size=None,
+        inference=False,
+        **kwargs):
+        """
+        Deals with all the preprocessing steps needed for Natural Questions. Follows Alberti 2019 et al. (https://arxiv.org/abs/1901.08634)
+        in merging multiple disjoint short answers into the one longer label span and also by downsampling
+        samples of is_impossible during training
 
-            self.target = "classification"
-            self.ph_output_type = "per_token_squad"
+        :param tokenizer: Used to split a sentence (str) into tokens.
+        :param max_seq_len: Samples are truncated after this many tokens.
+        :type max_seq_len: int
+        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
+        :type data_dir: str
+        :param train_filename: The name of the file containing training data.
+        :type train_filename: str
+        :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
+                             will be a slice of the train set.
+        :type dev_filename: str or None
+        :param test_filename: The name of the file containing the test data.
+        :type test_filename: str
+        :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
+        :type dev_split: float
+        :param doc_stride: When the document containing the answer is too long it gets split into parts, strided by doc_stride
+        :type doc_stride: int
+        :param max_query_length: Maximum length of the question (in number of subword tokens)
+        :type max_query_length: int
+        :param keep_is_impossible: The probability that a sample with an is_impossible label is kept
+                                    (0.0 < keep_is_impossible <= 1.0). Only works if inference is False
+        :type keep_is_impossible: float
+        :param downsample_context_size: Downsampling before any data conversion by taking a short text window of size
+                                        downsample_context_size around the long answer span. To disable set to None
+        :type downsample_context_size: int
+        :param inference: Whether we are currently using the Processsor for model inference. If True, the
+                          keep_is_impossible will be overridden and set to 1
+        :type inference: bool
+        :param kwargs: placeholder for passing generic parameters
+        :type kwargs: object
+        """
+        self.target = "classification"
+        self.ph_output_type = "per_token_squad"
 
-            # These are classification labels from Natural Questions. Note that in this implementation, we are merging
-            # the "long_answer" and "short_answer" labels into the one "span" label
-            self.answer_type_list = ["is_impossible", "span", "yes", "no"]
+        # These are classification labels from Natural Questions. Note that in this implementation, we are merging
+        # the "long_answer" and "short_answer" labels into the one "span" label
+        self.answer_type_list = ["is_impossible", "span", "yes", "no"]
 
-            self.doc_stride = doc_stride
-            self.max_query_length = max_query_length
-            self.keep_is_impossible = keep_is_impossible
-            self.inference = inference
+        self.doc_stride = doc_stride
+        self.max_query_length = max_query_length
+        self.keep_is_impossible = keep_is_impossible
+        self.downsample_context_size = downsample_context_size
+        self.inference = inference
 
-            super(NaturalQuestionsProcessor, self).__init__(
-                tokenizer=tokenizer,
-                max_seq_len=max_seq_len,
-                train_filename=train_filename,
-                dev_filename=dev_filename,
-                test_filename=test_filename,
-                dev_split=dev_split,
-                data_dir=data_dir,
-                tasks={},
-                proxies=proxies
-            )
+        super(NaturalQuestionsProcessor, self).__init__(
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            train_filename=train_filename,
+            dev_filename=dev_filename,
+            test_filename=test_filename,
+            dev_split=dev_split,
+            data_dir=data_dir,
+            tasks={},
+            proxies=proxies
+        )
 
-            # Todo rename metric from squad to maybe QA spans or something like that
-            self.add_task("question_answering", "squad", ["start_token", "end_token"])
-            self.add_task("text_classification", "f1_macro", self.answer_type_list, label_name="answer_type")
+        # Todo rename metric from squad to maybe QA spans or something like that
+        self.add_task("question_answering", "squad", ["start_token", "end_token"])
+        self.add_task("text_classification", "f1_macro", self.answer_type_list, label_name="answer_type")
 
 
     def file_to_dicts(self, file: str) -> [dict]:
         dicts = read_jsonl(file, proxies=self.proxies)
-        # Turns a NQ dictionaries into a SQuAD style dictionaries
-        dicts = [self.prepare_dict(d) for d in dicts]
         return dicts
 
 
@@ -1242,6 +1248,10 @@ class NaturalQuestionsProcessor(Processor):
         mapping from document to question. Input dictionaries can have either ["context", "qas"] (internal format) as
         keys or ["text", "questions"] (api format). Both are supported.
         """
+        # Turns a NQ dictionaries into a SQuAD style dictionaries
+        if not self.inference:
+            dictionary = self.prepare_dict(dictionary=dictionary)
+
         dictionary_tokenized = self.apply_tokenization(dictionary)[0]
         n_special_tokens = self.tokenizer.num_added_tokens(pair=True)
         samples = create_samples_qa(dictionary_tokenized,
@@ -1285,11 +1295,55 @@ class NaturalQuestionsProcessor(Processor):
         else:
             return False
 
+    def downsample_unprocessed(self, dictionary):
+        doc_text = dictionary["document_text"]
+        doc_tokens = doc_text.split(" ")
+        annotations = dictionary.get("annotations",[])
+        # for simplicity we only downsample wiki pages with one long answer annotation
+        if len(annotations) == 1:
+            annotation = annotations[0]
+            # There seem to be cases where there is no answer but an annotation is given as a (-1, -1) long answer
+            if self.check_no_answer(annotation):
+                dictionary["document_text"] = " ".join(doc_tokens[:self.max_seq_len+randint(1,self.downsample_context_size)])
+            else:
+                # finding earliest start and latest end labels
+                long_answer_start = annotation['long_answer']['start_token']
+                long_answer_end = annotation['long_answer']['end_token']
+                short_answer_start = 1e10
+                short_answer_end = -1
+                for s in annotation["short_answers"]:
+                    if s["start_token"] < short_answer_start:
+                        short_answer_start = s["start_token"]
+                    if s["end_token"] > short_answer_end:
+                        short_answer_end = s["end_token"]
+
+                start_threshold = min(long_answer_start,short_answer_start) - randint(1,self.downsample_context_size)
+                start_threshold = max(0, start_threshold)
+                end_threshold = max(long_answer_end,short_answer_end) + randint(1,self.downsample_context_size)
+
+                # taking subset of doc text and shift labels
+                sub_document_text = " ".join(
+                    doc_tokens[start_threshold:end_threshold]
+                )
+                dictionary["document_text"] = sub_document_text
+                # change of offsets happens in place (of dictionary)
+                annotation['long_answer']['start_token'] -= start_threshold
+                annotation['long_answer']['end_token'] -= start_threshold
+                for s in annotation["short_answers"]:
+                    s["start_token"] -= start_threshold
+                    s["end_token"] -= start_threshold
+
+        return dictionary
+
 
     def prepare_dict(self, dictionary):
         """ Casts a Natural Questions dictionary that is loaded from a jsonl file into SQuAD format so that
         the same featurization functions can be called for both tasks. Each annotation can be one of four answer types,
         ["yes", "no", "span", "is_impossible"]"""
+
+        if self.downsample_context_size is not None:
+            dictionary = self.downsample_unprocessed(dictionary)
+
         converted_answers = []
         doc_text = dictionary["document_text"]
         _, tok_to_ch = split_with_metadata(doc_text)
