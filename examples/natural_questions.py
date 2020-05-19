@@ -31,25 +31,43 @@ def question_answering():
     ##########################
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)
-    batch_size = 16
+    batch_size = 20
     n_epochs = 1
-    evaluate_every = 20
+    evaluate_every = 5
     lang_model = "bert-base-cased"
-    do_lower_case = False # roberta is a cased model
-    train_filename = "train_sample_small.jsonl"
-    dev_filename = None
+    do_lower_case = False
+    train_filename = "train_medium.jsonl"
+    dev_filename = "dev_medium.jsonl"
+    keep_is_impossible = 0.02 # downsample negative examples
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
         pretrained_model_name_or_path=lang_model, do_lower_case=do_lower_case
     )
+
+
+    # Add HTML tag tokens to the tokenizer vocabulary, so they do not get split apart
+    html_tags = [
+                "<Th>","</Th>",
+                "<Td>","</Td>",
+                "<Tr>","</Tr>",
+                "<Li>","</Li>",
+                "<P>" ,"</P>",
+                "<Ul>","</Ul>",
+                "<H1>","</H1>",
+                "<H2>","</H2>",
+                "<H3>","</H3>",
+                "<H4>","</H4>",]
+    tokenizer.add_tokens(html_tags)
+
+
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
     processor = NaturalQuestionsProcessor(
         tokenizer=tokenizer,
         max_seq_len=384,
         train_filename=train_filename,
         dev_filename=dev_filename,
-        dev_split=0.1,
+        keep_is_impossible=keep_is_impossible,
         data_dir=Path("../data/natural_questions"),
     )
 
@@ -59,7 +77,7 @@ def question_answering():
 
     # 4. Create an AdaptiveModel
     # a) which consists of a pretrained language model as a basis
-    language_model = LanguageModel.load(lang_model)
+    language_model = LanguageModel.load(lang_model,n_added_tokens=len(html_tags))
     # b) and a prediction head on top that is suited for our task => Question Answering
     qa_head = QuestionAnsweringHead()
     classification_head = TextClassificationHead(num_labels=len(processor.answer_type_list))
