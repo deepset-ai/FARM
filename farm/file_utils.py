@@ -4,13 +4,18 @@ This file is adapted from the AllenNLP library at https://github.com/allenai/all
 Copyright by the AllenNLP authors.
 """
 from __future__ import absolute_import, division, print_function, unicode_literals
-from pathlib import Path
+
 import json
 import logging
 import os
+import tempfile
+import tarfile
+import zipfile
+
 from functools import wraps
 from hashlib import sha256
 from io import open
+from pathlib import Path
 
 import boto3
 import numpy as np
@@ -18,7 +23,6 @@ import requests
 from botocore.exceptions import ClientError
 from dotmap import DotMap
 from tqdm import tqdm
-
 from transformers.file_utils import cached_path
 
 try:
@@ -150,6 +154,47 @@ def http_get(url, temp_file, proxies=None):
             progress.update(len(chunk))
             temp_file.write(chunk)
     progress.close()
+
+def fetch_archive_from_http(url, output_dir, proxies=None):
+    """
+    Fetch an archive (zip or tar.gz) from a url via http and extract content to an output directory.
+
+    :param url: http address
+    :type url: str
+    :param output_dir: local path
+    :type output_dir: str
+    :param proxies: proxies details as required by requests library
+    :type proxies: dict
+    :return: bool if anything got fetched
+    """
+    # verify & prepare local directory
+    path = Path(output_dir)
+    if not path.exists():
+        path.mkdir(parents=True)
+
+    is_not_empty = len(list(Path(path).rglob("*"))) > 0
+    if is_not_empty:
+        logger.info(
+            f"Found data stored in `{output_dir}`. Delete this first if you really want to fetch new data."
+        )
+        return False
+    else:
+        logger.info(f"Fetching from {url} to `{output_dir}`")
+
+        # download & extract
+        with tempfile.NamedTemporaryFile() as temp_file:
+            http_get(url, temp_file, proxies=proxies)
+            temp_file.flush()
+            temp_file.seek(0)  # making tempfile accessible
+            # extract
+            if url[-4:] == ".zip":
+                archive = zipfile.ZipFile(temp_file.name)
+                archive.extractall(output_dir)
+            elif url[-7:] == ".tar.gz":
+                archive = tarfile.open(temp_file.name)
+                archive.extractall(output_dir)
+            # temp_file gets deleted here
+        return True
 
 def load_from_cache(pretrained_model_name_or_path, s3_dict, **kwargs):
     # Adjusted from HF Transformers to fit loading WordEmbeddings from deepsets s3
