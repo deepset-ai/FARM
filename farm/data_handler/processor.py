@@ -905,15 +905,6 @@ class BertStyleLMProcessor(Processor):
                 tokenized = {"text_a" : sequence_a, "text_b" : sequence_b}
                 samples.append(Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized))
 
-                if len(tokenized["text_a"]["tokens"]) == 0:
-                    logger.warning(
-                        f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text_a}")
-                    continue
-                if len(tokenized["text_b"]["tokens"]) == 0:
-                    logger.warning(
-                        f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text_b}")
-                    continue
-
                 i -= num_unused_segments
 
                 current_chunk = []
