@@ -3,17 +3,17 @@ from pathlib import Path
 import numpy as np
 
 from farm.data_handler.data_silo import DataSilo
-from farm.data_handler.processor import SquadProcessor
+from farm.data_handler.processor import NaturalQuestionsProcessor
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import LanguageModel
 from farm.modeling.optimization import initialize_optimizer
-from farm.modeling.prediction_head import QuestionAnsweringHead
+from farm.modeling.prediction_head import QuestionAnsweringHead, TextClassificationHead
 from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer
 from farm.utils import set_all_seeds, initialize_device_settings
 from farm.infer import Inferencer
 
-def test_qa(caplog=None):
+def test_nq(caplog=None):
     if caplog:
         caplog.set_level(logging.CRITICAL)
 
@@ -27,28 +27,26 @@ def test_qa(caplog=None):
     tokenizer = Tokenizer.load(
         pretrained_model_name_or_path=base_LM_model, do_lower_case=True
     )
-    label_list = ["start_token", "end_token"]
-    processor = SquadProcessor(
+    processor = NaturalQuestionsProcessor(
         tokenizer=tokenizer,
         max_seq_len=20,
         doc_stride=10,
         max_query_length=6,
-        train_filename="train-sample.json",
-        dev_filename="dev-sample.json",
-        test_filename=None,
-        data_dir=Path("samples/qa"),
-        label_list=label_list,
-        metric="squad"
+        train_filename="train_sample.jsonl",
+        dev_filename="dev_sample.jsonl",
+        data_dir=Path("samples/nq")
     )
 
     data_silo = DataSilo(processor=processor, batch_size=batch_size, max_processes=1)
     language_model = LanguageModel.load(base_LM_model)
-    prediction_head = QuestionAnsweringHead()
+    qa_head = QuestionAnsweringHead()
+    classification_head = TextClassificationHead(num_labels=len(processor.answer_type_list))
+
     model = AdaptiveModel(
         language_model=language_model,
-        prediction_heads=[prediction_head],
+        prediction_heads=[qa_head, classification_head],
         embeds_dropout_prob=0.1,
-        lm_output_types=["per_token"],
+        lm_output_types=["per_token", "per_sequence"],
         device=device,
     )
 
@@ -71,7 +69,7 @@ def test_qa(caplog=None):
         device=device
     )
     trainer.train()
-    save_dir = Path("testsave/qa")
+    save_dir = Path("testsave/nq")
     model.save(save_dir)
     processor.save(save_dir)
 
@@ -91,41 +89,5 @@ def test_qa(caplog=None):
     result2 = inferencer.inference_from_dicts(dicts=qa_format_2)
     assert result1 == result2
 
-
-def test_qa_onnx_inference(caplog=None):
-    if caplog:
-        caplog.set_level(logging.CRITICAL)
-
-
-    QA_input = [
-        {
-            "questions": ["Who counted the game among the best ever made?"],
-            "text": "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
-        }]
-
-    base_LM_model = "deepset/bert-base-cased-squad2"
-
-    # Pytorch
-    inferencer = Inferencer.load(base_LM_model, batch_size=2, gpu=False, task_type="question_answering", num_processes=0)
-    result = inferencer.inference_from_dicts(dicts=QA_input)[0]
-
-    # ONNX
-    onnx_model_export_path = Path("testsave/onnx-export")
-    inferencer.model.convert_to_onnx(onnx_model_export_path)
-    inferencer = Inferencer.load(model_name_or_path=onnx_model_export_path, task_type="question_answering", num_processes=0)
-
-    result_onnx = inferencer.inference_from_dicts(QA_input)[0]
-
-    for (onnx, regular) in zip(result_onnx["predictions"][0]["answers"][0].items(), result["predictions"][0]["answers"][0].items()):
-        # keys
-        assert onnx[0] == regular[0]
-        # values
-        if type(onnx[1]) == float:
-            np.testing.assert_almost_equal(onnx[1], regular[1], decimal=4)  # score
-        else:
-            assert onnx[1] == regular[1]
-
-
-if(__name__=="__main__"):
-    test_qa()
-    test_qa_onnx_inference()
+if __name__ == "__main__":
+    test_nq()

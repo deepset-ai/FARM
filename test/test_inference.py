@@ -3,9 +3,8 @@ import pytest
 
 @pytest.mark.parametrize("streaming", [True, False])
 @pytest.mark.parametrize("multiprocessing_chunksize", [None, 2])
-@pytest.mark.parametrize("rest_api_schema", [True, False])
 @pytest.mark.parametrize("num_processes", [2, 0, None], scope="session")
-def test_qa_format_and_results(adaptive_model_qa, streaming, multiprocessing_chunksize, rest_api_schema):
+def test_qa_format_and_results(adaptive_model_qa, streaming, multiprocessing_chunksize):
     qa_inputs_dicts = [
         {
             "questions": ["In what country is Normandy"],
@@ -28,7 +27,6 @@ def test_qa_format_and_results(adaptive_model_qa, streaming, multiprocessing_chu
         dicts=qa_inputs_dicts,
         multiprocessing_chunksize=multiprocessing_chunksize,
         streaming=streaming,
-        rest_api_schema=True,
     )
     # sample results
     # [
@@ -77,6 +75,7 @@ def test_qa_format_and_results(adaptive_model_qa, streaming, multiprocessing_chu
                         "offset_context_start",
                         "offset_context_end",
                         "document_id",
+                        "classification"
                     )
                 )
                 == answer.keys()

@@ -11,6 +11,10 @@ def convert_features_to_dataset(features):
                      names of the type of feature and the keys are the features themselves.
     :Return: a Pytorch dataset and a list of tensor names.
     """
+    # features can be an empty list in cases where down sampling occurs (e.g. Natural Questions downsamples
+    # instances of is_impossible
+    if len(features) == 0:
+        return None, None
     tensor_names = list(features[0].keys())
     all_tensors = []
     for t_name in tensor_names:

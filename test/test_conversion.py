@@ -36,7 +36,7 @@ def test_conversion_inferencer(caplog):
     assert nlp.processor.tokenizer.basic_tokenizer.do_lower_case == False
 
     QA_input = [{"questions": [question], "text": text}]
-    result_farm = nlp.inference_from_dicts(dicts=QA_input, rest_api_schema=True)
+    result_farm = nlp.inference_from_dicts(dicts=QA_input)
     answer_farm = result_farm[0]["predictions"][0]["answers"][0]["answer"]
     assert answer_farm == 'gives freedom to the user'
 
@@ -67,4 +67,5 @@ def test_conversion_inferencer(caplog):
     assert answer_farm == answer_transformers
 
 if __name__ == "__main__":
-    test_conversion_inferencer()
+    test_conversion_inferencer(None)
+    test_conversion_adaptive_model(None)
