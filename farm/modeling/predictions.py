@@ -1,116 +1,143 @@
 from farm.utils import span_to_string
+from abc import ABC, abstractclassmethod
 
-class Span:
-    def __init__(self,
-                 start,
-                 end,
-                 score=None,
-                 sample_idx=None,
-                 n_samples=None,
-                 classification=None,
-                 unit=None,
-                 pred_str=None,
-                 id=None,
-                 level=None):
-        self.start = start
-        self.end = end
-        self.score = score
-        self.unit = unit
-        self.sample_idx = sample_idx
-        self.classification = classification
-        self.n_samples = n_samples
-        self.pred_str = pred_str
-        self.id = id
-        self.level = level
-
-    def to_list(self):
-        return [self.pred_str, self.start, self.end, self.score, self.sample_idx]
-
-    def __str__(self):
-        if self.pred_str is None:
-            pred_str = "is_impossible"
-        else:
-            pred_str = self.pred_str
-        ret = f"answer: {pred_str}\n" \
-              f"score: {self.score}"
-        return ret
-
-    def __repr__(self):
-        return str(self)
-
-class DocumentPred:
-    """ Contains a collection of Span predictions for one document. Used in Question Answering. Also contains all
-    attributes needed to generate the appropriate output json"""
+class Pred(ABC):
     def __init__(self,
                  id,
-                 document_text,
-                 question,
-                 preds,
-                 no_ans_gap,
-                 token_offsets,
-                 context_window_size,
-                 question_id=None):
+                 prediction,
+                 context):
         self.id = id
-        self.preds = preds
-        self.n_samples = preds[0].n_samples
-        self.document_text = document_text
-        self.question = question
-        self.question_id = question_id
-        self.no_ans_gap = no_ans_gap
-        self.token_offsets = token_offsets
-        self.context_window_size = context_window_size
-
-    def __str__(self):
-        preds_str = "\n".join([f"{p}" for p in self.preds])
-        ret = f"id: {self.id}\n" \
-              f"document: {self.document_text}\n" \
-              f"preds:\n{preds_str}"
-        return ret
-
-    def __repr__(self):
-        return str(self)
+        self.prediction = prediction
+        self.context = context
 
     def to_json(self):
-        answers = self.answers_to_json()
-        ret = {
-            "task": "qa",
-            "predictions": [
-                {
-                    "question": self.question,
-                    "question_id": self.question_id,
-                    "ground_truth": None,
-                    "answers": answers,
-                    "no_ans_gap": self.no_ans_gap # Add no_ans_gap to current no_ans_boost for switching top prediction
-                }
-            ],
-        }
-        return ret
+        raise NotImplementedError
 
-    def answers_to_json(self):
-        ret = []
 
-        # iterate over the top_n predictions of the one document
-        for span in self.preds:
-            string = span.pred_str
-            start_t = span.start
-            end_t = span.end
-            score = span.score
-            classification = span.classification
+# class Span:
+#     def __init__(self,
+#                  start,
+#                  end,
+#                  score=None,
+#                  sample_idx=None,
+#                  n_samples=None,
+#                  classification=None,
+#                  unit=None,
+#                  pred_str=None,
+#                  id=None,
+#                  level=None):
+#         self.start = start
+#         self.end = end
+#         self.score = score
+#         self.unit = unit
+#         self.sample_idx = sample_idx
+#         self.classification = classification
+#         self.n_samples = n_samples
+#         self.pred_str = pred_str
+#         self.id = id
+#         self.level = level
+#
+#     def to_list(self):
+#         return [self.pred_str, self.start, self.end, self.score, self.sample_idx]
+#
+#     def __str__(self):
+#         if self.pred_str is None:
+#             pred_str = "is_impossible"
+#         else:
+#             pred_str = self.pred_str
+#         ret = f"answer: {pred_str}\n" \
+#               f"score: {self.score}"
+#         return ret
+#
+#     def __repr__(self):
+#         return str(self)
 
-            _, ans_start_ch, ans_end_ch = span_to_string(start_t, end_t, self.token_offsets, self.document_text)
-            context_string, context_start_ch, context_end_ch = self.create_context(ans_start_ch, ans_end_ch, self.document_text)
-            curr = {"score": score,
-                    "probability": -1,
-                    "answer": string,
-                    "offset_answer_start": ans_start_ch,
-                    "offset_answer_end": ans_end_ch,
-                    "context": context_string,
-                    "classification": classification,
-                    "offset_context_start": context_start_ch,
-                    "offset_context_end": context_end_ch,
-                    "document_id": self.id}
-            ret.append(curr)
-        return ret
+class QAAnswer:
+    def __init__(self,
+                 offset_answer_start,
+                 offset_answer_end,
+                 score,
+                 answer_type,
+                 offset_unit,
+                 aggregation_level,
+                 answer=None,
+                 answer_support=None,
+                 offset_answer_support_start=None,
+                 offset_answer_support_end=None,
+                 context=None,
+                 offset_context_start=None,
+                 offset_context_end=None,
+                 probability=None,
+                 sample_idx=None,
+                 n_samples_in_doc=None,
+                 document_id=None,
+                 passage_id=None):
+        # TODO THIS IS A LOT OF ATTRIBUTES - REMOVE SOME WITH METHODS
+        # self.answer_type can be "is_impossible", "yes", "no" or "span"
+        self.answer_type = answer_type
+        self.score = score
+        self.probability = probability
+
+        # If self.answer_type is "span", self.answer is a string answer span
+        # Otherwise, it is None
+        self.answer = answer
+        self.offset_answer_start = offset_answer_start
+        self.offset_answer_end = offset_answer_end
+
+        # If self.answer_type is in ["yes", "no"] then self.answer_support is a text string
+        # If self.answer is a string answer span or self.answer_type is "is_impossible", answer_support is None
+        self.answer_support = answer_support
+        self.offset_answer_support_start = offset_answer_support_start
+        self.offset_answer_support_end = offset_answer_support_end
+        self.sample_idx = sample_idx
+
+        # self.context is the document or passage where the answer is found
+        self.context = context
+        self.offset_context_start = offset_context_start
+        self.offset_context_end = offset_context_end
+
+        # Offset unit is either "token" or "char"
+        # Aggregation level is either "doc" or "passage"
+        self.offset_unit  = offset_unit
+        self.aggregation_level = aggregation_level
+
+        self.document_id = document_id
+        self.passage_id = passage_id
+        # TODO This seems to be necessary in order to align QA preds of len n_docs with Text Classification preds
+        # TODO of len n_passages
+        self.n_samples_in_doc = n_samples_in_doc
+
+class QAPred(Pred):
+    """Question Answering predictions for a passage or a document"""
+    def __init__(self,
+                 id,
+                 prediction,
+                 context,
+                 question,
+                 question_id,
+                 token_offsets,         # TODO only needed for to_json() - can we get rid?
+                 context_window_size,   # TODO Do we really need this?
+                 aggregation_level,
+                 answer_types=[],
+                 ground_truth_answer=None,
+                 no_answer_gap=None,
+
+                 ):
+        super().__init__(id,
+                         prediction,
+                         context)
+        self.question = question
+        self.question_id = question_id
+        self.ground_truth_answer = ground_truth_answer
+        self.no_answer_gap = no_answer_gap
+        self.answer_types = answer_types
+
+        self.token_offsets = token_offsets  # TODO only needed for to_json() - can we get rid?
+        self.context_window_size = context_window_size  # TODO Do we really need this?
+        self.aggregation_level = aggregation_level
+
+        if len(self.prediction) > 0:
+            assert type(self.prediction[0]) == QAAnswer
 
     def create_context(self, ans_start_ch, ans_end_ch, clear_text):
         if ans_start_ch == 0 and ans_end_ch == 0:
@@ -137,5 +164,4 @@ class DocumentPred:
         ret = {"id": self.id,
                "preds": preds}
         return ret
-
 

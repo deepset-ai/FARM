@@ -17,7 +17,7 @@ from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
 
 from farm.data_handler.utils import is_json
 from farm.utils import convert_iob_to_simple_tags, span_to_string
-from farm.modeling.predictions import Span, DocumentPred
+from farm.modeling.predictions import QAAnswer, QAPred
 
 logger = logging.getLogger(__name__)
 
@@ -1137,10 +1137,20 @@ class QuestionAnsweringHead(PredictionHead):
                 # Check that the candidate's indices are valid and save them if they are
                 if self.valid_answer_idxs(start_idx, end_idx, n_non_padding, max_answer_length, seq_2_start_t):
                     score = start_end_matrix[start_idx, end_idx].item()
-                    top_candidates.append(Span(start_idx, end_idx, score, unit="token", level="passage"))
+                    top_candidates.append(QAAnswer(start_idx,
+                                                   end_idx,
+                                                   score,
+                                                   answer_type="span",
+                                                   offset_unit="token",
+                                                   aggregation_level="passage"))
 
         no_answer_score = start_end_matrix[0, 0].item()
-        top_candidates.append(Span(0, 0, no_answer_score, unit="token", pred_str="", level="passage"))
+        top_candidates.append(QAAnswer(0,
+                                       0,
+                                       no_answer_score,
+                                       answer_type="is_impossible",
+                                       offset_unit="token",
+                                       aggregation_level="passage"))
 
         return top_candidates
 
@@ -1211,12 +1221,12 @@ class QuestionAnsweringHead(PredictionHead):
         top_preds, no_ans_gaps = zip(*preds_d)
 
         # Takes document level prediction spans and returns string predictions
-        doc_preds = self.to_doc_preds(top_preds, no_ans_gaps, baskets)
+        doc_preds = self.to_qa_preds(top_preds, no_ans_gaps, baskets)
 
         return doc_preds
 
-    def to_doc_preds(self, top_preds, no_ans_gaps, baskets):
-        """ Groups Span objects together in a DocumentPred object  """
+    def to_qa_preds(self, top_preds, no_ans_gaps, baskets):
+        """ Groups Span objects together in a QAPred object  """
         ret = []
 
         # Iterate over each set of document level prediction
@@ -1255,19 +1265,25 @@ class QuestionAnsweringHead(PredictionHead):
 
             # Iterate over each prediction on the one document
             full_preds = []
-            for span, basket in zip(pred_d, baskets):
+            for qa_answer, basket in zip(pred_d, baskets):
                 # This should be a method of Span
-                pred_str, _, _ = span_to_string(span.start, span.end, token_offsets, document_text)
-                span.pred_str = pred_str
-                full_preds.append(span)
-            curr_doc_pred = DocumentPred(id=basket_id,
-                                         preds=full_preds,
-                                         document_text=document_text,
-                                         question=question,
-                                         no_ans_gap=no_ans_gap,
-                                         token_offsets=token_offsets,
-                                         context_window_size=self.context_window_size,
-                                         question_id=question_id)
+                pred_str, _, _ = span_to_string(qa_answer.offset_answer_start,
+                                                qa_answer.offset_answer_end,
+                                                token_offsets,
+                                                document_text)
+                qa_answer.context = pred_str
+                full_preds.append(qa_answer)
+            curr_doc_pred = QAPred(id=basket_id,
+                                   prediction=full_preds,
+                                   context=document_text,
+                                   question=question,
+                                   question_id=question_id,
+                                   token_offsets=token_offsets,
+                                   context_window_size=self.context_window_size,
+                                   aggregation_level="document",
+                                   answer_types=[],  # TODO
+                                   no_answer_gap=no_ans_gap,
+            )
             ret.append(curr_doc_pred)
         return ret
 
@@ -1365,10 +1381,13 @@ class QuestionAnsweringHead(PredictionHead):
 
         # Get all predictions in flattened list and sort by score
         pos_answers_flat = [
-            Span(span.start, span.end, span.score, sample_idx, n_samples, unit="token", level="passage")
+            QAAnswer(
+                qa_answer.offset_answer_start, qa_answer.offset_answer_end, qa_answer.score,
+                qa_answer.answer_type, offset_unit="token", aggregation_level="passage", sample_idx=sample_idx
+            )
             for sample_idx, passage_preds in enumerate(preds)
-            for span in passage_preds
-            if not (span.start == -1 and span.end == -1)
+            for qa_answer in passage_preds
+            if not (qa_answer.offset_answer_start == -1 and qa_answer.offset_answer_end == -1)
         ]
 
         # TODO add switch for more variation in answers, e.g. if varied_ans then never return overlapping answers
@@ -1378,13 +1397,16 @@ class QuestionAnsweringHead(PredictionHead):
         no_ans_gap = -min([nas - pbs for nas, pbs in zip(no_answer_scores, passage_best_score)])
 
         # "no answer" scores and positive answers scores are difficult to compare, because
-        # + a positive answer score is related to a specific text span
+        # + a positive answer score is related to a specific text qa_answer
         # - a "no answer" score is related to all input texts
         # Thus we compute the "no answer" score relative to the best possible answer and adjust it by
         # the most significant difference between scores.
         # Most significant difference: change top prediction from "no answer" to answer (or vice versa)
         best_overall_positive_score = max(x.score for x in pos_answer_dedup)
-        no_answer_pred = Span(-1, -1, best_overall_positive_score - no_ans_gap, None, n_samples, unit="token")
+        no_answer_pred = QAAnswer(
+            -1, -1, best_overall_positive_score - no_ans_gap,
+            answer_type="is_impossible", offset_unit="token", aggregation_level="document", sample_idx=None
+        )
 
         # Add no answer to positive answers, sort the order and return the n_best
         n_preds = [no_answer_pred] + pos_answer_dedup
@@ -1396,14 +1418,14 @@ class QuestionAnsweringHead(PredictionHead):
     def deduplicate(flat_pos_answers):
         # Remove duplicate spans that might be twice predicted in two different passages
         seen = {}
-        for span in flat_pos_answers:
-            if (span.start, span.end) not in seen:
-                seen[(span.start, span.end)] = span
+        for qa_answer in flat_pos_answers:
+            if (qa_answer.offset_answer_start, qa_answer.offset_answer_end) not in seen:
+                seen[(qa_answer.offset_answer_start, qa_answer.offset_answer_end)] = qa_answer
             else:
-                seen_score = seen[(span.start, span.end)].score
-                if span.score > seen_score:
-                    seen[(span.start, span.end)] = span
-        return [span for span in seen.values()]
+                seen_score = seen[(qa_answer.offset_answer_start, qa_answer.offset_answer_end)].score
+                if qa_answer.score > seen_score:
+                    seen[(qa_answer.offset_answer_start, qa_answer.offset_answer_end)] = qa_answer
+        return [qa_answer for qa_answer in seen.values()]
 
 
 
@@ -1430,10 +1452,10 @@ class QuestionAnsweringHead(PredictionHead):
 
     @staticmethod
     def get_no_answer_score(preds):
-        for span in preds:
-            start = span.start
-            end = span.end
-            score = span.score
+        for qa_answer in preds:
+            start = qa_answer.offset_answer_start
+            end = qa_answer.offset_answer_end
+            score = qa_answer.score
             if start == -1 and end == -1:
                 return score
         raise Exception
@@ -1442,12 +1464,12 @@ class QuestionAnsweringHead(PredictionHead):
     def pred_to_doc_idxs(pred, passage_start_t):
         """ Converts the passage level predictions to document level predictions. Note that on the doc level we
         don't have special tokens or question tokens. This means that a no answer
-        cannot be prepresented by a (0,0) span but will instead be represented by (-1, -1)"""
+        cannot be prepresented by a (0,0) qa_answer but will instead be represented by (-1, -1)"""
         new_pred = []
-        for span in pred:
-            start = span.start
-            end = span.end
-            score = span.score
+        for qa_answer in pred:
+            start = qa_answer.offset_answer_start
+            end = qa_answer.offset_answer_end
+            score = qa_answer.score
             if start == 0:
                 start = -1
             else:
@@ -1458,7 +1480,12 @@ class QuestionAnsweringHead(PredictionHead):
             else:
                 end += passage_start_t
                 assert start >= 0
-            new_pred.append(Span(start, end, score, level="doc"))
+            new_pred.append(QAAnswer(start,
+                                     end,
+                                     score,
+                                     answer_type=qa_answer.answer_type,
+                                     offset_unit="token",
+                                     aggregation_level="document"))
         return new_pred
 
     @staticmethod
