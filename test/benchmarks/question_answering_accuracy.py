@@ -72,12 +72,12 @@ def test_evaluation():
     gold_EM = 77.7478
     gold_f1 = 82.1557
     gold_tnrecall = 84.0646 # top 1 recall
-    gold_elapsed = 78 # 4x V100
+    gold_elapsed = 70 # 4x V100
     if test_assertions:
         np.testing.assert_allclose(em_score, gold_EM, rtol=0.001, err_msg=f"FARM Eval changed for EM by: {em_score-gold_EM}")
         np.testing.assert_allclose(f1_score, gold_f1, rtol=0.001, err_msg=f"FARM Eval changed for f1 score by: {f1_score-gold_f1}")
         np.testing.assert_allclose(tnrecall, gold_tnrecall, rtol=0.001, err_msg=f"FARM Eval changed for top 1 recall by: {em_score-gold_EM}")
-        np.testing.assert_allclose(elapsed, gold_elapsed, rtol=0.1, err_msg=f"FARM Eval speed changed significantly: {elapsed - gold_elapsed}")
+        np.testing.assert_allclose(elapsed, gold_elapsed, rtol=0.1, err_msg=f"FARM Eval speed changed significantly by: {elapsed - gold_elapsed} seconds")
 
 
     # 2. Test FARM predictions with outside eval script
@@ -103,9 +103,9 @@ def test_evaluation():
     f1_score = results_official["f1"]
     em_score = results_official["exact"]
 
-    gold_EM = 78.489
+    gold_EM = 78.4890
     gold_f1 = 81.7104
-    gold_elapsed = 74 # 4x V100
+    gold_elapsed = 66 # 4x V100
     print(elapsed)
     if test_assertions:
         np.testing.assert_allclose(em_score, gold_EM, rtol=0.001,
@@ -113,7 +113,7 @@ def test_evaluation():
         np.testing.assert_allclose(f1_score, gold_f1, rtol=0.001,
                                    err_msg=f"Eval with official script changed for f1 score by: {f1_score - gold_f1}")
         np.testing.assert_allclose(elapsed, gold_elapsed, rtol=0.1,
-                                   err_msg=f"Inference speed changed significantly: {elapsed - gold_elapsed}")
+                                   err_msg=f"Inference speed changed significantly by: {elapsed - gold_elapsed} seconds")
 
 
 def train_evaluation_single(seed=42):
@@ -203,7 +203,7 @@ def train_evaluation_single(seed=42):
                                err_msg=f"FARM Training changed for EM by: {em_score - gold_EM}")
     np.testing.assert_allclose(tnrecall, gold_tnrecall, rtol=0.01,
                                err_msg=f"FARM Training changed for top 1 recall by: {em_score - gold_EM}")
-    np.testing.assert_allclose(elapsed, gold_elapsed, rtol=0.1, err_msg=f"FARM Eval speed changed significantly: {elapsed - gold_elapsed}")
+    np.testing.assert_allclose(elapsed, gold_elapsed, rtol=0.1, err_msg=f"FARM Eval speed changed significantly by: {elapsed - gold_elapsed} seconds")
 
 if __name__ == "__main__":
     logging.disable(logging.WARNING)

@@ -16,7 +16,8 @@ from farm.utils import set_all_seeds, initialize_device_settings
 
 
 def test_doc_classification(caplog):
-    caplog.set_level(logging.CRITICAL)
+    if caplog:
+        caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=False)
@@ -86,8 +87,8 @@ def test_doc_classification(caplog):
     inf = Inferencer.load(save_dir, batch_size=2, num_processes=0)
     result = inf.inference_from_dicts(dicts=basic_texts)
     assert isinstance(result[0]["predictions"][0]["probability"], np.float32)
-    result2 = inf.inference_from_dicts(dicts=basic_texts, rest_api_schema=True)
+    result2 = inf.inference_from_dicts(dicts=basic_texts, return_json=True)
     assert result == result2
 
 if __name__ == "__main__":
-    test_doc_classification()
+    test_doc_classification(None)

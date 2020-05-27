@@ -15,9 +15,9 @@ from farm.conversion.onnx_optimization.bert_model_optimization import main as op
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import SquadProcessor
 from farm.modeling.language_model import LanguageModel
-from farm.modeling.prediction_head import PredictionHead, QuestionAnsweringHead, TokenClassificationHead, TextClassificationHead
+from farm.modeling.prediction_head import PredictionHead, QuestionAnsweringHead, TokenClassificationHead, TextClassificationHead, pick_single_fn
 from farm.modeling.tokenization import Tokenizer
-from farm.utils import MLFlowLogger as MlLogger
+from farm.utils import MLFlowLogger as MlLogger, stack
 
 logger = logging.getLogger(__name__)
 
@@ -81,17 +81,53 @@ class BaseAdaptiveModel:
         :type kwargs: object
         :return: predictions in the right format
         """
-        all_preds = []
-        # collect preds from all heads
-        # TODO add switch between single vs multiple prediction heads
-        for head, logits_for_head in zip(
-            self.prediction_heads, logits
-        ):
-            preds = head.formatted_preds(
-                logits=logits_for_head, **kwargs
-            )
-            all_preds.append(preds)
-        return all_preds
+        n_heads = len(self.prediction_heads)
+
+        if n_heads == 0:
+            # just return LM output (e.g. useful for extracting embeddings at inference time)
+            preds_final = self.language_model.formatted_preds(logits=logits, **kwargs)
+
+        elif n_heads == 1:
+            preds_final = []
+            # TODO This is very specific to QA, make more general
+            try:
+                preds_p = kwargs["preds_p"]
+                temp = [y[0] for y in preds_p]
+                preds_p_flat = [item for sublist in temp for item in sublist]
+                kwargs["preds_p"] = preds_p_flat
+            except KeyError:
+                kwargs["preds_p"] = None
+            head = self.prediction_heads[0]
+            logits_for_head = logits[0]
+            preds = head.formatted_preds(logits=logits_for_head, **kwargs)
+            # TODO This is very messy - we need better definition of what the output should look like
+            if type(preds) == list:
+                preds_final += preds
+            elif type(preds) == dict and "predictions" in preds:
+                preds_final.append(preds)
+
+        # This case is triggered by Natural Questions
+        else:
+            preds_final = [list() for _ in range(n_heads)]
+            preds = kwargs["preds_p"]
+            preds_for_heads = stack(preds)
+            logits_for_heads = [None] * n_heads
+
+            samples = [s for b in kwargs["baskets"] for s in b.samples]
+            kwargs["samples"] = samples
+
+            del kwargs["preds_p"]
+
+            for i, (head, preds_p_for_head, logits_for_head) in enumerate(zip(self.prediction_heads, preds_for_heads, logits_for_heads)):
+                preds = head.formatted_preds(logits=logits_for_head, preds_p=preds_p_for_head, **kwargs)
+                preds_final[i].append(preds)
+
+            # Look for a merge() function amongst the heads and if a single one exists, apply it to preds_final
+            merge_fn = pick_single_fn(self.prediction_heads, "merge_formatted_preds")
+            if merge_fn:
+                preds_final = merge_fn(preds_final)
+
+        return preds_final
 
     def connect_heads_with_processor(self, tasks, require_labels=True):
         """
@@ -220,6 +256,7 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         self.lm_output_types = (
             [lm_output_types] if isinstance(lm_output_types, str) else lm_output_types
         )
+        assert len(self.lm_output_types) == len(self.prediction_heads)
         self.log_params()
         # default loss aggregation function is a simple sum (without using any of the optional params)
         if not loss_aggregation_fn:
@@ -331,23 +368,6 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         loss = self.loss_aggregation_fn(all_losses, global_step=global_step, batch=kwargs)
         return loss
 
-    def logits_to_preds(self, logits, **kwargs):
-        """
-        Get predictions from all prediction heads.
-
-        :param logits: logits, can vary in shape and type, depending on task
-        :type logits: object
-        :param label_maps: Maps from label encoding to label string
-        :param label_maps: dict
-        :return: A list of all predictions from all prediction heads
-        """
-        all_preds = []
-        # collect preds from all heads
-        for head, logits_for_head in zip(self.prediction_heads, logits):
-            preds = head.logits_to_preds(logits=logits_for_head, **kwargs)
-            all_preds.append(preds)
-        return all_preds
-
     def prepare_labels(self, **kwargs):
         """
         Label conversion to original label space, per prediction head.
@@ -364,29 +384,6 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
             labels = head.prepare_labels(**kwargs)
             all_labels.append(labels)
         return all_labels
-
-    def formatted_preds(self, logits, **kwargs):
-        """
-        Format predictions for inference.
-
-        :param logits: model logits
-        :type logits: torch.tensor
-        :param kwargs: placeholder for passing generic parameters
-        :type kwargs: object
-        :return: predictions in the right format
-        """
-        all_preds = []
-
-        if len(self.prediction_heads) == 0:
-            # just return LM output (e.g. useful for extracting embeddings at inference time)
-            all_preds = self.language_model.formatted_preds(logits=logits, **kwargs)
-        else:
-            # collect preds from all heads (default)
-            # TODO add switch between single vs multiple prediction heads
-            for head, logits_for_head in zip(self.prediction_heads, logits):
-                preds = head.formatted_preds(logits=logits_for_head, **kwargs)
-                all_preds.append(preds)
-        return all_preds
 
     def forward(self, **kwargs):
         """
