@@ -75,6 +75,7 @@ def test_qa_format_and_results(adaptive_model_qa, streaming, multiprocessing_chu
                         "offset_context_start",
                         "offset_context_end",
                         "document_id",
+                        "classification"
                     )
                 )
                 == answer.keys()
