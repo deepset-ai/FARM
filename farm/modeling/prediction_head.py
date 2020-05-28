@@ -829,9 +829,8 @@ class BertLMHead(PredictionHead):
         return per_sample_loss
 
     def logits_to_preds(self, logits, **kwargs):
-        logits = logits.cpu().numpy()
         lm_label_ids = kwargs.get(self.label_tensor_name).cpu().numpy()
-        lm_preds_ids = logits.argmax(2)
+        lm_preds_ids = logits.argmax(2).cpu().numpy()
         # apply mask to get rid of predictions for non-masked tokens
         assert lm_preds_ids.shape == lm_label_ids.shape
         lm_preds_ids[lm_label_ids == -1] = -1
