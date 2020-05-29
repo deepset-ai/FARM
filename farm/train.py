@@ -72,10 +72,12 @@ class EarlyStopping:
         """
         Provide the evaluation value for the current evaluation. Returns true if stopping should occur.
         This will save the model, if necessary.
+
         :param eval: the current evaluation result
         :return: a tuple (stopprocessing, savemodel, evalvalue) indicating if processing should be stopped
         and if the current model should get saved and the evaluation value used.
         """
+
         if isinstance(self.metric, str):
             eval_value = eval_result[0][self.metric]
         else:
