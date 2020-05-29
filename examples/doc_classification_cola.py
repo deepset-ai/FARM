@@ -37,7 +37,7 @@ def doc_classification_cola():
     tokenizer = Tokenizer.load(pretrained_model_name_or_path=lang_model, do_lower_case=do_lower_case)
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
-    # Here we load Cola 2018 Data.
+    # Here we load Cola 2018 Data automaticaly if it is not available.
 
     label_list = ["0", "1"]
     metric = "mcc"

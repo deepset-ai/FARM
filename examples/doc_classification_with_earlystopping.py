@@ -44,7 +44,7 @@ def doc_classification_with_earlystopping():
         do_lower_case=do_lower_case)
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
-    # Here we load GermEval 2018 Data.
+    # Here we load GermEval 2018 Data automaticaly if it is not available.
 
     # The processor wants to know the possible labels ...
     label_list = ["OTHER", "OFFENSE"]
