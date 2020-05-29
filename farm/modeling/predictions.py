@@ -107,6 +107,12 @@ class QAAnswer:
         # TODO of len n_passages
         self.n_samples_in_doc = n_samples_in_doc
 
+    def to_doc_level(self, start, end):
+        self.offset_answer_start = start
+        self.offset_answer_end = end
+        self.aggregation_level = "document"
+
+
 class QAPred(Pred):
     """Question Answering predictions for a passage or a document"""
     def __init__(self,
@@ -131,6 +137,7 @@ class QAPred(Pred):
         self.ground_truth_answer = ground_truth_answer
         self.no_answer_gap = no_answer_gap
         self.answer_types = answer_types
+        self.n_samples = prediction[0].n_samples_in_doc
 
         self.token_offsets = token_offsets  # TODO only needed for to_json() - can we get rid?
         self.context_window_size = context_window_size  # TODO Do we really need this?
@@ -138,6 +145,46 @@ class QAPred(Pred):
 
         if len(self.prediction) > 0:
             assert type(self.prediction[0]) == QAAnswer
+
+    def to_json(self):
+        answers = self.answers_to_json()
+        ret = {
+            "task": "qa",
+            "predictions": [
+                {
+                    "question": self.question,
+                    "question_id": self.id,
+                    "ground_truth": None,
+                    "answers": answers,
+                    "no_ans_gap": self.no_answer_gap # Add no_ans_gap to current no_ans_boost for switching top prediction
+                }
+            ],
+        }
+        return ret
+
+    def answers_to_json(self):
+        ret = []
+
+        # iterate over the top_n predictions of the one document
+        for qa_answer in self.prediction:
+            string = qa_answer.answer
+            start_t = qa_answer.offset_answer_start
+            end_t = qa_answer.offset_answer_end
+            score = qa_answer.score
+
+            _, ans_start_ch, ans_end_ch = span_to_string(start_t, end_t, self.token_offsets, self.context)
+            context_string, context_start_ch, context_end_ch = self.create_context(ans_start_ch, ans_end_ch, self.context)
+            curr = {"score": score,
+                    "probability": -1,
+                    "answer": string,
+                    "offset_answer_start": ans_start_ch,
+                    "offset_answer_end": ans_end_ch,
+                    "context": context_string,
+                    "offset_context_start": context_start_ch,
+                    "offset_context_end": context_end_ch,
+                    "document_id": self.id}
+            ret.append(curr)
+        return ret
 
     def create_context(self, ans_start_ch, ans_end_ch, clear_text):
         if ans_start_ch == 0 and ans_end_ch == 0:
@@ -160,7 +207,7 @@ class QAPred(Pred):
         return context_string, context_start_ch, context_end_ch
 
     def to_squad_eval(self):
-        preds = [x.to_list() for x in self.preds]
+        preds = [x.to_list() for x in self.prediction]
         ret = {"id": self.id,
                "preds": preds}
         return ret

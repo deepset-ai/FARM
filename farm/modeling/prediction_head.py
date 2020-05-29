@@ -1105,16 +1105,17 @@ class QuestionAnsweringHead(PredictionHead):
         # Get the n_best candidate answers for each sample that are valid (via some heuristic checks)
         for sample_idx in range(batch_size):
             sample_top_n = self.get_top_candidates(sorted_candidates[sample_idx],
-                                                           start_end_matrix[sample_idx],
-                                                           n_non_padding[sample_idx].item(),
-                                                           max_answer_length,
-                                                           seq_2_start_t[sample_idx].item())
+                                                   start_end_matrix[sample_idx],
+                                                   n_non_padding[sample_idx].item(),
+                                                   max_answer_length,
+                                                   seq_2_start_t[sample_idx].item(),
+                                                   sample_idx)
             all_top_n.append(sample_top_n)
 
         return all_top_n
 
     def get_top_candidates(self, sorted_candidates, start_end_matrix,
-                           n_non_padding, max_answer_length, seq_2_start_t):
+                           n_non_padding, max_answer_length, seq_2_start_t, sample_idx):
         """ Returns top candidate answers as a list of Span objects. Operates on a matrix of summed start and end logits.
         This matrix corresponds to a single sample (includes special tokens, question tokens, passage tokens).
         This method always returns a list of len n_best + 1 (it is comprised of the n_best positive answers along with the one no_answer)"""
@@ -1142,7 +1143,8 @@ class QuestionAnsweringHead(PredictionHead):
                                                    score,
                                                    answer_type="span",
                                                    offset_unit="token",
-                                                   aggregation_level="passage"))
+                                                   aggregation_level="passage",
+                                                   sample_idx=sample_idx))
 
         no_answer_score = start_end_matrix[0, 0].item()
         top_candidates.append(QAAnswer(0,
@@ -1150,7 +1152,8 @@ class QuestionAnsweringHead(PredictionHead):
                                        no_answer_score,
                                        answer_type="is_impossible",
                                        offset_unit="token",
-                                       aggregation_level="passage"))
+                                       aggregation_level="passage",
+                                       sample_idx=None))
 
         return top_candidates
 
@@ -1383,7 +1386,8 @@ class QuestionAnsweringHead(PredictionHead):
         pos_answers_flat = [
             QAAnswer(
                 qa_answer.offset_answer_start, qa_answer.offset_answer_end, qa_answer.score,
-                qa_answer.answer_type, offset_unit="token", aggregation_level="passage", sample_idx=sample_idx
+                qa_answer.answer_type, offset_unit="token", aggregation_level="passage",
+                sample_idx=sample_idx, n_samples_in_doc=n_samples
             )
             for sample_idx, passage_preds in enumerate(preds)
             for qa_answer in passage_preds
@@ -1405,7 +1409,8 @@ class QuestionAnsweringHead(PredictionHead):
         best_overall_positive_score = max(x.score for x in pos_answer_dedup)
         no_answer_pred = QAAnswer(
             -1, -1, best_overall_positive_score - no_ans_gap,
-            answer_type="is_impossible", offset_unit="token", aggregation_level="document", sample_idx=None
+            answer_type="is_impossible", offset_unit="token", aggregation_level="document",
+            sample_idx=None, n_samples_in_doc=n_samples
         )
 
         # Add no answer to positive answers, sort the order and return the n_best
@@ -1469,7 +1474,6 @@ class QuestionAnsweringHead(PredictionHead):
         for qa_answer in pred:
             start = qa_answer.offset_answer_start
             end = qa_answer.offset_answer_end
-            score = qa_answer.score
             if start == 0:
                 start = -1
             else:
@@ -1480,12 +1484,8 @@ class QuestionAnsweringHead(PredictionHead):
             else:
                 end += passage_start_t
                 assert start >= 0
-            new_pred.append(QAAnswer(start,
-                                     end,
-                                     score,
-                                     answer_type=qa_answer.answer_type,
-                                     offset_unit="token",
-                                     aggregation_level="document"))
+            qa_answer.to_doc_level(start, end)
+            new_pred.append(qa_answer)
         return new_pred
 
     @staticmethod
@@ -1531,18 +1531,18 @@ class QuestionAnsweringHead(PredictionHead):
         cls_preds_grouped = chunk(cls_preds, samples_per_doc)
 
         for qa_doc_pred, cls_preds in zip(qa_preds, cls_preds_grouped):
-            pred_spans = qa_doc_pred.preds
-            pred_spans_new = []
-            for pred_span in pred_spans:
-                sample_idx = pred_span.sample_idx
+            pred_qa_answers = qa_doc_pred.prediction
+            pred_qa_answers_new = []
+            for pred_qa_answer in pred_qa_answers:
+                sample_idx = pred_qa_answer.sample_idx
                 if sample_idx is not None:
                     cls_pred = cls_preds[sample_idx]["label"]
                 # i.e. if is_impossible
                 else:
-                    cls_pred = None
-                pred_span.classification = cls_pred
-                pred_spans_new.append(pred_span)
-            qa_doc_pred.preds = pred_spans_new
+                    cls_pred = "is_impossible"
+                pred_qa_answer.answer = cls_pred
+                pred_qa_answers_new.append(pred_qa_answer)
+            qa_doc_pred.preds = pred_qa_answers_new
             ret.append(qa_doc_pred)
         return ret
 
