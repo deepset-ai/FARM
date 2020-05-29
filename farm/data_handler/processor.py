@@ -390,7 +390,7 @@ class TextClassificationProcessor(Processor):
         :param max_seq_len: Samples are truncated after this many tokens.
         :type max_seq_len: int
         :param data_dir: The directory in which the train and dev files can be found.
-                         The dataset will be loaded automaticaly
+                         If not available the dataset will be loaded automaticaly
                          if the last directory has the same name as a predefined dataset.
                          These predefined datasets are defined as the keys in the dict at
                          `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
