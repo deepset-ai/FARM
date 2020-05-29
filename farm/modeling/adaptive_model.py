@@ -426,9 +426,11 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
     def forward_lm(self, **kwargs):
         """
         Forward pass for the language model
+
         :param kwargs:
         :return:
         """
+
         # Check if we have to extract from a special layer of the LM (default = last layer)
         try:
             extraction_layer = self.language_model.extraction_layer
