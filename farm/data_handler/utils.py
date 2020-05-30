@@ -70,8 +70,9 @@ def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=N
     columns = list(rename_columns.keys())
     df = df[columns]
     for source_column, label_name in rename_columns.items():
-        df[label_name] = df[source_column].fillna("")
-        df.drop(columns=[source_column], inplace=True)
+        if label_name != source_column:
+            df[label_name] = df[source_column].fillna("")
+            df.drop(columns=[source_column], inplace=True)
     # convert df to one dict per row
     raw_dict = df.to_dict(orient="records")
     return raw_dict
