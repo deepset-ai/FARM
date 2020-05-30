@@ -1538,6 +1538,7 @@ class RegressionProcessor(Processor):
         scaler_mean=None,
         scaler_scale=None,
         proxies=None,
+        text_column_name="text",
         **kwargs
     ):
         """
@@ -1582,6 +1583,8 @@ class RegressionProcessor(Processor):
         :param proxies: proxy configuration to allow downloads of remote datasets.
                         Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
         :type proxies: dict
+        :param text_column_name: name of the column in the input csv/tsv that shall be used as training text
+        :type text_column_name: str
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
         """
@@ -1603,10 +1606,20 @@ class RegressionProcessor(Processor):
         )
 
         # Note that label_list is being hijacked to store the scaling mean and scale
-        self.add_task(name="regression", metric="mse", label_list=[scaler_mean, scaler_scale], label_column_name=label_column_name, task_type="regression", label_name=label_name)
+        self.add_task(name="regression",
+                      metric="mse",
+                      label_list=[scaler_mean, scaler_scale],
+                      label_column_name=label_column_name,
+                      task_type="regression",
+                      label_name=label_name,
+                      text_column_name=text_column_name)
 
     def file_to_dicts(self, file: str) -> [dict]:
-        column_mapping = {task["label_column_name"]: task["label_name"] for task in self.tasks.values()}
+        column_mapping = {}
+        for task in self.tasks.values():
+            column_mapping[task["label_column_name"]] = task["label_name"]
+            if (task["text_column_name"] is not None) and (task["text_column_name"] != "text"):
+                column_mapping[task["text_column_name"]] = "text"
         dicts = read_tsv(
             rename_columns=column_mapping,
             filename=file,
