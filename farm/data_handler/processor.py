@@ -241,7 +241,8 @@ class Processor(ABC):
                 config[key] = value
         return config
 
-    def add_task(self, name,  metric, label_list, label_column_name=None, label_name=None, task_type=None):
+    def add_task(self, name,  metric, label_list, label_column_name=None,
+                 label_name=None, task_type=None, text_column_name=None):
         if type(label_list) is not list:
             raise ValueError(f"Argument `label_list` must be of type list. Got: f{type(label_list)}")
 
@@ -254,6 +255,7 @@ class Processor(ABC):
             "label_tensor_name": label_tensor_name,
             "label_name": label_name,
             "label_column_name": label_column_name,
+            "text_column_name": text_column_name,
             "task_type": task_type
         }
 
@@ -383,6 +385,7 @@ class TextClassificationProcessor(Processor):
         header=0,
         proxies=None,
         max_samples=None,
+        text_column_name="text",
         **kwargs
     ):
         """
@@ -425,6 +428,8 @@ class TextClassificationProcessor(Processor):
         :param proxies: proxy configuration to allow downloads of remote datasets.
                         Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
         :type proxies: dict
+        :param text_column_name: name of the column in the input csv/tsv that shall be used as training text
+        :type text_column_name: str
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
         """
@@ -458,13 +463,18 @@ class TextClassificationProcessor(Processor):
                           metric=metric,
                           label_list=label_list,
                           label_column_name=label_column_name,
+                          text_column_name=text_column_name,
                           task_type=task_type)
         else:
             logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
                         "using the default task or add a custom task later via processor.add_task()")
 
     def file_to_dicts(self, file: str) -> [dict]:
-        column_mapping = {task["label_column_name"]: task["label_name"] for task in self.tasks.values()}
+        column_mapping = {}
+        for task in self.tasks.values():
+            column_mapping[task["label_column_name"]] = task["label_name"]
+            if (task["text_column_name"] is not None) and (task["text_column_name"] != "text"):
+                column_mapping[task["text_column_name"]] = "text"
         dicts = read_tsv(
             filename=file,
             delimiter=self.delimiter,

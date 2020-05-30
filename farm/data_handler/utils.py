@@ -67,7 +67,7 @@ def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=N
     # let's rename our target columns to the default names FARM expects:
     # "text": contains the text
     # "text_classification_label": contains a label for text classification
-    columns = ["text"] + list(rename_columns.keys())
+    columns = list(rename_columns.keys())
     df = df[columns]
     for source_column, label_name in rename_columns.items():
         df[label_name] = df[source_column].fillna("")
