@@ -42,11 +42,11 @@ class EarlyStopping:
         """
         :param save_dir: the directory where to save the final best model, if None, no saving.
         :param metric: name of dev set metric to monitor (default: loss) to get extracted from the 0th head or
-        a function that extracts a value from the trainer dev evaluation result.
-        NOTE: this is different from the metric to get specified for the processor which defines how
-        to calculate one or more evaluation matric values from prediction/target sets, while this
-        specifies the name of one particular such metric value or a method to calculate that value
-        from the result returned from a processor metric.
+                       a function that extracts a value from the trainer dev evaluation result.
+                       NOTE: this is different from the metric to get specified for the processor which defines how
+                       to calculate one or more evaluation matric values from prediction/target sets, while this
+                       specifies the name of one particular such metric value or a method to calculate that value
+                       from the result returned from a processor metric.
         :param mode: "min" or "max"
         :param patience: how many evaluations to wait after the best evaluation to stop
         :param min_delta: minimum difference to a previous best value to count as an improvement.
@@ -75,7 +75,7 @@ class EarlyStopping:
 
         :param eval: the current evaluation result
         :return: a tuple (stopprocessing, savemodel, evalvalue) indicating if processing should be stopped
-        and if the current model should get saved and the evaluation value used.
+                 and if the current model should get saved and the evaluation value used.
         """
 
         if isinstance(self.metric, str):
