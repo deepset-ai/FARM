@@ -473,8 +473,7 @@ class TextClassificationProcessor(Processor):
         column_mapping = {}
         for task in self.tasks.values():
             column_mapping[task["label_column_name"]] = task["label_name"]
-            if (task["text_column_name"] is not None) and (task["text_column_name"] != "text"):
-                column_mapping[task["text_column_name"]] = "text"
+            column_mapping[task["text_column_name"]] = "text"
         dicts = read_tsv(
             filename=file,
             delimiter=self.delimiter,
@@ -1618,8 +1617,7 @@ class RegressionProcessor(Processor):
         column_mapping = {}
         for task in self.tasks.values():
             column_mapping[task["label_column_name"]] = task["label_name"]
-            if (task["text_column_name"] is not None) and (task["text_column_name"] != "text"):
-                column_mapping[task["text_column_name"]] = "text"
+            column_mapping[task["text_column_name"]] = "text"
         dicts = read_tsv(
             rename_columns=column_mapping,
             filename=file,
