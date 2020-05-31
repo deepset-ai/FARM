@@ -158,7 +158,8 @@ class Processor(ABC):
 
         sig = signature(cls.subclasses[processor_name])
         unused_args = {k: v for k, v in kwargs.items() if k not in sig.parameters}
-        logger.debug(
+        used_kwargs = {k: v for k, v in kwargs.items() if k not in list(unused_args.keys())}
+        logger.warning(
             f"Got more parameters than needed for loading {processor_name}: {unused_args}. "
             f"Those won't be used!"
         )
@@ -170,7 +171,7 @@ class Processor(ABC):
             dev_filename=dev_filename,
             test_filename=test_filename,
             dev_split=dev_split,
-            **kwargs,
+            **used_kwargs,
         )
 
         return processor
@@ -383,7 +384,6 @@ class TextClassificationProcessor(Processor):
         header=0,
         proxies=None,
         max_samples=None,
-        **kwargs
     ):
         """
         :param tokenizer: Used to split a sentence (str) into tokens.
@@ -553,7 +553,6 @@ class InferenceProcessor(Processor):
         self,
         tokenizer,
         max_seq_len,
-        **kwargs,
     ):
 
         super(InferenceProcessor, self).__init__(
@@ -633,8 +632,7 @@ class NERProcessor(Processor):
         test_filename="test.txt",
         dev_split=0.0,
         delimiter="\t",
-        proxies=None,
-        **kwargs
+        proxies=None
     ):
         """
         :param tokenizer: Used to split a sentence (str) into tokens.
@@ -662,8 +660,6 @@ class NERProcessor(Processor):
         :param proxies: proxy configuration to allow downloads of remote datasets.
                         Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
         :type proxies: dict
-        :param kwargs: placeholder for passing generic parameters
-        :type kwargs: object
         """
         # Custom processor attributes
         self.delimiter = delimiter
@@ -733,8 +729,7 @@ class BertStyleLMProcessor(Processor):
         next_sent_pred=True,
         next_sent_pred_style="sentence",
         max_docs=None,
-        proxies=None,
-        **kwargs
+        proxies=None
     ):
         """
         :param tokenizer: Used to split a sentence (str) into tokens.
@@ -770,8 +765,6 @@ class BertStyleLMProcessor(Processor):
         :param proxies: proxy configuration to allow downloads of remote datasets.
                         Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
         :type proxies: dict
-        :param kwargs: placeholder for passing generic parameters
-        :type kwargs: object
         """
 
         self.delimiter = ""
@@ -975,7 +968,6 @@ class SquadProcessor(Processor):
         doc_stride=128,
         max_query_length=64,
         proxies=None,
-        **kwargs
     ):
         """
         :param tokenizer: Used to split a sentence (str) into tokens.
@@ -1000,8 +992,6 @@ class SquadProcessor(Processor):
         :type doc_stride: int
         :param max_query_length: Maximum length of the question (in number of subword tokens)
         :type max_query_length: int
-        :param kwargs: placeholder for passing generic parameters
-        :type kwargs: object
         """
 
         self.target = "classification"
@@ -1157,8 +1147,8 @@ class NaturalQuestionsProcessor(Processor):
         proxies=None,
         keep_is_impossible=0.02,
         downsample_context_size=None,
-        inference=False,
-        **kwargs):
+        inference=False
+    ):
         """
         Deals with all the preprocessing steps needed for Natural Questions. Follows Alberti 2019 et al. (https://arxiv.org/abs/1901.08634)
         in merging multiple disjoint short answers into the one longer label span and also by downsampling
@@ -1191,8 +1181,6 @@ class NaturalQuestionsProcessor(Processor):
         :param inference: Whether we are currently using the Processsor for model inference. If True, the
                           keep_is_impossible will be overridden and set to 1
         :type inference: bool
-        :param kwargs: placeholder for passing generic parameters
-        :type kwargs: object
         """
         self.target = "classification"
         self.ph_output_type = "per_token_squad"
@@ -1508,7 +1496,6 @@ class RegressionProcessor(Processor):
         scaler_mean=None,
         scaler_scale=None,
         proxies=None,
-        **kwargs
     ):
         """
         :param tokenizer: Used to split a sentence (str) into tokens.
@@ -1548,8 +1535,6 @@ class RegressionProcessor(Processor):
         :param proxies: proxy configuration to allow downloads of remote datasets.
                         Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
         :type proxies: dict
-        :param kwargs: placeholder for passing generic parameters
-        :type kwargs: object
         """
 
         # Custom processor attributes
