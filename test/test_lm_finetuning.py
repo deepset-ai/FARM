@@ -23,7 +23,7 @@ def test_lm_finetuning(caplog):
     n_epochs = 1
     batch_size = 1
     evaluate_every = 2
-    lang_model = "bert-base-cased"
+    lang_model = "distilbert-base-cased"
 
     tokenizer = Tokenizer.load(
         pretrained_model_name_or_path=lang_model, do_lower_case=False
