@@ -22,7 +22,7 @@ def test_qa(caplog=None):
     batch_size = 2
     n_epochs = 1
     evaluate_every = 4
-    base_LM_model = "distilbert-base-uncased"
+    base_LM_model = "albert-base-v2"
 
     tokenizer = Tokenizer.load(
         pretrained_model_name_or_path=base_LM_model, do_lower_case=True
