@@ -144,12 +144,14 @@ class Processor(ABC):
         :type max_seq_len: int
         :param train_filename: The name of the file containing training data.
         :type train_filename: str
-        :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
+        :param dev_filename: The name of the file containing the dev data.
+                             If None and 0.0 < dev_split < 1.0 the dev set
                              will be a slice of the train set.
         :type dev_filename: str or None
         :param test_filename: The name of the file containing test data.
         :type test_filename: str
-        :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
+        :param dev_split: The proportion of the train set that will sliced.
+                          Only works if dev_filename is set to None
         :type dev_split: float
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
