@@ -280,7 +280,7 @@ class TextClassificationHead(PredictionHead):
         self.task_name = task_name #used for connecting with the right output of the processor
         self.class_weights = class_weights
 
-        if class_weights:
+        if class_weights is not None:
             logger.info(f"Using class weights for task '{self.task_name}': {self.class_weights}")
             balanced_weights = nn.Parameter(torch.tensor(class_weights), requires_grad=False)
         else:
@@ -460,7 +460,7 @@ class MultiLabelTextClassificationHead(PredictionHead):
         self.class_weights = class_weights
         self.pred_threshold = pred_threshold
 
-        if class_weights:
+        if class_weights is not None:
             logger.info(f"Using class weights for task '{self.task_name}': {self.class_weights}")
             #TODO must balanced weight really be a instance attribute?
             self.balanced_weights = nn.Parameter(
