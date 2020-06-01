@@ -1559,8 +1559,8 @@ class RegressionProcessor(Processor):
         :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
         :type label_list: list
         :param metric: name of metric that shall be used for evaluation, e.g. "acc" or "f1_macro".
-                 Alternatively you can also supply a custom function, that takes preds and labels as args and returns a numerical value.
-                 For using multiple metrics supply them as a list, e.g ["acc", my_custom_metric_fn].
+                 Alternatively you can also supply a custom function, that takes preds and labels as args and returns a
+                 numerical value. For using multiple metrics supply them as a list, e.g ["acc", my_custom_metric_fn].
         :type metric: str, function, or list
         :param train_filename: The name of the file containing training data.
         :type train_filename: str
