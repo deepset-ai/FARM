@@ -38,6 +38,7 @@ def doc_classification_cola():
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
     # Here we load Cola 2018 Data automaticaly if it is not available.
+    # GermEval 2018 only has train.tsv and test.tsv dataset - no dev.tsv
 
     label_list = ["0", "1"]
     metric = "mcc"
