@@ -1,4 +1,6 @@
 import pytest
+import numpy as np
+from farm.infer import Inferencer
 
 
 @pytest.mark.parametrize("streaming", [True, False])
@@ -64,19 +66,34 @@ def test_qa_format_and_results(adaptive_model_qa, streaming, multiprocessing_chu
         assert answer["answer"] in answer["context"]
         assert answer["answer"] == ground_truth
         assert (
-                set(
-                    (
-                        "answer",
-                        "score",
-                        "probability",
-                        "offset_answer_start",
-                        "offset_answer_end",
-                        "context",
-                        "offset_context_start",
-                        "offset_context_end",
-                        "document_id",
-                        "classification"
-                    )
-                )
+                {"answer", "score", "probability", "offset_answer_start", "offset_answer_end", "context",
+                 "offset_context_start", "offset_context_end", "document_id", "classification"}
                 == answer.keys()
         )
+
+
+@pytest.mark.parametrize("num_processes", [2, 0])
+def test_embeddings_extraction(num_processes):
+    # Input
+    basic_texts = [
+        {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot ist"},
+        {"text": "Martin Müller spielt Fussball"},
+    ]
+
+    # Load model, tokenizer and processor directly into Inferencer
+    model = Inferencer.load(
+        model_name_or_path="bert-base-german-cased",
+        task_type="embeddings",
+        gpu=False,
+        batch_size=5,
+        extraction_strategy="reduce_mean",
+        extraction_layer=-2,
+        num_processes=num_processes)
+
+    # Get embeddings for input text (you can vary the strategy and layer)
+    result = model.inference_from_dicts(dicts=basic_texts)
+    assert result[0]["context"] == ['Schar', '##tau', 'sagte', 'dem', 'Tages', '##spiegel', ',', 'dass', 'Fischer', 'ein', 'Id', '##iot', 'ist']
+    assert np.isclose(result[0]["vec"][0], 1.50174605e-02)
+
+if __name__ == "__main__":
+    test_embeddings_extraction(0)
