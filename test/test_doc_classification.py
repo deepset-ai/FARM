@@ -46,7 +46,7 @@ def test_doc_classification(caplog):
         batch_size=batch_size)
 
     language_model = LanguageModel.load(lang_model)
-    prediction_head = TextClassificationHead(num_labels=2,class_weights=data_silo.calculate_class_weights(task_name="text_classification"))
+    prediction_head = TextClassificationHead(num_labels=2)
     model = AdaptiveModel(
         language_model=language_model,
         prediction_heads=[prediction_head],
