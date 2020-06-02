@@ -112,6 +112,16 @@ class QAAnswer:
         self.offset_answer_end = end
         self.aggregation_level = "document"
 
+    def add_answer(self, string):
+        if string == "":
+            self.answer = "is_impossible"
+            assert self.offset_answer_end == -1
+            assert self.offset_answer_start == -1
+        else:
+            self.answer = "string"
+            assert self.offset_answer_end >= 0
+            assert self.offset_answer_start >= 0
+
 
 class QAPred(Pred):
     """Question Answering predictions for a passage or a document"""

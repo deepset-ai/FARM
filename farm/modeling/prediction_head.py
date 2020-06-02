@@ -1274,7 +1274,7 @@ class QuestionAnsweringHead(PredictionHead):
                                                 qa_answer.offset_answer_end,
                                                 token_offsets,
                                                 document_text)
-                qa_answer.context = pred_str
+                qa_answer.add_answer(pred_str)
                 full_preds.append(qa_answer)
             curr_doc_pred = QAPred(id=basket_id,
                                    prediction=full_preds,
