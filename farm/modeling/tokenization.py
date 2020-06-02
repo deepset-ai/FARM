@@ -31,6 +31,7 @@ from transformers.tokenization_roberta import RobertaTokenizer
 from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_xlm_roberta import XLMRobertaTokenizer
 from transformers.tokenization_xlnet import XLNetTokenizer
+from transformers.tokenization_camembert import CamembertTokenizer
 
 from farm.modeling.wordembedding_utils import load_from_cache, EMBEDDING_VOCAB_FILES_MAP, run_split_on_punc
 
@@ -69,6 +70,8 @@ class Tokenizer:
                 tokenizer_class = "XLMRobertaTokenizer"
             elif "roberta" in pretrained_model_name_or_path.lower():
                 tokenizer_class = "RobertaTokenizer"
+            elif "camembert" in pretrained_model_name_or_path.lower() or "umberto" in pretrained_model_name_or_path:
+                tokenizer_class = "CamembertTokenizer"
             elif "distilbert" in pretrained_model_name_or_path.lower():
                 tokenizer_class = "DistilBertTokenizer"
             elif "bert" in pretrained_model_name_or_path.lower():
@@ -104,6 +107,8 @@ class Tokenizer:
             ret = ElectraTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "EmbeddingTokenizer":
             ret = EmbeddingTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        elif tokenizer_class == "CamembertTokenizer":
+            ret = CamembertTokenizer._from_pretrained(pretrained_model_name_or_path, **kwargs)
         if ret is None:
             raise Exception("Unable to load tokenizer")
         else:
