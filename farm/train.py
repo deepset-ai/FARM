@@ -246,7 +246,7 @@ class Trainer:
                         resume_from_step = None
                     continue
 
-                progress_bar.set_description(f"Train epoch {epoch}/{self.epochs} (Cur. train loss: {loss:.4f})")
+                progress_bar.set_description(f"Train epoch {epoch}/{self.epochs-1} (Cur. train loss: {loss:.4f})")
 
                 # Move batch of samples to device
                 batch = {key: batch[key].to(self.device) for key in batch}
