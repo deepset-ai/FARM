@@ -389,7 +389,11 @@ class TextClassificationProcessor(Processor):
         :param tokenizer: Used to split a sentence (str) into tokens.
         :param max_seq_len: Samples are truncated after this many tokens.
         :type max_seq_len: int
-        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
+        :param data_dir: The directory in which the train and dev files can be found.
+                         If not available the dataset will be loaded automaticaly
+                         if the last directory has the same name as a predefined dataset.
+                         These predefined datasets are defined as the keys in the dict at
+                         `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
         :type data_dir: str
         :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
         :type label_list: list
@@ -640,7 +644,11 @@ class NERProcessor(Processor):
         :param tokenizer: Used to split a sentence (str) into tokens.
         :param max_seq_len: Samples are truncated after this many tokens.
         :type max_seq_len: int
-        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
+        :param data_dir: The directory in which the train and dev files can be found.
+                         If not available the dataset will be loaded automaticaly
+                         if the last directory has the same name as a predefined dataset.
+                         These predefined datasets are defined as the keys in the dict at
+                         `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
         :type data_dir: str
         :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
         :type label_list: list
@@ -740,7 +748,11 @@ class BertStyleLMProcessor(Processor):
         :param tokenizer: Used to split a sentence (str) into tokens.
         :param max_seq_len: Samples are truncated after this many tokens.
         :type max_seq_len: int
-        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
+        :param data_dir: The directory in which the train and dev files can be found.
+                         If not available the dataset will be loaded automaticaly
+                         if the last directory has the same name as a predefined dataset.
+                         These predefined datasets are defined as the keys in the dict at
+                         `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
         :type data_dir: str
         :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
         :type label_list: list
@@ -981,7 +993,11 @@ class SquadProcessor(Processor):
         :param tokenizer: Used to split a sentence (str) into tokens.
         :param max_seq_len: Samples are truncated after this many tokens.
         :type max_seq_len: int
-        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
+        :param data_dir: The directory in which the train and dev files can be found.
+                         If not available the dataset will be loaded automaticaly
+                         if the last directory has the same name as a predefined dataset.
+                         These predefined datasets are defined as the keys in the dict at
+                         `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
         :type data_dir: str
         :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
         :type label_list: list
@@ -1167,7 +1183,11 @@ class NaturalQuestionsProcessor(Processor):
         :param tokenizer: Used to split a sentence (str) into tokens.
         :param max_seq_len: Samples are truncated after this many tokens.
         :type max_seq_len: int
-        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
+        :param data_dir: The directory in which the train and dev files can be found.
+                         If not available the dataset will be loaded automaticaly
+                         if the last directory has the same name as a predefined dataset.
+                         These predefined datasets are defined as the keys in the dict at
+                         `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
         :type data_dir: str
         :param train_filename: The name of the file containing training data.
         :type train_filename: str
@@ -1514,7 +1534,11 @@ class RegressionProcessor(Processor):
         :param tokenizer: Used to split a sentence (str) into tokens.
         :param max_seq_len: Samples are truncated after this many tokens.
         :type max_seq_len: int
-        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
+        :param data_dir: The directory in which the train and dev files can be found.
+                         If not available the dataset will be loaded automaticaly
+                         if the last directory has the same name as a predefined dataset.
+                         These predefined datasets are defined as the keys in the dict at
+                         `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
         :type data_dir: str
         :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
         :type label_list: list
