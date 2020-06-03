@@ -55,7 +55,8 @@ def doc_classifcation():
     tokenizer = Tokenizer.load(pretrained_model_name_or_path=ft_converter.output_path, do_lower_case=do_lower_case)
 
     # 3. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
-    # Here we load GermEval 2018 Data.
+    # Here we load GermEval 2018 Data automaticaly if it is not available.
+    # GermEval 2018 only has train.tsv and test.tsv dataset - no dev.tsv
     label_list = ["OTHER", "OFFENSE"]
     metric = "f1_macro"
 
