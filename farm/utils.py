@@ -74,8 +74,8 @@ def initialize_device_settings(use_cuda, local_rank=-1, use_amp=None):
         else:
             n_gpu = torch.cuda.device_count()
     else:
-        torch.cuda.set_device(local_rank)
         device = torch.device("cuda", local_rank)
+        torch.cuda.set_device(device)
         n_gpu = 1
         # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
         torch.distributed.init_process_group(backend="nccl")

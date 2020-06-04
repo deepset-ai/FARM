@@ -29,7 +29,7 @@ def parse_arguments():
 
 def train_from_scratch():
     args = parse_arguments()
-    use_amp = None  # using "O2" here allows roughly 30% larger batch_sizes and 45% speed up
+    use_amp = "O2"  # using "O2" here allows roughly 30% larger batch_sizes and 45% speed up
 
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
@@ -46,11 +46,15 @@ def train_from_scratch():
     device, n_gpu = initialize_device_settings(use_cuda=True, local_rank=args.local_rank, use_amp=use_amp)
 
     save_dir = Path("saved_models/train_from_scratch")
-    data_dir = Path("data/lm_finetune_nips")
+    data_dir = Path("data/test")
 
-    # Split train file
-    # randomize_and_split_file(data_dir / "train.txt", output_dir=Path("data/split_files"))
-    train_filename = "train.txt"  # or Path("data/split_files") for multiple files
+    # Option A) just using a single file
+    # train_filename = "train.txt"
+
+    # Option B) (recommended when using StreamingDataSilo):
+    # split and shuffle that file to have random order within and across epochs
+    randomize_and_split_file(data_dir / "train.txt", output_dir=Path("data/split_files"))
+    train_filename = Path("data/split_files")
 
     dev_filename = "dev.txt"
 
@@ -68,7 +72,7 @@ def train_from_scratch():
     checkpoints_to_keep = 4
     next_sent_pred_style = "bert-style" #or "sentence"
     max_docs = None
-    
+
     # Choose enough workers to queue sufficient batches during training.
     # Optimal number depends on your GPU speed, CPU speed and number of cores
     # 16 works well on a 4x V100 machine with 16 cores (AWS: p3.8xlarge). For a single GPU you will need less.

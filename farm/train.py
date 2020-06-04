@@ -128,7 +128,8 @@ class Trainer:
         from_step=0,
         global_step=0,
         evaluator_test=True,
-        disable_tqdm=False
+        disable_tqdm=False,
+        max_grad_norm=1.0
     ):
         """
         :param optimizer: An optimizer object that determines the learning strategy to be used during training
@@ -180,6 +181,8 @@ class Trainer:
         :type evaluator_test: bool
         :param disable_tqdm: Disable tqdm progress bar (helps to reduce verbosity in some environments)
         :type disable_tqdm: bool
+        :param max_grad_norm: Max gradient norm for clipping
+        :type max_grad_norm: float
         """
 
         self.model = model
@@ -200,6 +203,7 @@ class Trainer:
         self.log_learning_rate = log_learning_rate
         self.log_loss_every = log_loss_every
         self.disable_tqdm = disable_tqdm
+        self.max_grad_norm = max_grad_norm
 
 
         if use_amp and not AMP_AVAILABLE:
@@ -370,7 +374,10 @@ class Trainer:
             MlLogger.log_metrics({"learning_rate": self.lr_schedule.get_last_lr()[0]}, step=self.global_step)
 
         if step % self.grad_acc_steps == 0:
-            # TODO We might wanna add gradient clipping here
+            if self.use_amp:
+                torch.nn.utils.clip_grad_norm_(amp.master_params(self.optimizer), self.max_grad_norm)
+            else:
+                torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
             self.optimizer.step()
             self.optimizer.zero_grad()
             if self.lr_schedule:

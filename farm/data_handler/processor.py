@@ -994,7 +994,7 @@ class BertStyleLMProcessor(Processor):
             for d in dicts:
                 n_samples += len(self._dict_to_samples_bert_style(doc=d["doc"], all_dicts=dicts))
             n_samples = int(n_samples / len(dicts)) * (empty_lines+1)
-            logging.info(f"Heuristic estimate of number of samples based on {len(dicts)} docs: {n_samples}")
+            logging.info(f"Heuristic estimate of number of samples in {filepath} based on {len(dicts)} docs: {n_samples}")
         else:
             raise NotImplementedError(f"No estimate logic for next_sent_pred_style={self.next_sent_pred_style} implemented")
         return n_samples

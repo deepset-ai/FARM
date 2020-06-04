@@ -348,11 +348,11 @@ def read_docs_from_txt(filename, delimiter="", encoding="utf-8", max_docs=None, 
                         if doc_count >= max_docs:
                             logger.info(f"Reached number of max_docs ({max_docs}). Skipping rest of file ...")
                             break
-                else:
-                    logger.warning(f"Found empty document in file (line {line_num}). "
-                                   f"Make sure that you comply with the format: "
-                                   f"One sentence per line and exactly *one* empty line between docs. "
-                                   f"You might have multiple subsequent empty lines.")
+                # else:
+                #     # logger.warning(f"Found empty document in '{filename}' (line {line_num}). "
+                #     #                f"Make sure that you comply with the format: "
+                #     #                f"One sentence per line and exactly *one* empty line between docs. "
+                #     #                f"You might have multiple subsequent empty lines.")
             else:
                 doc.append(line)
 
