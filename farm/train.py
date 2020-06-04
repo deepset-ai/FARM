@@ -218,7 +218,12 @@ class Trainer:
         self.global_step = global_step
 
     def train(self):
-        """ Perform the training procedure. """
+        """
+        Perform the training procedure.
+
+        The training is visualized by a progress bar. It counts the epochs in a zero based manner.
+        For example, when you specify ``epochs=20`` it starts to count from 0 to 19.
+        """
 
         # connect the prediction heads with the right output from processor
         self.model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
@@ -246,7 +251,7 @@ class Trainer:
                         resume_from_step = None
                     continue
 
-                progress_bar.set_description(f"Train epoch {epoch}/{self.epochs} (Cur. train loss: {loss:.4f})")
+                progress_bar.set_description(f"Train epoch {epoch}/{self.epochs-1} (Cur. train loss: {loss:.4f})")
 
                 # Move batch of samples to device
                 batch = {key: batch[key].to(self.device) for key in batch}
