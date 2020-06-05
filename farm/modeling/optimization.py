@@ -276,17 +276,16 @@ def _optimize_model(model, device, local_rank, optimizer=None, distributed=False
     if distributed:
         if APEX_PARALLEL_AVAILABLE:
             model = convert_syncbn_model(model)
-            logger.info("Multi-GPU Training via apex.parallel")
+            logger.info("Multi-GPU Training via DistributedDataParallel and apex.parallel")
+        else:
+            logger.info("Multi-GPU Training via DistributedDataParallel")
 
-        # n_gpu = torch.cuda.device_count() // torch.distributed.get_world_size()
-        # device_ids = list(range(local_rank * n_gpu, (local_rank + 1) * n_gpu))
         # for some models DistributedDataParallel might complain about parameters
         # not contributing to loss. find_used_parameters remedies that.
         model = WrappedDDP(model,
                            device_ids=[local_rank],
                            output_device=local_rank,
                            find_unused_parameters=True)
-        logger.info("Multi-GPU Training via DistributedDataParallel")
 
     elif torch.cuda.device_count() > 1 and device.type == "cuda":
         model = WrappedDataParallel(model)

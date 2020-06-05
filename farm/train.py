@@ -364,14 +364,14 @@ class Trainer:
                     {"Train_loss_total": float(loss.detach().cpu().numpy())},
                     step=self.global_step,
                 )
+                if self.log_learning_rate:
+                    MlLogger.log_metrics({"learning_rate": self.lr_schedule.get_last_lr()[0]},
+                                         step=self.global_step)
         if self.use_amp:
             with amp.scale_loss(loss, self.optimizer) as scaled_loss:
                 scaled_loss.backward()
         else:
             loss.backward()
-
-        if self.log_learning_rate and self.local_rank in [-1, 0]:
-            MlLogger.log_metrics({"learning_rate": self.lr_schedule.get_last_lr()[0]}, step=self.global_step)
 
         if step % self.grad_acc_steps == 0:
             if self.use_amp:

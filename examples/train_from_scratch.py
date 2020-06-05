@@ -53,7 +53,7 @@ def train_from_scratch():
 
     # Option B) (recommended when using StreamingDataSilo):
     # split and shuffle that file to have random order within and across epochs
-    randomize_and_split_file(data_dir / "train.txt", output_dir=Path("data/split_files"))
+    randomize_and_split_file("train.txt", output_dir=Path("data/split_files"),docs_per_file=10000)
     train_filename = Path("data/split_files")
 
     dev_filename = "dev.txt"

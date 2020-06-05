@@ -14,6 +14,7 @@ from farm.data_handler.utils import randomize_and_split_file
 from farm.train import Trainer
 from farm.utils import set_all_seeds, StdoutLogger, initialize_device_settings
 import argparse
+import torch
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -38,8 +39,8 @@ def train_from_scratch(args):
     args["local_rank"] = cmd_args.local_rank
     logging.info(f'local_rank: {args["local_rank"]}')
 
-    next_sent_task = args.get("next_sent_task", "True").lower() == "true"
-    distributed = args["local_rank"] != -1
+    next_sent_task = bool(int(args.get("next_sent_task", 1)))
+    distributed = True
     use_amp = args.get("use_amp", None)
     use_amp = None if use_amp == "" else use_amp
 
@@ -52,12 +53,22 @@ def train_from_scratch(args):
     set_all_seeds(seed=39)
 
     device, n_gpu = initialize_device_settings(use_cuda=True, local_rank=args["local_rank"], use_amp=use_amp)
+    effective_batch_size = int(args["per_gpu_batch_size"]) * int(args["gradient_accumulation_steps"]) * torch.distributed.get_world_size()
+
+    logging.info(
+            f'Training with effective batch size of {effective_batch_size} '
+            f'(per_gpu_batch_size = {int(args["per_gpu_batch_size"])}, gradient_accumulation_steps={int(args["gradient_accumulation_steps"])}, n_gpus = {torch.distributed.get_world_size()} )')
 
     save_dir = Path("/opt/ml/model")
     data_dir = Path("/opt/ml/input/data/input_channel")
 
     # Split and shuffle training data
-    randomize_and_split_file(data_dir / args["train_file"], output_dir=data_dir / "split_files")
+    if args["local_rank"] in [-1, 0]:
+        randomize_and_split_file(data_dir / args["train_file"], output_dir=data_dir / "split_files")
+    # let other processes wait for splitted files from rank 0
+    torch.distributed.barrier()
+
+
     args["train_file"] = data_dir / "split_files"
 
     # 1.Create a tokenizer
@@ -76,7 +87,7 @@ def train_from_scratch(args):
     )
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test) and provides DataLoaders for them
-    data_silo = StreamingDataSilo(processor=processor, batch_size=int(args["batch_size"]),
+    data_silo = StreamingDataSilo(processor=processor, batch_size=int(args["per_gpu_batch_size"]),
                                          dataloader_workers=int(args.get("data_loader_workers", 8)),
                                          distributed=distributed)
 
@@ -136,6 +147,7 @@ def train_from_scratch(args):
         lr_schedule=lr_schedule,
         evaluate_every=int(args["evaluate_every"]),
         log_loss_every=int(args.get("log_loss_every", 500)),
+        log_learning_rate=bool(int(args.get("log_learning_rate", 0))),
         device=device,
         local_rank=args["local_rank"],
         grad_acc_steps=int(args["gradient_accumulation_steps"]),
