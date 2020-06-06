@@ -51,7 +51,8 @@ def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=N
         logger.info(f" Couldn't find {filename} locally. Trying to download ...")
         _download_extract_downstream_data(filename, proxies=proxies)
 
-    # read file into df
+    # read file into df - but only read those cols we need
+    columns_needed = list(rename_columns.keys())
     df = pd.read_csv(
         filename,
         sep=delimiter,
@@ -59,7 +60,8 @@ def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=N
         quotechar=quotechar,
         dtype=str,
         skiprows=skiprows,
-        header=header
+        header=header,
+        usecols=columns_needed,
     )
     if max_samples:
         df = df.sample(max_samples)
@@ -67,8 +69,6 @@ def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=N
     # let's rename our target columns to the default names FARM expects:
     # "text": contains the text
     # "text_classification_label": contains a label for text classification
-    columns = list(rename_columns.keys())
-    df = df[columns]
     df.rename(columns=rename_columns, inplace=True)
     df.fillna("", inplace=True)
 
