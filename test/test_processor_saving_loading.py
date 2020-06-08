@@ -7,7 +7,9 @@ from farm.utils import set_all_seeds
 import torch
 
 def test_processor_saving_loading(caplog):
-    caplog.set_level(logging.CRITICAL)
+    if caplog is not None:
+        caplog.set_level(logging.CRITICAL)
+
     set_all_seeds(seed=42)
     lang_model = "bert-base-cased"
 
@@ -21,10 +23,10 @@ def test_processor_saving_loading(caplog):
                                             train_filename="train-sample.tsv",
                                             dev_filename=None,
                                             test_filename=None,
+                                            label_column_name="coarse_label",
                                             dev_split=0.1,
-                                            columns=["text", "label", "unused"],
                                             label_list=["OTHER", "OFFENSE"],
-                                            metrics=["f1_macro"]
+                                            metric=["f1_macro"]
                                             )
     dicts = processor.file_to_dicts(file=Path("samples/doc_class/train-sample.tsv"))
     data, tensor_names = processor.dataset_from_dicts(dicts)
@@ -39,3 +41,6 @@ def test_processor_saving_loading(caplog):
     assert tensor_names == tensor_names_loaded
     for i in range(len(data.tensors)):
         assert torch.all(torch.eq(data.tensors[i], data_loaded.tensors[i]))
+
+if __name__ == "__main__":
+    test_processor_saving_loading(None)

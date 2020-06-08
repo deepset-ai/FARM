@@ -144,12 +144,14 @@ class Processor(ABC):
         :type max_seq_len: int
         :param train_filename: The name of the file containing training data.
         :type train_filename: str
-        :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
+        :param dev_filename: The name of the file containing the dev data.
+                             If None and 0.0 < dev_split < 1.0 the dev set
                              will be a slice of the train set.
         :type dev_filename: str or None
         :param test_filename: The name of the file containing test data.
         :type test_filename: str
-        :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
+        :param dev_split: The proportion of the train set that will sliced.
+                          Only works if dev_filename is set to None
         :type dev_split: float
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
@@ -201,8 +203,12 @@ class Processor(ABC):
         processor = cls.load(tokenizer=tokenizer, processor_name=config["processor"], **config)
 
         for task_name, task in config["tasks"].items():
-            processor.add_task(name=task_name, metric=task["metric"], label_list=task["label_list"],
-                               label_column_name=task["label_column_name"], task_type=task["task_type"])
+            processor.add_task(name=task_name,
+                               metric=task["metric"],
+                               label_list=task["label_list"],
+                               label_column_name=task["label_column_name"],
+                               text_column_name=task["text_column_name"],
+                               task_type=task["task_type"])
 
         if processor is None:
             raise Exception
@@ -241,7 +247,8 @@ class Processor(ABC):
                 config[key] = value
         return config
 
-    def add_task(self, name,  metric, label_list, label_column_name=None, label_name=None, task_type=None):
+    def add_task(self, name,  metric, label_list, label_column_name=None,
+                 label_name=None, task_type=None, text_column_name=None):
         if type(label_list) is not list:
             raise ValueError(f"Argument `label_list` must be of type list. Got: f{type(label_list)}")
 
@@ -254,6 +261,7 @@ class Processor(ABC):
             "label_tensor_name": label_tensor_name,
             "label_name": label_name,
             "label_column_name": label_column_name,
+            "text_column_name": text_column_name,
             "task_type": task_type
         }
 
@@ -383,6 +391,7 @@ class TextClassificationProcessor(Processor):
         header=0,
         proxies=None,
         max_samples=None,
+        text_column_name="text",
         **kwargs
     ):
         """
@@ -425,6 +434,8 @@ class TextClassificationProcessor(Processor):
         :param proxies: proxy configuration to allow downloads of remote datasets.
                         Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
         :type proxies: dict
+        :param text_column_name: name of the column in the input csv/tsv that shall be used as training text
+        :type text_column_name: str
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
         """
@@ -458,13 +469,17 @@ class TextClassificationProcessor(Processor):
                           metric=metric,
                           label_list=label_list,
                           label_column_name=label_column_name,
+                          text_column_name=text_column_name,
                           task_type=task_type)
         else:
             logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
                         "using the default task or add a custom task later via processor.add_task()")
 
     def file_to_dicts(self, file: str) -> [dict]:
-        column_mapping = {task["label_column_name"]: task["label_name"] for task in self.tasks.values()}
+        column_mapping = {}
+        for task in self.tasks.values():
+            column_mapping[task["label_column_name"]] = task["label_name"]
+            column_mapping[task["text_column_name"]] = "text"
         dicts = read_tsv(
             filename=file,
             delimiter=self.delimiter,
@@ -1528,6 +1543,7 @@ class RegressionProcessor(Processor):
         scaler_mean=None,
         scaler_scale=None,
         proxies=None,
+        text_column_name="text",
         **kwargs
     ):
         """
@@ -1543,8 +1559,8 @@ class RegressionProcessor(Processor):
         :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
         :type label_list: list
         :param metric: name of metric that shall be used for evaluation, e.g. "acc" or "f1_macro".
-                 Alternatively you can also supply a custom function, that takes preds and labels as args and returns a numerical value.
-                 For using multiple metrics supply them as a list, e.g ["acc", my_custom_metric_fn].
+                 Alternatively you can also supply a custom function, that takes preds and labels as args and returns a
+                 numerical value. For using multiple metrics supply them as a list, e.g ["acc", my_custom_metric_fn].
         :type metric: str, function, or list
         :param train_filename: The name of the file containing training data.
         :type train_filename: str
@@ -1572,6 +1588,8 @@ class RegressionProcessor(Processor):
         :param proxies: proxy configuration to allow downloads of remote datasets.
                         Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
         :type proxies: dict
+        :param text_column_name: name of the column in the input csv/tsv that shall be used as training text
+        :type text_column_name: str
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
         """
@@ -1593,10 +1611,19 @@ class RegressionProcessor(Processor):
         )
 
         # Note that label_list is being hijacked to store the scaling mean and scale
-        self.add_task(name="regression", metric="mse", label_list=[scaler_mean, scaler_scale], label_column_name=label_column_name, task_type="regression", label_name=label_name)
+        self.add_task(name="regression",
+                      metric="mse",
+                      label_list=[scaler_mean, scaler_scale],
+                      label_column_name=label_column_name,
+                      task_type="regression",
+                      label_name=label_name,
+                      text_column_name=text_column_name)
 
     def file_to_dicts(self, file: str) -> [dict]:
-        column_mapping = {task["label_column_name"]: task["label_name"] for task in self.tasks.values()}
+        column_mapping = {}
+        for task in self.tasks.values():
+            column_mapping[task["label_column_name"]] = task["label_name"]
+            column_mapping[task["text_column_name"]] = "text"
         dicts = read_tsv(
             rename_columns=column_mapping,
             filename=file,
