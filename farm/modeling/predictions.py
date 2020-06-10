@@ -118,7 +118,7 @@ class QAAnswer:
             assert self.offset_answer_end == -1
             assert self.offset_answer_start == -1
         else:
-            self.answer = "string"
+            self.answer = string
             assert self.offset_answer_end >= 0
             assert self.offset_answer_start >= 0
 
