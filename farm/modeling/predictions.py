@@ -1,5 +1,7 @@
 from farm.utils import span_to_string
-from abc import ABC, abstractclassmethod
+from abc import ABC
+from typing import List, Optional
+from pydantic import BaseModel
 
 class Pred(ABC):
     def __init__(self,
@@ -13,46 +15,46 @@ class Pred(ABC):
     def to_json(self):
         raise NotImplementedError
 
+class QAAnswer(BaseModel):
+    offset_answer_start: int
+    offset_answer_end: int
+    score: float
+    answer_type: str
+    offset_unit: str
+    aggregation_level: str
+    answer: Optional[str] = None
+    answer_support: Optional[str] = None
+    offset_answer_support_start: Optional[int] = None
+    offset_answer_support_end: Optional[int] = None
+    context: Optional[str] = None
+    offset_context_start: Optional[int] = None
+    offset_context_end: Optional[int] = None
+    probability: Optional[float] = None
+    sample_idx: Optional[int] = None
+    n_samples_in_doc: Optional[int] = None
+    document_id: Optional[str] = None
+    passage_id: Optional[str] = None
 
-# class Span:
-#     def __init__(self,
-#                  start,
-#                  end,
-#                  score=None,
-#                  sample_idx=None,
-#                  n_samples=None,
-#                  classification=None,
-#                  unit=None,
-#                  pred_str=None,
-#                  id=None,
-#                  level=None):
-#         self.start = start
-#         self.end = end
-#         self.score = score
-#         self.unit = unit
-#         self.sample_idx = sample_idx
-#         self.classification = classification
-#         self.n_samples = n_samples
-#         self.pred_str = pred_str
-#         self.id = id
-#         self.level = level
-#
-#     def to_list(self):
-#         return [self.pred_str, self.start, self.end, self.score, self.sample_idx]
-#
-#     def __str__(self):
-#         if self.pred_str is None:
-#             pred_str = "is_impossible"
-#         else:
-#             pred_str = self.pred_str
-#         ret = f"answer: {pred_str}\n" \
-#               f"score: {self.score}"
-#         return ret
-#
-#     def __repr__(self):
-#         return str(self)
+    def to_doc_level(self, start, end):
+        self.offset_answer_start = start
+        self.offset_answer_end = end
+        self.aggregation_level = "document"
 
-class QAAnswer:
+    def add_answer(self, string):
+        if string == "":
+            self.answer = "is_impossible"
+            assert self.offset_answer_end == -1
+            assert self.offset_answer_start == -1
+        else:
+            self.answer = string
+            assert self.offset_answer_end >= 0
+            assert self.offset_answer_start >= 0
+
+    def to_list(self):
+        return [self.answer, self.offset_answer_start, self.offset_answer_end, self.score, self.sample_idx]
+
+
+class QAAnswerOLD:
     def __init__(self,
                  offset_answer_start,
                  offset_answer_end,
@@ -123,6 +125,7 @@ class QAAnswer:
             assert self.offset_answer_start >= 0
 
 
+
 class QAPred(Pred):
     """Question Answering predictions for a passage or a document"""
     def __init__(self,
@@ -156,14 +159,14 @@ class QAPred(Pred):
         if len(self.prediction) > 0:
             assert type(self.prediction[0]) == QAAnswer
 
-    def to_json(self):
-        answers = self.answers_to_json()
+    def to_json(self, squad=False):
+        answers = self.answers_to_json(squad)
         ret = {
             "task": "qa",
             "predictions": [
                 {
                     "question": self.question,
-                    "question_id": self.id,
+                    "question_id": self.question_id,
                     "ground_truth": None,
                     "answers": answers,
                     "no_ans_gap": self.no_answer_gap # Add no_ans_gap to current no_ans_boost for switching top prediction
@@ -172,7 +175,7 @@ class QAPred(Pred):
         }
         return ret
 
-    def answers_to_json(self):
+    def answers_to_json(self, squad=False):
         ret = []
 
         # iterate over the top_n predictions of the one document
@@ -184,6 +187,9 @@ class QAPred(Pred):
 
             _, ans_start_ch, ans_end_ch = span_to_string(start_t, end_t, self.token_offsets, self.context)
             context_string, context_start_ch, context_end_ch = self.create_context(ans_start_ch, ans_end_ch, self.context)
+            if squad:
+                if string == "is_impossible":
+                    string = ""
             curr = {"score": score,
                     "probability": -1,
                     "answer": string,
@@ -217,8 +223,5 @@ class QAPred(Pred):
         return context_string, context_start_ch, context_end_ch
 
     def to_squad_eval(self):
-        preds = [x.to_list() for x in self.prediction]
-        ret = {"id": self.id,
-               "preds": preds}
-        return ret
+        return self.to_json(squad=True)
 
