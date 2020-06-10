@@ -280,7 +280,7 @@ class TextClassificationHead(PredictionHead):
         self.task_name = task_name #used for connecting with the right output of the processor
         self.class_weights = class_weights
 
-        if class_weights:
+        if class_weights is not None:
             logger.info(f"Using class weights for task '{self.task_name}': {self.class_weights}")
             balanced_weights = nn.Parameter(torch.tensor(class_weights), requires_grad=False)
         else:
@@ -460,7 +460,7 @@ class MultiLabelTextClassificationHead(PredictionHead):
         self.class_weights = class_weights
         self.pred_threshold = pred_threshold
 
-        if class_weights:
+        if class_weights is not None:
             logger.info(f"Using class weights for task '{self.task_name}': {self.class_weights}")
             #TODO must balanced weight really be a instance attribute?
             self.balanced_weights = nn.Parameter(
@@ -829,9 +829,8 @@ class BertLMHead(PredictionHead):
         return per_sample_loss
 
     def logits_to_preds(self, logits, **kwargs):
-        logits = logits.cpu().numpy()
         lm_label_ids = kwargs.get(self.label_tensor_name).cpu().numpy()
-        lm_preds_ids = logits.argmax(2)
+        lm_preds_ids = logits.argmax(2).cpu().numpy()
         # apply mask to get rid of predictions for non-masked tokens
         assert lm_preds_ids.shape == lm_label_ids.shape
         lm_preds_ids[lm_label_ids == -1] = -1

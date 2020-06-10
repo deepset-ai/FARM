@@ -26,6 +26,8 @@ def evaluate_classification():
         do_lower_case=do_lower_case)
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
+    # Here we load GermEval 2017 Data automaticaly if it is not available.
+
     processor = TextClassificationProcessor(
         tokenizer=tokenizer,
         max_seq_len=384,

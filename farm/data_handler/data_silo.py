@@ -478,10 +478,16 @@ class DataSilo:
         else:
             raise Exception("source argument expects one of [\"train\", \"all\"]")
         for dataset in datasets:
-            if dataset is not None:
+            if "multilabel" in self.processor.tasks[task_name]["task_type"]:
+                for x in dataset:
+                    observed_labels += [label_list[label_id] for label_id in (x[tensor_idx] == 1).nonzero()]
+            else:
                 observed_labels += [label_list[x[tensor_idx].item()] for x in dataset]
+
         #TODO scale e.g. via logarithm to avoid crazy spikes for rare classes
-        class_weights = list(compute_class_weight("balanced", np.asarray(label_list), observed_labels))
+        class_weights = compute_class_weight("balanced", np.asarray(label_list), observed_labels)
+        # conversion necessary to have class weights of same type as model weights
+        class_weights = class_weights.astype(np.float32)
         return class_weights
 
     def get_data_loader(self, dataset_name):
