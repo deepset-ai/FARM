@@ -203,7 +203,7 @@ def train_evaluation_single(seed=42):
                                err_msg=f"FARM Training changed for EM by: {em_score - gold_EM}")
     np.testing.assert_allclose(tnrecall, gold_tnrecall, rtol=0.01,
                                err_msg=f"FARM Training changed for top 1 recall by: {em_score - gold_EM}")
-    np.testing.assert_allclose(elapsed, gold_elapsed, rtol=0.1, err_msg=f"FARM Eval speed changed significantly by: {elapsed - gold_elapsed} seconds")
+    np.testing.assert_allclose(elapsed, gold_elapsed, rtol=0.1, err_msg=f"FARM Training speed changed significantly by: {elapsed - gold_elapsed} seconds")
 
 if __name__ == "__main__":
     logging.disable(logging.WARNING)
