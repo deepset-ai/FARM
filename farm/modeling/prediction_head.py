@@ -17,7 +17,7 @@ from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
 
 from farm.data_handler.utils import is_json
 from farm.utils import convert_iob_to_simple_tags, span_to_string
-from farm.modeling.predictions import QAAnswer, QAPred
+from farm.modeling.predictions import QACandidate, QAPred
 
 logger = logging.getLogger(__name__)
 
@@ -1137,22 +1137,22 @@ class QuestionAnsweringHead(PredictionHead):
                 # Check that the candidate's indices are valid and save them if they are
                 if self.valid_answer_idxs(start_idx, end_idx, n_non_padding, max_answer_length, seq_2_start_t):
                     score = start_end_matrix[start_idx, end_idx].item()
-                    top_candidates.append(QAAnswer(offset_answer_start=start_idx,
-                                                   offset_answer_end=end_idx,
-                                                   score=score,
-                                                   answer_type="span",
-                                                   offset_unit="token",
-                                                   aggregation_level="passage",
-                                                   sample_idx=sample_idx))
+                    top_candidates.append(QACandidate(offset_answer_start=start_idx,
+                                                      offset_answer_end=end_idx,
+                                                      score=score,
+                                                      answer_type="span",
+                                                      offset_unit="token",
+                                                      aggregation_level="passage",
+                                                      sample_idx=sample_idx))
 
         no_answer_score = start_end_matrix[0, 0].item()
-        top_candidates.append(QAAnswer(offset_answer_start=0,
-                                       offset_answer_end=0,
-                                       score=no_answer_score,
-                                       answer_type="is_impossible",
-                                       offset_unit="token",
-                                       aggregation_level="passage",
-                                       sample_idx=None))
+        top_candidates.append(QACandidate(offset_answer_start=0,
+                                          offset_answer_end=0,
+                                          score=no_answer_score,
+                                          answer_type="is_impossible",
+                                          offset_unit="token",
+                                          aggregation_level="passage",
+                                          sample_idx=None))
 
         return top_candidates
 
@@ -1386,15 +1386,15 @@ class QuestionAnsweringHead(PredictionHead):
         for sample_idx, passage_preds in enumerate(preds):
             for qa_answer in passage_preds:
                 if not (qa_answer.offset_answer_start == -1 and qa_answer.offset_answer_end == -1):
-                    pos_answers_flat.append(QAAnswer(offset_answer_start=qa_answer.offset_answer_start,
-                                                     offset_answer_end=qa_answer.offset_answer_end,
-                                                     score=qa_answer.score,
-                                                     answer_type=qa_answer.answer_type,
-                                                     offset_unit="token",
-                                                     aggregation_level="passage",
-                                                     sample_idx=sample_idx,
-                                                     n_samples_in_doc=n_samples)
-                                           )
+                    pos_answers_flat.append(QACandidate(offset_answer_start=qa_answer.offset_answer_start,
+                                                        offset_answer_end=qa_answer.offset_answer_end,
+                                                        score=qa_answer.score,
+                                                        answer_type=qa_answer.answer_type,
+                                                        offset_unit="token",
+                                                        aggregation_level="passage",
+                                                        sample_idx=sample_idx,
+                                                        n_samples_in_doc=n_samples)
+                                            )
 
         # TODO add switch for more variation in answers, e.g. if varied_ans then never return overlapping answers
         pos_answer_dedup = self.deduplicate(pos_answers_flat)
@@ -1409,14 +1409,14 @@ class QuestionAnsweringHead(PredictionHead):
         # the most significant difference between scores.
         # Most significant difference: change top prediction from "no answer" to answer (or vice versa)
         best_overall_positive_score = max(x.score for x in pos_answer_dedup)
-        no_answer_pred = QAAnswer(offset_answer_start=-1,
-                                  offset_answer_end=-1,
-                                  score=best_overall_positive_score - no_ans_gap,
-                                  answer_type="is_impossible",
-                                  offset_unit="token",
-                                  aggregation_level="document",
-                                  sample_idx=None,
-                                  n_samples_in_doc=n_samples)
+        no_answer_pred = QACandidate(offset_answer_start=-1,
+                                     offset_answer_end=-1,
+                                     score=best_overall_positive_score - no_ans_gap,
+                                     answer_type="is_impossible",
+                                     offset_unit="token",
+                                     aggregation_level="document",
+                                     sample_idx=None,
+                                     n_samples_in_doc=n_samples)
 
         # Add no answer to positive answers, sort the order and return the n_best
         n_preds = [no_answer_pred] + pos_answer_dedup
@@ -1435,7 +1435,7 @@ class QuestionAnsweringHead(PredictionHead):
                 seen_score = seen[(qa_answer.offset_answer_start, qa_answer.offset_answer_end)].score
                 if qa_answer.score > seen_score:
                     seen[(qa_answer.offset_answer_start, qa_answer.offset_answer_end)] = qa_answer
-        return [qa_answer for qa_answer in seen.values()]
+        return list(seen.values())
 
 
 
@@ -1547,7 +1547,7 @@ class QuestionAnsweringHead(PredictionHead):
                     cls_pred = "is_impossible"
                 pred_qa_answer.answer = cls_pred
                 pred_qa_answers_new.append(pred_qa_answer)
-            qa_doc_pred.preds = pred_qa_answers_new
+            qa_doc_pred.prediction = pred_qa_answers_new
             ret.append(qa_doc_pred)
         return ret
 

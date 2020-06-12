@@ -15,7 +15,7 @@ class Pred(ABC):
     def to_json(self):
         raise NotImplementedError
 
-class QAAnswer(BaseModel):
+class QACandidate(BaseModel):
     offset_answer_start: int
     offset_answer_end: int
     score: float
@@ -34,6 +34,7 @@ class QAAnswer(BaseModel):
     n_samples_in_doc: Optional[int] = None
     document_id: Optional[str] = None
     passage_id: Optional[str] = None
+
 
     def to_doc_level(self, start, end):
         self.offset_answer_start = start
@@ -54,110 +55,25 @@ class QAAnswer(BaseModel):
         return [self.answer, self.offset_answer_start, self.offset_answer_end, self.score, self.sample_idx]
 
 
-class QAAnswerOLD:
-    def __init__(self,
-                 offset_answer_start,
-                 offset_answer_end,
-                 score,
-                 answer_type,
-                 offset_unit,
-                 aggregation_level,
-                 answer=None,
-                 answer_support=None,
-                 offset_answer_support_start=None,
-                 offset_answer_support_end=None,
-                 context=None,
-                 offset_context_start=None,
-                 offset_context_end=None,
-                 probability=None,
-                 sample_idx=None,
-                 n_samples_in_doc=None,
-                 document_id=None,
-                 passage_id=None):
-        # TODO THIS IS A LOT OF ATTRIBUTES - REMOVE SOME WITH METHODS
-        # self.answer_type can be "is_impossible", "yes", "no" or "span"
-        self.answer_type = answer_type
-        self.score = score
-        self.probability = probability
-
-        # If self.answer_type is "span", self.answer is a string answer span
-        # Otherwise, it is None
-        self.answer = answer
-        self.offset_answer_start = offset_answer_start
-        self.offset_answer_end = offset_answer_end
-
-        # If self.answer_type is in ["yes", "no"] then self.answer_support is a text string
-        # If self.answer is a string answer span or self.answer_type is "is_impossible", answer_support is None
-        self.answer_support = answer_support
-        self.offset_answer_support_start = offset_answer_support_start
-        self.offset_answer_support_end = offset_answer_support_end
-        self.sample_idx = sample_idx
-
-        # self.context is the document or passage where the answer is found
-        self.context = context
-        self.offset_context_start = offset_context_start
-        self.offset_context_end = offset_context_end
-
-        # Offset unit is either "token" or "char"
-        # Aggregation level is either "doc" or "passage"
-        self.offset_unit  = offset_unit
-        self.aggregation_level = aggregation_level
-
-        self.document_id = document_id
-        self.passage_id = passage_id
-        # TODO This seems to be necessary in order to align QA preds of len n_docs with Text Classification preds
-        # TODO of len n_passages
-        self.n_samples_in_doc = n_samples_in_doc
-
-    def to_doc_level(self, start, end):
-        self.offset_answer_start = start
-        self.offset_answer_end = end
-        self.aggregation_level = "document"
-
-    def add_answer(self, string):
-        if string == "":
-            self.answer = "is_impossible"
-            assert self.offset_answer_end == -1
-            assert self.offset_answer_start == -1
-        else:
-            self.answer = string
-            assert self.offset_answer_end >= 0
-            assert self.offset_answer_start >= 0
-
-
-
-class QAPred(Pred):
+class QAPred(BaseModel, Pred):
     """Question Answering predictions for a passage or a document"""
-    def __init__(self,
-                 id,
-                 prediction,
-                 context,
-                 question,
-                 question_id,
-                 token_offsets,         # TODO only needed for to_json() - can we get rid?
-                 context_window_size,   # TODO Do we really need this?
-                 aggregation_level,
-                 answer_types=[],
-                 ground_truth_answer=None,
-                 no_answer_gap=None,
+    id: str
+    prediction: List[QACandidate]
+    context: str
+    question: str
+    token_offsets: List[int]
+    context_window_size: int #TODO only needed for to_json() - can we get rid context_window_size, TODO Do we really need this?
+    aggregation_level: str
+    question_id: Optional[str]
+    answer_types: Optional[List[str]] = []
+    ground_truth_answer: Optional[str] = None
+    no_answer_gap: Optional[float] = None
+    n_samples: int = None
 
-                 ):
-        super().__init__(id,
-                         prediction,
-                         context)
-        self.question = question
-        self.question_id = question_id
-        self.ground_truth_answer = ground_truth_answer
-        self.no_answer_gap = no_answer_gap
-        self.answer_types = answer_types
-        self.n_samples = prediction[0].n_samples_in_doc
-
-        self.token_offsets = token_offsets  # TODO only needed for to_json() - can we get rid?
-        self.context_window_size = context_window_size  # TODO Do we really need this?
-        self.aggregation_level = aggregation_level
-
-        if len(self.prediction) > 0:
-            assert type(self.prediction[0]) == QAAnswer
+    def __init__(self, **kwargs):
+        BaseModel.__init__(self, **kwargs)
+        Pred.__init__(self, self.id, self.prediction, self.context)
+        self.n_samples = self.prediction[0].n_samples_in_doc
 
     def to_json(self, squad=False):
         answers = self.answers_to_json(squad)

@@ -207,7 +207,7 @@ class Processor(ABC):
                                metric=task["metric"],
                                label_list=task["label_list"],
                                label_column_name=task["label_column_name"],
-                               text_column_name=task["text_column_name"],
+                               text_column_name=task.get("text_column_name", None),
                                task_type=task["task_type"])
 
         if processor is None:
