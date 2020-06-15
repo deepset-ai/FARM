@@ -89,7 +89,7 @@ Core features
 | Passage Ranking              | x                 |  x                |  x                |  x                |  x                |  x                |
 +------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
 
-* including CamemBERT and UmBERTo
+\* including CamemBERT and UmBERTo
 
 ****NEW**** Interested in doing Question Answering at scale? Checkout `Haystack <https://github.com/deepset-ai/haystack>`_!
 
