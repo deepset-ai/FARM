@@ -148,7 +148,7 @@ class EmbeddingTokenizer(PreTrainedTokenizer):
         self.unk_tok_idx = self.vocab[unk_token]
         self.ids_to_tokens = collections.OrderedDict([(ids, tok) for tok, ids in self.vocab.items()])
         self.do_lower_case = do_lower_case
-        self.vocab_size = len(self.vocab)
+        self.vocab_size_farm = len(self.vocab)
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):

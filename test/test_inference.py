@@ -75,7 +75,7 @@ def test_qa_format_and_results(adaptive_model_qa, streaming, multiprocessing_chu
         )
 
 
-@pytest.mark.parametrize("num_processes", [2, 0])
+@pytest.mark.parametrize("num_processes", [0], scope="session")
 def test_embeddings_extraction(num_processes):
     # Input
     basic_texts = [
@@ -99,4 +99,4 @@ def test_embeddings_extraction(num_processes):
     assert np.isclose(result[0]["vec"][0], 1.50174605e-02)
 
 if __name__ == "__main__":
-    test_embeddings_extraction(0)
+    test_embeddings_extraction()

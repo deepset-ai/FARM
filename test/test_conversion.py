@@ -9,9 +9,9 @@ from pathlib import Path
 
 import logging
 
-def test_conversion_adaptive_model():
-    # if caplog:
-    #     caplog.set_level(logging.CRITICAL)
+def test_conversion_adaptive_model(caplog):
+    if caplog:
+        caplog.set_level(logging.CRITICAL)
 
     model = AdaptiveModel.convert_from_transformers("deepset/bert-base-cased-squad2", device="cpu", task_type="question_answering")
     transformer_model = model.convert_to_transformers()
@@ -21,9 +21,9 @@ def test_conversion_adaptive_model():
         assert(p1.data.ne(p2.data).sum() == 0)
 
 
-def test_conversion_inferencer():
-    # if caplog:
-    #     caplog.set_level(logging.CRITICAL)
+def test_conversion_inferencer(caplog):
+    if caplog:
+        caplog.set_level(logging.CRITICAL)
     # input
     question = "Why is model conversion important?"
     text = "The option to convert models between FARM and transformers gives freedom to the user and let people easily switch between frameworks."
@@ -31,7 +31,6 @@ def test_conversion_inferencer():
 
     # Load from model hub
     model = "deepset/bert-base-cased-squad2"
-    model = "mrm8488/bert-tiny-5-finetuned-squadv2"
     nlp = Inferencer.load(model, task_type="question_answering", num_processes=0)
 
     assert nlp.processor.tokenizer.basic_tokenizer.do_lower_case == False
