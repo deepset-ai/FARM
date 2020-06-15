@@ -148,7 +148,7 @@ class EmbeddingTokenizer(PreTrainedTokenizer):
         self.unk_tok_idx = self.vocab[unk_token]
         self.ids_to_tokens = collections.OrderedDict([(ids, tok) for tok, ids in self.vocab.items()])
         self.do_lower_case = do_lower_case
-        self.vocab_size = len(self.vocab)
+        self.vocab_size_farm = len(self.vocab)
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
@@ -345,7 +345,7 @@ def truncate_sequences(seq_a, seq_b, tokenizer, max_seq_len, truncation_strategy
     pair = bool(seq_b is not None)
     len_a = len(seq_a)
     len_b = len(seq_b) if pair else 0
-    num_special_tokens = tokenizer.num_added_tokens(pair=pair) if with_special_tokens else 0
+    num_special_tokens = tokenizer.num_special_tokens_to_add(pair=pair) if with_special_tokens else 0
     total_len = len_a + len_b + num_special_tokens
     overflowing_tokens = []
 

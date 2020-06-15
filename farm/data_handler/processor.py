@@ -1156,7 +1156,7 @@ class SquadProcessor(Processor):
         return dicts
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
-        n_special_tokens = self.tokenizer.num_added_tokens(pair=True)
+        n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
         samples = create_samples_qa(dictionary=dictionary,
                                        max_query_len=self.max_query_length,
                                        max_seq_len=self.max_seq_len,
@@ -1279,7 +1279,7 @@ class NaturalQuestionsProcessor(Processor):
             dictionary = self.prepare_dict(dictionary=dictionary)
 
         dictionary_tokenized = self.apply_tokenization(dictionary)[0]
-        n_special_tokens = self.tokenizer.num_added_tokens(pair=True)
+        n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
         samples = create_samples_qa(dictionary_tokenized,
                                     self.max_query_length,
                                     self.max_seq_len,

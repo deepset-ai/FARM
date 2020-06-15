@@ -98,3 +98,6 @@ def test_load_extract_s3e_embeddings():
     assert result[0]["vec"][0] - 0.00527727306941057 < 1e-6
     assert result[0]["vec"][-2] + 0.21376857861379997 < 1e-6
 
+if __name__ == "__main__":
+    test_s3e_fit()
+    test_load_extract_s3e_embeddings()

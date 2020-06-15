@@ -197,14 +197,14 @@ def train_evaluation_single(seed=42):
     gold_f1 = 82.155
     gold_EM = 77.714
     gold_tnrecall = 97.3721 #
-    gold_elapsed = 1286.30
+    gold_elapsed = 1183
     np.testing.assert_allclose(f1_score, gold_f1, rtol=0.01,
                                err_msg=f"FARM Training changed for f1 score by: {f1_score - gold_f1}")
     np.testing.assert_allclose(em_score, gold_EM, rtol=0.01,
                                err_msg=f"FARM Training changed for EM by: {em_score - gold_EM}")
     np.testing.assert_allclose(tnrecall, gold_tnrecall, rtol=0.01,
                                err_msg=f"FARM Training changed for top 1 recall by: {em_score - gold_EM}")
-    np.testing.assert_allclose(elapsed, gold_elapsed, rtol=0.1, err_msg=f"FARM Eval speed changed significantly by: {elapsed - gold_elapsed} seconds")
+    np.testing.assert_allclose(elapsed, gold_elapsed, rtol=0.1, err_msg=f"FARM Training speed changed significantly by: {elapsed - gold_elapsed} seconds")
 
 if __name__ == "__main__":
     logging.disable(logging.WARNING)
