@@ -236,7 +236,17 @@ class LanguageModel(nn.Module):
             "multilingual",
         )
         matches = [lang for lang in known_languages if lang in name]
-        if len(matches) == 0:
+        if "camembert" in name:
+            language = "french"
+            logger.info(
+                f"Automatically detected language from language model name: {language}"
+            )
+        elif "umberto" in name:
+            language = "italian"
+            logger.info(
+                f"Automatically detected language from language model name: {language}"
+            )
+        elif len(matches) == 0:
             language = "english"
             logger.warning(
                 "Could not automatically detect from language model name what language it is. \n"
@@ -248,16 +258,6 @@ class LanguageModel(nn.Module):
                 "Could not automatically detect from language model name what language it is.\n"
                 f"\t Found multiple matches: {matches}\n"
                 "\t Please init the language model by manually supplying the 'language' as a parameter.\n"
-            )
-        elif "camembert" in name:
-            language = "french"
-            logger.info(
-                f"Automatically detected language from language model name: {language}"
-            )
-        elif "umberto" in name:
-            language = "italian"
-            logger.info(
-                f"Automatically detected language from language model name: {language}"
             )
         else:
             language = matches[0]
