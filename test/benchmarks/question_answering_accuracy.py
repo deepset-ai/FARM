@@ -77,20 +77,21 @@ def test_evaluation():
         np.testing.assert_allclose(em_score, gold_EM, rtol=0.001, err_msg=f"FARM Eval changed for EM by: {em_score-gold_EM}")
         np.testing.assert_allclose(f1_score, gold_f1, rtol=0.001, err_msg=f"FARM Eval changed for f1 score by: {f1_score-gold_f1}")
         np.testing.assert_allclose(tnrecall, gold_tnrecall, rtol=0.001, err_msg=f"FARM Eval changed for top 1 recall by: {em_score-gold_EM}")
-        np.testing.assert_allclose(elapsed, gold_elapsed, rtol=0.1, err_msg=f"FARM Eval speed changed significantly by: {elapsed - gold_elapsed} seconds")
+        # np.testing.assert_allclose(elapsed, gold_elapsed, rtol=0.1, err_msg=f"FARM Eval speed changed significantly by: {elapsed - gold_elapsed} seconds")
 
 
     # 2. Test FARM predictions with outside eval script
     starttime = time()
     model = Inferencer(model=model, processor=processor, task_type="question_answering", batch_size=50, gpu=device.type=="cuda")
     filename = data_dir / evaluation_filename
-    result = model.inference_from_file(file=filename)
+    result = model.inference_from_file(file=filename, return_json=False)
+    results_squad = [x.to_squad_eval() for x in result]
 
     elapsed = time() - starttime
 
     os.makedirs("../testsave", exist_ok=True)
     write_squad_predictions(
-        predictions=result,
+        predictions=results_squad,
         predictions_filename=filename,
         out_filename="testsave/predictions.json"
     )
