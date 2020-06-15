@@ -254,11 +254,13 @@ class LanguageModel(nn.Module):
                 "\t If not: Init the language model by supplying the 'language' param."
             )
         elif len(matches) > 1:
-            raise ValueError(
+            logger.warning(
                 "Could not automatically detect from language model name what language it is.\n"
                 f"\t Found multiple matches: {matches}\n"
                 "\t Please init the language model by manually supplying the 'language' as a parameter.\n"
+                f"\t Using {matches[0]} as language parameter for now.\n"
             )
+            language = matches[0]
         else:
             language = matches[0]
             logger.info(
