@@ -41,5 +41,5 @@ def test_processor_saving_loading(caplog=None):
     for i in range(len(data.tensors)):
         assert torch.all(torch.eq(data.tensors[i], data_loaded.tensors[i]))
 
-if __name__=="__main__":
-    test_processor_saving_loading()
+if __name__ == "__main__":
+    test_processor_saving_loading(None)

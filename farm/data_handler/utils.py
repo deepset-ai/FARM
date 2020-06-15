@@ -22,7 +22,10 @@ logger = logging.getLogger(__name__)
 DOWNSTREAM_TASK_MAP = {
     "gnad": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/gnad.tar.gz",
     "germeval14": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/germeval14.tar.gz",
+
+    # only has train.tsv and test.tsv dataset - no dev.tsv
     "germeval18": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/germeval18.tar.gz",
+
     "squad20": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/squad20.tar.gz",
     "conll03detrain": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/conll2003/deu.train",
     "conll03dedev": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/conll2003/deu.testa", #https://www.clips.uantwerpen.be/conll2003/ner/000README says testa is dev data
@@ -48,7 +51,8 @@ def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=N
         logger.info(f" Couldn't find {filename} locally. Trying to download ...")
         _download_extract_downstream_data(filename, proxies=proxies)
 
-    # read file into df
+    # read file into df - but only read those cols we need
+    columns_needed = list(rename_columns.keys())
     df = pd.read_csv(
         filename,
         sep=delimiter,
@@ -56,7 +60,8 @@ def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=N
         quotechar=quotechar,
         dtype=str,
         skiprows=skiprows,
-        header=header
+        header=header,
+        usecols=columns_needed,
     )
     if max_samples:
         df = df.sample(max_samples)
@@ -64,11 +69,9 @@ def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=N
     # let's rename our target columns to the default names FARM expects:
     # "text": contains the text
     # "text_classification_label": contains a label for text classification
-    columns = ["text"] + list(rename_columns.keys())
-    df = df[columns]
-    for source_column, label_name in rename_columns.items():
-        df[label_name] = df[source_column].fillna("")
-        df.drop(columns=[source_column], inplace=True)
+    df.rename(columns=rename_columns, inplace=True)
+    df.fillna("", inplace=True)
+
     # convert df to one dict per row
     raw_dict = df.to_dict(orient="records")
     return raw_dict

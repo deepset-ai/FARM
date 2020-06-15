@@ -144,12 +144,14 @@ class Processor(ABC):
         :type max_seq_len: int
         :param train_filename: The name of the file containing training data.
         :type train_filename: str
-        :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
+        :param dev_filename: The name of the file containing the dev data.
+                             If None and 0.0 < dev_split < 1.0 the dev set
                              will be a slice of the train set.
         :type dev_filename: str or None
         :param test_filename: The name of the file containing test data.
         :type test_filename: str
-        :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
+        :param dev_split: The proportion of the train set that will sliced.
+                          Only works if dev_filename is set to None
         :type dev_split: float
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
@@ -202,8 +204,12 @@ class Processor(ABC):
         processor = cls.load(tokenizer=tokenizer, processor_name=config["processor"], **config)
 
         for task_name, task in config["tasks"].items():
-            processor.add_task(name=task_name, metric=task["metric"], label_list=task["label_list"],
-                               label_column_name=task["label_column_name"], task_type=task["task_type"])
+            processor.add_task(name=task_name,
+                               metric=task["metric"],
+                               label_list=task["label_list"],
+                               label_column_name=task["label_column_name"],
+                               text_column_name=task["text_column_name"],
+                               task_type=task["task_type"])
 
         if processor is None:
             raise Exception
@@ -242,7 +248,8 @@ class Processor(ABC):
                 config[key] = value
         return config
 
-    def add_task(self, name,  metric, label_list, label_column_name=None, label_name=None, task_type=None):
+    def add_task(self, name,  metric, label_list, label_column_name=None,
+                 label_name=None, task_type=None, text_column_name=None):
         if type(label_list) is not list:
             raise ValueError(f"Argument `label_list` must be of type list. Got: f{type(label_list)}")
 
@@ -255,6 +262,7 @@ class Processor(ABC):
             "label_tensor_name": label_tensor_name,
             "label_name": label_name,
             "label_column_name": label_column_name,
+            "text_column_name": text_column_name,
             "task_type": task_type
         }
 
@@ -384,12 +392,18 @@ class TextClassificationProcessor(Processor):
         header=0,
         proxies=None,
         max_samples=None,
+        text_column_name="text",
+        **kwargs
     ):
         """
         :param tokenizer: Used to split a sentence (str) into tokens.
         :param max_seq_len: Samples are truncated after this many tokens.
         :type max_seq_len: int
-        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
+        :param data_dir: The directory in which the train and dev files can be found.
+                         If not available the dataset will be loaded automaticaly
+                         if the last directory has the same name as a predefined dataset.
+                         These predefined datasets are defined as the keys in the dict at
+                         `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
         :type data_dir: str
         :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
         :type label_list: list
@@ -421,6 +435,8 @@ class TextClassificationProcessor(Processor):
         :param proxies: proxy configuration to allow downloads of remote datasets.
                         Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
         :type proxies: dict
+        :param text_column_name: name of the column in the input csv/tsv that shall be used as training text
+        :type text_column_name: str
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
         """
@@ -454,13 +470,17 @@ class TextClassificationProcessor(Processor):
                           metric=metric,
                           label_list=label_list,
                           label_column_name=label_column_name,
+                          text_column_name=text_column_name,
                           task_type=task_type)
         else:
             logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
                         "using the default task or add a custom task later via processor.add_task()")
 
     def file_to_dicts(self, file: str) -> [dict]:
-        column_mapping = {task["label_column_name"]: task["label_name"] for task in self.tasks.values()}
+        column_mapping = {}
+        for task in self.tasks.values():
+            column_mapping[task["label_column_name"]] = task["label_name"]
+            column_mapping[task["text_column_name"]] = "text"
         dicts = read_tsv(
             filename=file,
             delimiter=self.delimiter,
@@ -638,7 +658,11 @@ class NERProcessor(Processor):
         :param tokenizer: Used to split a sentence (str) into tokens.
         :param max_seq_len: Samples are truncated after this many tokens.
         :type max_seq_len: int
-        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
+        :param data_dir: The directory in which the train and dev files can be found.
+                         If not available the dataset will be loaded automaticaly
+                         if the last directory has the same name as a predefined dataset.
+                         These predefined datasets are defined as the keys in the dict at
+                         `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
         :type data_dir: str
         :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
         :type label_list: list
@@ -735,7 +759,11 @@ class BertStyleLMProcessor(Processor):
         :param tokenizer: Used to split a sentence (str) into tokens.
         :param max_seq_len: Samples are truncated after this many tokens.
         :type max_seq_len: int
-        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
+        :param data_dir: The directory in which the train and dev files can be found.
+                         If not available the dataset will be loaded automaticaly
+                         if the last directory has the same name as a predefined dataset.
+                         These predefined datasets are defined as the keys in the dict at
+                         `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
         :type data_dir: str
         :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
         :type label_list: list
@@ -973,7 +1001,11 @@ class SquadProcessor(Processor):
         :param tokenizer: Used to split a sentence (str) into tokens.
         :param max_seq_len: Samples are truncated after this many tokens.
         :type max_seq_len: int
-        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
+        :param data_dir: The directory in which the train and dev files can be found.
+                         If not available the dataset will be loaded automaticaly
+                         if the last directory has the same name as a predefined dataset.
+                         These predefined datasets are defined as the keys in the dict at
+                         `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
         :type data_dir: str
         :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
         :type label_list: list
@@ -1115,7 +1147,7 @@ class SquadProcessor(Processor):
         return dicts
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
-        n_special_tokens = self.tokenizer.num_added_tokens(pair=True)
+        n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
         samples = create_samples_qa(dictionary=dictionary,
                                        max_query_len=self.max_query_length,
                                        max_seq_len=self.max_seq_len,
@@ -1157,7 +1189,11 @@ class NaturalQuestionsProcessor(Processor):
         :param tokenizer: Used to split a sentence (str) into tokens.
         :param max_seq_len: Samples are truncated after this many tokens.
         :type max_seq_len: int
-        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
+        :param data_dir: The directory in which the train and dev files can be found.
+                         If not available the dataset will be loaded automaticaly
+                         if the last directory has the same name as a predefined dataset.
+                         These predefined datasets are defined as the keys in the dict at
+                         `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
         :type data_dir: str
         :param train_filename: The name of the file containing training data.
         :type train_filename: str
@@ -1232,7 +1268,7 @@ class NaturalQuestionsProcessor(Processor):
             dictionary = self.prepare_dict(dictionary=dictionary)
 
         dictionary_tokenized = self.apply_tokenization(dictionary)[0]
-        n_special_tokens = self.tokenizer.num_added_tokens(pair=True)
+        n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
         samples = create_samples_qa(dictionary_tokenized,
                                     self.max_query_length,
                                     self.max_seq_len,
@@ -1496,18 +1532,23 @@ class RegressionProcessor(Processor):
         scaler_mean=None,
         scaler_scale=None,
         proxies=None,
+        text_column_name="text"
     ):
         """
         :param tokenizer: Used to split a sentence (str) into tokens.
         :param max_seq_len: Samples are truncated after this many tokens.
         :type max_seq_len: int
-        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
+        :param data_dir: The directory in which the train and dev files can be found.
+                         If not available the dataset will be loaded automaticaly
+                         if the last directory has the same name as a predefined dataset.
+                         These predefined datasets are defined as the keys in the dict at
+                         `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
         :type data_dir: str
         :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
         :type label_list: list
         :param metric: name of metric that shall be used for evaluation, e.g. "acc" or "f1_macro".
-                 Alternatively you can also supply a custom function, that takes preds and labels as args and returns a numerical value.
-                 For using multiple metrics supply them as a list, e.g ["acc", my_custom_metric_fn].
+                 Alternatively you can also supply a custom function, that takes preds and labels as args and returns a
+                 numerical value. For using multiple metrics supply them as a list, e.g ["acc", my_custom_metric_fn].
         :type metric: str, function, or list
         :param train_filename: The name of the file containing training data.
         :type train_filename: str
@@ -1535,6 +1576,8 @@ class RegressionProcessor(Processor):
         :param proxies: proxy configuration to allow downloads of remote datasets.
                         Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
         :type proxies: dict
+        :param text_column_name: name of the column in the input csv/tsv that shall be used as training text
+        :type text_column_name: str
         """
 
         # Custom processor attributes
@@ -1554,10 +1597,19 @@ class RegressionProcessor(Processor):
         )
 
         # Note that label_list is being hijacked to store the scaling mean and scale
-        self.add_task(name="regression", metric="mse", label_list=[scaler_mean, scaler_scale], label_column_name=label_column_name, task_type="regression", label_name=label_name)
+        self.add_task(name="regression",
+                      metric="mse",
+                      label_list=[scaler_mean, scaler_scale],
+                      label_column_name=label_column_name,
+                      task_type="regression",
+                      label_name=label_name,
+                      text_column_name=text_column_name)
 
     def file_to_dicts(self, file: str) -> [dict]:
-        column_mapping = {task["label_column_name"]: task["label_name"] for task in self.tasks.values()}
+        column_mapping = {}
+        for task in self.tasks.values():
+            column_mapping[task["label_column_name"]] = task["label_name"]
+            column_mapping[task["text_column_name"]] = "text"
         dicts = read_tsv(
             rename_columns=column_mapping,
             filename=file,
