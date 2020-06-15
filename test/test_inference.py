@@ -70,7 +70,7 @@ def test_qa_format_and_results(adaptive_model_qa, streaming, multiprocessing_chu
         assert answer["answer"] == ground_truth
         assert (
                 {"answer", "score", "probability", "offset_answer_start", "offset_answer_end", "context",
-                 "offset_context_start", "offset_context_end", "document_id", "classification"}
+                 "offset_context_start", "offset_context_end", "document_id"}
                 == answer.keys()
         )
 
