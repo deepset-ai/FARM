@@ -1,36 +1,56 @@
 from farm.utils import span_to_string
 from abc import ABC
-from typing import List, Optional
+from typing import List, Optional, Any
 from pydantic import BaseModel
 
-class Pred(ABC):
-    def __init__(self,
-                 id,
-                 prediction,
-                 context):
-        self.id = id
-        self.prediction = prediction
-        self.context = context
+class Pred(BaseModel):
+    """
+    Base class for predictions of every task. Note that it inherits from pydantic.BaseModel which creates an
+    __init__() with the attributes defined in this class (i.e. id, prediction, context)
+    """
+    id: str
+    prediction: List[Any]
+    context: str
+
 
     def to_json(self):
         raise NotImplementedError
 
 class QACandidate(BaseModel):
+    """
+    A single QA candidate answer. Note that it inherits from pydantic.BaseModel which builds the __init__() method.
+    See class definition to find list of compulsory and optional arguments and also comments on how they are used.
+    """
+
+    # self.answer_type can be "is_impossible", "yes", "no" or "span"
+    answer_type: str
+    score: float
+    probability: Optional[float] = None
+
+    # If self.answer_type is "span", self.answer is a string answer span
+    # Otherwise, it is None
+    answer: Optional[str] = None
     offset_answer_start: int
     offset_answer_end: int
-    score: float
-    answer_type: str
-    offset_unit: str
-    aggregation_level: str
-    answer: Optional[str] = None
+
+    # If self.answer_type is in ["yes", "no"] then self.answer_support is a text string
+    # If self.answer is a string answer span or self.answer_type is "is_impossible", answer_support is None
+    # TODO sample_idx can probably be removed since we have passage_id
     answer_support: Optional[str] = None
     offset_answer_support_start: Optional[int] = None
     offset_answer_support_end: Optional[int] = None
+    sample_idx: Optional[int] = None
+
+    # self.context is the document or passage where the answer is found
     context: Optional[str] = None
     offset_context_start: Optional[int] = None
     offset_context_end: Optional[int] = None
-    probability: Optional[float] = None
-    sample_idx: Optional[int] = None
+
+    # Offset unit is either "token" or "char"
+    # Aggregation level is either "doc" or "passage"
+    offset_unit: str
+    aggregation_level: str
+
     n_samples_in_doc: Optional[int] = None
     document_id: Optional[str] = None
     passage_id: Optional[str] = None
@@ -55,11 +75,13 @@ class QACandidate(BaseModel):
         return [self.answer, self.offset_answer_start, self.offset_answer_end, self.score, self.sample_idx]
 
 
-class QAPred(BaseModel, Pred):
-    """Question Answering predictions for a passage or a document"""
-    id: str
-    prediction: List[QACandidate]
-    context: str
+class QAPred(Pred):
+    """Question Answering predictions for a passage or a document. The self.prediction attribute is populated by a
+    list of QACandidate objects. Note that this object inherits from the Pred class which is why some of
+    the attributes are found in the Pred class and not here. Pred in turn inherits from pydantic.BaseModel
+    which creates an __init__() method. See class definition for required and optional arguments.
+    """
+
     question: str
     token_offsets: List[int]
     context_window_size: int #TODO only needed for to_json() - can we get rid context_window_size, TODO Do we really need this?
@@ -69,11 +91,6 @@ class QAPred(BaseModel, Pred):
     ground_truth_answer: Optional[str] = None
     no_answer_gap: Optional[float] = None
     n_samples: int = None
-
-    def __init__(self, **kwargs):
-        BaseModel.__init__(self, **kwargs)
-        Pred.__init__(self, self.id, self.prediction, self.context)
-        self.n_samples = self.prediction[0].n_samples_in_doc
 
     def to_json(self, squad=False):
         answers = self.answers_to_json(squad)
@@ -140,4 +157,3 @@ class QAPred(BaseModel, Pred):
 
     def to_squad_eval(self):
         return self.to_json(squad=True)
-

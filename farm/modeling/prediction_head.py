@@ -1275,6 +1275,7 @@ class QuestionAnsweringHead(PredictionHead):
                                                 document_text)
                 qa_answer.add_answer(pred_str)
                 full_preds.append(qa_answer)
+            n_samples = full_preds[0].n_samples_in_doc
             curr_doc_pred = QAPred(id=basket_id,
                                    prediction=full_preds,
                                    context=document_text,
@@ -1285,6 +1286,7 @@ class QuestionAnsweringHead(PredictionHead):
                                    aggregation_level="document",
                                    answer_types=[],  # TODO
                                    no_answer_gap=no_ans_gap,
+                                   n_samples=n_samples
             )
             ret.append(curr_doc_pred)
         return ret
