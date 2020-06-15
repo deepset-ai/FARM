@@ -358,6 +358,8 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, answer_type_list=None,
     # seq_2_start_t is the index of the first token in the second text sequence (e.g. passage)
     if tokenizer.__class__.__name__ in ["RobertaTokenizer", "XLMRobertaTokenizer"]:
         seq_2_start_t = get_roberta_seq_2_start(input_ids)
+    elif tokenizer.__class__.__name__ == "CamembertTokenizer":
+        seq_2_start_t = get_camembert_seq_2_start(input_ids)
     else:
         seq_2_start_t = segment_ids.index(1)
 
@@ -512,6 +514,17 @@ def get_roberta_seq_2_start(input_ids):
     # the index of the second </s>
     first_backslash_s = input_ids.index(2)
     second_backslash_s = input_ids.index(2, first_backslash_s + 1)
+    return second_backslash_s + 1
+
+def get_camembert_seq_2_start(input_ids):
+    # CamembertTokenizer.encode_plus returns only zeros in token_type_ids (same as RobertaTokenizer).
+    # This is another way to find the start of the second sequence (following get_roberta_seq_2_start)
+    # Camembert input sequences have the following
+    # format: <s> P1 </s> </s> P2 </s>
+    # <s> has index 5 and </s> has index 6. To find the beginning of the second sequence, this function first finds
+    # the index of the second </s>
+    first_backslash_s = input_ids.index(6)
+    second_backslash_s = input_ids.index(6, first_backslash_s + 1)
     return second_backslash_s + 1
 
 def sample_to_features_squadOLD(
