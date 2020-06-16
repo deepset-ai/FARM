@@ -1087,7 +1087,8 @@ class SquadProcessor(Processor):
         for index, document in zip(indices, dicts_tokenized):
             for q_idx, raw in enumerate(document):
                 # In case of Question Answering the external ID is used for document IDs
-                basket = SampleBasket(raw=raw, id=f"{index}-{q_idx}", external_id=raw.get("document_id",None))
+                id_str = str(raw.get("document_id", index)) + f"-{q_idx}"
+                basket = SampleBasket(raw=raw, id=id_str)
                 baskets.append(basket)
         return baskets
 
@@ -1099,7 +1100,7 @@ class SquadProcessor(Processor):
         raw_baskets = []
         dictionary = convert_qa_input_dict(dictionary)
         document_text = dictionary["context"]
-        document_id = dictionary.get("document_id",None)
+        document_id = dictionary.get("document_id", None)
 
         document_tokenized = tokenize_with_metadata(document_text, self.tokenizer)
         document_start_of_word = [int(x) for x in document_tokenized["start_of_word"]]
@@ -1146,7 +1147,7 @@ class SquadProcessor(Processor):
                    "question_start_of_word": question_start_of_word,
                    "answers": answers,
                    "answer_type": answer_type,
-                   "squad_id": squad_id}
+                   "external_id": squad_id}
             raw_baskets.append(raw)
         return raw_baskets
 
@@ -1510,7 +1511,7 @@ class NaturalQuestionsProcessor(Processor):
                    "question_start_of_word": question_start_of_word,
                    "answers": answers,
                    "answer_type": answer_type,
-                   "nq_id": nq_id}
+                   "external_id": nq_id}
             raw_baskets.append(raw)
         return raw_baskets
 

@@ -1233,37 +1233,16 @@ class QuestionAnsweringHead(PredictionHead):
 
         # Iterate over each set of document level prediction
         for pred_d, no_ans_gap, basket in zip(top_preds, no_ans_gaps, baskets):
-            # TODO the follow try catch is because of difference in Basket structure between NQ and SQuAD - resolve this!!!
-            # TODO This code is horrible - will be cleaned soon
 
             # Unpack document offsets, clear text and squad_id
-            try:
-                token_offsets = basket.samples[0].tokenized["document_offsets"] # NQ style
-            except KeyError:
-                token_offsets = basket.raw["document_offsets"]                  # SQuAD style
-
-            try:
-                document_text = basket.raw["context"]       # SQuAD style
-            except KeyError:
-                try:
-                    document_text = basket.raw["text"] # NQ style
-                except KeyError:
-                    document_text = basket.raw["document_text"]
-
-            try:
-                question = basket.raw["questions"][0]  # SQuAD style
-            except KeyError:
-                try:
-                    question = basket.raw["qas"][0]         # NQ style
-                except KeyError:
-                    question = basket.raw["question_text"]
-
-            try:
-                question_id = basket.raw["squad_id"]
-            except KeyError:
-                question_id = None # TODO add NQ id here
-
-            basket_id = basket.id
+            token_offsets = basket.samples[0].tokenized["document_offsets"]
+            document_text = basket.raw.get("document_text", None)
+            question = basket.raw.get("question_text", None)
+            external_id = basket.id
+            if not document_text:
+                document_text = basket.raw.get("context", None)
+            if not question:
+                question = basket.raw.get("qas")[0]
 
             # Iterate over each prediction on the one document
             full_preds = []
@@ -1276,11 +1255,11 @@ class QuestionAnsweringHead(PredictionHead):
                 qa_answer.add_answer(pred_str)
                 full_preds.append(qa_answer)
             n_samples = full_preds[0].n_samples_in_doc
-            curr_doc_pred = QAPred(id=basket_id,
+            curr_doc_pred = QAPred(id=external_id,
                                    prediction=full_preds,
                                    context=document_text,
                                    question=question,
-                                   question_id=question_id,
+                                   question_id=external_id,
                                    token_offsets=token_offsets,
                                    context_window_size=self.context_window_size,
                                    aggregation_level="document",
