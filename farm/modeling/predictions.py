@@ -86,7 +86,6 @@ class QAPred(Pred):
     token_offsets: List[int]
     context_window_size: int #TODO only needed for to_json() - can we get rid context_window_size, TODO Do we really need this?
     aggregation_level: str
-    question_id: Optional[str]  # TODO Is this needed when we already have PRed.id?
     answer_types: Optional[List[str]] = []
     ground_truth_answer: Optional[str] = None
     no_answer_gap: Optional[float] = None

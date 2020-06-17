@@ -11,7 +11,7 @@ class SampleBasket:
     is needed for tasks like question answering where the source text can generate multiple input - label
     pairs."""
 
-    def __init__(self, id: str, raw: dict, external_id=None, samples=None):
+    def __init__(self, id_internal: str, raw: dict, id_external=None, samples=None):
         """
         :param id: A unique identifying id. Used for identification within FARM.
         :type id: str
@@ -22,7 +22,8 @@ class SampleBasket:
         :param samples: An optional list of Samples used to populate the basket at initialization.
         :type samples: Sample
         """
-        self.id = id
+        self.id_internal = id_internal
+        self.id_external = id_external
         self.raw = raw
         self.samples = samples
 

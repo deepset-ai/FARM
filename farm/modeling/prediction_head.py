@@ -1207,7 +1207,7 @@ class QuestionAnsweringHead(PredictionHead):
         assert logits is None, "Logits are not None, something is passed wrongly into formatted_preds() in infer.py"
         assert preds_p is not None, "No preds_p passed to formatted_preds()"
         samples = [s for b in baskets for s in b.samples]
-        ids = [s.id.split("-") for s in samples]
+        ids = [s.id for s in samples]
         passage_start_t = [s.features[0]["passage_start_t"] for s in samples]
         seq_2_start_t = [s.features[0]["seq_2_start_t"] for s in samples]
 
@@ -1238,7 +1238,6 @@ class QuestionAnsweringHead(PredictionHead):
             token_offsets = basket.samples[0].tokenized["document_offsets"]
             document_text = basket.raw.get("document_text", None)
             question = basket.raw.get("question_text", None)
-            external_id = basket.id
             if not document_text:
                 document_text = basket.raw.get("context", None)
             if not question:
@@ -1255,11 +1254,13 @@ class QuestionAnsweringHead(PredictionHead):
                 qa_answer.add_answer(pred_str)
                 full_preds.append(qa_answer)
             n_samples = full_preds[0].n_samples_in_doc
-            curr_doc_pred = QAPred(id=external_id,
+
+            pred_id = basket.id_external if basket.id_external else basket.id_internal
+
+            curr_doc_pred = QAPred(id=pred_id,
                                    prediction=full_preds,
                                    context=document_text,
                                    question=question,
-                                   question_id=external_id,
                                    token_offsets=token_offsets,
                                    context_window_size=self.context_window_size,
                                    aggregation_level="document",
@@ -1289,8 +1290,10 @@ class QuestionAnsweringHead(PredictionHead):
 
         # Iterate over the preds of each sample
         for sample_idx in range(n_samples):
-            id_1, id_2, _ = ids[sample_idx]
-            basket_id = f"{id_1}-{id_2}"
+
+            # Remove the final number in id which corresponds to sample's id
+            basket_id = ids[sample_idx]
+            basket_id = "-".join(basket_id.split("-")[:-1])
 
             # curr_passage_start_t is the token offset of the current passage
             # It will always be a multiple of doc_stride

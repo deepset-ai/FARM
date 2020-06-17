@@ -283,7 +283,7 @@ class Processor(ABC):
             try:
                 basket.samples = self._dict_to_samples(dictionary=basket.raw, all_dicts=all_dicts)
                 for num, sample in enumerate(basket.samples):
-                     sample.id = f"{basket.id}-{num}"
+                     sample.id = f"{basket.id_internal}-{num}"
             except:
                 logger.error(f"Could not create sample(s) from this dict: \n {basket.raw}")
                 raise
@@ -308,7 +308,7 @@ class Processor(ABC):
         dataset, tensor_names = convert_features_to_dataset(features=features_flat)
         return dataset, tensor_names
 
-    def dataset_from_dicts(self, dicts, indices=None, rest_api_schema=False, return_baskets = False):
+    def dataset_from_dicts(self, dicts, indices=None, return_baskets = False):
         """
         Contains all the functionality to turn a list of dict objects into a PyTorch Dataset and a
         list of tensor names. This can be used for inference mode.
@@ -317,21 +317,15 @@ class Processor(ABC):
         :type dicts: list of dicts
         :return: a Pytorch dataset and a list of tensor names.
         """
-        if rest_api_schema:
-            id_prefix = "infer"
-        else:
-            id_prefix = "train"
         # We need to add the index (coming from multiprocessing chunks) to have a unique basket ID
-        if indices:
-            self.baskets = [
-                SampleBasket(raw=tr, id=f"{id_prefix}-{index}")
-                for (tr, index) in zip(dicts, indices)
-            ]
-        else:
-            self.baskets = [
-                SampleBasket(raw=tr, id=f"{id_prefix}-{i}")
-                for (i, tr) in enumerate(dicts)
-            ]
+
+        self.baskets = []
+        for id_internal, d in enumerate(dicts):
+            id_external = self._id_from_dict(d)
+            if indices:
+                id_internal = indices[id_internal]
+            self.baskets.append(SampleBasket(raw=d, id_external=id_external, id_internal=id_internal))
+
         self._init_samples_in_baskets()
         self._featurize_samples()
         if indices:
@@ -363,6 +357,21 @@ class Processor(ABC):
             value = getattr(self, name)
             params.update({name: str(value)})
         MlLogger.log_params(params)
+
+    @staticmethod
+    def _id_from_dict(d):
+        candidates = []
+        candidates.append(d.get("example_id", None))
+        candidates.append(d.get("external_id", None))
+        candidates = [x for x in candidates if x]
+        if len(candidates) == 0:
+            return None
+        elif len(candidates) == 1:
+            return candidates[0]
+        else:
+            raise Exception
+
+
 
 
 #########################################
@@ -1084,11 +1093,13 @@ class SquadProcessor(Processor):
         dicts_tokenized = [self.apply_tokenization(d) for d in dicts]
 
         baskets = []
+
         for index, document in zip(indices, dicts_tokenized):
             for q_idx, raw in enumerate(document):
                 # In case of Question Answering the external ID is used for document IDs
-                id_str = str(raw.get("document_id", index)) + f"-{q_idx}"
-                basket = SampleBasket(raw=raw, id=id_str)
+                id_external = self._id_from_dict(raw)
+                id_internal = f"{index}-{q_idx}"
+                basket = SampleBasket(raw=raw, id_internal=id_internal, id_external=id_external)
                 baskets.append(basket)
         return baskets
 
@@ -1100,7 +1111,6 @@ class SquadProcessor(Processor):
         raw_baskets = []
         dictionary = convert_qa_input_dict(dictionary)
         document_text = dictionary["context"]
-        document_id = dictionary.get("document_id", None)
 
         document_tokenized = tokenize_with_metadata(document_text, self.tokenizer)
         document_start_of_word = [int(x) for x in document_tokenized["start_of_word"]]
@@ -1109,7 +1119,7 @@ class SquadProcessor(Processor):
             answers = []
             # For training and dev where labelled samples are read in from a SQuAD style file
             try:
-                squad_id = question["id"]
+                external_id = question["id"]
                 question_text = question["question"]
                 for answer in question["answers"]:
                     if answer["text"] == "":
@@ -1122,7 +1132,7 @@ class SquadProcessor(Processor):
                     answers.append(a)
             # For inference where samples are read in as dicts without an id or answers
             except TypeError:
-                squad_id = None
+                external_id = None
                 question_text = question
             question_tokenized = tokenize_with_metadata(question_text, self.tokenizer)
             question_start_of_word = [int(x) for x in question_tokenized["start_of_word"]]
@@ -1140,14 +1150,13 @@ class SquadProcessor(Processor):
                    "document_tokens": document_tokenized["tokens"],
                    "document_offsets": document_tokenized["offsets"],
                    "document_start_of_word": document_start_of_word,
-                   "document_id": document_id,
                    "question_text": question_text,
                    "question_tokens": question_tokenized["tokens"],
                    "question_offsets": question_tokenized["offsets"],
                    "question_start_of_word": question_start_of_word,
                    "answers": answers,
                    "answer_type": answer_type,
-                   "external_id": squad_id}
+                   "external_id": external_id}
             raw_baskets.append(raw)
         return raw_baskets
 

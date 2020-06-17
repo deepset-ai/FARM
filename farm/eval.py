@@ -75,7 +75,6 @@ class Evaluator:
                 preds_all[head_num] += list(to_numpy(preds[head_num]))
                 label_all[head_num] += list(to_numpy(labels[head_num]))
                 if head.model_type == "span_classification":
-                    ids_all[head_num] += list(to_numpy(batch["id"]))
                     passage_start_t_all[head_num] += list(to_numpy(batch["passage_start_t"]))
 
         # Evaluate per prediction head
@@ -91,8 +90,7 @@ class Evaluator:
             if hasattr(head, 'aggregate_preds'):
                 preds_all[head_num], label_all[head_num] = head.aggregate_preds(preds=preds_all[head_num],
                                                                           labels=label_all[head_num],
-                                                                          passage_start_t=passage_start_t_all[head_num],
-                                                                          ids=ids_all[head_num])
+                                                                          passage_start_t=passage_start_t_all[head_num])
 
             result = {"loss": loss_all[head_num] / len(self.data_loader.dataset),
                       "task_name": head.task_name}
