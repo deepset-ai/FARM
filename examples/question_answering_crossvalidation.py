@@ -54,7 +54,7 @@ def question_answering_crossvalidation():
     dev_split = 0.1
     evaluate_every = 50
     no_ans_boost = 0 # use large negative values to disable giving "no answer" option
-    recall_at = 3 # recall at n is only useful for answers inside long documents
+    accuracy_at = 3 # accuracy at n is useful for answers inside long documents
     use_amp = None
 
     # 1.Create a tokenizer
@@ -97,14 +97,14 @@ def question_answering_crossvalidation():
         model.prediction_heads[0].no_ans_boost = no_ans_boost
         # Number of predictions the model will make per Question.
         # The multiple predictions are used for evaluating top n recall.
-        model.prediction_heads[0].n_best = recall_at
+        model.prediction_heads[0].n_best = accuracy_at
 
         # # or train question-answering models from scratch
         # # Create an AdaptiveModel
         # # a) which consists of a pretrained language model as a basis
         # language_model = LanguageModel.load(lang_model)
         # # b) and a prediction head on top that is suited for our task => Question-answering
-        # prediction_head = QuestionAnsweringHead(no_ans_boost=no_ans_boost, n_best=recall_at)
+        # prediction_head = QuestionAnsweringHead(no_ans_boost=no_ans_boost, n_best=accuracy_at)
         # model = AdaptiveModel(
         #    language_model=language_model,
         #    prediction_heads=[prediction_head],
@@ -148,7 +148,7 @@ def question_answering_crossvalidation():
     all_labels = []
     all_f1 = []
     all_em = []
-    all_topnrecall = []
+    all_topnaccuracy = []
 
     for num_fold, silo in enumerate(silos):
         model = train_on_split(silo, num_fold)
@@ -168,7 +168,7 @@ def question_answering_crossvalidation():
         all_labels.extend(result[0].get("labels"))
         all_f1.append(result[0]["f1"])
         all_em.append(result[0]["EM"])
-        all_topnrecall.append(result[0]["top_n_recall"])
+        all_topnaccuracy.append(result[0]["top_n_accuracy"])
 
         # emtpy cache to avoid memory leak and cuda OOM across multiple folds
         model.cpu()
@@ -191,12 +191,12 @@ def question_answering_crossvalidation():
 
     logger.info(f"Single EM-Scores:   {all_em}")
     logger.info(f"Single F1-Scores:   {all_f1}")
-    logger.info(f"Single top_{recall_at}_recall Scores:   {all_topnrecall}")
+    logger.info(f"Single top_{accuracy_at}_accuracy Scores:   {all_topnaccuracy}")
     logger.info(f"XVAL EM:   {xval_score['EM']}")
     logger.info(f"XVAL f1:   {xval_score['f1']}")
-    logger.info(f"XVAL top_{recall_at}_recall:   {xval_score['top_n_recall']}")
+    logger.info(f"XVAL top_{accuracy_at}_accuracy:   {xval_score['top_n_accuracy']}")
     ml_logger.log_metrics({"XVAL EM": xval_score["EM"]}, 0)
     ml_logger.log_metrics({"XVAL f1": xval_score["f1"]}, 0)
-    ml_logger.log_metrics({f"XVAL top_{recall_at}_recall": xval_score["top_n_recall"]}, 0)
+    ml_logger.log_metrics({f"XVAL top_{accuracy_at}_accuracy": xval_score["top_n_accuracy"]}, 0)
 if __name__ == "__main__":
     question_answering_crossvalidation()
