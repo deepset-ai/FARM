@@ -132,12 +132,10 @@ def question_answering():
     ]
 
     model = Inferencer.load(model_name_or_path="../saved_models/farm/roberta-base-squad2-nq", batch_size=batch_size, gpu=True)
-    result = model.inference_from_dicts(dicts=QA_input)
-
-    pprint.pprint(result)
+    result = model.inference_from_dicts(dicts=QA_input, return_json=False) # result is a list of QAPred objects
 
     print(f"\nQuestion: Did GameTrailers rated Twilight Princess as one of the best games ever created?"
-          f"\nAnswer from model: {result[0]['predictions'][0]['answers'][0]['classification']}")
+          f"\nAnswer from model: {result[0].prediction[0].answer}")
 
 if __name__ == "__main__":
     question_answering()
