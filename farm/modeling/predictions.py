@@ -136,7 +136,7 @@ class QAPred(Pred):
                 {
                     "question": self.question,
                     "question_id": self.question_id,
-                    "ground_truth": None,
+                    "ground_truth": self.ground_truth_answer,
                     "answers": answers,
                     "no_ans_gap": self.no_answer_gap # Add no_ans_gap to current no_ans_boost for switching top prediction
                 }
@@ -152,22 +152,21 @@ class QAPred(Pred):
             string = qa_answer.answer
             start_t = qa_answer.offset_answer_start
             end_t = qa_answer.offset_answer_end
-            score = qa_answer.score
 
             _, ans_start_ch, ans_end_ch = span_to_string(start_t, end_t, self.token_offsets, self.context)
             context_string, context_start_ch, context_end_ch = self.create_context(ans_start_ch, ans_end_ch, self.context)
             if squad:
                 if string == "is_impossible":
                     string = ""
-            curr = {"score": score,
-                    "probability": -1,
+            curr = {"score": qa_answer.score,
+                    "probability": None,
                     "answer": string,
                     "offset_answer_start": ans_start_ch,
                     "offset_answer_end": ans_end_ch,
                     "context": context_string,
                     "offset_context_start": context_start_ch,
                     "offset_context_end": context_end_ch,
-                    "document_id": self.id}
+                    "document_id": qa_answer.document_id}
             ret.append(curr)
         return ret
 
