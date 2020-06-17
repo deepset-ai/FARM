@@ -75,6 +75,7 @@ class Evaluator:
                 preds_all[head_num] += list(to_numpy(preds[head_num]))
                 label_all[head_num] += list(to_numpy(labels[head_num]))
                 if head.model_type == "span_classification":
+                    ids_all[head_num] += list(to_numpy(batch["id"]))
                     passage_start_t_all[head_num] += list(to_numpy(batch["passage_start_t"]))
 
         # Evaluate per prediction head
@@ -88,9 +89,14 @@ class Evaluator:
                 preds_all[head_num] = mlb.fit_transform(preds_all[head_num])
                 label_all[head_num] = mlb.transform(label_all[head_num])
             if hasattr(head, 'aggregate_preds'):
+                # Needed to convert NQ ids from np arrays to strings
+                ids_all_str = [x.astype(str) for x in ids_all[head_num]]
+                ids_all_list = [list(x) for x in ids_all_str]
+                head_ids = ["-".join(x) for x in ids_all_list]
                 preds_all[head_num], label_all[head_num] = head.aggregate_preds(preds=preds_all[head_num],
-                                                                          labels=label_all[head_num],
-                                                                          passage_start_t=passage_start_t_all[head_num])
+                                                                                labels=label_all[head_num],
+                                                                                passage_start_t=passage_start_t_all[head_num],
+                                                                                ids=head_ids)
 
             result = {"loss": loss_all[head_num] / len(self.data_loader.dataset),
                       "task_name": head.task_name}

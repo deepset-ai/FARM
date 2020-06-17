@@ -98,7 +98,7 @@ class QAPred(Pred):
             "predictions": [
                 {
                     "question": self.question,
-                    "question_id": self.question_id,
+                    "question_id": self.id,
                     "ground_truth": None,
                     "answers": answers,
                     "no_ans_gap": self.no_answer_gap # Add no_ans_gap to current no_ans_boost for switching top prediction

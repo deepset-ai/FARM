@@ -1288,12 +1288,11 @@ class QuestionAnsweringHead(PredictionHead):
         all_basket_preds = {}
         all_basket_labels = {}
 
-        # Iterate over the preds of each sample
+        # Iterate over the preds of each sample - remove final number which is the sample id and not needed for aggregation
         for sample_idx in range(n_samples):
-
-            # Remove the final number in id which corresponds to sample's id
             basket_id = ids[sample_idx]
-            basket_id = "-".join(basket_id.split("-")[:-1])
+            basket_id = basket_id.split("-")[:-1]
+            basket_id = "-".join(basket_id)
 
             # curr_passage_start_t is the token offset of the current passage
             # It will always be a multiple of doc_stride

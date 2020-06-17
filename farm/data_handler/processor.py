@@ -1132,7 +1132,7 @@ class SquadProcessor(Processor):
                     answers.append(a)
             # For inference where samples are read in as dicts without an id or answers
             except TypeError:
-                external_id = None
+                external_id = self._id_from_dict(dictionary)
                 question_text = question
             question_tokenized = tokenize_with_metadata(question_text, self.tokenizer)
             question_start_of_word = [int(x) for x in question_tokenized["start_of_word"]]
