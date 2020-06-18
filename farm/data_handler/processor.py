@@ -1091,7 +1091,7 @@ class SquadProcessor(Processor):
 
     def _dicts_to_baskets(self, dicts, indices):
         # Perform tokenization on documents and questions resulting in an unnested list of doc-question pairs
-        dicts_tokenized = [self.apply_tokenization(d) for d in dicts]
+        dicts_tokenized = [apply_tokenization(d, self.tokenizer) for d in dicts]
 
         baskets = []
 
@@ -1103,9 +1103,6 @@ class SquadProcessor(Processor):
                 basket = SampleBasket(raw=raw, id_internal=id_internal, id_external=id_external)
                 baskets.append(basket)
         return baskets
-
-    def apply_tokenization(self, dictionary):
-        return apply_tokenization(dictionary, self.tokenizer)
 
     def file_to_dicts(self, file: str) -> [dict]:
         nested_dicts = read_squad_file(filename=file)
@@ -1235,7 +1232,7 @@ class NaturalQuestionsProcessor(Processor):
         if not self.inference:
             dictionary = self.prepare_dict(dictionary=dictionary)
 
-        dictionary_tokenized = self.apply_tokenization(dictionary)[0]
+        dictionary_tokenized = apply_tokenization(dictionary, self.tokenizer)[0]
         n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
         samples = create_samples_qa(dictionary_tokenized,
                                     self.max_query_length,
@@ -1413,9 +1410,6 @@ class NaturalQuestionsProcessor(Processor):
             span = doc_text[:next_word_start_c].strip()
             end_c = len(span)
         return start_c, end_c
-
-    def apply_tokenization(self, dictionary):
-        return apply_tokenization(dictionary, self.tokenizer)
 
     def _sample_to_features(self, sample: Sample) -> dict:
         features = sample_to_features_qa(sample=sample,
