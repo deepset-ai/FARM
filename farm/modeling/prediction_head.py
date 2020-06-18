@@ -1236,12 +1236,23 @@ class QuestionAnsweringHead(PredictionHead):
 
             # Unpack document offsets, clear text and squad_id
             token_offsets = basket.samples[0].tokenized["document_offsets"]
-            document_text = basket.raw.get("document_text", None)
-            question = basket.raw.get("question_text", None)
-            if not document_text:
-                document_text = basket.raw.get("context", None)
-            if not question:
-                question = basket.raw.get("qas")[0]
+
+            # These options reflect the different input dicts that can be assigned to the basket
+            # before any kind of normalization or preprocessing can happen
+            question_names = ["question_text", "qas", "questions"]
+            doc_names = ["document_text", "context", "text"]
+
+            def try_get(keys, dictionary):
+                for key in keys:
+                    if key in dictionary:
+                        ret = dictionary[key]
+                        if type(ret) == list:
+                            ret = ret[0]
+                        return ret
+                return None
+
+            document_text = try_get(doc_names, basket.raw)
+            question = try_get(question_names, basket.raw)
 
             # Iterate over each prediction on the one document
             full_preds = []
