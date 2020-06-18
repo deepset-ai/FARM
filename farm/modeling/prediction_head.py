@@ -16,7 +16,7 @@ from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
 
 from farm.data_handler.utils import is_json
-from farm.utils import convert_iob_to_simple_tags, span_to_string
+from farm.utils import convert_iob_to_simple_tags, span_to_string, try_get
 from farm.modeling.predictions import QACandidate, QAPred
 
 logger = logging.getLogger(__name__)
@@ -1241,15 +1241,6 @@ class QuestionAnsweringHead(PredictionHead):
             # before any kind of normalization or preprocessing can happen
             question_names = ["question_text", "qas", "questions"]
             doc_names = ["document_text", "context", "text"]
-
-            def try_get(keys, dictionary):
-                for key in keys:
-                    if key in dictionary:
-                        ret = dictionary[key]
-                        if type(ret) == list:
-                            ret = ret[0]
-                        return ret
-                return None
 
             document_text = try_get(doc_names, basket.raw)
             question = try_get(question_names, basket.raw)

@@ -42,6 +42,7 @@ from farm.data_handler.utils import (
 )
 from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
 from farm.utils import MLFlowLogger as MlLogger
+from farm.utils import try_get
 
 
 logger = logging.getLogger(__name__)
@@ -1103,62 +1104,8 @@ class SquadProcessor(Processor):
                 baskets.append(basket)
         return baskets
 
-
     def apply_tokenization(self, dictionary):
-        """ This performs tokenization on all documents and questions. The result is a list (unnested)
-        where each entry is a dictionary for one document-question pair (potentially mutliple answers). """
-
-        raw_baskets = []
-        dictionary = convert_qa_input_dict(dictionary)
-        document_text = dictionary["context"]
-
-        document_tokenized = tokenize_with_metadata(document_text, self.tokenizer)
-        document_start_of_word = [int(x) for x in document_tokenized["start_of_word"]]
-        questions = dictionary["qas"]
-        for question in questions:
-            answers = []
-            # For training and dev where labelled samples are read in from a SQuAD style file
-            try:
-                external_id = question["id"]
-                question_text = question["question"]
-                for answer in question["answers"]:
-                    if answer["text"] == "":
-                        answer_type = "is_impossible"
-                    else:
-                        answer_type = "span"
-                    a = {"text": answer["text"],
-                         "offset": answer["answer_start"],
-                         "answer_type": answer_type}
-                    answers.append(a)
-            # For inference where samples are read in as dicts without an id or answers
-            except TypeError:
-                external_id = self._id_from_dict(dictionary)
-                question_text = question
-            question_tokenized = tokenize_with_metadata(question_text, self.tokenizer)
-            question_start_of_word = [int(x) for x in question_tokenized["start_of_word"]]
-
-            # TODO for Squad and NQ, answer_type should be paired with the question and not the passage
-            # TODO make this change for both processors
-            if "is_impossible" not in question:
-                answer_type = "span"
-            else:
-                if question["is_impossible"]:
-                    answer_type = "is_impossible"
-                else:
-                    answer_type = "span"
-            raw = {"document_text": document_text,
-                   "document_tokens": document_tokenized["tokens"],
-                   "document_offsets": document_tokenized["offsets"],
-                   "document_start_of_word": document_start_of_word,
-                   "question_text": question_text,
-                   "question_tokens": question_tokenized["tokens"],
-                   "question_offsets": question_tokenized["offsets"],
-                   "question_start_of_word": question_start_of_word,
-                   "answers": answers,
-                   "answer_type": answer_type,
-                   "external_id": external_id}
-            raw_baskets.append(raw)
-        return raw_baskets
+        return apply_tokenization(dictionary, self.tokenizer)
 
     def file_to_dicts(self, file: str) -> [dict]:
         nested_dicts = read_squad_file(filename=file)
@@ -1468,61 +1415,7 @@ class NaturalQuestionsProcessor(Processor):
         return start_c, end_c
 
     def apply_tokenization(self, dictionary):
-        """ This performs tokenization on all documents and questions. The result is a list
-        where each entry is a dictionary for one document-question pair (potentially mutliple answers). This is based on
-        the apply_tokenization method of SquadProcessor but slightly modified.
-
-        TODO: See if this can be merged with SquadProcessor.apply_tokenization()"""
-
-        raw_baskets = []
-        # Input dictionaries can have ["context", "qas"] (SQuAD format) as keys or
-        # ["text", "questions"] (FARM format). Both are supported
-        dictionary = convert_qa_input_dict(dictionary)
-        document_text = dictionary["context"]
-        document_id = dictionary.get("document_id", None)
-
-        document_tokenized = tokenize_with_metadata(document_text, self.tokenizer)
-        document_start_of_word = [int(x) for x in document_tokenized["start_of_word"]]
-        questions = dictionary["qas"]
-        for question in questions:
-            answers = []
-            # For training and dev with labelled examples
-            try:
-                nq_id = question["id"]
-                question_text = question["question"]
-                for answer in question["answers"]:
-                    a = {"text": answer["text"],
-                         "offset": answer["answer_start"],
-                         "answer_type": question["answer_type"]}
-                    answers.append(a)
-            # For inference where samples are read in without an id or answers
-            except TypeError:
-                nq_id = None
-                question_text = question
-            question_tokenized = tokenize_with_metadata(question_text, self.tokenizer)
-            question_start_of_word = [int(x) for x in question_tokenized["start_of_word"]]
-
-            # TODO compare data format with Squad to explain what this section is doing exactly
-            # TODO suspect that this might not be right for NQ
-            if "is_impossible" not in question:
-                answer_type = "span"
-            else:
-                answer_type = question["is_impossible"]
-
-            raw = {"document_text": document_text,
-                   "document_tokens": document_tokenized["tokens"],
-                   "document_offsets": document_tokenized["offsets"],
-                   "document_start_of_word": document_start_of_word,
-                   "document_id": document_id,
-                   "question_text": question_text,
-                   "question_tokens": question_tokenized["tokens"],
-                   "question_offsets": question_tokenized["offsets"],
-                   "question_start_of_word": question_start_of_word,
-                   "answers": answers,
-                   "answer_type": answer_type,
-                   "external_id": nq_id}
-            raw_baskets.append(raw)
-        return raw_baskets
+        return apply_tokenization(dictionary, self.tokenizer)
 
     def _sample_to_features(self, sample: Sample) -> dict:
         features = sample_to_features_qa(sample=sample,
@@ -1681,3 +1574,72 @@ class RegressionProcessor(Processor):
             tokenizer=self.tokenizer
         )
         return features
+
+
+def apply_tokenization(dictionary, tokenizer):
+    raw_baskets = []
+    dictionary = convert_qa_input_dict(dictionary)
+    dictionary["qas"] = is_impossible_to_answer_type(dictionary["qas"])
+    document_text = dictionary["context"]
+
+    document_tokenized = tokenize_with_metadata(document_text, tokenizer)
+    document_start_of_word = [int(x) for x in document_tokenized["start_of_word"]]
+    questions = dictionary["qas"]
+    for question in questions:
+        answers = []
+        # For training and dev with labelled examples
+        try:
+            external_id = question["id"]
+            question_text = question["question"]
+            for answer in question["answers"]:
+                if answer["text"] == "":
+                    answer_type = "is_impossible"
+                else:
+                    answer_type = "span"
+                a = {"text": answer["text"],
+                     "offset": answer["answer_start"],
+                     "answer_type": answer_type}
+                answers.append(a)
+        # For inference where samples are read in as dicts without an id or answers
+        except TypeError:
+            external_id = try_get(["example_id", "external_id"], dictionary)
+            question_text = question
+
+        question_tokenized = tokenize_with_metadata(question_text, tokenizer)
+        question_start_of_word = [int(x) for x in question_tokenized["start_of_word"]]
+
+        # During inference, there is no_answer type. Also, question might be a str instead of a dict
+        if type(question) == str:
+            answer_type = None
+        elif type(question) == dict:
+            answer_type = question.get("answer_type", None)
+        else:
+            raise Exception("Question was neither in str nor dict format")
+
+        raw = {"document_text": document_text,
+               "document_tokens": document_tokenized["tokens"],
+               "document_offsets": document_tokenized["offsets"],
+               "document_start_of_word": document_start_of_word,
+               "question_text": question_text,
+               "question_tokens": question_tokenized["tokens"],
+               "question_offsets": question_tokenized["offsets"],
+               "question_start_of_word": question_start_of_word,
+               "answers": answers,
+               "answer_type": answer_type,
+               "external_id": external_id}
+        raw_baskets.append(raw)
+    return raw_baskets
+
+
+def is_impossible_to_answer_type(qas):
+    """ Converts questions from having an is_impossible field to having an answer_type field"""
+    new_qas = []
+    for q in qas:
+        answer_type = "span"
+        if "is_impossible" in q:
+            if q["is_impossible"] == True:
+                answer_type = "is_impossible"
+            del q["is_impossible"]
+            q["answer_type"] = answer_type
+        new_qas.append(q)
+    return new_qas

@@ -790,7 +790,9 @@ def split_with_metadata(text):
 
 def convert_qa_input_dict(infer_dict):
     """ Input dictionaries in QA can either have ["context", "qas"] (internal format) as keys or
-    ["text", "questions"] (api format). This function converts the latter into the former"""
+    ["text", "questions"] (api format). This function converts the latter into the former. It also converts the
+    is_impossible field to answer_type so that NQ and SQuAD dicts have the same format.
+    """
     try:
         # Check if infer_dict is already in internal json format
         if "context" in infer_dict and "qas" in infer_dict:
@@ -802,16 +804,10 @@ def convert_qa_input_dict(infer_dict):
         qas = [{"question": q,
                 "id": None,
                 "answers": [],
-                "is_impossible": False} for i, q in enumerate(questions)]
+                "answer_type": None} for i, q in enumerate(questions)]
         converted = {"qas": qas,
                      "context": text,
                      "document_id":document_id}
         return converted
     except KeyError:
         raise Exception("Input does not have the expected format")
-
-
-
-
-
-
