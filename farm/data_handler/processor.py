@@ -1025,7 +1025,7 @@ class SquadProcessor(Processor):
         :type data_dir: str
         :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
         :type label_list: list
-        :param metric: name of metric that shall be used for evaluation, can be "squad" or "squad_top_recall"
+        :param metric: name of metric that shall be used for evaluation, can be "squad" or "top_n_accuracy"
         :type metric: str
         :param train_filename: The name of the file containing training data.
         :type train_filename: str
