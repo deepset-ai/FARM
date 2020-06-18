@@ -77,6 +77,18 @@ class QACandidate:
         self.document_id = document_id
         self.passage_id = passage_id
 
+    def add_cls(self, c):
+        # Currently designed so that the QA head's prediction will always be preferred over the Classification head
+        if c in ["yes", "no"]:
+            if self.answer == "is_impossible":
+                pass
+            self.answer_support = self.answer
+            self.answer = c
+            self.answer_type = c
+        elif c == "span":
+            pass
+        elif c == "is_impossible":
+            pass
 
     def to_doc_level(self, start, end):
         self.offset_answer_start = start
