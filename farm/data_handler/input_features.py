@@ -13,6 +13,7 @@ from farm.data_handler.utils import (
     expand_labels,
     pad,
     mask_random_words,
+    convert_id
 )
 from farm.modeling.tokenization import insert_at_special_tokens_pos
 
@@ -308,13 +309,12 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
     return [feature_dict]
 
 
-def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
+def sample_to_features_qa(sample, tokenizer, max_seq_len, answer_type_list=None, max_answers=6):
     """ Prepares data for processing by the model. Supports cases where there are
     multiple answers for the one question/document pair. max_answers is by default set to 6 since
     that is the most number of answers in the squad2.0 dev set."""
 
     # Initialize some basic variables
-    is_impossible = sample.clear_text["is_impossible"]
     question_tokens = sample.tokenized["question_tokens"]
     question_start_of_word = sample.tokenized["question_start_of_word"]
     question_len_t = len(question_tokens)
@@ -323,19 +323,17 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
     passage_start_of_word = sample.tokenized["passage_start_of_word"]
     passage_len_t = len(passage_tokens)
     answers = sample.tokenized["answers"]
+    sample_id = convert_id(sample.id)
 
-    # Turn sample_id into a list of ints (len 3) where the ints are the two halves of the squad_id
-    # converted to base 10 (see utils.encode_squad_id) and the passage_id
-    sample_id = [int(x) for x in sample.id.split("-")]
-
-    # Generates a numpy array of shape (max_answers, 2) where (i, 2) indexes into the start and end indixes
+    # Generates a numpy array of shape (max_answers, 2) where (i, 2) indexes into the start and end indices
     # of the ith answer. The array is filled with -1 since the number of answers is often less than max_answers
     # no answer labels are represented by (0,0)
-    labels = generate_labels(answers,
-                             passage_len_t,
-                             question_len_t,
-                             tokenizer,
-                             max_answers)
+    labels, answer_types = generate_labels(answers,
+                                           passage_len_t,
+                                           question_len_t,
+                                           tokenizer,
+                                           answer_type_list=answer_type_list,
+                                           max_answers=max_answers)
 
     # Generate a start of word vector for the full sequence (i.e. question + answer + special tokens).
     # This will allow us to perform evaluation during training without clear text.
@@ -360,6 +358,8 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
     # seq_2_start_t is the index of the first token in the second text sequence (e.g. passage)
     if tokenizer.__class__.__name__ in ["RobertaTokenizer", "XLMRobertaTokenizer"]:
         seq_2_start_t = get_roberta_seq_2_start(input_ids)
+    elif tokenizer.__class__.__name__ == "CamembertTokenizer":
+        seq_2_start_t = get_camembert_seq_2_start(input_ids)
     else:
         seq_2_start_t = segment_ids.index(1)
 
@@ -381,7 +381,7 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
     # However, when this is passed in to the forward fn of the Roberta model, it throws an error since
     # Roberta has only a single token embedding (!!!). To get around this, we want to have a segment_ids
     # vec that is only 0s
-    if tokenizer.__class__.__name__ == "XLMRobertaTokenizer":
+    if tokenizer.__class__.__name__ in ["XLMRobertaTokenizer", "RobertaTokenizer"]:
         segment_ids = np.zeros_like(segment_ids)
 
     # Todo: explain how only the first of labels will be used in train, and the full array will be used in eval
@@ -391,7 +391,7 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
     feature_dict = {"input_ids": input_ids,
                     "padding_mask": padding_mask,
                     "segment_ids": segment_ids,
-                    "is_impossible": is_impossible,
+                    "answer_type_ids": answer_types,
                     "id": sample_id,
                     "passage_start_t": passage_start_t,
                     "start_of_word": start_of_word,
@@ -400,7 +400,7 @@ def sample_to_features_squad(sample, tokenizer, max_seq_len, max_answers=6):
     return [feature_dict]
 
 
-def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answers):
+def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answers, answer_type_list=None):
     """
     Creates QA label for each answer in answers. The labels are the index of the start and end token
     relative to the passage. They are contained in an array of size (max_answers, 2).
@@ -408,16 +408,20 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
     The index values take in to consideration the question tokens, and also special tokens such as [CLS].
     When the answer is not fully contained in the passage, or the question
     is impossible to answer, the start_idx and end_idx are 0 i.e. start and end are on the very first token
-    (in most models, this is the [CLS] token). """
+    (in most models, this is the [CLS] token). Note that in our implementation NQ has 4 labels
+    ["is_impossible", "yes", "no", "span"] and this is what answer_type_list should look like"""
 
     label_idxs = np.full((max_answers, 2), fill_value=-1)
+    answer_types = np.full((max_answers), fill_value=-1)
 
     # If there are no answers
     if len(answers) == 0:
         label_idxs[0, :] = 0
-        return label_idxs
+        answer_types[:] = 0
+        return label_idxs, answer_types
 
     for i, answer in enumerate(answers):
+        answer_type = answer["answer_type"]
         start_idx = answer["start_t"]
         end_idx = answer["end_t"]
 
@@ -449,11 +453,13 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
 
         start_label_present = 1 in start_vec
         end_label_present = 1 in end_vec
+
         # This is triggered if the answer is not in the passage or the question is_impossible
         # In both cases, the token at idx=0 (in BERT, this is the [CLS] token) is given both the start and end label
         if start_label_present is False and end_label_present is False:
             start_vec[0] = 1
             end_vec[0] = 1
+            answer_type = "is_impossible"
         elif start_label_present is False or end_label_present is False:
             raise Exception("The label vectors are lacking either a start or end label")
 
@@ -461,16 +467,21 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
         assert sum(start_vec) == 1
         assert sum(end_vec) == 1
 
-
         start_idx = start_vec.index(1)
         end_idx = end_vec.index(1)
 
         label_idxs[i, 0] = start_idx
         label_idxs[i, 1] = end_idx
 
+        # Only Natural Questions trains a classification head on answer_type, SQuAD only has the QA head. answer_type_list
+        # will be None for SQuAD but something like ["is_impossible", "span", "yes", "no"] for Natural Questions
+        if answer_type_list:
+            answer_types[i] = answer_type_list.index(answer_type)
+
     assert np.max(label_idxs) > -1
 
-    return label_idxs
+    return label_idxs, answer_types
+
 
 
 def combine_vecs(question_vec, passage_vec, tokenizer, spec_tok_val=-1):
@@ -503,6 +514,17 @@ def get_roberta_seq_2_start(input_ids):
     # the index of the second </s>
     first_backslash_s = input_ids.index(2)
     second_backslash_s = input_ids.index(2, first_backslash_s + 1)
+    return second_backslash_s + 1
+
+def get_camembert_seq_2_start(input_ids):
+    # CamembertTokenizer.encode_plus returns only zeros in token_type_ids (same as RobertaTokenizer).
+    # This is another way to find the start of the second sequence (following get_roberta_seq_2_start)
+    # Camembert input sequences have the following
+    # format: <s> P1 </s> </s> P2 </s>
+    # <s> has index 5 and </s> has index 6. To find the beginning of the second sequence, this function first finds
+    # the index of the second </s>
+    first_backslash_s = input_ids.index(6)
+    second_backslash_s = input_ids.index(6, first_backslash_s + 1)
     return second_backslash_s + 1
 
 def sample_to_features_squadOLD(

@@ -40,7 +40,7 @@ def doc_classification_multilabel():
         do_lower_case=do_lower_case)
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
-    # Here we load GermEval 2018 Data.
+    # Here we load Toxic Comments Data automaticaly if it is not available.
 
     label_list = ["toxic","severe_toxic","obscene","threat","insult","identity_hate"]
     metric = "acc"

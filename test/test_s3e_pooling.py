@@ -38,7 +38,7 @@ def test_s3e_fit():
         language_model=language_model,
         prediction_heads=[],
         embeds_dropout_prob=0.1,
-        lm_output_types=["per_sequence"],
+        lm_output_types=[],
         device=device)
 
     model, processor, s3e_stats = fit_s3e_on_corpus(processor=processor,
@@ -98,3 +98,6 @@ def test_load_extract_s3e_embeddings():
     assert result[0]["vec"][0] - 0.00527727306941057 < 1e-6
     assert result[0]["vec"][-2] + 0.21376857861379997 < 1e-6
 
+if __name__ == "__main__":
+    test_s3e_fit()
+    test_load_extract_s3e_embeddings()

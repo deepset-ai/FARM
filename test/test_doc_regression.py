@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import RegressionProcessor
@@ -14,8 +15,12 @@ from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer
 from farm.utils import set_all_seeds, initialize_device_settings
 
-def test_doc_regression(caplog):
-    caplog.set_level(logging.CRITICAL)
+@pytest.mark.parametrize("data_dir_path,text_column_name",
+                         [("samples/doc_regr", None),
+                          ("samples/doc_regr_other_text_column_name", "text_other")])
+def test_doc_regression(data_dir_path, text_column_name, caplog=None):
+    if caplog:
+        caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=False)
@@ -28,13 +33,18 @@ def test_doc_regression(caplog):
         pretrained_model_name_or_path=lang_model,
         do_lower_case=False)
 
-    processor = RegressionProcessor(tokenizer=tokenizer,
+    rp_params = dict(tokenizer=tokenizer,
                             max_seq_len=8,
-                            data_dir=Path("samples/doc_regr"),
+                            data_dir=Path(data_dir_path),
                             train_filename="train-sample.tsv",
                             dev_filename="test-sample.tsv",
                             test_filename=None,
                             label_column_name="label")
+
+    if text_column_name is not None:
+        rp_params["text_column_name"] = text_column_name
+
+    processor = RegressionProcessor(**rp_params)
 
     data_silo = DataSilo(
         processor=processor,
@@ -85,7 +95,3 @@ def test_doc_regression(caplog):
     model = Inferencer.load(save_dir, num_processes=0)
     result = model.inference_from_dicts(dicts=basic_texts)
     assert isinstance(result[0]["predictions"][0]["pred"], np.float32)
-
-
-if __name__ == "__main__":
-    test_doc_regression()

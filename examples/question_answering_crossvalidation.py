@@ -36,26 +36,30 @@ def question_answering_crossvalidation():
     ##########################
     ########## Settings
     ##########################
-    save_per_fold_results = True
+    save_per_fold_results = False # unsupported for now
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)
 
     lang_model = "deepset/roberta-base-squad2"
-    do_lower_case = True
+    do_lower_case = False
 
-    n_epochs = 3
-    batch_size = 24
+    n_epochs = 2
+    batch_size = 80
     learning_rate = 3e-5
 
 
-    data_dir = Path("../data/squad20")
-    filename = "dev-v2.0.json"
-    xval_folds = 4
-    dev_split = 0.1
-    evaluate_every = 50
-    no_ans_boost = 0 # use large negative values to disable giving "no answer" option
-    recall_at = 3 # recall at n is only useful for answers inside long documents
+    data_dir = Path("../data/covidqa")
+    filename = "COVID-QA.json"
+    xval_folds = 5
+    dev_split = 0
+    evaluate_every = 0
+    no_ans_boost = -100 # use large negative values to disable giving "no answer" option
+    accuracy_at = 3 # accuracy at n is useful for answers inside long documents
     use_amp = None
+
+    ##########################
+    ########## k fold Cross validation
+    ##########################
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
@@ -65,7 +69,7 @@ def question_answering_crossvalidation():
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
     processor = SquadProcessor(
         tokenizer=tokenizer,
-        max_seq_len=256,
+        max_seq_len=384,
         label_list=["start_token", "end_token"],
         metric="squad",
         train_filename=filename,
@@ -73,7 +77,7 @@ def question_answering_crossvalidation():
         dev_split=dev_split,
         test_filename=None,
         data_dir=data_dir,
-        doc_stride=128,
+        doc_stride=192,
     )
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
@@ -97,14 +101,14 @@ def question_answering_crossvalidation():
         model.prediction_heads[0].no_ans_boost = no_ans_boost
         # Number of predictions the model will make per Question.
         # The multiple predictions are used for evaluating top n recall.
-        model.prediction_heads[0].n_best = recall_at
+        model.prediction_heads[0].n_best = accuracy_at
 
         # # or train question-answering models from scratch
         # # Create an AdaptiveModel
         # # a) which consists of a pretrained language model as a basis
         # language_model = LanguageModel.load(lang_model)
         # # b) and a prediction head on top that is suited for our task => Question-answering
-        # prediction_head = QuestionAnsweringHead(no_ans_boost=no_ans_boost, n_best=recall_at)
+        # prediction_head = QuestionAnsweringHead(no_ans_boost=no_ans_boost, n_best=accuracy_at)
         # model = AdaptiveModel(
         #    language_model=language_model,
         #    prediction_heads=[prediction_head],
@@ -148,7 +152,7 @@ def question_answering_crossvalidation():
     all_labels = []
     all_f1 = []
     all_em = []
-    all_topnrecall = []
+    all_topnaccuracy = []
 
     for num_fold, silo in enumerate(silos):
         model = train_on_split(silo, num_fold)
@@ -168,22 +172,23 @@ def question_answering_crossvalidation():
         all_labels.extend(result[0].get("labels"))
         all_f1.append(result[0]["f1"])
         all_em.append(result[0]["EM"])
-        all_topnrecall.append(result[0]["top_n_recall"])
+        all_topnaccuracy.append(result[0]["top_n_accuracy"])
 
         # emtpy cache to avoid memory leak and cuda OOM across multiple folds
         model.cpu()
         torch.cuda.empty_cache()
 
     # Save the per-fold results to json for a separate, more detailed analysis
-    if save_per_fold_results:
-        def convert_numpy_dtype(obj):
-            if type(obj).__module__ == "numpy":
-                return obj.item()
-
-            raise TypeError("Unknown type:", type(obj))
-
-        with open("qa_xval.results.json", "wt") as fp:
-             json.dump(all_results, fp, default=convert_numpy_dtype)
+    # TODO currently not supported - adjust to QAPred and QACandidate objects
+    # if save_per_fold_results:
+    #     def convert_numpy_dtype(obj):
+    #         if type(obj).__module__ == "numpy":
+    #             return obj.item()
+    #
+    #         raise TypeError("Unknown type:", type(obj))
+    #
+    #     with open("qa_xval.results.json", "wt") as fp:
+    #          json.dump(all_results, fp, default=convert_numpy_dtype)
 
     # calculate overall metrics across all folds
     xval_score = squad(preds=all_preds, labels=all_labels)
@@ -191,12 +196,13 @@ def question_answering_crossvalidation():
 
     logger.info(f"Single EM-Scores:   {all_em}")
     logger.info(f"Single F1-Scores:   {all_f1}")
-    logger.info(f"Single top_{recall_at}_recall Scores:   {all_topnrecall}")
+    logger.info(f"Single top_{accuracy_at}_accuracy Scores:   {all_topnaccuracy}")
     logger.info(f"XVAL EM:   {xval_score['EM']}")
     logger.info(f"XVAL f1:   {xval_score['f1']}")
-    logger.info(f"XVAL top_{recall_at}_recall:   {xval_score['top_n_recall']}")
+    logger.info(f"XVAL top_{accuracy_at}_accuracy:   {xval_score['top_n_accuracy']}")
     ml_logger.log_metrics({"XVAL EM": xval_score["EM"]}, 0)
     ml_logger.log_metrics({"XVAL f1": xval_score["f1"]}, 0)
-    ml_logger.log_metrics({f"XVAL top_{recall_at}_recall": xval_score["top_n_recall"]}, 0)
+    ml_logger.log_metrics({f"XVAL top_{accuracy_at}_accuracy": xval_score["top_n_accuracy"]}, 0)
+
 if __name__ == "__main__":
     question_answering_crossvalidation()

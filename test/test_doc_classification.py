@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import TextClassificationProcessor
@@ -15,8 +16,12 @@ from farm.train import Trainer
 from farm.utils import set_all_seeds, initialize_device_settings
 
 
-def test_doc_classification(caplog):
-    caplog.set_level(logging.CRITICAL)
+@pytest.mark.parametrize("data_dir_path,text_column_name",
+                         [("samples/doc_class", None),
+                          ("samples/doc_class_other_text_column_name", "text_other")])
+def test_doc_classification(data_dir_path, text_column_name, caplog=None):
+    if caplog:
+        caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=False)
@@ -29,16 +34,21 @@ def test_doc_classification(caplog):
         pretrained_model_name_or_path=lang_model,
         do_lower_case=False)
 
-    processor = TextClassificationProcessor(tokenizer=tokenizer,
-                                            max_seq_len=8,
-                                            data_dir=Path("samples/doc_class"),
-                                            train_filename="train-sample.tsv",
-                                            label_list=["OTHER", "OFFENSE"],
-                                            metric="f1_macro",
-                                            dev_filename="test-sample.tsv",
-                                            test_filename=None,
-                                            dev_split=0.0,
-                                            label_column_name="coarse_label")
+    tcp_params = dict(tokenizer=tokenizer,
+                      max_seq_len=8,
+                      data_dir=Path(data_dir_path),
+                      train_filename="train-sample.tsv",
+                      label_list=["OTHER", "OFFENSE"],
+                      metric="f1_macro",
+                      dev_filename="test-sample.tsv",
+                      test_filename=None,
+                      dev_split=0.0,
+                      label_column_name="coarse_label")
+
+    if text_column_name is not None:
+        tcp_params["text_column_name"] = text_column_name
+
+    processor = TextClassificationProcessor(**tcp_params)
 
     data_silo = DataSilo(
         processor=processor,
@@ -86,8 +96,5 @@ def test_doc_classification(caplog):
     inf = Inferencer.load(save_dir, batch_size=2, num_processes=0)
     result = inf.inference_from_dicts(dicts=basic_texts)
     assert isinstance(result[0]["predictions"][0]["probability"], np.float32)
-    result2 = inf.inference_from_dicts(dicts=basic_texts, rest_api_schema=True)
+    result2 = inf.inference_from_dicts(dicts=basic_texts, return_json=True)
     assert result == result2
-
-if __name__ == "__main__":
-    test_doc_classification()

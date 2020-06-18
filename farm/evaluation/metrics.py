@@ -1,20 +1,18 @@
-import torch
+import logging
+
 import numpy as np
-import pandas as pd
 from scipy.stats import pearsonr, spearmanr
-from seqeval.metrics import f1_score as ner_f1_score
 from seqeval.metrics import classification_report as token_classification_report
+from seqeval.metrics import f1_score as ner_f1_score
 from sklearn.metrics import (
     matthews_corrcoef,
-    recall_score,
-    precision_score,
     f1_score,
     mean_squared_error,
     r2_score,
     classification_report
 )
+
 from farm.utils import flatten_list
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -92,8 +90,8 @@ def compute_metrics(metric, preds, labels):
         return {"mse": mean_squared_error(preds, labels)}
     elif metric == "r2":
         return {"r2": r2_score(preds, labels)}
-    elif metric == "top_n_recall":
-        return {"top_n_recall": top_n_recall(preds, labels)}
+    elif metric == "top_n_accuracy":
+        return {"top_n_accuracy": top_n_accuracy(preds, labels)}
     # elif metric == "masked_accuracy":
     #     return simple_accuracy(preds, labels, ignore=-1)
     elif metric in registered_metrics:
@@ -144,7 +142,9 @@ def squad_EM(preds, labels):
     n_docs = len(preds)
     n_correct = 0
     for doc_idx in range(n_docs):
-        pred_start, pred_end, _ = preds[doc_idx][0][0]
+        span = preds[doc_idx][0][0]
+        pred_start = span.offset_answer_start
+        pred_end = span.offset_answer_end
         curr_labels = labels[doc_idx]
         if (pred_start, pred_end) in curr_labels:
             n_correct += 1
@@ -162,7 +162,10 @@ def squad_f1(preds, labels):
 
 def squad_f1_single(pred, label, pred_idx=0):
     label_start, label_end = label
-    pred_start, pred_end, _ = pred[pred_idx]
+    span = pred[pred_idx]
+    pred_start = span.offset_answer_start
+    pred_end = span.offset_answer_end
+
     if (pred_start + pred_end == 0) or (label_start + label_end == 0):
         if pred_start == label_start:
             return 1.0
@@ -181,10 +184,10 @@ def squad_f1_single(pred, label, pred_idx=0):
 def squad(preds, labels):
     em = squad_EM(preds=preds, labels=labels)
     f1 = squad_f1(preds=preds, labels=labels)
-    top_recall = top_n_recall(preds=preds, labels=labels)
-    return {"EM": em, "f1": f1, "top_n_recall": top_recall}
+    top_acc = top_n_accuracy(preds=preds, labels=labels)
+    return {"EM": em, "f1": f1, "top_n_accuracy": top_acc}
 
-def top_n_recall(preds, labels):
+def top_n_accuracy(preds, labels):
     answer_in_top_n = []
     n_questions = len(preds)
     for i in range(n_questions):

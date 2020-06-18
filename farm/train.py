@@ -7,8 +7,7 @@ import numpy
 import shutil
 import dill
 
-from farm.utils import StdoutLogger as MlLogger
-# from farm.utils import MLFlowLogger as MlLogger
+from farm.utils import MLFlowLogger as MlLogger
 from farm.utils import GracefulKiller, set_all_seeds
 from farm.eval import Evaluator
 from farm.data_handler.data_silo import DataSilo
@@ -26,6 +25,10 @@ logger = logging.getLogger(__name__)
 
 
 class EarlyStopping:
+    """
+    Can be used to control early stopping with a Trainer class. Any object can be used instead which
+    implements the method check_stopping and and provides the attribute save_dir
+    """
 
     def __init__(
             self,
@@ -37,21 +40,19 @@ class EarlyStopping:
             min_evals=0,
     ):
         """
-        Can be used to control early stopping with a Trainer class. Any object can be used instead which
-        implements the method check_stopping and and provides the attribute save_dir
         :param save_dir: the directory where to save the final best model, if None, no saving.
         :param metric: name of dev set metric to monitor (default: loss) to get extracted from the 0th head or
-        a function that extracts a value from the trainer dev evaluation result.
-        NOTE: this is different from the metric to get specified for the processor which defines how
-        to calculate one or more evaluation matric values from prediction/target sets, while this
-        specifies the name of one particular such metric value or a method to calculate that value
-        from the result returned from a processor metric.
+                       a function that extracts a value from the trainer dev evaluation result.
+                       NOTE: this is different from the metric to get specified for the processor which defines how
+                       to calculate one or more evaluation matric values from prediction/target sets, while this
+                       specifies the name of one particular such metric value or a method to calculate that value
+                       from the result returned from a processor metric.
         :param mode: "min" or "max"
         :param patience: how many evaluations to wait after the best evaluation to stop
         :param min_delta: minimum difference to a previous best value to count as an improvement.
         :param min_evals: minimum number of evaluations to wait before using eval value
-
         """
+
         self.metric = metric
         self.save_dir = save_dir
         self.mode = mode
@@ -71,10 +72,12 @@ class EarlyStopping:
         """
         Provide the evaluation value for the current evaluation. Returns true if stopping should occur.
         This will save the model, if necessary.
+
         :param eval: the current evaluation result
         :return: a tuple (stopprocessing, savemodel, evalvalue) indicating if processing should be stopped
-        and if the current model should get saved and the evaluation value used.
+                 and if the current model should get saved and the evaluation value used.
         """
+
         if isinstance(self.metric, str):
             eval_value = eval_result[0][self.metric]
         else:
@@ -148,9 +151,10 @@ class Trainer:
         :param use_amp: Whether to use automatic mixed precision with Apex. One of the optimization levels must be chosen.
                         "O1" is recommended in almost all cases.
         :type use_amp: str
-        :param grad_acc_steps: TODO
+        :param grad_acc_steps: Number of training steps for which the gradients should be accumulated.
+                               Useful to achieve larger effective batch sizes that would not fit in GPU memory.
         :type grad_acc_steps: int
-        :param local_rank: TODO
+        :param local_rank: Local rank of process when distributed training via DDP is used.
         :type local_rank: int
         :param early_stopping: an initialized EarlyStopping object to control early stopping and saving of best models.
         :type early_stopping: EarlyStopping
@@ -228,7 +232,12 @@ class Trainer:
         self.global_step = global_step
 
     def train(self):
-        """ Perform the training procedure. """
+        """
+        Perform the training procedure.
+
+        The training is visualized by a progress bar. It counts the epochs in a zero based manner.
+        For example, when you specify ``epochs=20`` it starts to count from 0 to 19.
+        """
 
         # connect the prediction heads with the right output from processor
         self.model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)

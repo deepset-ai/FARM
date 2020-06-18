@@ -31,6 +31,7 @@ from transformers.tokenization_roberta import RobertaTokenizer
 from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_xlm_roberta import XLMRobertaTokenizer
 from transformers.tokenization_xlnet import XLNetTokenizer
+from transformers.tokenization_camembert import CamembertTokenizer
 
 from farm.modeling.wordembedding_utils import load_from_cache, EMBEDDING_VOCAB_FILES_MAP, run_split_on_punc
 
@@ -69,6 +70,8 @@ class Tokenizer:
                 tokenizer_class = "XLMRobertaTokenizer"
             elif "roberta" in pretrained_model_name_or_path.lower():
                 tokenizer_class = "RobertaTokenizer"
+            elif "camembert" in pretrained_model_name_or_path.lower() or "umberto" in pretrained_model_name_or_path:
+                tokenizer_class = "CamembertTokenizer"
             elif "distilbert" in pretrained_model_name_or_path.lower():
                 tokenizer_class = "DistilBertTokenizer"
             elif "bert" in pretrained_model_name_or_path.lower():
@@ -104,6 +107,8 @@ class Tokenizer:
             ret = ElectraTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "EmbeddingTokenizer":
             ret = EmbeddingTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        elif tokenizer_class == "CamembertTokenizer":
+            ret = CamembertTokenizer._from_pretrained(pretrained_model_name_or_path, **kwargs)
         if ret is None:
             raise Exception("Unable to load tokenizer")
         else:
@@ -148,7 +153,7 @@ class EmbeddingTokenizer(PreTrainedTokenizer):
         self.unk_tok_idx = self.vocab[unk_token]
         self.ids_to_tokens = collections.OrderedDict([(ids, tok) for tok, ids in self.vocab.items()])
         self.do_lower_case = do_lower_case
-        self.vocab_size = len(self.vocab)
+        self.vocab_size_farm = len(self.vocab)
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path, **kwargs):
@@ -345,7 +350,7 @@ def truncate_sequences(seq_a, seq_b, tokenizer, max_seq_len, truncation_strategy
     pair = bool(seq_b is not None)
     len_a = len(seq_a)
     len_b = len(seq_b) if pair else 0
-    num_special_tokens = tokenizer.num_added_tokens(pair=pair) if with_special_tokens else 0
+    num_special_tokens = tokenizer.num_special_tokens_to_add(pair=pair) if with_special_tokens else 0
     total_len = len_a + len_b + num_special_tokens
     overflowing_tokens = []
 

@@ -5,6 +5,7 @@ import os
 import random
 import tarfile
 import tempfile
+import string
 from contextlib import ExitStack
 from itertools import islice
 from pathlib import Path
@@ -22,8 +23,13 @@ logger = logging.getLogger(__name__)
 DOWNSTREAM_TASK_MAP = {
     "gnad": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/gnad.tar.gz",
     "germeval14": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/germeval14.tar.gz",
+
+    # only has train.tsv and test.tsv dataset - no dev.tsv
     "germeval18": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/germeval18.tar.gz",
+
     "squad20": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/squad20.tar.gz",
+    "covidqa": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/covidqa.tar.gz",
+
     "conll03detrain": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/conll2003/deu.train",
     "conll03dedev": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/conll2003/deu.testa", #https://www.clips.uantwerpen.be/conll2003/ner/000README says testa is dev data
     "conll03detest": "https://raw.githubusercontent.com/MaviccPRP/ger_ner_evals/master/corpora/conll2003/deu.testb",
@@ -36,6 +42,8 @@ DOWNSTREAM_TASK_MAP = {
     'cola': "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/cola.tar.gz",
     "asnq_binary": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/asnq_binary.tar.gz",
     "germeval17": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/germeval17.tar.gz",
+    "natural_questions": "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/natural_questions.tar.gz",
+
 }
 
 def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=None, header=0, proxies=None, max_samples=None):
@@ -46,7 +54,8 @@ def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=N
         logger.info(f" Couldn't find {filename} locally. Trying to download ...")
         _download_extract_downstream_data(filename, proxies=proxies)
 
-    # read file into df
+    # read file into df - but only read those cols we need
+    columns_needed = list(rename_columns.keys())
     df = pd.read_csv(
         filename,
         sep=delimiter,
@@ -54,7 +63,8 @@ def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=N
         quotechar=quotechar,
         dtype=str,
         skiprows=skiprows,
-        header=header
+        header=header,
+        usecols=columns_needed,
     )
     if max_samples:
         df = df.sample(max_samples)
@@ -62,11 +72,9 @@ def read_tsv(filename, rename_columns, quotechar='"', delimiter="\t", skiprows=N
     # let's rename our target columns to the default names FARM expects:
     # "text": contains the text
     # "text_classification_label": contains a label for text classification
-    columns = ["text"] + list(rename_columns.keys())
-    df = df[columns]
-    for source_column, label_name in rename_columns.items():
-        df[label_name] = df[source_column].fillna("")
-        df.drop(columns=[source_column], inplace=True)
+    df.rename(columns=rename_columns, inplace=True)
+    df.fillna("", inplace=True)
+
     # convert df to one dict per row
     raw_dict = df.to_dict(orient="records")
     return raw_dict
@@ -102,6 +110,14 @@ def read_tsv_sentence_pair(filename, rename_columns, delimiter="\t", skiprows=No
     # convert df to one dict per row
     raw_dict = df.to_dict(orient="records")
     return raw_dict
+
+def read_jsonl(file, proxies=None):
+    # get remote dataset if needed
+    if not (os.path.exists(file)):
+        logger.info(f" Couldn't find {file} locally. Trying to download ...")
+        _download_extract_downstream_data(file, proxies=proxies)
+    dicts = [json.loads(l) for l in open(file)]
+    return dicts
 
 def read_ner_file(filename, sep="\t", proxies=None):
     """
@@ -213,11 +229,12 @@ def read_squad_file(filename, proxies=None):
 
 def write_squad_predictions(predictions, out_filename, predictions_filename=None):
     predictions_json = {}
-    for p in predictions:
-        if p["preds"][0][0] is not None:
-            predictions_json[p["id"]] = p["preds"][0][0]
-        else:
-            predictions_json[p["id"]] = "" #convert No answer = None to format understood by the SQuAD eval script
+    for x in predictions:
+        for p in x["predictions"]:
+            if p["answers"][0]["answer"] is not None:
+                predictions_json[p["question_id"]] = p["answers"][0]["answer"]
+            else:
+                predictions_json[p["question_id"]] = "" #convert No answer = None to format understood by the SQuAD eval script
 
     if predictions_filename:
         dev_labels = {}
@@ -348,11 +365,11 @@ def read_docs_from_txt(filename, delimiter="", encoding="utf-8", max_docs=None, 
                         if doc_count >= max_docs:
                             logger.info(f"Reached number of max_docs ({max_docs}). Skipping rest of file ...")
                             break
-                # else:
-                #     # logger.warning(f"Found empty document in '{filename}' (line {line_num}). "
-                #     #                f"Make sure that you comply with the format: "
-                #     #                f"One sentence per line and exactly *one* empty line between docs. "
-                #     #                f"You might have multiple subsequent empty lines.")
+                else:
+                    logger.warning(f"Found empty document in '{filename}' (line {line_num}). "
+                                   f"Make sure that you comply with the format: "
+                                   f"One sentence per line and exactly *one* empty line between docs. "
+                                   f"You might have multiple subsequent empty lines.")
             else:
                 doc.append(line)
 
@@ -780,3 +797,70 @@ def randomize_and_split_file(filepath, output_dir, docs_per_file=1_000, delimite
             write_file.close()
 
     logger.info(f"The input file {filepath} is split in {output_file_number} parts at {output_dir}.")
+
+
+def generate_tok_to_ch_map(text):
+    """ Generates a mapping from token to character index when a string text is split using .split()
+    TODO e.g."""
+    map = [0]
+    follows_whitespace = False
+    for i, ch in enumerate(text):
+        if follows_whitespace:
+            if ch not in string.whitespace:
+                map.append(i)
+                follows_whitespace = False
+        else:
+            if ch in string.whitespace:
+                follows_whitespace = True
+    return map
+
+
+def split_with_metadata(text):
+    """" Splits a string text by whitespace and also returns indexes which is a mapping from token index
+    to character index"""
+    split_text = text.split()
+    indexes = generate_tok_to_ch_map(text)
+    assert len(split_text) == len(indexes)
+    return split_text, indexes
+
+
+def convert_id(id_string):
+    """
+    Splits a string id into parts. If it is an id generated in the SQuAD pipeline it simple splits the id by the dashes
+    and converts the parts to ints. If it is generated by the non-SQuAD pipeline, it splits the id by the dashes and
+    converts references to "train" or "infer" into ints.
+    :param id_string:
+    :return:
+    """
+    ret = []
+    datasets = ["train", "infer"]
+    id_list = id_string.split("-")
+    for x in id_list:
+        if x in datasets:
+            ret.append(datasets.index(x))
+        else:
+            ret.append(int(x))
+    return ret
+
+
+def convert_qa_input_dict(infer_dict):
+    """ Input dictionaries in QA can either have ["context", "qas"] (internal format) as keys or
+    ["text", "questions"] (api format). This function converts the latter into the former"""
+    try:
+        # Check if infer_dict is already in internal json format
+        if "context" in infer_dict and "qas" in infer_dict:
+            return infer_dict
+        # converts dicts from inference mode to data structure used in FARM
+        questions = infer_dict["questions"]
+        text = infer_dict["text"]
+        document_id = infer_dict.get("document_id", None)
+        qas = [{"question": q,
+                "id": None,
+                "answers": [],
+                "is_impossible": False} for i, q in enumerate(questions)]
+        converted = {"qas": qas,
+                     "context": text,
+                     "document_id":document_id}
+        return converted
+    except KeyError:
+        raise Exception("Input does not have the expected format")
