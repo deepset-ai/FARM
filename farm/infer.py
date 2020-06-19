@@ -13,6 +13,7 @@ from farm.data_handler.processor import Processor, InferenceProcessor, SquadProc
 from farm.data_handler.utils import grouper
 from farm.modeling.tokenization import Tokenizer
 from farm.modeling.adaptive_model import AdaptiveModel, BaseAdaptiveModel
+from farm.modeling.optimization import _optimize_model
 from farm.utils import initialize_device_settings
 from farm.utils import set_all_seeds, calc_chunksize, log_ascii_workers
 
@@ -244,6 +245,8 @@ class Inferencer:
                                  f"Valid options for arg `task_type`: 'question_answering', "
                                  f"'embeddings', 'text_classification', 'ner'")
 
+        model, _ = _optimize_model(model=model, device=device, local_rank=-1, optimizer=None, distributed=False,
+                                   use_amp=None)
         return cls(
             model,
             processor,
