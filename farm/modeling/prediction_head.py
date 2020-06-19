@@ -1547,7 +1547,7 @@ class QuestionAnsweringHead(PredictionHead):
                 # i.e. if is_impossible
                 else:
                     cls_pred = "is_impossible"
-                pred_qa_answer.answer = cls_pred
+                pred_qa_answer.add_cls(cls_pred)
                 pred_qa_answers_new.append(pred_qa_answer)
             qa_doc_pred.prediction = pred_qa_answers_new
             ret.append(qa_doc_pred)
