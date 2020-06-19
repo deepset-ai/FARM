@@ -120,9 +120,8 @@ def initialize_optimizer(model,
                           'Please install Apex if you want to make use of automatic mixed precision. '
                           'https://github.com/NVIDIA/apex')
 
-    num_train_optimization_steps = calculate_optimization_steps(
-        n_batches, grad_acc_steps, n_epochs, local_rank
-    )
+    num_train_optimization_steps = int(n_batches / grad_acc_steps) * n_epochs
+
     # Log params
     MlLogger.log_params({
          "use_amp": use_amp,
@@ -261,13 +260,6 @@ def get_scheduler(optimizer, opts):
     scheduler = sched_constructor(optimizer, **constructor_opts)
     scheduler.opts = opts  # save the opts with the scheduler to use in load/save
     return scheduler
-
-
-def calculate_optimization_steps(n_batches, grad_acc_steps, n_epochs, local_rank):
-    optimization_steps = int(n_batches / grad_acc_steps) * n_epochs
-    # if local_rank != -1:
-    #     optimization_steps = optimization_steps // torch.distributed.get_world_size()
-    return optimization_steps
 
 
 def _optimize_model(model, device, local_rank, optimizer=None, distributed=False, use_amp=None):
