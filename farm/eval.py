@@ -103,7 +103,12 @@ class Evaluator:
 
             # Select type of report depending on prediction head output type
             if self.report:
-                result["report"] = compute_report_metrics(head, preds_all[head_num], label_all[head_num])
+                try:
+                    result["report"] = compute_report_metrics(head, preds_all[head_num], label_all[head_num])
+                except:
+                    logger.error(f"Couldn't create eval report for head {head_num} with following preds and labels:"
+                                 f"\n Preds: {preds_all[head_num]} \n Labels: {label_all[head_num]}")
+                    result["report"] = "Error"
 
             if return_preds_and_labels:
                 result["preds"] = preds_all[head_num]

@@ -920,9 +920,9 @@ class BertStyleLMProcessor(Processor):
                     self.tokenizer,
                     max_num_tokens,
                 )
+
                 sequence_a = join_sentences(sequence_a)
                 sequence_b = join_sentences(sequence_b)
-
                 for seq_name in ["tokens", "offsets", "start_of_word"]:
                     sequence_a[seq_name], sequence_b[seq_name], _ = truncate_sequences(
                         seq_a=sequence_a[seq_name],
@@ -979,6 +979,46 @@ class BertStyleLMProcessor(Processor):
             next_sent_pred=self.next_sent_pred
         )
         return features
+
+    def estimate_n_samples(self, filepath, max_docs=500):
+        """
+        Estimates the number of samples from a given file BEFORE preprocessing.
+        Used in StreamingDataSilo to estimate the number of steps before actually processing the data.
+        The estimated number of steps will impact some types of Learning Rate Schedules.
+        :param filepath: str or Path, file with data used to create samples (e.g. train.txt)
+        :param max_docs: int, maximum number of docs to read in & use for our estimate of n_samples
+        :return: int, number of samples in the given dataset
+        """
+
+        total_lines = sum(1 for line in open(filepath, encoding="utf-8"))
+        empty_lines = sum(1 if line == "\n" else 0 for line in open(filepath, encoding="utf-8"))
+
+        if self.next_sent_pred_style == "sentence":
+            # one sample = two lines (except last line in doc)
+            n_samples = total_lines - (2 * empty_lines)
+        elif self.next_sent_pred_style == "bert-style":
+            # Original BERT LM training (filling up sequence pairs with sentences until max_seq_len)
+            # (This is a very rough heuristic, as we can only estimate the real number of samples AFTER tokenization)
+            logging.info(f"Estimating total number of samples ...")
+            # read in subset of docs
+            if self.max_docs:
+                temp = self.max_docs
+                self.max_docs = min(max_docs, temp)
+                dicts = list(self.file_to_dicts(filepath))
+                self.max_docs = temp
+            else:
+                self.max_docs = max_docs
+                dicts = list(self.file_to_dicts(filepath))
+                self.max_docs = None
+            # count samples
+            n_samples = 0
+            for d in dicts:
+                n_samples += len(self._dict_to_samples_bert_style(doc=d["doc"], all_dicts=dicts))
+            n_samples = int(n_samples / len(dicts)) * (empty_lines+1)
+            logging.info(f"Heuristic estimate of number of samples in {filepath} based on {len(dicts)} docs: {n_samples}")
+        else:
+            raise NotImplementedError(f"No estimate logic for next_sent_pred_style={self.next_sent_pred_style} implemented")
+        return n_samples
 
 
 #########################################
