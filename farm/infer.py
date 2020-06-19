@@ -13,7 +13,7 @@ from farm.data_handler.processor import Processor, InferenceProcessor, SquadProc
 from farm.data_handler.utils import grouper
 from farm.modeling.tokenization import Tokenizer
 from farm.modeling.adaptive_model import AdaptiveModel, BaseAdaptiveModel, ONNXAdaptiveModel
-from farm.modeling.optimization import _optimize_model
+from farm.modeling.optimization import optimize_model
 from farm.utils import initialize_device_settings
 from farm.utils import set_all_seeds, calc_chunksize, log_ascii_workers
 
@@ -246,7 +246,7 @@ class Inferencer:
                                  f"'embeddings', 'text_classification', 'ner'")
 
         if not isinstance(model,ONNXAdaptiveModel):
-            model, _ = _optimize_model(model=model, device=device, local_rank=-1, optimizer=None)
+            model, _ = optimize_model(model=model, device=device, local_rank=-1, optimizer=None)
         return cls(
             model,
             processor,

@@ -147,7 +147,7 @@ def initialize_optimizer(model,
     optimizer = _get_optim(model, optimizer_opts)
 
     # Adjust for parallel training + amp
-    model, optimizer = _optimize_model(model, device, local_rank, optimizer, distributed, use_amp)
+    model, optimizer = optimize_model(model, device, local_rank, optimizer, distributed, use_amp)
 
     # Get learning rate schedule - moved below to supress warning
     scheduler = get_scheduler(optimizer, schedule_opts)
@@ -262,7 +262,25 @@ def get_scheduler(optimizer, opts):
     return scheduler
 
 
-def _optimize_model(model, device, local_rank, optimizer=None, distributed=False, use_amp=None):
+def optimize_model(model, device, local_rank, optimizer=None, distributed=False, use_amp=None):
+    """
+        Wraps MultiGPU or distributed usage around a model
+        No support for ONNX models
+
+        :param model: model to optimize (e.g. trimming weights to fp16 / mixed precision)
+        :type model: AdaptiveModel
+        :param device: either gpu or cpu, get the device from initialize_device_settings()
+        :param distributed: Whether training on distributed machines
+        :param local_rank: rank of the machine in a distributed setting
+        :param use_amp: Optimization level of nvidia's automatic mixed precision (AMP). The higher the level, the faster the model.
+                        Options:
+                        "O0" (Normal FP32 training)
+                        "O1" (Mixed Precision => Recommended)
+                        "O2" (Almost FP16)
+                        "O3" (Pure FP16).
+                        See details on: https://nvidia.github.io/apex/amp.html
+        :return: model, optimizer
+        """
     model, optimizer = _init_amp(model, device, optimizer, use_amp)
 
     if distributed:

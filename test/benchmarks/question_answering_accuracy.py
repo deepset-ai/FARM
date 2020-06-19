@@ -14,7 +14,7 @@ from farm.evaluation import squad_evaluation
 from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import LanguageModel
-from farm.modeling.optimization import initialize_optimizer, _optimize_model
+from farm.modeling.optimization import initialize_optimizer, optimize_model
 from farm.modeling.prediction_head import QuestionAnsweringHead
 from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer
@@ -58,7 +58,7 @@ def test_evaluation():
 
     data_silo = DataSilo(processor=processor, batch_size=40*4)
     model.connect_heads_with_processor(data_silo.processor.tasks, require_labels=True)
-    model, _ = _optimize_model(model=model, device=device, local_rank=-1, optimizer=None, distributed=False, use_amp=None)
+    model, _ = optimize_model(model=model, device=device, local_rank=-1, optimizer=None, distributed=False, use_amp=None)
 
     evaluator = Evaluator(data_loader=data_silo.get_data_loader("test"), tasks=data_silo.processor.tasks, device=device)
 
