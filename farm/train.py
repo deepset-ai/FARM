@@ -132,7 +132,7 @@ class Trainer:
         global_step=0,
         evaluator_test=True,
         disable_tqdm=False,
-        max_grad_norm=None
+        max_grad_norm=1.0
     ):
         """
         :param optimizer: An optimizer object that determines the learning strategy to be used during training
@@ -185,7 +185,7 @@ class Trainer:
         :type evaluator_test: bool
         :param disable_tqdm: Disable tqdm progress bar (helps to reduce verbosity in some environments)
         :type disable_tqdm: bool
-        :param max_grad_norm: Max gradient norm for clipping, set to None to disable
+        :param max_grad_norm: Max gradient norm for clipping, default 1.0, set to None to disable
         :type max_grad_norm: float
         """
 
