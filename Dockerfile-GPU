@@ -1,7 +1,6 @@
-#FROM nvidia/cuda:10.2-base-ubuntu18.04
 FROM pytorch/pytorch:1.5-cuda10.1-cudnn7-devel
 
-RUN apt-get update && apt-get install -y python3-pip && apt-get install -y python3-pip && apt-get install -y git
+RUN apt-get update && apt-get install -y git
 
 # Setup locales
 RUN apt-get update \
