@@ -6,6 +6,7 @@ import random
 import tarfile
 import tempfile
 import string
+from contextlib import ExitStack
 from itertools import islice
 from pathlib import Path
 
@@ -341,7 +342,7 @@ def _conll03get(dataset, directory, language):
 
 
 
-def read_docs_from_txt(filename, delimiter="", encoding="utf-8", max_docs=None, proxies=None):
+def read_docs_from_txt(filename, delimiter="", encoding="utf-8", max_docs=None, proxies=None, disable_tqdm=True):
     """Reads a text file with one sentence per line and a delimiter between docs (default: empty lines) ."""
     if not (os.path.exists(filename)):
         _download_extract_downstream_data(filename, proxies)
@@ -352,7 +353,7 @@ def read_docs_from_txt(filename, delimiter="", encoding="utf-8", max_docs=None, 
     corpus_lines = 0
 
     with open(filename, "r", encoding=encoding) as f:
-        for line_num, line in enumerate(tqdm(f, desc="Loading Dataset", total=corpus_lines)):
+        for line_num, line in enumerate(tqdm(f, desc="Loading Dataset", total=corpus_lines, disable=disable_tqdm)):
             line = line.strip()
             if line == delimiter:
                 if len(doc) > 0:
@@ -365,7 +366,7 @@ def read_docs_from_txt(filename, delimiter="", encoding="utf-8", max_docs=None, 
                             logger.info(f"Reached number of max_docs ({max_docs}). Skipping rest of file ...")
                             break
                 else:
-                    logger.warning(f"Found empty document in file (line {line_num}). "
+                    logger.warning(f"Found empty document in '{filename}' (line {line_num}). "
                                    f"Make sure that you comply with the format: "
                                    f"One sentence per line and exactly *one* empty line between docs. "
                                    f"You might have multiple subsequent empty lines.")
@@ -723,7 +724,7 @@ def grouper(iterable, n, worker_id=0, total_workers=1):
     Output for worker 2: [(dictC, dictD), (dictI, dictJ), ...]
     Output for worker 3: [(dictE, dictF), (dictK, dictL), ...]
 
-    This method also adds an index number to every dict yielded similar to the grouper().
+    This method also adds an index number to every dict yielded.
 
     :param iterable: a generator object that yields dicts
     :type iterable: generator
@@ -765,6 +766,39 @@ def grouper(iterable, n, worker_id=0, total_workers=1):
 
     return iter(lambda: list(islice(iterable, n)), [])
 
+
+def randomize_and_split_file(filepath, output_dir, docs_per_file=1_000, delimiter="", encoding="utf-8"):
+    total_lines = sum(1 for line in open(filepath, encoding=encoding))
+    output_file_number = 1
+    doc_count = 0
+    lines_to_write = []
+    with ExitStack() as stack:
+        input_file = stack.enter_context(open(filepath, 'r', encoding=encoding))
+        for line_num, line in enumerate(tqdm(input_file, desc="Splitting file ...", total=total_lines)):
+            lines_to_write.append(line)
+            if line.strip() == delimiter:
+                doc_count += 1
+                if doc_count % docs_per_file == 0:
+                    filename = output_dir / f"part_{output_file_number}"
+                    os.makedirs(os.path.dirname(filename), exist_ok=True)
+                    write_file = stack.enter_context(open(filename, 'w+', buffering=10 * 1024 * 1024))
+                    random.shuffle(lines_to_write)
+                    write_file.writelines(lines_to_write)
+                    write_file.close()
+                    output_file_number += 1
+                    lines_to_write = []
+
+        if lines_to_write:
+            filename = output_dir / f"part_{output_file_number}"
+            os.makedirs(os.path.dirname(filename), exist_ok=True)
+            write_file = stack.enter_context(open(filename, 'w+', buffering=10 * 1024 * 1024))
+            random.shuffle(lines_to_write)
+            write_file.writelines(lines_to_write)
+            write_file.close()
+
+    logger.info(f"The input file {filepath} is split in {output_file_number} parts at {output_dir}.")
+
+
 def generate_tok_to_ch_map(text):
     """ Generates a mapping from token to character index when a string text is split using .split()
     TODO e.g."""
@@ -779,6 +813,7 @@ def generate_tok_to_ch_map(text):
             if ch in string.whitespace:
                 follows_whitespace = True
     return map
+
 
 def split_with_metadata(text):
     """" Splits a string text by whitespace and also returns indexes which is a mapping from token index
@@ -807,6 +842,7 @@ def convert_id(id_string):
             ret.append(int(x))
     return ret
 
+
 def convert_qa_input_dict(infer_dict):
     """ Input dictionaries in QA can either have ["context", "qas"] (internal format) as keys or
     ["text", "questions"] (api format). This function converts the latter into the former"""
@@ -828,8 +864,3 @@ def convert_qa_input_dict(infer_dict):
         return converted
     except KeyError:
         raise Exception("Input does not have the expected format")
-
-
-
-
-
