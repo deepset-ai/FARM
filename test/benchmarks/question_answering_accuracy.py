@@ -108,7 +108,7 @@ def test_evaluation():
 
     gold_EM = 78.4890
     gold_f1 = 81.7104
-    gold_elapsed = 35 # 4x V100
+    gold_elapsed = 27 # 4x V100
     print(elapsed)
     if test_assertions:
         np.testing.assert_allclose(em_score, gold_EM, rtol=0.001,
