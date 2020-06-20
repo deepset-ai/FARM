@@ -281,6 +281,11 @@ class Inferencer:
             )
             log_ascii_workers(n=num_processes,logger=logger)
 
+    def close_multiprocessing_pool(self):
+        if self.process_pool is not None:
+            self.process_pool.close()
+            self.process_pool = None
+
     def save(self, path):
         self.model.save(path)
         self.processor.save(path)
