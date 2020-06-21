@@ -294,6 +294,12 @@ class Inferencer:
             log_ascii_workers(n=num_processes,logger=logger)
 
     def close_multiprocessing_pool(self):
+        """Close the `multiprocessing.Pool` again.
+
+        If you use multiprocessing you have to close the `multiprocessing.Pool` again!
+        To do so call this function after you are done using this class.
+        The garbage collector will not do this for you!
+        """
         if self.process_pool is not None:
             self.process_pool.close()
             self.process_pool = None
