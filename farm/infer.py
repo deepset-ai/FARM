@@ -84,7 +84,7 @@ class Inferencer:
                           (only needed for task_type="embeddings" and extraction_strategy = "s3e")
         :type s3e_stats: dict
         :param num_processes: the number of processes for `multiprocessing.Pool`. Set to value of 0 to disable
-                              multiprocessing. Set to None to let Inferencer use all CPU cores. If you want to
+                              multiprocessing. Set to None to let Inferencer use all CPU cores minus one. If you want to
                               debug the Language Model, you might need to disable multiprocessing!
                               **Warning!** If you use multiprocessing you have to close the
                               `multiprocessing.Pool` again! To do so call
@@ -177,7 +177,7 @@ class Inferencer:
                           (only needed for task_type="embeddings" and extraction_strategy = "s3e")
         :type s3e_stats: dict
         :param num_processes: the number of processes for `multiprocessing.Pool`. Set to value of 0 to disable
-                              multiprocessing. Set to None to let Inferencer use all CPU cores. If you want to
+                              multiprocessing. Set to None to let Inferencer use all CPU cores minus one. If you want to
                               debug the Language Model, you might need to disable multiprocessing!
                               **Warning!** If you use multiprocessing you have to close the
                               `multiprocessing.Pool` again! To do so call
@@ -272,7 +272,7 @@ class Inferencer:
         Initialize a multiprocessing.Pool for instances of Inferencer.
 
         :param num_processes: the number of processes for `multiprocessing.Pool`. Set to value of 0 to disable
-                              multiprocessing. Set to None to let Inferencer use all CPU cores. If you want to
+                              multiprocessing. Set to None to let Inferencer use all CPU cores minus one. If you want to
                               debug the Language Model, you might need to disable multiprocessing!
                               **Warning!** If you use multiprocessing you have to close the
                               `multiprocessing.Pool` again! To do so call
