@@ -86,6 +86,10 @@ class Inferencer:
         :param num_processes: the number of processes for `multiprocessing.Pool`. Set to value of 0 to disable
                               multiprocessing. Set to None to let Inferencer use all CPU cores. If you want to
                               debug the Language Model, you might need to disable multiprocessing!
+                              **Warning!** If you use multiprocessing you have to close the
+                              `multiprocessing.Pool` again! To do so call
+                              :func:`~farm.infer.Inferencer.close_multiprocessing_pool` after you are
+                              done using this class. The garbage collector will not do this for you!
         :type num_processes: int
         :param disable_tqdm: Whether to disable tqdm logging (can get very verbose in multiprocessing)
         :type disable_tqdm: bool
@@ -175,6 +179,10 @@ class Inferencer:
         :param num_processes: the number of processes for `multiprocessing.Pool`. Set to value of 0 to disable
                               multiprocessing. Set to None to let Inferencer use all CPU cores. If you want to
                               debug the Language Model, you might need to disable multiprocessing!
+                              **Warning!** If you use multiprocessing you have to close the
+                              `multiprocessing.Pool` again! To do so call
+                              :func:`~farm.infer.Inferencer.close_multiprocessing_pool` after you are
+                              done using this class. The garbage collector will not do this for you!
         :type num_processes: int
         :param disable_tqdm: Whether to disable tqdm logging (can get very verbose in multiprocessing)
         :type disable_tqdm: bool
@@ -263,9 +271,13 @@ class Inferencer:
         """
         Initialize a multiprocessing.Pool for instances of Inferencer.
 
-         :param num_processes: the number of processes for `multiprocessing.Pool`. Set to value of 0 to disable
-                               multiprocessing. Set to None to let Inferencer use all CPU cores. If you want to
-                               debug the Language Model, you might need to disable multiprocessing!
+        :param num_processes: the number of processes for `multiprocessing.Pool`. Set to value of 0 to disable
+                              multiprocessing. Set to None to let Inferencer use all CPU cores. If you want to
+                              debug the Language Model, you might need to disable multiprocessing!
+                              **Warning!** If you use multiprocessing you have to close the
+                              `multiprocessing.Pool` again! To do so call
+                              :func:`~farm.infer.Inferencer.close_multiprocessing_pool` after you are
+                              done using this class. The garbage collector will not do this for you!
         :type num_processes: int
         :return:
         """
