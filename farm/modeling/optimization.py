@@ -20,6 +20,7 @@ try:
     AMP_AVAILABLE = True
 except ImportError:
     AMP_AVAILABLE = False
+    APEX_PARALLEL_AVAILABLE = False
 
 from farm.utils import MLFlowLogger as MlLogger
 
@@ -119,9 +120,8 @@ def initialize_optimizer(model,
                           'Please install Apex if you want to make use of automatic mixed precision. '
                           'https://github.com/NVIDIA/apex')
 
-    num_train_optimization_steps = calculate_optimization_steps(
-        n_batches, grad_acc_steps, n_epochs, local_rank
-    )
+    num_train_optimization_steps = int(n_batches / grad_acc_steps) * n_epochs
+
     # Log params
     MlLogger.log_params({
          "use_amp": use_amp,
@@ -146,11 +146,11 @@ def initialize_optimizer(model,
     # Get optimizer from pytorch, transformers or apex
     optimizer = _get_optim(model, optimizer_opts)
 
-    # Get learning rate schedule
-    scheduler = get_scheduler(optimizer, schedule_opts)
-
     # Adjust for parallel training + amp
     model, optimizer = _optimize_model(model, device, local_rank, optimizer, distributed, use_amp)
+
+    # Get learning rate schedule - moved below to supress warning
+    scheduler = get_scheduler(optimizer, schedule_opts)
 
     return model, optimizer, scheduler
 
@@ -227,7 +227,8 @@ def get_scheduler(optimizer, opts):
             # The method names in transformers became quite long and unhandy.
             # for convenience we offer usage of shorter alias (e.g. "LinearWarmup")
             scheduler_translations = {"LinearWarmup": "get_linear_schedule_with_warmup",
-                                      "Constant": "get_constant_schedule_with_warmup",
+                                      "ConstantWarmup": "get_constant_schedule_with_warmup",
+                                      "Constant": "get_constant_schedule",
                                       "CosineWarmup": "get_cosine_schedule_with_warmup",
                                      "CosineWarmupWithRestarts": "get_cosine_with_hard_restarts_schedule_with_warmup"
             }
@@ -261,32 +262,26 @@ def get_scheduler(optimizer, opts):
     return scheduler
 
 
-def calculate_optimization_steps(n_batches, grad_acc_steps, n_epochs, local_rank):
-    optimization_steps = int(n_batches / grad_acc_steps) * n_epochs
-    if local_rank != -1:
-        optimization_steps = optimization_steps // torch.distributed.get_world_size()
-    return optimization_steps
-
-
 def _optimize_model(model, device, local_rank, optimizer=None, distributed=False, use_amp=None):
     model, optimizer = _init_amp(model, device, optimizer, use_amp)
 
     if distributed:
         if APEX_PARALLEL_AVAILABLE:
             model = convert_syncbn_model(model)
+            logger.info("Multi-GPU Training via DistributedDataParallel and apex.parallel")
+        else:
+            logger.info("Multi-GPU Training via DistributedDataParallel")
 
-        n_gpu = torch.cuda.device_count() // torch.distributed.get_world_size()
-        device_ids = list(range(local_rank * n_gpu, (local_rank + 1) * n_gpu))
         # for some models DistributedDataParallel might complain about parameters
         # not contributing to loss. find_used_parameters remedies that.
-        #TODO check if Wrapped DDP still needed?
-        model = DistributedDataParallel(model,
-                                        device_ids=device_ids,
-                                        output_device=device_ids[0],
-                                        find_unused_parameters=True)
+        model = WrappedDDP(model,
+                           device_ids=[local_rank],
+                           output_device=local_rank,
+                           find_unused_parameters=True)
 
     elif torch.cuda.device_count() > 1 and device.type == "cuda":
         model = WrappedDataParallel(model)
+        logger.info("Multi-GPU Training via DataParallel")
 
     return model, optimizer
 

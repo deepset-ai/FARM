@@ -5,7 +5,7 @@ from contextlib import ExitStack
 from functools import partial
 import random
 from pathlib import Path
-from itertools import groupby
+from itertools import chain, groupby
 
 import numpy as np
 from sklearn.utils.class_weight import compute_class_weight
@@ -519,7 +519,7 @@ class StreamingDataSilo:
     multiple workers that utilize the available CPU cores and ensure enough pre-computed batches.
     """
 
-    def __init__(self, processor, batch_size, dataloader_workers=8):
+    def __init__(self, processor, batch_size, distributed=False, dataloader_workers=8):
         """
         :param processor: A dataset specific Processor object which will turn input file into a Pytorch Dataset.
         :type processor: Processor
@@ -532,6 +532,7 @@ class StreamingDataSilo:
         self.processor = processor
         self.batch_size = batch_size
         self.dataloader_workers = dataloader_workers
+        self.distributed = distributed
 
     def get_data_loader(self, dataset_name):
         """
@@ -576,12 +577,19 @@ class StreamingDataSilo:
         #  Since the batching is now handled within _StreamingDataSet, we disable the batching on DataLoader side
         #  by initializing the data loader with batch_size as 1.
 
+        if isinstance(filename, Path) and filename.is_dir():
+            filepath = filename
+        else:
+            filepath = self.processor.data_dir / filename
+
         data_set = _StreamingDataSet(
             processor=self.processor,
-            filepath=self.processor.data_dir / filename,
+            filepath=filepath,
             batch_size=self.batch_size,
             dataloader_workers=self.dataloader_workers,
+            distributed = self.distributed
         )
+
         data_loader = NamedDataLoader(
             dataset=data_set, batch_size=1, num_workers=self.dataloader_workers, pin_memory=True
         )
@@ -589,7 +597,7 @@ class StreamingDataSilo:
 
 
 class _StreamingDataSet(IterableDataset):
-    def __init__(self, processor, filepath, batch_size, dataloader_workers):
+    def __init__(self, processor, filepath, batch_size, dataloader_workers, distributed=False, n_samples=None):
         """
         :param processor: A dataset specific Processor object which will turn input file into a Pytorch Dataset.
         :type processor: Processor
@@ -605,16 +613,39 @@ class _StreamingDataSet(IterableDataset):
         self.processor = processor
         self.filepath = filepath
         self.dataloader_workers = dataloader_workers
+        self.distributed = distributed
 
-        # calculate number of samples for __len__()
-        total_lines = sum(1 for line in open(filepath, encoding="utf-8"))
-        empty_lines = sum(1 if line == "\n" else 0 for line in open(filepath, encoding="utf-8"))
-        self.n_samples = total_lines - (2 * empty_lines)
+        # calculate or estimate number of samples so that the data loader can derive number of training steps
+        if filepath.is_file():
+            files = [filepath]
+        else:
+            files = [file for file in filepath.iterdir()]
 
-        self.file_to_dicts_generator = processor.file_to_dicts(filepath)
+        if n_samples:
+            self.n_samples = n_samples
+        else:
+            try:
+                self.n_samples = self.processor.estimate_n_samples(files[0]) * len(files)
+            except AttributeError:
+                AttributeError(f"Could not estimate n_samples for {self.processor.__class__.__name__} in StreamingDataSilo. "
+                                    f"Make sure that your Processor has `estimate_n_samples()` implemented")
+        logger.info(f"Found data for {self.n_samples} samples")
+        self.shuffle_files(files)
+
+        dicts_from_files = [processor.file_to_dicts(file) for file in files]
+        self.file_to_dicts_generator = chain(*dicts_from_files)
+
+        if self.distributed:
+            self.rank = torch.distributed.get_rank()
+            self.world_size = torch.distributed.get_world_size()
 
     def __len__(self):
-        return self.n_samples
+        if self.distributed:
+            # only a heuristic as we don't necessarily split samples equally across ranks
+            len = self.n_samples // self.world_size
+        else:
+            len = self.n_samples
+        return len
 
     def __iter__(self):
         #  With IterableDataset, the same __iter__ is copied over to the multiple workers of
@@ -629,15 +660,15 @@ class _StreamingDataSet(IterableDataset):
         #  (with n=2) will return, [[dictA, dictB], [dictE, dictF] ...] for worker 1 and
         #  [[dictC, dictD], [dictG, dictH] ...] for worker 2.
 
-        if self.dataloader_workers > 1:
-            worker_info = torch.utils.data.get_worker_info()
-            worker_id = worker_info.id
-            dicts = grouper(
-                self.file_to_dicts_generator, n=10, worker_id=worker_id, total_workers=self.dataloader_workers
-            )
+        worker_info = torch.utils.data.get_worker_info()
+        if self.distributed:
+            worker_id = self.rank * worker_info.num_workers + worker_info.id
+            total_workers = self.world_size * worker_info.num_workers
         else:
-            dicts = grouper(self.file_to_dicts_generator, n=10)
+            worker_id = worker_info.id
+            total_workers = self.dataloader_workers
 
+        dicts = grouper(self.file_to_dicts_generator, n=10, worker_id=worker_id, total_workers=total_workers)
         results = map(self._dataset_from_chunk, dicts)
 
         batch = []
@@ -669,6 +700,13 @@ class _StreamingDataSet(IterableDataset):
         indices = [x[0] for x in chunk]
         datasets, tensor_names = self.processor.dataset_from_dicts(dicts=dicts, indices=indices)
         return datasets, tensor_names
+
+    def shuffle_files(self, files, seed=None):
+        if not seed:
+            seed = random.randrange(100)
+        random.seed(seed)
+        random.shuffle(files)
+        return files
 
 
 class DataSiloForCrossVal:
