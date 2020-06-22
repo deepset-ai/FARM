@@ -1,7 +1,5 @@
 from farm.utils import span_to_string
-from abc import ABC
-from typing import List, Optional, Any
-from pydantic import BaseModel
+from typing import List, Any
 
 class Pred:
     """
@@ -36,13 +34,11 @@ class QACandidate:
                  answer_support: str=None,
                  offset_answer_support_start: int=None,
                  offset_answer_support_end: int=None,
-                 sample_idx: int=None,
                  context: str=None,
                  offset_context_start: int=None,
                  offset_context_end: int=None,
-                 n_samples_in_doc: int=None,
-                 document_id: str=None,
-                 passage_id: str=None
+                 n_passages_in_doc: int=None,
+                 passage_id: str=None,
                  ):
         # self.answer_type can be "is_impossible", "yes", "no" or "span"
         self.answer_type = answer_type
@@ -57,11 +53,10 @@ class QACandidate:
 
         # If self.answer_type is in ["yes", "no"] then self.answer_support is a text string
         # If self.answer is a string answer span or self.answer_type is "is_impossible", answer_support is None
-        # TODO sample_idx can probably be removed since we have passage_id
         self.answer_support = answer_support
         self.offset_answer_support_start = offset_answer_support_start
         self.offset_answer_support_end = offset_answer_support_end
-        self.sample_idx = sample_idx
+        self.passage_id = passage_id
 
         # self.context is the document or passage where the answer is found
         self.context = context
@@ -73,8 +68,7 @@ class QACandidate:
         self.offset_unit = offset_unit
         self.aggregation_level = aggregation_level
 
-        self.n_samples_in_doc = n_samples_in_doc
-        self.document_id = document_id
+        self.n_passages_in_doc = n_passages_in_doc
         self.passage_id = passage_id
 
 
@@ -94,7 +88,7 @@ class QACandidate:
             assert self.offset_answer_start >= 0
 
     def to_list(self):
-        return [self.answer, self.offset_answer_start, self.offset_answer_end, self.score, self.sample_idx]
+        return [self.answer, self.offset_answer_start, self.offset_answer_end, self.score, self.passage_id]
 
 
 class QAPred(Pred):
@@ -115,7 +109,7 @@ class QAPred(Pred):
                  answer_types: List[str]=None,
                  ground_truth_answer: str =None,
                  no_answer_gap: float =None,
-                 n_samples: int=None
+                 n_passages: int=None
                  ):
         super().__init__(id, prediction, context)
         self.question = question
@@ -125,7 +119,7 @@ class QAPred(Pred):
         self.answer_types = answer_types
         self.ground_truth_answer = ground_truth_answer
         self.no_answer_gap = no_answer_gap
-        self.n_samples = n_samples
+        self.n_passages = n_passages
 
     def to_json(self, squad=False):
         answers = self.answers_to_json(squad)

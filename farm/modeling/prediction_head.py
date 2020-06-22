@@ -1143,7 +1143,7 @@ class QuestionAnsweringHead(PredictionHead):
                                                       answer_type="span",
                                                       offset_unit="token",
                                                       aggregation_level="passage",
-                                                      sample_idx=sample_idx))
+                                                      passage_id=sample_idx))
 
         no_answer_score = start_end_matrix[0, 0].item()
         top_candidates.append(QACandidate(offset_answer_start=0,
@@ -1152,7 +1152,7 @@ class QuestionAnsweringHead(PredictionHead):
                                           answer_type="is_impossible",
                                           offset_unit="token",
                                           aggregation_level="passage",
-                                          sample_idx=None))
+                                          passage_id=None))
 
         return top_candidates
 
@@ -1255,7 +1255,7 @@ class QuestionAnsweringHead(PredictionHead):
                                                 document_text)
                 qa_answer.add_answer(pred_str)
                 full_preds.append(qa_answer)
-            n_samples = full_preds[0].n_samples_in_doc
+            n_samples = full_preds[0].n_passages_in_doc
 
             pred_id = basket.id_external if basket.id_external else basket.id_internal
 
@@ -1268,8 +1268,8 @@ class QuestionAnsweringHead(PredictionHead):
                                    aggregation_level="document",
                                    answer_types=[],  # TODO
                                    no_answer_gap=no_ans_gap,
-                                   n_samples=n_samples
-            )
+                                   n_passages=n_samples
+                                   )
             ret.append(curr_doc_pred)
         return ret
 
@@ -1377,8 +1377,8 @@ class QuestionAnsweringHead(PredictionHead):
                                                         answer_type=qa_answer.answer_type,
                                                         offset_unit="token",
                                                         aggregation_level="passage",
-                                                        sample_idx=sample_idx,
-                                                        n_samples_in_doc=n_samples)
+                                                        passage_id=sample_idx,
+                                                        n_passages_in_doc=n_samples)
                                             )
 
         # TODO add switch for more variation in answers, e.g. if varied_ans then never return overlapping answers
@@ -1400,8 +1400,8 @@ class QuestionAnsweringHead(PredictionHead):
                                      answer_type="is_impossible",
                                      offset_unit="token",
                                      aggregation_level="document",
-                                     sample_idx=None,
-                                     n_samples_in_doc=n_samples)
+                                     passage_id=None,
+                                     n_passages_in_doc=n_samples)
 
         # Add no answer to positive answers, sort the order and return the n_best
         n_preds = [no_answer_pred] + pos_answer_dedup
@@ -1500,7 +1500,7 @@ class QuestionAnsweringHead(PredictionHead):
     @staticmethod
     def merge_formatted_preds(preds_all):
         """ Merges results from the two prediction heads used for NQ style QA. Takes the prediction from QA head and
-        assigns it the appropriate classification label. This mapping is achieved through sample_idx.
+        assigns it the appropriate classification label. This mapping is achieved through passage_id.
         preds_all should contain [QuestionAnsweringHead.formatted_preds(), TextClassificationHead()]. The first item
         of this list should be of len=n_documents while the second item should be of len=n_passages"""
 
@@ -1517,16 +1517,16 @@ class QuestionAnsweringHead(PredictionHead):
 
         cls_preds = preds_all[1][0]["predictions"]
         qa_preds = preds_all[0][0]
-        samples_per_doc = [doc_pred.n_samples for doc_pred in preds_all[0][0]]
+        samples_per_doc = [doc_pred.n_passages for doc_pred in preds_all[0][0]]
         cls_preds_grouped = chunk(cls_preds, samples_per_doc)
 
         for qa_doc_pred, cls_preds in zip(qa_preds, cls_preds_grouped):
             pred_qa_answers = qa_doc_pred.prediction
             pred_qa_answers_new = []
             for pred_qa_answer in pred_qa_answers:
-                sample_idx = pred_qa_answer.sample_idx
-                if sample_idx is not None:
-                    cls_pred = cls_preds[sample_idx]["label"]
+                passage_id = pred_qa_answer.passage_id
+                if passage_id is not None:
+                    cls_pred = cls_preds[passage_id]["label"]
                 # i.e. if is_impossible
                 else:
                     cls_pred = "is_impossible"
