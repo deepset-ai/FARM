@@ -7,6 +7,7 @@ import torch
 from torch.utils.data.sampler import SequentialSampler
 from tqdm import tqdm
 from transformers.configuration_auto import AutoConfig
+from typing import Generator, List, Union
 
 from farm.data_handler.dataloader import NamedDataLoader
 from farm.data_handler.processor import Processor, InferenceProcessor, SquadProcessor, NERProcessor, TextClassificationProcessor
@@ -15,7 +16,7 @@ from farm.modeling.tokenization import Tokenizer
 from farm.modeling.adaptive_model import AdaptiveModel, BaseAdaptiveModel
 from farm.utils import initialize_device_settings
 from farm.utils import set_all_seeds, calc_chunksize, log_ascii_workers
-
+from farm.modeling.predictions import QAPred
 
 logger = logging.getLogger(__name__)
 
@@ -563,7 +564,7 @@ class Inferencer:
         # can assume that we have only complete docs i.e. all the samples of one doc are in the current chunk
         logits = [None]
         preds_all = self.model.formatted_preds(logits=logits, # For QA we collected preds per batch and do not want to pass logits
-                                               preds_p=unaggregated_preds_all,
+                                               preds=unaggregated_preds_all,
                                                baskets=baskets)
         return preds_all
 
@@ -591,6 +592,23 @@ class Inferencer:
         self.model.language_model.extraction_strategy = extraction_strategy
 
         return self.inference_from_dicts(dicts)
+
+
+class QAInferencer(Inferencer):
+
+    def inference_from_dicts(self,
+                             dicts,
+                             return_json=True,
+                             multiprocessing_chunksize=None,
+                             streaming=False) -> Union[List[QAPred], Generator[QAPred]]:
+        return Inferencer.inference_from_dicts(dicts, return_json=True, multiprocessing_chunksize=None, streaming=False)
+
+    def inference_from_file(self,
+                            file,
+                            multiprocessing_chunksize=None,
+                            streaming=False,
+                            return_json=True) -> Union[List[QAPred], Generator[QAPred]]:
+        return Inferencer.inference_from_file(file, return_json=True, multiprocessing_chunksize=None, streaming=False)
 
 
 class FasttextInferencer:
