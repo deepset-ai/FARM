@@ -1180,14 +1180,14 @@ class NaturalQuestionsProcessor(Processor):
         doc_stride=128,
         max_query_length=64,
         proxies=None,
-        keep_is_impossible=0.02,
+        keep_no_answer=0.02,
         downsample_context_size=None,
         inference=False,
         **kwargs):
         """
         Deals with all the preprocessing steps needed for Natural Questions. Follows Alberti 2019 et al. (https://arxiv.org/abs/1901.08634)
         in merging multiple disjoint short answers into the one longer label span and also by downsampling
-        samples of is_impossible during training
+        samples of no_answer during training
 
         :param tokenizer: Used to split a sentence (str) into tokens.
         :param max_seq_len: Samples are truncated after this many tokens.
@@ -1211,14 +1211,14 @@ class NaturalQuestionsProcessor(Processor):
         :type doc_stride: int
         :param max_query_length: Maximum length of the question (in number of subword tokens)
         :type max_query_length: int
-        :param keep_is_impossible: The probability that a sample with an is_impossible label is kept
-                                    (0.0 < keep_is_impossible <= 1.0). Only works if inference is False
-        :type keep_is_impossible: float
+        :param keep_no_answer: The probability that a sample with an no_answer label is kept
+                                    (0.0 < keep_no_answer <= 1.0). Only works if inference is False
+        :type keep_no_answer: float
         :param downsample_context_size: Downsampling before any data conversion by taking a short text window of size
                                         downsample_context_size around the long answer span. To disable set to None
         :type downsample_context_size: int
         :param inference: Whether we are currently using the Processsor for model inference. If True, the
-                          keep_is_impossible will be overridden and set to 1
+                          keep_no_answer will be overridden and set to 1
         :type inference: bool
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
@@ -1228,11 +1228,11 @@ class NaturalQuestionsProcessor(Processor):
 
         # These are classification labels from Natural Questions. Note that in this implementation, we are merging
         # the "long_answer" and "short_answer" labels into the one "span" label
-        self.answer_type_list = ["is_impossible", "span", "yes", "no"]
+        self.answer_type_list = ["no_answer", "span", "yes", "no"]
 
         self.doc_stride = doc_stride
         self.max_query_length = max_query_length
-        self.keep_is_impossible = keep_is_impossible
+        self.keep_no_answer = keep_no_answer
         self.downsample_context_size = downsample_context_size
         self.inference = inference
 
@@ -1279,19 +1279,19 @@ class NaturalQuestionsProcessor(Processor):
                                     self.max_seq_len,
                                     self.doc_stride,
                                     n_special_tokens)
-        # Downsample the number of samples with an is_impossible label. This fn will always return at least one sample
+        # Downsample the number of samples with an no_answer label. This fn will always return at least one sample
         # so that we don't end up with a basket with 0 samples
         if not self.inference:
-            samples = self.downsample(samples, self.keep_is_impossible)
+            samples = self.downsample(samples, self.keep_no_answer)
         return samples
 
     def downsample(self, samples, keep_prob):
-        # Downsamples samples with a is_impossible label (since there is an overrepresentation of these in NQ)
+        # Downsamples samples with a no_answer label (since there is an overrepresentation of these in NQ)
         # This method will always return at least one sample. This is done so that we don't end up with SampleBaskets
         # with 0 samples
         ret = []
         for s in samples:
-            if self.check_is_impossible(s):
+            if self.check_no_answer_sample(s):
                 if random_float() > 1 - keep_prob:
                     ret.append(s)
             else:
@@ -1299,21 +1299,6 @@ class NaturalQuestionsProcessor(Processor):
         if len(ret) == 0:
             ret = [random.choice(samples)]
         return ret
-
-    @staticmethod
-    def check_is_impossible(sample):
-        sample_tok = sample.tokenized
-        if len(sample_tok["answers"]) == 0:
-            return True
-        first_answer = sample_tok["answers"][0]
-        if first_answer["start_t"] < sample_tok["passage_start_t"]:
-            return True
-        if first_answer["end_t"] > sample_tok["passage_start_t"] + len(sample_tok["passage_tokens"]):
-            return True
-        if first_answer["answer_type"] == "is_impossible":
-            return True
-        else:
-            return False
 
     def downsample_unprocessed(self, dictionary):
         doc_text = dictionary["document_text"]
@@ -1359,7 +1344,7 @@ class NaturalQuestionsProcessor(Processor):
     def prepare_dict(self, dictionary):
         """ Casts a Natural Questions dictionary that is loaded from a jsonl file into SQuAD format so that
         the same featurization functions can be called for both tasks. Each annotation can be one of four answer types,
-        ["yes", "no", "span", "is_impossible"]"""
+        ["yes", "no", "span", "no_answer"]"""
 
         if self.downsample_context_size is not None:
             dictionary = self.downsample_unprocessed(dictionary)
@@ -1376,12 +1361,12 @@ class NaturalQuestionsProcessor(Processor):
                                                             annotation["long_answer"]["end_token"],
                                                             tok_to_ch,
                                                             doc_text)
-            # Picks the span to be considered as annotation by choosing between short answer, long answer and is_impossible
+            # Picks the span to be considered as annotation by choosing between short answer, long answer and no_answer
             text, start_c = self.choose_span(sa_text, sa_start_c, la_text, la_start_c)
             converted_answers.append({"text": text,
                                       "answer_start": start_c})
         if len(converted_answers) == 0:
-            answer_type = "is_impossible"
+            answer_type = "no_answer"
         else:
             answer_type = dictionary["annotations"][0]["yes_no_answer"].lower()
             if answer_type == "none":
@@ -1403,6 +1388,21 @@ class NaturalQuestionsProcessor(Processor):
                 return False
         else:
             return True
+
+    @staticmethod
+    def check_no_answer_sample(sample):
+        sample_tok = sample.tokenized
+        if len(sample_tok["answers"]) == 0:
+            return True
+        first_answer = sample_tok["answers"][0]
+        if first_answer["start_t"] < sample_tok["passage_start_t"]:
+            return True
+        if first_answer["end_t"] > sample_tok["passage_start_t"] + len(sample_tok["passage_tokens"]):
+            return True
+        if first_answer["answer_type"] == "no_answer":
+            return True
+        else:
+            return False
 
     def retrieve_long_answer(self, start_t, end_t, tok_to_ch, doc_text):
         """ Retrieves the string long answer and also its starting character index"""
@@ -1627,7 +1627,7 @@ def apply_tokenization(dictionary, tokenizer):
             question_text = question["question"]
             for answer in question["answers"]:
                 if answer["text"] == "":
-                    answer_type = "is_impossible"
+                    answer_type = "no_answer"
                 else:
                     answer_type = "span"
                 a = {"text": answer["text"],
@@ -1672,7 +1672,7 @@ def is_impossible_to_answer_type(qas):
         answer_type = "span"
         if "is_impossible" in q:
             if q["is_impossible"] == True:
-                answer_type = "is_impossible"
+                answer_type = "no_answer"
             del q["is_impossible"]
             q["answer_type"] = answer_type
         new_qas.append(q)

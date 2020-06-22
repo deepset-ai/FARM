@@ -1149,7 +1149,7 @@ class QuestionAnsweringHead(PredictionHead):
         top_candidates.append(QACandidate(offset_answer_start=0,
                                           offset_answer_end=0,
                                           score=no_answer_score,
-                                          answer_type="is_impossible",
+                                          answer_type="no_answer",
                                           offset_unit="token",
                                           aggregation_level="passage",
                                           passage_id=None))
@@ -1397,7 +1397,7 @@ class QuestionAnsweringHead(PredictionHead):
         no_answer_pred = QACandidate(offset_answer_start=-1,
                                      offset_answer_end=-1,
                                      score=best_overall_positive_score - no_ans_gap,
-                                     answer_type="is_impossible",
+                                     answer_type="no_answer",
                                      offset_unit="token",
                                      aggregation_level="document",
                                      passage_id=None,
@@ -1527,9 +1527,9 @@ class QuestionAnsweringHead(PredictionHead):
                 passage_id = pred_qa_answer.passage_id
                 if passage_id is not None:
                     cls_pred = cls_preds[passage_id]["label"]
-                # i.e. if is_impossible
+                # i.e. if no_answer
                 else:
-                    cls_pred = "is_impossible"
+                    cls_pred = "no_answer"
                 pred_qa_answer.add_cls(cls_pred)
                 pred_qa_answers_new.append(pred_qa_answer)
             qa_doc_pred.prediction = pred_qa_answers_new

@@ -40,7 +40,7 @@ class QACandidate:
                  n_passages_in_doc: int=None,
                  passage_id: str=None,
                  ):
-        # self.answer_type can be "is_impossible", "yes", "no" or "span"
+        # self.answer_type can be "no_answer", "yes", "no" or "span"
         self.answer_type = answer_type
         self.score = score
         self.probability = probability
@@ -52,7 +52,7 @@ class QACandidate:
         self.offset_answer_end = offset_answer_end
 
         # If self.answer_type is in ["yes", "no"] then self.answer_support is a text string
-        # If self.answer is a string answer span or self.answer_type is "is_impossible", answer_support is None
+        # If self.answer is a string answer span or self.answer_type is "no_answer", answer_support is None
         self.answer_support = answer_support
         self.offset_answer_support_start = offset_answer_support_start
         self.offset_answer_support_end = offset_answer_support_end
@@ -80,7 +80,7 @@ class QACandidate:
         :return: None
         """
 
-        if predicted_class in ["yes", "no"] and self.answer != "is_impossible":
+        if predicted_class in ["yes", "no"] and self.answer != "no_answer":
             self.answer_support = self.answer
             self.answer = predicted_class
             self.answer_type = predicted_class
@@ -94,7 +94,7 @@ class QACandidate:
 
     def add_answer(self, string):
         if string == "":
-            self.answer = "is_impossible"
+            self.answer = "no_answer"
             assert self.offset_answer_end == -1
             assert self.offset_answer_start == -1
         else:
@@ -164,7 +164,7 @@ class QAPred(Pred):
             _, ans_start_ch, ans_end_ch = span_to_string(start_t, end_t, self.token_offsets, self.context)
             context_string, context_start_ch, context_end_ch = self.create_context(ans_start_ch, ans_end_ch, self.context)
             if squad:
-                if string == "is_impossible":
+                if string == "no_answer":
                     string = ""
             curr = {"score": qa_candidate.score,
                     "probability": None,

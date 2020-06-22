@@ -407,7 +407,7 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
     When the answer is not fully contained in the passage, or the question
     is impossible to answer, the start_idx and end_idx are 0 i.e. start and end are on the very first token
     (in most models, this is the [CLS] token). Note that in our implementation NQ has 4 labels
-    ["is_impossible", "yes", "no", "span"] and this is what answer_type_list should look like"""
+    ["no_answer", "yes", "no", "span"] and this is what answer_type_list should look like"""
 
     label_idxs = np.full((max_answers, 2), fill_value=-1)
     answer_types = np.full((max_answers), fill_value=-1)
@@ -452,12 +452,12 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
         start_label_present = 1 in start_vec
         end_label_present = 1 in end_vec
 
-        # This is triggered if the answer is not in the passage or the question is_impossible
+        # This is triggered if the answer is not in the passage or the question warrants a no_answer
         # In both cases, the token at idx=0 (in BERT, this is the [CLS] token) is given both the start and end label
         if start_label_present is False and end_label_present is False:
             start_vec[0] = 1
             end_vec[0] = 1
-            answer_type = "is_impossible"
+            answer_type = "no_answer"
         elif start_label_present is False or end_label_present is False:
             raise Exception("The label vectors are lacking either a start or end label")
 
@@ -472,7 +472,7 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
         label_idxs[i, 1] = end_idx
 
         # Only Natural Questions trains a classification head on answer_type, SQuAD only has the QA head. answer_type_list
-        # will be None for SQuAD but something like ["is_impossible", "span", "yes", "no"] for Natural Questions
+        # will be None for SQuAD but something like ["no_answer", "span", "yes", "no"] for Natural Questions
         if answer_type_list:
             answer_types[i] = answer_type_list.index(answer_type)
 

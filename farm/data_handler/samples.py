@@ -91,27 +91,6 @@ class Sample(object):
         return s
 
 
-class Squad_cleartext:
-    def __init__(
-        self,
-        qas_id,
-        question_text,
-        doc_tokens,
-        orig_answer_text,
-        start_position,
-        end_position,
-        is_impossible,
-    ):
-
-        self.qas_id = qas_id
-        self.question_text = question_text
-        self.doc_tokens = doc_tokens
-        self.orig_answer_text = orig_answer_text
-        self.start_position = start_position
-        self.end_position = end_position
-        self.is_impossible = is_impossible
-
-
 def create_sample_one_label_one_text(raw_data, text_index, label_index, basket_id):
 
     # text = " ".join(raw_data[text_index:])
@@ -278,10 +257,3 @@ def offset_to_token_idx(token_offsets, ch_idx):
     for i in range(n_tokens):
         if (i + 1 == n_tokens) or (token_offsets[i] <= ch_idx < token_offsets[i + 1]):
             return i
-
-
-def check_if_training(dictionary):
-    if "is_impossible" in dictionary:
-        return True
-    return False
-
