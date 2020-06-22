@@ -367,22 +367,20 @@ class TextClassificationHead(PredictionHead):
             labels = [self.label_list[int(x[0])] for x in label_ids]
         return labels
 
-    def formatted_preds(self, logits=None, preds_p=None, samples=None, return_class_probs=False, **kwargs):
-        """ Like QuestionAnsweringHead.formatted_preds(), this fn can operate on either logits or preds_p. This
+    def formatted_preds(self, logits=None, preds=None, samples=None, return_class_probs=False, **kwargs):
+        """ Like QuestionAnsweringHead.formatted_preds(), this fn can operate on either logits or preds. This
         is needed since at inference, the order of operations is very different depending on whether we are performing
-        aggregation or not (compare Inferencer._get_predictions() vs Inferencer._get_predictions_and_aggregate())
+        aggregation or not (compare Inferencer._get_predictions() vs Inferencer._get_predictions_and_aggregate())"""
 
-        TODO: Preds_p should be renamed to preds"""
+        assert (logits is not None) or (preds is not None)
 
-        assert (logits is not None) or (preds_p is not None)
-
-        # When this method is used along side a QAHead at inference (e.g. Natural Questions), preds_p is the input and
+        # When this method is used along side a QAHead at inference (e.g. Natural Questions), preds is the input and
         # there is currently no good way of generating probs
         if logits is not None:
-            preds_p = self.logits_to_preds(logits)
+            preds = self.logits_to_preds(logits)
             probs = self.logits_to_probs(logits, return_class_probs)
         else:
-            probs = [None] * len(preds_p)
+            probs = [None] * len(preds)
 
         # TODO this block has to do with the difference in Basket and Sample structure between SQuAD and NQ
         try:
@@ -395,10 +393,10 @@ class TextClassificationHead(PredictionHead):
         if len(contexts_b) != 0:
             contexts = ["|".join([a, b]) for a,b in zip(contexts, contexts_b)]
 
-        assert len(preds_p) == len(probs) == len(contexts)
+        assert len(preds) == len(probs) == len(contexts)
 
         res = {"task": "text_classification", "predictions": []}
-        for pred, prob, context in zip(preds_p, probs, contexts):
+        for pred, prob, context in zip(preds, probs, contexts):
             if not return_class_probs:
                 pred_dict = {
                     "start": None,
@@ -1192,11 +1190,11 @@ class QuestionAnsweringHead(PredictionHead):
             return False
         return True
 
-    def formatted_preds(self, logits=None, preds_p=None, baskets=None, **kwargs):
-        """ Takes a list of predictions, each corresponding to one sample, and converts them into document level
+    def formatted_preds(self, logits=None, preds=None, baskets=None, **kwargs):
+        """ Takes a list of passage level predictions, each corresponding to one sample, and converts them into document level
         predictions. Leverages information in the SampleBaskets. Assumes that we are being passed predictions from
         ALL samples in the one SampleBasket i.e. all passages of a document. Logits should be None, because we have
-        already converted the logits to predictions before calling formatted_preds
+        already converted the logits to predictions before calling formatted_preds.
         (see Inferencer._get_predictions_and_aggregate()).
         """
 
@@ -1205,17 +1203,17 @@ class QuestionAnsweringHead(PredictionHead):
         # seq_2_start_t is the token index of the first token in passage relative to the input sequence (i.e. number of
         # special tokens and question tokens that come before the passage tokens)
         assert logits is None, "Logits are not None, something is passed wrongly into formatted_preds() in infer.py"
-        assert preds_p is not None, "No preds_p passed to formatted_preds()"
+        assert preds is not None, "No preds passed to formatted_preds()"
         samples = [s for b in baskets for s in b.samples]
         ids = [s.id for s in samples]
         passage_start_t = [s.features[0]["passage_start_t"] for s in samples]
         seq_2_start_t = [s.features[0]["seq_2_start_t"] for s in samples]
 
         # Aggregate passage level predictions to create document level predictions.
-        # This method assumes that all passages of each document are contained in preds_p
+        # This method assumes that all passages of each document are contained in preds
         # i.e. that there are no incomplete documents. The output of this step
         # are prediction spans
-        preds_d = self.aggregate_preds(preds_p, passage_start_t, ids, seq_2_start_t)
+        preds_d = self.aggregate_preds(preds, passage_start_t, ids, seq_2_start_t)
 
         assert len(preds_d) == len(baskets)
 
