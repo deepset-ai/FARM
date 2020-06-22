@@ -81,9 +81,9 @@ class QACandidate:
         """
 
         if predicted_class in ["yes", "no"] and self.answer != "is_impossible":
+            self.answer_support = self.answer
             self.answer = predicted_class
             self.answer_type = predicted_class
-            self.answer_support = self.answer
             self.offset_answer_support_start = self.offset_answer_start
             self.offset_answer_support_end = self.offset_answer_end
 
@@ -137,7 +137,7 @@ class QAPred(Pred):
         self.n_passages = n_passages
 
     def to_json(self, squad=False):
-        answers = self.answers_to_json(squad)
+        answers = self.answers_to_json(self.id, squad)
         ret = {
             "task": "qa",
             "predictions": [
@@ -152,21 +152,21 @@ class QAPred(Pred):
         }
         return ret
 
-    def answers_to_json(self, squad=False):
+    def answers_to_json(self, id, squad=False):
         ret = []
 
         # iterate over the top_n predictions of the one document
-        for qa_answer in self.prediction:
-            string = qa_answer.answer
-            start_t = qa_answer.offset_answer_start
-            end_t = qa_answer.offset_answer_end
+        for qa_candidate in self.prediction:
+            string = qa_candidate.answer
+            start_t = qa_candidate.offset_answer_start
+            end_t = qa_candidate.offset_answer_end
 
             _, ans_start_ch, ans_end_ch = span_to_string(start_t, end_t, self.token_offsets, self.context)
             context_string, context_start_ch, context_end_ch = self.create_context(ans_start_ch, ans_end_ch, self.context)
             if squad:
                 if string == "is_impossible":
                     string = ""
-            curr = {"score": qa_answer.score,
+            curr = {"score": qa_candidate.score,
                     "probability": None,
                     "answer": string,
                     "offset_answer_start": ans_start_ch,
@@ -174,7 +174,7 @@ class QAPred(Pred):
                     "context": context_string,
                     "offset_context_start": context_start_ch,
                     "offset_context_end": context_end_ch,
-                    "document_id": qa_answer.document_id}
+                    "document_id": id}
             ret.append(curr)
         return ret
 
