@@ -600,14 +600,14 @@ class QAInferencer(Inferencer):
                              dicts,
                              return_json=True,
                              multiprocessing_chunksize=None,
-                             streaming=False) -> Union[List[QAPred], Generator[QAPred]]:
+                             streaming=False) -> Union[List[QAPred], Generator[QAPred, None, None]]:
         return Inferencer.inference_from_dicts(dicts, return_json=True, multiprocessing_chunksize=None, streaming=False)
 
     def inference_from_file(self,
                             file,
                             multiprocessing_chunksize=None,
                             streaming=False,
-                            return_json=True) -> Union[List[QAPred], Generator[QAPred]]:
+                            return_json=True) -> Union[List[QAPred], Generator[QAPred, None, None]]:
         return Inferencer.inference_from_file(file, return_json=True, multiprocessing_chunksize=None, streaming=False)
 
 
