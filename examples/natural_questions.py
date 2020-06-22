@@ -6,7 +6,7 @@ from pathlib import Path
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import NaturalQuestionsProcessor
 from farm.file_utils import fetch_archive_from_http
-from farm.infer import Inferencer
+from farm.infer import QAInferencer
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import LanguageModel
 from farm.modeling.optimization import initialize_optimizer
@@ -68,7 +68,7 @@ def question_answering():
         max_seq_len=384,
         train_filename=train_filename,
         dev_filename=dev_filename,
-        keep_is_impossible=keep_is_impossible,
+        keep_no_answer=keep_is_impossible,
         downsample_context_size=downsample_context_size,
         data_dir=Path("../data/natural_questions"),
     )
@@ -131,7 +131,7 @@ def question_answering():
         }
     ]
 
-    model = Inferencer.load(model_name_or_path="../saved_models/farm/roberta-base-squad2-nq", batch_size=batch_size, gpu=True)
+    model = QAInferencer.load(model_name_or_path="../saved_models/farm/roberta-base-squad2-nq", batch_size=batch_size, gpu=True)
     result = model.inference_from_dicts(dicts=QA_input, return_json=False) # result is a list of QAPred objects
 
     print(f"\nQuestion: Did GameTrailers rated Twilight Princess as one of the best games ever created?"
