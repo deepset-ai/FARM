@@ -1,13 +1,14 @@
-from farm.utils import span_to_string
 from abc import ABC
-from typing import List, Optional, Any
-from pydantic import BaseModel
+from typing import List, Any
 
-class Pred:
+from farm.utils import span_to_string
+
+
+class Pred(ABC):
     """
-    Base class for predictions of every task. Note that it inherits from pydantic.BaseModel which creates an
-    __init__() with the attributes defined in this class (i.e. id, prediction, context)
+    Base Abstract Class for predictions of every task.
     """
+
     def __init__(self,
                  id: str,
                  prediction: List[Any],
@@ -19,11 +20,13 @@ class Pred:
     def to_json(self):
         raise NotImplementedError
 
+
 class QACandidate:
     """
-    A single QA candidate answer. Note that it inherits from pydantic.BaseModel which builds the __init__() method.
+    A single QA candidate answer.
     See class definition to find list of compulsory and optional arguments and also comments on how they are used.
     """
+
     def __init__(self,
                  answer_type: str,
                  score: str,
@@ -31,18 +34,18 @@ class QACandidate:
                  offset_answer_end: int,
                  offset_unit: str,
                  aggregation_level: str,
-                 probability: float=None,
-                 answer: str=None,
-                 answer_support: str=None,
-                 offset_answer_support_start: int=None,
-                 offset_answer_support_end: int=None,
-                 sample_idx: int=None,
-                 context: str=None,
-                 offset_context_start: int=None,
-                 offset_context_end: int=None,
-                 n_samples_in_doc: int=None,
-                 document_id: str=None,
-                 passage_id: str=None
+                 probability: float = None,
+                 answer: str = None,
+                 answer_support: str = None,
+                 offset_answer_support_start: int = None,
+                 offset_answer_support_end: int = None,
+                 sample_idx: int = None,
+                 context: str = None,
+                 offset_context_start: int = None,
+                 offset_context_end: int = None,
+                 n_samples_in_doc: int = None,
+                 document_id: str = None,
+                 passage_id: str = None,
                  ):
         # self.answer_type can be "is_impossible", "yes", "no" or "span"
         self.answer_type = answer_type
@@ -115,27 +118,28 @@ class QACandidate:
 class QAPred(Pred):
     """Question Answering predictions for a passage or a document. The self.prediction attribute is populated by a
     list of QACandidate objects. Note that this object inherits from the Pred class which is why some of
-    the attributes are found in the Pred class and not here. Pred in turn inherits from pydantic.BaseModel
-    which creates an __init__() method. See class definition for required and optional arguments.
+    the attributes are found in the Pred class and not here.
+    See class definition for required and optional arguments.
     """
+
     def __init__(self,
                  id: str,
-                 prediction: List[Any],
+                 prediction: List[QACandidate],
                  context: str,
                  question: str,
                  token_offsets: List[int],
                  context_window_size: int,
                  aggregation_level: str,
-                 answer_types: List[str]=None,
-                 ground_truth_answer: str =None,
-                 no_answer_gap: float =None,
-                 n_samples: int=None,
-                 question_id: int=None
+                 answer_types: List[str] = None,
+                 ground_truth_answer: str = None,
+                 no_answer_gap: float = None,
+                 n_samples: int = None,
+                 question_id: int = None,
                  ):
         super().__init__(id, prediction, context)
         self.question = question
         self.token_offsets = token_offsets
-        self.context_window_size = context_window_size #TODO only needed for to_json() - can we get rid context_window_size, TODO Do we really need this?
+        self.context_window_size = context_window_size  # TODO only needed for to_json() - can we get rid context_window_size, TODO Do we really need this?
         self.aggregation_level = aggregation_level
         self.answer_types = answer_types
         self.ground_truth_answer = ground_truth_answer
@@ -153,7 +157,7 @@ class QAPred(Pred):
                     "question_id": self.question_id,
                     "ground_truth": self.ground_truth_answer,
                     "answers": answers,
-                    "no_ans_gap": self.no_answer_gap # Add no_ans_gap to current no_ans_boost for switching top prediction
+                    "no_ans_gap": self.no_answer_gap, # Add no_ans_gap to current no_ans_boost for switching top prediction
                 }
             ],
         }
@@ -169,7 +173,9 @@ class QAPred(Pred):
             end_t = qa_answer.offset_answer_end
 
             _, ans_start_ch, ans_end_ch = span_to_string(start_t, end_t, self.token_offsets, self.context)
-            context_string, context_start_ch, context_end_ch = self.create_context(ans_start_ch, ans_end_ch, self.context)
+            context_string, context_start_ch, context_end_ch = self.create_context(ans_start_ch,
+                                                                                   ans_end_ch,
+                                                                                   self.context)
             if squad:
                 if string == "is_impossible":
                     string = ""
