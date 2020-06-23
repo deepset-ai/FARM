@@ -157,7 +157,7 @@ class QAPred(Pred):
 
         # iterate over the top_n predictions of the one document
         for qa_candidate in self.prediction:
-            string = qa_candidate.answer
+            string = str(qa_candidate.answer)
             start_t = qa_candidate.offset_answer_start
             end_t = qa_candidate.offset_answer_end
 
