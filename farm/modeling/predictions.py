@@ -1,8 +1,10 @@
 from abc import ABC
 from typing import List, Any
+import logging
 
 from farm.utils import span_to_string
 
+logger = logging.getLogger(__name__)
 
 class Pred(ABC):
     """
@@ -104,12 +106,16 @@ class QACandidate:
     def add_answer(self, string):
         if string == "":
             self.answer = "is_impossible"
-            assert self.offset_answer_end == -1
-            assert self.offset_answer_start == -1
+            if self.offset_answer_start != -1 or self.offset_answer_end != -1:
+                logger.error(f"Something went wrong in tokenization. We have start and end offsets: "
+                             f"{self.offset_answer_start, self.offset_answer_end} with an empty answer. "
+                             f"\nContext: {self.context}")
         else:
             self.answer = string
-            assert self.offset_answer_end >= 0
-            assert self.offset_answer_start >= 0
+            if self.offset_answer_start == -1 or self.offset_answer_end == -1:
+                logger.error(f"Something went wrong in tokenization. We have start and end offsets: "
+                             f"{self.offset_answer_start, self.offset_answer_end} with answer: {string}. "
+                             f"\nContext: {self.context}")
 
     def to_list(self):
         return [self.answer, self.offset_answer_start, self.offset_answer_end, self.score, self.sample_idx]
