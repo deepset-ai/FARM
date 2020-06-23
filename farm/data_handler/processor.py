@@ -1147,6 +1147,8 @@ class SquadProcessor(Processor):
     def file_to_dicts(self, file: str) -> [dict]:
         nested_dicts = read_squad_file(filename=file)
         dicts = [y for x in nested_dicts for y in x["paragraphs"]]
+        for d in dicts:
+            assert valid_answer(d)
         return dicts
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
@@ -1677,3 +1679,15 @@ def is_impossible_to_answer_type(qas):
             q["answer_type"] = answer_type
         new_qas.append(q)
     return new_qas
+
+def valid_answer(dictionary):
+    context = dictionary["context"]
+    for qa in dictionary["qas"]:
+        for answer in qa["answers"]:
+            len_answer = len(answer["text"])
+            start = answer["answer_start"]
+            end = answer["answer_start"] + len_answer
+            if context[start: end] != answer["text"]:
+                raise Exception(f"The answer extracted by start character index does not match the answer string: "
+                                 f"\t {context[start: end]} vs {answer['text']}")
+    return True
