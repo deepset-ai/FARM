@@ -1267,7 +1267,7 @@ class QuestionAnsweringHead(PredictionHead):
 
             # Iterate over each prediction on the one document
             full_preds = []
-            for qa_answer, basket in zip(pred_d, baskets):
+            for qa_answer in pred_d:
                 # This should be a method of Span
                 pred_str, _, _ = span_to_string(qa_answer.offset_answer_start,
                                                 qa_answer.offset_answer_end,
