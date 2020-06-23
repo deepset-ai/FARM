@@ -1,7 +1,9 @@
 from farm.utils import span_to_string
 from typing import List, Any
+from abc import ABC
 
-class Pred:
+
+class Pred(ABC):
     """
     Base class for predictions of every task. Note that it inherits from pydantic.BaseModel which creates an
     __init__() with the attributes defined in this class (i.e. id, prediction, context)
@@ -115,7 +117,7 @@ class QAPred(Pred):
 
     def __init__(self,
                  id: str,
-                 prediction: List[Any],
+                 prediction: List[QACandidate],
                  context: str,
                  question: str,
                  token_offsets: List[int],
