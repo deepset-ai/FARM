@@ -86,10 +86,10 @@ class QACandidate:
         :return: None
         """
 
-        if predicted_class in ["yes", "no"] and self.answer != "is_impossible":
+        if predicted_class in ["yes", "no"] and self.answer != "no_answer":
+            self.answer_support = self.answer
             self.answer = predicted_class
             self.answer_type = predicted_class
-            self.answer_support = self.answer
             self.offset_answer_support_start = self.offset_answer_start
             self.offset_answer_support_end = self.offset_answer_end
 
