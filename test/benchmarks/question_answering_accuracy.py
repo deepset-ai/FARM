@@ -14,7 +14,7 @@ from farm.evaluation import squad_evaluation
 from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import LanguageModel
-from farm.modeling.optimization import initialize_optimizer
+from farm.modeling.optimization import initialize_optimizer, optimize_model
 from farm.modeling.prediction_head import QuestionAnsweringHead
 from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer
@@ -56,8 +56,10 @@ def test_evaluation():
 
     starttime = time()
 
-    data_silo = DataSilo(processor=processor, batch_size=50)
+    data_silo = DataSilo(processor=processor, batch_size=40*4)
     model.connect_heads_with_processor(data_silo.processor.tasks, require_labels=True)
+    model, _ = optimize_model(model=model, device=device, local_rank=-1, optimizer=None, distributed=False, use_amp=None)
+
     evaluator = Evaluator(data_loader=data_silo.get_data_loader("test"), tasks=data_silo.processor.tasks, device=device)
 
     # 1. Test FARM internal evaluation
@@ -72,19 +74,19 @@ def test_evaluation():
     gold_EM = 77.7478
     gold_f1 = 82.1557
     gold_tnacc = 84.0646 # top 1 recall
-    gold_elapsed = 70 # 4x V100
+    gold_elapsed = 40 # 4x V100
     if test_assertions:
         np.testing.assert_allclose(em_score, gold_EM, rtol=0.001, err_msg=f"FARM Eval changed for EM by: {em_score-gold_EM}")
         np.testing.assert_allclose(f1_score, gold_f1, rtol=0.001, err_msg=f"FARM Eval changed for f1 score by: {f1_score-gold_f1}")
         np.testing.assert_allclose(tnacc, gold_tnacc, rtol=0.001, err_msg=f"FARM Eval changed for top 1 accuracy by: {em_score-gold_EM}")
-        # np.testing.assert_allclose(elapsed, gold_elapsed, rtol=0.1, err_msg=f"FARM Eval speed changed significantly by: {elapsed - gold_elapsed} seconds")
+        np.testing.assert_allclose(elapsed, gold_elapsed, rtol=0.1, err_msg=f"FARM Eval speed changed significantly by: {elapsed - gold_elapsed} seconds")
 
 
-    # 2. Test FARM predictions with outside eval script
+    # # 2. Test FARM predictions with outside eval script
     starttime = time()
-    model = Inferencer(model=model, processor=processor, task_type="question_answering", batch_size=50, gpu=device.type=="cuda")
+    model = Inferencer(model=model, processor=processor, task_type="question_answering", batch_size=40*4, gpu=device.type=="cuda")
     filename = data_dir / evaluation_filename
-    result = model.inference_from_file(file=filename, return_json=False)
+    result = model.inference_from_file(file=filename, return_json=False, multiprocessing_chunksize=80)
     results_squad = [x.to_squad_eval() for x in result]
 
     elapsed = time() - starttime
@@ -106,7 +108,7 @@ def test_evaluation():
 
     gold_EM = 78.4890
     gold_f1 = 81.7104
-    gold_elapsed = 66 # 4x V100
+    gold_elapsed = 27 # 4x V100
     print(elapsed)
     if test_assertions:
         np.testing.assert_allclose(em_score, gold_EM, rtol=0.001,
@@ -123,7 +125,9 @@ def train_evaluation_single(seed=42):
     ##########################
     set_all_seeds(seed=seed)
     device, n_gpu = initialize_device_settings(use_cuda=True)
-    batch_size = 32*4 # 4x V100
+    # GPU utilization on 4x V100
+    # 40*4, 14.3/16GB on master, 12.6/16 on others
+    batch_size = 40*4
     n_epochs = 2
     evaluate_every = 2000000 # disabling dev eval
     lang_model = "roberta-base"
@@ -148,7 +152,7 @@ def train_evaluation_single(seed=42):
     )
     data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=False)
     language_model = LanguageModel.load(lang_model)
-    prediction_head = QuestionAnsweringHead()
+    prediction_head = QuestionAnsweringHead(n_best=5)
     model = AdaptiveModel(
         language_model=language_model,
         prediction_heads=[prediction_head],
@@ -197,13 +201,13 @@ def train_evaluation_single(seed=42):
     gold_f1 = 82.155
     gold_EM = 77.714
     gold_tnrecall = 97.3721 #
-    gold_elapsed = 1183
+    gold_elapsed = 1135
     np.testing.assert_allclose(f1_score, gold_f1, rtol=0.01,
                                err_msg=f"FARM Training changed for f1 score by: {f1_score - gold_f1}")
     np.testing.assert_allclose(em_score, gold_EM, rtol=0.01,
                                err_msg=f"FARM Training changed for EM by: {em_score - gold_EM}")
     np.testing.assert_allclose(tnacc, gold_tnrecall, rtol=0.01,
-                               err_msg=f"FARM Training changed for top 1 accuracy by: {em_score - gold_EM}")
+                               err_msg=f"FARM Training changed for top 5 accuracy by: {em_score - gold_EM}")
     np.testing.assert_allclose(elapsed, gold_elapsed, rtol=0.1, err_msg=f"FARM Training speed changed significantly by: {elapsed - gold_elapsed} seconds")
 
 if __name__ == "__main__":
