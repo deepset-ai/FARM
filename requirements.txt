@@ -31,3 +31,4 @@ dill # pickle extension for (de-)serialization
 # optional for inference
 #fasttext==0.9.1
 #onnxruntime  # Inference with ONNX models. Install onnxruntime-gpu for Inference on GPUs
+psutil

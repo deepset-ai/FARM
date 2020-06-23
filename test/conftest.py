@@ -1,3 +1,4 @@
+import psutil
 import pytest
 
 from farm.infer import Inferencer
@@ -38,4 +39,13 @@ def adaptive_model_qa(use_gpu, num_processes):
         yield model
     finally:
         if num_processes != 0:
-            model.close_multiprocessing_pool()
+            # close the pool
+            # we pass join=True to wait for all sub processes to close
+            # this is because below we want to test if all sub-processes
+            # have exited
+            model.close_multiprocessing_pool(join=True)
+
+    # check if all workers (sub processes) are closed
+    current_process = psutil.Process()
+    children = current_process.children()
+    assert len(children) == 0

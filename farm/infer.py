@@ -293,15 +293,20 @@ class Inferencer:
             )
             log_ascii_workers(n=num_processes,logger=logger)
 
-    def close_multiprocessing_pool(self):
+    def close_multiprocessing_pool(self, join=False):
         """Close the `multiprocessing.Pool` again.
 
         If you use multiprocessing you have to close the `multiprocessing.Pool` again!
         To do so call this function after you are done using this class.
         The garbage collector will not do this for you!
+
+        :param join: wait for the worker processes to exit
+        :type join: bool
         """
         if self.process_pool is not None:
             self.process_pool.close()
+            if join:
+                self.process_pool.join()
             self.process_pool = None
 
     def save(self, path):
