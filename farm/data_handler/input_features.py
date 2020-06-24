@@ -410,7 +410,7 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
     ["no_answer", "yes", "no", "span"] and this is what answer_type_list should look like"""
 
     label_idxs = np.full((max_answers, 2), fill_value=-1)
-    answer_types = np.full((max_answers), fill_value=-1)
+    answer_types = np.full((1), fill_value=-1)
 
     # If there are no answers
     if len(answers) == 0:
@@ -419,7 +419,6 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
         return label_idxs, answer_types
 
     for i, answer in enumerate(answers):
-        answer_type = answer["answer_type"]
         start_idx = answer["start_t"]
         end_idx = answer["end_t"]
 
@@ -471,10 +470,10 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
         label_idxs[i, 0] = start_idx
         label_idxs[i, 1] = end_idx
 
-        # Only Natural Questions trains a classification head on answer_type, SQuAD only has the QA head. answer_type_list
-        # will be None for SQuAD but something like ["no_answer", "span", "yes", "no"] for Natural Questions
-        if answer_type_list:
-            answer_types[i] = answer_type_list.index(answer_type)
+    # Only Natural Questions trains a classification head on answer_type, SQuAD only has the QA head. answer_type_list
+    # will be None for SQuAD but something like ["no_answer", "span", "yes", "no"] for Natural Questions
+    if answer_type_list:
+        answer_types[0] = answer_type_list.index(answers[0]["answer_type"])
 
     assert np.max(label_idxs) > -1
 

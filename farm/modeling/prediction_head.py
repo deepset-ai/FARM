@@ -335,9 +335,7 @@ class TextClassificationHead(PredictionHead):
 
     def logits_to_loss(self, logits, **kwargs):
         label_ids = kwargs.get(self.label_tensor_name)
-        # In Natural Questions, each dev sample can have multiple labels
-        # For loss calculation we only use the first label
-        label_ids = label_ids.narrow(1,0,1)
+        label_ids = label_ids
         return self.loss_fct(logits, label_ids.view(-1))
 
     def logits_to_probs(self, logits, return_class_probs, **kwargs):
