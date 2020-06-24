@@ -37,7 +37,8 @@ def doc_classification_cola():
     tokenizer = Tokenizer.load(pretrained_model_name_or_path=lang_model, do_lower_case=do_lower_case)
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
-    # Here we load Cola 2018 Data.
+    # Here we load Cola 2018 Data automaticaly if it is not available.
+    # GermEval 2018 only has train.tsv and test.tsv dataset - no dev.tsv
 
     label_list = ["0", "1"]
     metric = "mcc"
@@ -65,7 +66,7 @@ def doc_classification_cola():
     # language_model = Roberta.load(lang_model)
     # b) and a prediction head on top that is suited for our task => Text classification
     prediction_head = TextClassificationHead(
-        layer_dims=[768, len(processor.tasks["text_classification"]["label_list"])],
+        num_labels=len(label_list),
         class_weights=data_silo.calculate_class_weights(task_name="text_classification"))
 
     model = AdaptiveModel(
@@ -85,6 +86,7 @@ def doc_classification_cola():
 
     # 6. Feed everything to the Trainer, which keeps care of growing our model into powerful plant and evaluates it from time to time
     trainer = Trainer(
+        model=model,
         optimizer=optimizer,
         data_silo=data_silo,
         epochs=n_epochs,
@@ -94,7 +96,7 @@ def doc_classification_cola():
         device=device)
 
     # 7. Let it grow
-    model = trainer.train(model)
+    trainer.train()
 
     # 8. Hooray! You have a model. Store it:
     save_dir = Path("saved_models/bert-doc-tutorial")

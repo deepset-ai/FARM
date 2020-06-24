@@ -30,19 +30,19 @@ def doc_classifcation():
     batch_size = 32
     evaluate_every = 100
     lang_model = "bert-base-german-cased"
+    do_lower_case = False
     # or a local path:
-    lang_model = "../saved_models/farm-bert-base-cased-squad2"
+    # lang_model = Path("../saved_models/farm-bert-base-cased")
     use_amp = None
 
-    device, n_gpu = initialize_device_settings(use_cuda=False, use_amp=use_amp)
+    device, n_gpu = initialize_device_settings(use_cuda=True, use_amp=use_amp)
 
     # 1.Create a tokenizer
-    tokenizer = Tokenizer.load(
-        pretrained_model_name_or_path=lang_model,
-        do_lower_case=False)
+    tokenizer = Tokenizer.load(pretrained_model_name_or_path=lang_model, do_lower_case=do_lower_case)
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
-    # Here we load GermEval 2018 Data.
+    # Here we load GermEval 2018 Data automaticaly if it is not available.
+    # GermEval 2018 only has train.tsv and test.tsv dataset - no dev.tsv
 
     label_list = ["OTHER", "OFFENSE"]
     metric = "f1_macro"
@@ -66,7 +66,8 @@ def doc_classifcation():
     language_model = LanguageModel.load(lang_model)
     # b) and a prediction head on top that is suited for our task => Text classification
     prediction_head = TextClassificationHead(
-        class_weights=data_silo.calculate_class_weights(task_name="text_classification"))
+        class_weights=data_silo.calculate_class_weights(task_name="text_classification"),
+        num_labels=len(label_list))
 
     model = AdaptiveModel(
         language_model=language_model,
@@ -78,7 +79,7 @@ def doc_classifcation():
     # 5. Create an optimizer
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
-        learning_rate=2e-5,
+        learning_rate=3e-5,
         device=device,
         n_batches=len(data_silo.loaders["train"]),
         n_epochs=n_epochs,
@@ -86,6 +87,7 @@ def doc_classifcation():
 
     # 6. Feed everything to the Trainer, which keeps care of growing our model into powerful plant and evaluates it from time to time
     trainer = Trainer(
+        model=model,
         optimizer=optimizer,
         data_silo=data_silo,
         epochs=n_epochs,
@@ -95,7 +97,7 @@ def doc_classifcation():
         device=device)
 
     # 7. Let it grow
-    model = trainer.train(model)
+    trainer.train()
 
     # 8. Hooray! You have a model. Store it:
     save_dir = Path("saved_models/bert-german-doc-tutorial")

@@ -32,11 +32,12 @@ def doc_regression():
     batch_size = 32
     evaluate_every = 30
     lang_model = "bert-base-cased"
+    do_lower_case = False
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
         pretrained_model_name_or_path=lang_model,
-        do_lower_case=False)
+        do_lower_case=do_lower_case)
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
     #    We do not have a sample dataset for regression yet, add your own dataset to run the example
@@ -74,6 +75,7 @@ def doc_regression():
 
     # 6. Feed everything to the Trainer, which keeps care of growing our model into powerful plant and evaluates it from time to time
     trainer = Trainer(
+        model=model,
         optimizer=optimizer,
         data_silo=data_silo,
         epochs=n_epochs,
@@ -83,7 +85,7 @@ def doc_regression():
         device=device)
 
     # 7. Let it grow
-    model = trainer.train(model)
+    trainer.train()
 
     # 8. Hooray! You have a model. Store it:
     save_dir = Path("saved_models/bert-doc-regression-tutorial")

@@ -16,7 +16,8 @@ from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
 
 from farm.data_handler.utils import is_json
-from farm.utils import convert_iob_to_simple_tags
+from farm.utils import convert_iob_to_simple_tags, span_to_string
+from farm.modeling.predictions import QACandidate, QAPred
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,8 @@ class PredictionHead(nn.Module):
         :param head_num: Which head to save
         :type head_num: int
         """
+        # updating config in case the parameters have been changed
+        self.generate_config()
         output_config_file = Path(save_dir) / f"prediction_head_{head_num}_config.json"
         with open(output_config_file, "w") as file:
             json.dump(self.config, file)
@@ -94,7 +97,7 @@ class PredictionHead(nn.Module):
         self.config = config
 
     @classmethod
-    def load(cls, config_file, strict=True):
+    def load(cls, config_file, strict=True, load_weights=True):
         """
         Loads a Prediction Head. Infers the class of prediction head from config_file.
 
@@ -109,9 +112,10 @@ class PredictionHead(nn.Module):
         """
         config = json.load(open(config_file))
         prediction_head = cls.subclasses[config["name"]](**config)
-        model_file = cls._get_model_file(config_file=config_file)
-        logger.info("Loading prediction head from {}".format(model_file))
-        prediction_head.load_state_dict(torch.load(model_file, map_location=torch.device("cpu")), strict=strict)
+        if load_weights:
+            model_file = cls._get_model_file(config_file=config_file)
+            logger.info("Loading prediction head from {}".format(model_file))
+            prediction_head.load_state_dict(torch.load(model_file, map_location=torch.device("cpu")), strict=strict)
         return prediction_head
 
     def logits_to_loss(self, logits, labels):
@@ -167,23 +171,6 @@ class PredictionHead(nn.Module):
             self.layer_dims[0] = input_dim
             self.feed_forward.layer_dims[0] = input_dim
 
-    def resize_output(self, output_dim):
-        """ This function compares the number of labels against the output dimensionality
-        of the prediction head. If there is a mismatch, the prediction head will be resized to fit."""
-        if "feed_forward" not in dir(self):
-            return
-        else:
-            old_dims = self.feed_forward.layer_dims
-            if output_dim == old_dims[-1]:
-                return
-            new_dims = old_dims[:-1] + [output_dim]
-            logger.info(f"Resizing output dimensions of {type(self).__name__} ({self.task_name}) "
-                  f"from {old_dims} to {new_dims} to match number of labels")
-            self.feed_forward = FeedForwardBlock(new_dims)
-            self.layer_dims[-1] = output_dim
-            self.feed_forward.layer_dims[-1] = output_dim
-            self.num_labels = output_dim
-
     @classmethod
     def _get_model_file(cls, config_file):
         if "config.json" in str(config_file) and "prediction_head" in str(config_file):
@@ -221,9 +208,8 @@ class RegressionHead(PredictionHead):
         return logits
 
     def logits_to_loss(self, logits, **kwargs):
-        # Squeeze the logits to obtain a coherent output size
         label_ids = kwargs.get(self.label_tensor_name)
-        return self.loss_fct(logits.squeeze(), label_ids.float())
+        return self.loss_fct(logits, label_ids.float())
 
     def logits_to_preds(self, logits, **kwargs):
         preds = logits.cpu().numpy()
@@ -257,24 +243,44 @@ class RegressionHead(PredictionHead):
 class TextClassificationHead(PredictionHead):
     def __init__(
         self,
-        layer_dims=[768,1],
+        layer_dims=None,
+        num_labels=None,
         class_weights=None,
         loss_ignore_index=-100,
         loss_reduction="none",
         task_name="text_classification",
         **kwargs,
     ):
+        """
+        :param layer_dims: The size of the layers in the feed forward component. The feed forward will have as many layers as there are ints in this list. This param will be deprecated in future
+        :type layer_dims: list
+        :param num_labels: The numbers of labels. Use to set the size of the final layer in the feed forward component. It is recommended to only set num_labels or layer_dims, not both.
+        :type num_labels: int
+        :param class_weights:
+        :param loss_ignore_index:
+        :param loss_reduction:
+        :param task_name:
+        :param kwargs:
+        """
         super(TextClassificationHead, self).__init__()
         # num_labels could in most cases also be automatically retrieved from the data processor
-        self.layer_dims = layer_dims
+        if layer_dims:
+            self.layer_dims = layer_dims
+            logger.warning("`layer_dims` will be deprecated in future releases")
+        elif num_labels:
+            self.layer_dims = [768, num_labels]
+        else:
+            raise ValueError("Please supply `num_labels` to define output dim of prediction head")
+        self.num_labels = self.layer_dims[-1]
         self.feed_forward = FeedForwardBlock(self.layer_dims)
+        logger.info(f"Prediction head initialized with size {self.layer_dims}")
         self.num_labels = self.layer_dims[-1]
         self.ph_output_type = "per_sequence"
         self.model_type = "text_classification"
         self.task_name = task_name #used for connecting with the right output of the processor
         self.class_weights = class_weights
 
-        if class_weights:
+        if class_weights is not None:
             logger.info(f"Using class weights for task '{self.task_name}': {self.class_weights}")
             balanced_weights = nn.Parameter(torch.tensor(class_weights), requires_grad=False)
         else:
@@ -291,13 +297,16 @@ class TextClassificationHead(PredictionHead):
     @classmethod
     def load(cls, pretrained_model_name_or_path):
         """
-        Load a prediction head from a saved FARM or transformers model. If `pretrained_model_name_or_path`
-        is not a local path, we will try to resolve it with a public model hub (https://huggingface.co/models)
+        Load a prediction head from a saved FARM or transformers model. `pretrained_model_name_or_path`
+        can be one of the following:
+        a) Local path to a FARM prediction head config (e.g. my-bert/prediction_head_0_config.json)
+        b) Local path to a Transformers model (e.g. my-bert)
+        c) Name of a public model from https://huggingface.co/models (e.g. distilbert-base-uncased-distilled-squad)
+
 
         :param pretrained_model_name_or_path: local path of a saved model or name of a publicly available model.
-                                              Exemplary names:
-                                              - distilbert-base-uncased-distilled-squad
-                                              - bert-large-uncased-whole-word-masking-finetuned-squad
+                                              Exemplary public name:
+                                              - deepset/bert-base-german-cased-hatespeech-GermEval18Coarse
 
                                               See https://huggingface.co/models for full list
 
@@ -307,7 +316,7 @@ class TextClassificationHead(PredictionHead):
                 and "config.json" in pretrained_model_name_or_path \
                 and "prediction_head" in pretrained_model_name_or_path:
             # a) FARM style
-            super(TextClassificationHead, cls).load(pretrained_model_name_or_path)
+            head = super(TextClassificationHead, cls).load(pretrained_model_name_or_path)
         else:
             # b) transformers style
             # load all weights from model
@@ -319,12 +328,16 @@ class TextClassificationHead(PredictionHead):
             del full_model
 
         return head
+
     def forward(self, X):
         logits = self.feed_forward(X)
         return logits
 
     def logits_to_loss(self, logits, **kwargs):
         label_ids = kwargs.get(self.label_tensor_name)
+        # In Natural Questions, each dev sample can have multiple labels
+        # For loss calculation we only use the first label
+        label_ids = label_ids.narrow(1,0,1)
         return self.loss_fct(logits, label_ids.view(-1))
 
     def logits_to_probs(self, logits, return_class_probs, **kwargs):
@@ -346,18 +359,46 @@ class TextClassificationHead(PredictionHead):
     def prepare_labels(self, **kwargs):
         label_ids = kwargs.get(self.label_tensor_name)
         label_ids = label_ids.cpu().numpy()
-        labels = [self.label_list[int(x)] for x in label_ids]
+        # This is the standard doc classification case
+        try:
+            labels = [self.label_list[int(x)] for x in label_ids]
+        # This case is triggered in Natural Questions where each example can have multiple labels
+        except TypeError:
+            labels = [self.label_list[int(x[0])] for x in label_ids]
         return labels
 
-    def formatted_preds(self, logits, samples, return_class_probs=False, **kwargs):
-        preds = self.logits_to_preds(logits)
-        probs = self.logits_to_probs(logits, return_class_probs)
-        contexts = [sample.clear_text["text"] for sample in samples]
+    def formatted_preds(self, logits=None, preds_p=None, samples=None, return_class_probs=False, **kwargs):
+        """ Like QuestionAnsweringHead.formatted_preds(), this fn can operate on either logits or preds_p. This
+        is needed since at inference, the order of operations is very different depending on whether we are performing
+        aggregation or not (compare Inferencer._get_predictions() vs Inferencer._get_predictions_and_aggregate())
 
-        assert len(preds) == len(probs) == len(contexts)
+        TODO: Preds_p should be renamed to preds"""
+
+        assert (logits is not None) or (preds_p is not None)
+
+        # When this method is used along side a QAHead at inference (e.g. Natural Questions), preds_p is the input and
+        # there is currently no good way of generating probs
+        if logits is not None:
+            preds_p = self.logits_to_preds(logits)
+            probs = self.logits_to_probs(logits, return_class_probs)
+        else:
+            probs = [None] * len(preds_p)
+
+        # TODO this block has to do with the difference in Basket and Sample structure between SQuAD and NQ
+        try:
+            contexts = [sample.clear_text["text"] for sample in samples]
+        # This case covers Natural Questions where the sample is in a QA style
+        except KeyError:
+            contexts = [sample.clear_text["question_text"] + " | " + sample.clear_text["passage_text"] for sample in samples]
+
+        contexts_b = [sample.clear_text["text_b"] for sample in samples if "text_b" in  sample.clear_text]
+        if len(contexts_b) != 0:
+            contexts = ["|".join([a, b]) for a,b in zip(contexts, contexts_b)]
+
+        assert len(preds_p) == len(probs) == len(contexts)
 
         res = {"task": "text_classification", "predictions": []}
-        for pred, prob, context in zip(preds, probs, contexts):
+        for pred, prob, context in zip(preds_p, probs, contexts):
             if not return_class_probs:
                 pred_dict = {
                     "start": None,
@@ -382,25 +423,44 @@ class TextClassificationHead(PredictionHead):
 class MultiLabelTextClassificationHead(PredictionHead):
     def __init__(
         self,
-        layer_dims=[768,1],
+        layer_dims=None,
+        num_labels=None,
         class_weights=None,
         loss_reduction="none",
         task_name="text_classification",
         pred_threshold=0.5,
         **kwargs,
     ):
+        """
+        :param layer_dims: The size of the layers in the feed forward component. The feed forward will have as many layers as there are ints in this list. This param will be deprecated in future
+        :type layer_dims: list
+        :param num_labels: The numbers of labels. Use to set the size of the final layer in the feed forward component. It is recommended to only set num_labels or layer_dims, not both.
+        :type num_labels: int
+        :param class_weights:
+        :param loss_reduction:
+        :param task_name:
+        :param pred_threshold:
+        :param kwargs:
+        """
         super(MultiLabelTextClassificationHead, self).__init__()
         # num_labels could in most cases also be automatically retrieved from the data processor
-        self.layer_dims = layer_dims
-        self.feed_forward = FeedForwardBlock(self.layer_dims)
+        if layer_dims:
+            self.layer_dims = layer_dims
+            logger.warning("`layer_dims` will be deprecated in future releases")
+        elif num_labels:
+            self.layer_dims = [768, num_labels]
+        else:
+            raise ValueError("Please supply `num_labels` to define output dim of prediction head")
         self.num_labels = self.layer_dims[-1]
+        logger.info(f"Prediction head initialized with size {self.layer_dims}")
+        self.feed_forward = FeedForwardBlock(self.layer_dims)
         self.ph_output_type = "per_sequence"
         self.model_type = "multilabel_text_classification"
         self.task_name = task_name #used for connecting with the right output of the processor
         self.class_weights = class_weights
         self.pred_threshold = pred_threshold
 
-        if class_weights:
+        if class_weights is not None:
             logger.info(f"Using class weights for task '{self.task_name}': {self.class_weights}")
             #TODO must balanced weight really be a instance attribute?
             self.balanced_weights = nn.Parameter(
@@ -470,9 +530,29 @@ class MultiLabelTextClassificationHead(PredictionHead):
 
 
 class TokenClassificationHead(PredictionHead):
-    def __init__(self, layer_dims=[768,1], task_name="ner", **kwargs):
+    def __init__(self,
+                 layer_dims=None,
+                 num_labels=None,
+                 task_name="ner",
+                 **kwargs):
+        """
+        :param layer_dims: The size of the layers in the feed forward component. The feed forward will have as many layers as there are ints in this list. This param will be deprecated in future
+        :type layer_dims: list
+        :param num_labels: The numbers of labels. Use to set the size of the final layer in the feed forward component. It is recommended to only set num_labels or layer_dims, not both.
+        :type num_labels: int
+        :param task_name:
+        :param kwargs:
+        """
         super(TokenClassificationHead, self).__init__()
-        self.layer_dims = layer_dims
+        if layer_dims:
+            self.layer_dims = layer_dims
+            logger.warning("`layer_dims` will be deprecated in future releases")
+        elif num_labels:
+            self.layer_dims = [768, num_labels]
+        else:
+            raise ValueError("Please supply `num_labels` to define output dim of prediction head")
+        self.num_labels = self.layer_dims[-1]
+        logger.info(f"Prediction head initialized with size {self.layer_dims}")
         self.feed_forward = FeedForwardBlock(self.layer_dims)
         self.num_labels = self.layer_dims[-1]
         self.loss_fct = CrossEntropyLoss(reduction="none")
@@ -484,12 +564,17 @@ class TokenClassificationHead(PredictionHead):
     @classmethod
     def load(cls, pretrained_model_name_or_path):
         """
-        Load a prediction head from a saved FARM or transformers model. If `pretrained_model_name_or_path`
-        is not a local path, we will try to resolve it with a public model hub (https://huggingface.co/models)
+        Load a prediction head from a saved FARM or transformers model. `pretrained_model_name_or_path`
+        can be one of the following:
+        a) Local path to a FARM prediction head config (e.g. my-bert/prediction_head_0_config.json)
+        b) Local path to a Transformers model (e.g. my-bert)
+        c) Name of a public model from https://huggingface.co/models (e.g.bert-base-cased-finetuned-conll03-english)
+
 
         :param pretrained_model_name_or_path: local path of a saved model or name of a publicly available model.
-                                              Examplary names:
-                                              - asdas
+                                              Exemplary public names:
+                                              - bert-base-cased-finetuned-conll03-english
+
                                               See https://huggingface.co/models for full list
 
         """
@@ -498,17 +583,17 @@ class TokenClassificationHead(PredictionHead):
                 and "config.json" in pretrained_model_name_or_path \
                 and "prediction_head" in pretrained_model_name_or_path:
             # a) FARM style
-            return super(TokenClassificationHead, cls).load(pretrained_model_name_or_path)
+            head = super(TokenClassificationHead, cls).load(pretrained_model_name_or_path)
         else:
-            raise NotImplementedError("Loading prediction head from transformers format is not supported yet.")
-            # # b) transformers style
-            # # load all weights from model
-            # full_model = AutoModelForTokenClassification.from_pretrained(pretrained_model_name_or_path)
-            # # init empty head
-            # head = cls(layer_dims=[full_model.config.hidden_size, len(full_model.config.label2id)])
-            # # transfer weights for head from full model
-            # head.feed_forward.feed_forward[0].load_state_dict(full_model.classifier.state_dict())
-            # del full_model
+            # b) transformers style
+            # load all weights from model
+            full_model = AutoModelForTokenClassification.from_pretrained(pretrained_model_name_or_path)
+            # init empty head
+            head = cls(layer_dims=[full_model.config.hidden_size, len(full_model.config.label2id)])
+            # transfer weights for head from full model
+            head.feed_forward.feed_forward[0].load_state_dict(full_model.classifier.state_dict())
+            del full_model
+        return head
 
 
     def forward(self, X):
@@ -667,6 +752,21 @@ class BertLMHead(PredictionHead):
 
     @classmethod
     def load(cls, pretrained_model_name_or_path, n_added_tokens=0):
+        """
+        Load a prediction head from a saved FARM or transformers model. `pretrained_model_name_or_path`
+        can be one of the following:
+        a) Local path to a FARM prediction head config (e.g. my-bert/prediction_head_0_config.json)
+        b) Local path to a Transformers model (e.g. my-bert)
+        c) Name of a public model from https://huggingface.co/models (e.g.bert-base-cased)
+
+
+        :param pretrained_model_name_or_path: local path of a saved model or name of a publicly available model.
+                                              Exemplary public names:
+                                              - bert-base-cased
+
+                                              See https://huggingface.co/models for full list
+
+        """
 
         if os.path.exists(pretrained_model_name_or_path) \
                 and "config.json" in pretrained_model_name_or_path \
@@ -676,7 +776,7 @@ class BertLMHead(PredictionHead):
                 #TODO resize prediction head decoder for custom vocab
                 raise NotImplementedError("Custom vocab not yet supported for model loading from FARM files")
 
-            super(BertLMHead, cls).load(pretrained_model_name_or_path)
+            head = super(BertLMHead, cls).load(pretrained_model_name_or_path)
         else:
             # b) pytorch-transformers style
             # load weights from bert model
@@ -729,9 +829,8 @@ class BertLMHead(PredictionHead):
         return per_sample_loss
 
     def logits_to_preds(self, logits, **kwargs):
-        logits = logits.cpu().numpy()
         lm_label_ids = kwargs.get(self.label_tensor_name).cpu().numpy()
-        lm_preds_ids = logits.argmax(2)
+        lm_preds_ids = logits.argmax(2).cpu().numpy()
         # apply mask to get rid of predictions for non-masked tokens
         assert lm_preds_ids.shape == lm_label_ids.shape
         lm_preds_ids[lm_label_ids == -1] = -1
@@ -757,22 +856,30 @@ class BertLMHead(PredictionHead):
 class NextSentenceHead(TextClassificationHead):
     """
     Almost identical to a TextClassificationHead. Only difference: we can load the weights from
-     a pretrained language model that was saved in the pytorch-transformers style (all in one model).
+     a pretrained language model that was saved in the Transformers style (all in one model).
     """
     @classmethod
     def load(cls, pretrained_model_name_or_path):
+        """
+        Load a prediction head from a saved FARM or transformers model. `pretrained_model_name_or_path`
+        can be one of the following:
+        a) Local path to a FARM prediction head config (e.g. my-bert/prediction_head_0_config.json)
+        b) Local path to a Transformers model (e.g. my-bert)
+        c) Name of a public model from https://huggingface.co/models (e.g.bert-base-cased)
 
+
+        :param pretrained_model_name_or_path: local path of a saved model or name of a publicly available model.
+                                              Exemplary public names:
+                                              - bert-base-cased
+
+                                              See https://huggingface.co/models for full list
+
+        """
         if os.path.exists(pretrained_model_name_or_path) \
                 and "config.json" in pretrained_model_name_or_path \
                 and "prediction_head" in pretrained_model_name_or_path:
-            config_file = os.path.exists(pretrained_model_name_or_path)
             # a) FARM style
-            #TODO validate saving/loading after switching to processor.tasks
-            model_file = cls._get_model_file(config_file)
-            config = json.load(open(config_file))
-            prediction_head = cls(**config)
-            logger.info("Loading prediction head from {}".format(model_file))
-            prediction_head.load_state_dict(torch.load(model_file, map_location=torch.device("cpu")))
+            head = super(NextSentenceHead, cls).load(pretrained_model_name_or_path)
         else:
             # b) pytorch-transformers style
             # load weights from bert model
@@ -818,42 +925,61 @@ class QuestionAnsweringHead(PredictionHead):
     A question answering head predicts the start and end of the answer on token level.
     """
 
-    def __init__(self, layer_dims=[768,1], task_name="question_answering", no_ans_threshold=0.0, context_window_size=100, n_best=5, **kwargs):
+    def __init__(self, layer_dims=[768,2],
+                 task_name="question_answering",
+                 no_ans_boost=0.0,
+                 context_window_size=100,
+                 n_best=5,
+                 n_best_per_sample=1,
+                 **kwargs):
         """
         :param layer_dims: dimensions of Feed Forward block, e.g. [768,2], for adjusting to BERT embedding. Output should be always 2
         :type layer_dims: List[Int]
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
-        :param no_ans_threshold: no_ans_threshold is how much greater the no_answer logit needs to be over the pos_answer in order to be chosen
-        :type no_ans_threshold: float
+        :param no_ans_boost: How much the no_answer logit is boosted/increased.
+                             The higher the value, the more likely a "no answer possible given the input text" is returned by the model
+        :type no_ans_boost: float
         :param context_window_size: The size, in characters, of the window around the answer span that is used when displaying the context around the answer.
         :type context_window_size: int
-        :param n_best: The number of candidate positive answer spans to consider from each passage. Same value used as the number of candidates to be considered on document level.
+        :param n_best: The number of positive answer spans for each document.
         :type n_best: int
+        :param n_best_per_sample: num candidate answer spans to consider from each passage. Each passage also returns "no answer" info.
+                                  This is decoupled from n_best on document level, since predictions on passage level are very similar.
+                                  It should have a low value
+        :type n_best_per_sample: int
         """
         super(QuestionAnsweringHead, self).__init__()
+        if kwargs is not None:
+            logger.warning(f"Some unused parameters are passed to the QuestionAnsweringHead. "
+                           f"Might not be a problem. Params: {json.dumps(kwargs)}")
         self.layer_dims = layer_dims
+        assert self.layer_dims[-1] == 2
         self.feed_forward = FeedForwardBlock(self.layer_dims)
+        logger.info(f"Prediction head initialized with size {self.layer_dims}")
         self.num_labels = self.layer_dims[-1]
         self.ph_output_type = "per_token_squad"
-        self.model_type = (
-            "span_classification"
-        )  # predicts start and end token of answer
+        self.model_type = ("span_classification")  # predicts start and end token of answer
         self.task_name = task_name
-        self.generate_config()
-        self.no_ans_threshold = no_ans_threshold
+        self.no_ans_boost = no_ans_boost
         self.context_window_size = context_window_size
         self.n_best = n_best
+        self.n_best_per_sample = n_best_per_sample
+        self.generate_config()
 
 
     @classmethod
     def load(cls, pretrained_model_name_or_path):
         """
-        Load a prediction head from a saved FARM or transformers model. If `pretrained_model_name_or_path`
-        is not a local path, we will try to resolve it with a public model hub (https://huggingface.co/models)
+        Load a prediction head from a saved FARM or transformers model. `pretrained_model_name_or_path`
+        can be one of the following:
+        a) Local path to a FARM prediction head config (e.g. my-bert/prediction_head_0_config.json)
+        b) Local path to a Transformers model (e.g. my-bert)
+        c) Name of a public model from https://huggingface.co/models (e.g. distilbert-base-uncased-distilled-squad)
+
 
         :param pretrained_model_name_or_path: local path of a saved model or name of a publicly available model.
-                                              Exemplary names:
+                                              Exemplary public names:
                                               - distilbert-base-uncased-distilled-squad
                                               - bert-large-uncased-whole-word-masking-finetuned-squad
 
@@ -877,7 +1003,6 @@ class QuestionAnsweringHead(PredictionHead):
             del full_qa_model
 
         return head
-
 
     def forward(self, X):
         """
@@ -946,6 +1071,24 @@ class QuestionAnsweringHead(PredictionHead):
         end_matrix = end_logits.unsqueeze(1).expand(-1, max_seq_len, -1)
         start_end_matrix = start_matrix + end_matrix
 
+        # disqualify answers where end < start
+        # (set the lower triangular matrix to low value, excluding diagonal)
+        indices = torch.tril_indices(max_seq_len, max_seq_len, offset=-1, device=start_end_matrix.device)
+        start_end_matrix[:, indices[0][:], indices[1][:]] = -999
+
+        # disqualify answers where start=0, but end != 0
+        start_end_matrix[:, 0, 1:] = -999
+
+        # TODO continue vectorization of valid_answer_idxs
+        # # disqualify where answers < seq_2_start_t and idx != 0
+        # # disqualify where answer falls into padding
+        # # seq_2_start_t can be different when 2 different questions are handled within one batch
+        # # n_non_padding can be different on sample level, too
+        # for i in range(batch_size):
+        #     start_end_matrix[i, 1:seq_2_start_t[i], 1:seq_2_start_t[i]] = -888
+        #     start_end_matrix[i, n_non_padding[i]-1:, n_non_padding[i]-1:] = -777
+
+
         # Sort the candidate answers by their score. Sorting happens on the flattened matrix.
         # flat_sorted_indices.shape: (batch_size, max_seq_len^2, 1)
         flat_scores = start_end_matrix.view(batch_size, -1)
@@ -960,18 +1103,21 @@ class QuestionAnsweringHead(PredictionHead):
 
         # Get the n_best candidate answers for each sample that are valid (via some heuristic checks)
         for sample_idx in range(batch_size):
-            sample_top_n = self.get_top_candidates(sorted_candidates[sample_idx], start_end_matrix[sample_idx],
-                                                   n_non_padding[sample_idx], max_answer_length,
-                                                   seq_2_start_t[sample_idx])
+            sample_top_n = self.get_top_candidates(sorted_candidates[sample_idx],
+                                                   start_end_matrix[sample_idx],
+                                                   n_non_padding[sample_idx].item(),
+                                                   max_answer_length,
+                                                   seq_2_start_t[sample_idx].item(),
+                                                   sample_idx)
             all_top_n.append(sample_top_n)
 
         return all_top_n
 
     def get_top_candidates(self, sorted_candidates, start_end_matrix,
-                           n_non_padding, max_answer_length, seq_2_start_t, n_best=5):
-        """ Returns top candidate answers. Operates on a matrix of summed start and end logits. This matrix corresponds
-        to a single sample (includes special tokens, question tokens, passage tokens). This method always returns a
-        list of len n_best + 1 (it is comprised of the n_best positive answers along with the one no_answer)"""
+                           n_non_padding, max_answer_length, seq_2_start_t, sample_idx):
+        """ Returns top candidate answers as a list of Span objects. Operates on a matrix of summed start and end logits.
+        This matrix corresponds to a single sample (includes special tokens, question tokens, passage tokens).
+        This method always returns a list of len n_best + 1 (it is comprised of the n_best positive answers along with the one no_answer)"""
 
         # Initialize some variables
         top_candidates = []
@@ -979,7 +1125,7 @@ class QuestionAnsweringHead(PredictionHead):
 
         # Iterate over all candidates and break when we have all our n_best candidates
         for candidate_idx in range(n_candidates):
-            if len(top_candidates) == n_best:
+            if len(top_candidates) == self.n_best_per_sample:
                 break
             else:
                 # Retrieve candidate's indices
@@ -989,13 +1135,24 @@ class QuestionAnsweringHead(PredictionHead):
                 if start_idx == 0 and end_idx == 0:
                     continue
                 # Check that the candidate's indices are valid and save them if they are
-                score = start_end_matrix[start_idx, end_idx].item()
                 if self.valid_answer_idxs(start_idx, end_idx, n_non_padding, max_answer_length, seq_2_start_t):
-                    # score = start_end_matrix[start_idx, end_idx].item()
-                    top_candidates.append([start_idx, end_idx, score])
+                    score = start_end_matrix[start_idx, end_idx].item()
+                    top_candidates.append(QACandidate(offset_answer_start=start_idx,
+                                                      offset_answer_end=end_idx,
+                                                      score=score,
+                                                      answer_type="span",
+                                                      offset_unit="token",
+                                                      aggregation_level="passage",
+                                                      sample_idx=sample_idx))
 
         no_answer_score = start_end_matrix[0, 0].item()
-        top_candidates.append([0, 0, no_answer_score])
+        top_candidates.append(QACandidate(offset_answer_start=0,
+                                          offset_answer_end=0,
+                                          score=no_answer_score,
+                                          answer_type="is_impossible",
+                                          offset_unit="token",
+                                          aggregation_level="passage",
+                                          sample_idx=None))
 
         return top_candidates
 
@@ -1005,7 +1162,7 @@ class QuestionAnsweringHead(PredictionHead):
         should be on sample/passage level (special tokens + question_tokens + passag_tokens)
         and not document level"""
 
-        # This function can seriously slow down inferencing and eval
+        # This function can seriously slow down inferencing and eval. In the future this function will be completely vectorized
         # Continue if start or end label points to a padding token
         if start_idx < seq_2_start_t and start_idx != 0:
             return False
@@ -1017,174 +1174,122 @@ class QuestionAnsweringHead(PredictionHead):
             return False
         if end_idx >= n_non_padding - 1:
             return False
-        # Check if start comes after end
-        if end_idx < start_idx:
-            return False
-        # If one of the two indices is 0, the other must also be 0
-        if start_idx == 0 and end_idx != 0:
-            return False
-        if start_idx != 0 and end_idx == 0:
-            return False
+
+        # # Check if start comes after end
+        # # Handled on matrix level by: start_end_matrix[:, indices[0][1:], indices[1][1:]] = -999
+        # if end_idx < start_idx:
+        #     return False
+
+        # # If one of the two indices is 0, the other must also be 0
+        # # Handled on matrix level by setting: start_end_matrix[:, 0, 1:] = -999
+        # if start_idx == 0 and end_idx != 0:
+        #     return False
+        # if start_idx != 0 and end_idx == 0:
+        #     return False
 
         length = end_idx - start_idx + 1
         if length > max_answer_length:
             return False
         return True
 
-    def formatted_preds(self, logits, baskets, rest_api_schema=False):
-        """ Takes a list of logits, each corresponding to one sample, and converts them into document level predictions.
-        Leverages information in the SampleBaskets. Assumes that we are being passed logits from ALL samples in the one
-        SampleBasket i.e. all passages of a document. """
+    def formatted_preds(self, logits=None, preds_p=None, baskets=None, **kwargs):
+        """ Takes a list of predictions, each corresponding to one sample, and converts them into document level
+        predictions. Leverages information in the SampleBaskets. Assumes that we are being passed predictions from
+        ALL samples in the one SampleBasket i.e. all passages of a document. Logits should be None, because we have
+        already converted the logits to predictions before calling formatted_preds
+        (see Inferencer._get_predictions_and_aggregate()).
+        """
 
         # Unpack some useful variables
         # passage_start_t is the token index of the passage relative to the document (usually a multiple of doc_stride)
         # seq_2_start_t is the token index of the first token in passage relative to the input sequence (i.e. number of
         # special tokens and question tokens that come before the passage tokens)
+        assert logits is None, "Logits are not None, something is passed wrongly into formatted_preds() in infer.py"
+        assert preds_p is not None, "No preds_p passed to formatted_preds()"
         samples = [s for b in baskets for s in b.samples]
         ids = [s.id.split("-") for s in samples]
         passage_start_t = [s.features[0]["passage_start_t"] for s in samples]
         seq_2_start_t = [s.features[0]["seq_2_start_t"] for s in samples]
-
-        # Prepare tensors
-        logits = torch.stack(logits)
-        padding_mask = torch.tensor([s.features[0]["padding_mask"] for s in samples], dtype=torch.long)
-        start_of_word = torch.tensor([s.features[0]["start_of_word"] for s in samples], dtype=torch.long)
-
-        # Return n + 1 predictions per passage / sample
-        preds_p = self.logits_to_preds(logits, padding_mask, start_of_word, seq_2_start_t)
 
         # Aggregate passage level predictions to create document level predictions.
         # This method assumes that all passages of each document are contained in preds_p
         # i.e. that there are no incomplete documents. The output of this step
         # are prediction spans
         preds_d = self.aggregate_preds(preds_p, passage_start_t, ids, seq_2_start_t)
+
         assert len(preds_d) == len(baskets)
 
-        # Separate top_preds list from the no_ans_gap float
+        # Separate top_preds list from the no_ans_gap float.
         top_preds, no_ans_gaps = zip(*preds_d)
 
         # Takes document level prediction spans and returns string predictions
-        formatted = self.stringify(top_preds, baskets)
+        doc_preds = self.to_qa_preds(top_preds, no_ans_gaps, baskets)
 
-        if rest_api_schema:
-            formatted = self.to_rest_api_schema(formatted, no_ans_gaps, baskets)
+        return doc_preds
 
-        return formatted
-
-    def stringify(self, top_preds, baskets):
-        """ Turn prediction spans into strings """
+    def to_qa_preds(self, top_preds, no_ans_gaps, baskets):
+        """ Groups Span objects together in a QAPred object  """
         ret = []
 
         # Iterate over each set of document level prediction
-        for pred_d, basket in zip(top_preds, baskets):
-            curr_dict = {}
+        for pred_d, no_ans_gap, basket in zip(top_preds, no_ans_gaps, baskets):
+            # TODO the follow try catch is because of difference in Basket structure between NQ and SQuAD - resolve this!!!
+            # TODO This code is horrible - will be cleaned soon
+
             # Unpack document offsets, clear text and squad_id
-            token_offsets = basket.raw["document_offsets"]
-            clear_text = basket.raw["document_text"]
-            squad_id = basket.raw["squad_id"]
+            try:
+                token_offsets = basket.samples[0].tokenized["document_offsets"] # NQ style
+            except KeyError:
+                token_offsets = basket.raw["document_offsets"]                  # SQuAD style
+
+            try:
+                document_text = basket.raw["context"]       # SQuAD style
+            except KeyError:
+                try:
+                    document_text = basket.raw["text"] # NQ style
+                except KeyError:
+                    document_text = basket.raw["document_text"]
+
+            try:
+                question = basket.raw["questions"][0]  # SQuAD style
+            except KeyError:
+                try:
+                    question = basket.raw["qas"][0]         # NQ style
+                except KeyError:
+                    question = basket.raw["question_text"]
+
+            try:
+                question_id = basket.raw["squad_id"]
+            except KeyError:
+                question_id = None # TODO add NQ id here
+
+            basket_id = basket.id
 
             # Iterate over each prediction on the one document
             full_preds = []
-            for start_t, end_t, score in pred_d:
-                pred_str, _, _ = self.span_to_string(start_t, end_t, token_offsets, clear_text)
-                full_preds.append([pred_str, start_t, end_t, score])
-            curr_dict["id"] = squad_id
-            curr_dict["preds"] = full_preds
-            ret.append(curr_dict)
+            for qa_answer in pred_d:
+                # This should be a method of Span
+                pred_str, _, _ = span_to_string(qa_answer.offset_answer_start,
+                                                qa_answer.offset_answer_end,
+                                                token_offsets,
+                                                document_text)
+                qa_answer.add_answer(pred_str)
+                full_preds.append(qa_answer)
+            n_samples = full_preds[0].n_samples_in_doc
+            curr_doc_pred = QAPred(id=basket_id,
+                                   prediction=full_preds,
+                                   context=document_text,
+                                   question=question,
+                                   question_id=question_id,
+                                   token_offsets=token_offsets,
+                                   context_window_size=self.context_window_size,
+                                   aggregation_level="document",
+                                   answer_types=[],  # TODO
+                                   no_answer_gap=no_ans_gap,
+                                   n_samples=n_samples
+            )
+            ret.append(curr_doc_pred)
         return ret
-
-
-    def to_rest_api_schema(self, formatted_preds, no_ans_gaps, baskets):
-        ret = []
-        ids = [fp["id"] for fp in formatted_preds]
-        preds = [fp["preds"] for fp in formatted_preds]
-
-        for preds, id, no_ans_gap, basket in zip(preds, ids, no_ans_gaps, baskets):
-            question = basket.raw["question_text"]
-            answers = self.answer_for_api(preds, basket)
-            curr = {
-                "task": "qa",
-                "predictions": [
-                    {
-                        "question": question,
-                        "question_id": id,
-                        "ground_truth": None,
-                        "answers": answers,
-                        "no_ans_gap": no_ans_gap
-                    }
-                ],
-            }
-            ret.append(curr)
-        return ret
-
-    def answer_for_api(self, top_preds, basket):
-        ret = []
-        token_offsets = basket.raw["document_offsets"]
-        clear_text = basket.raw["document_text"]
-
-        # iterate over the top_n predictions of the one document
-        for string, start_t, end_t, score in top_preds:
-
-            _, ans_start_ch, ans_end_ch = self.span_to_string(start_t, end_t, token_offsets, clear_text)
-            context_string, context_start_ch, context_end_ch = self.create_context(ans_start_ch, ans_end_ch, clear_text)
-            curr = {"score": score,
-                    "probability": -1,
-                    "answer": string,
-                    "offset_answer_start": ans_start_ch,
-                    "offset_answer_end": ans_end_ch,
-                    "context": context_string,
-                    "offset_context_start": context_start_ch,
-                    "offset_context_end": context_end_ch,
-                    "document_id": None}
-            ret.append(curr)
-        return ret
-
-    def create_context(self, ans_start_ch, ans_end_ch, clear_text):
-        if ans_start_ch == 0 and ans_end_ch == 0:
-            context_start_ch = 0
-            context_end_ch = 0
-        else:
-            len_text = len(clear_text)
-            midpoint = int((ans_end_ch - ans_start_ch) / 2) + ans_start_ch
-            half_window = int(self.context_window_size / 2)
-            context_start_ch = midpoint - half_window
-            context_end_ch = midpoint + half_window
-            # if we have part of the context window overlapping start or end of the passage,
-            # we'll trim it and use the additional chars on the other side of the answer
-            overhang_start = max(0, -context_start_ch)
-            overhang_end = max(0, context_end_ch - len_text)
-            context_start_ch -= overhang_end
-            context_start_ch = max(0, context_start_ch)
-            context_end_ch += overhang_start
-            context_end_ch = min(len_text, context_end_ch)
-        context_string = clear_text[context_start_ch: context_end_ch]
-        return context_string, context_start_ch, context_end_ch
-
-    @staticmethod
-    def span_to_string(start_t, end_t, token_offsets, clear_text):
-
-        # If it is a no_answer prediction
-        if start_t == -1 and end_t == -1:
-            return "", 0, 0
-
-        n_tokens = len(token_offsets)
-
-        # We do this to point to the beginning of the first token after the span instead of
-        # the beginning of the last token in the span
-        end_t += 1
-
-        # Predictions sometimes land on the very final special token of the passage. But there are no
-        # special tokens on the document level. We will just interpret this as a span that stretches
-        # to the end of the document
-        end_t = min(end_t, n_tokens)
-
-        start_ch = token_offsets[start_t]
-        # i.e. pointing at the END of the last token
-        if end_t == n_tokens:
-            end_ch = len(clear_text)
-        else:
-            end_ch = token_offsets[end_t]
-        return clear_text[start_ch: end_ch].strip(), start_ch, end_ch
 
     def has_no_answer_idxs(self, sample_top_n):
         for start, end, score in sample_top_n:
@@ -1262,60 +1367,77 @@ class QuestionAnsweringHead(PredictionHead):
         """ This function contains the logic for choosing the best answers from each passage. In the end, it
         returns the n_best predictions on the document level. """
 
-        # Initialize some variables
-        document_no_answer = True
+        # Initialize variables
         passage_no_answer = []
         passage_best_score = []
         no_answer_scores = []
+        n_samples = len(preds)
 
         # Iterate over the top predictions for each sample
         for sample_idx, sample_preds in enumerate(preds):
             best_pred = sample_preds[0]
-            best_pred_score = best_pred[2]
-            no_answer_score = self.get_no_answer_score(sample_preds)
-            no_answer = no_answer_score - self.no_ans_threshold > best_pred_score
+            best_pred_score = best_pred.score
+            no_answer_score = self.get_no_answer_score(sample_preds) + self.no_ans_boost
+            no_answer = no_answer_score > best_pred_score
             passage_no_answer.append(no_answer)
             no_answer_scores.append(no_answer_score)
             passage_best_score.append(best_pred_score)
 
-        # If a positive prediction is higher than the no_answer score in one of the passages then the top
-        # document prediction should be a positive answer
-        if False in passage_no_answer:
-            document_no_answer = False
-
         # Get all predictions in flattened list and sort by score
-        pos_answers_flat = [(start, end, score)
-                            for passage_preds in preds
-                            for start, end, score in passage_preds
-                            if not (start == -1 and end == -1)]
+        pos_answers_flat = []
+        for sample_idx, passage_preds in enumerate(preds):
+            for qa_answer in passage_preds:
+                if not (qa_answer.offset_answer_start == -1 and qa_answer.offset_answer_end == -1):
+                    pos_answers_flat.append(QACandidate(offset_answer_start=qa_answer.offset_answer_start,
+                                                        offset_answer_end=qa_answer.offset_answer_end,
+                                                        score=qa_answer.score,
+                                                        answer_type=qa_answer.answer_type,
+                                                        offset_unit="token",
+                                                        aggregation_level="passage",
+                                                        sample_idx=sample_idx,
+                                                        n_samples_in_doc=n_samples)
+                                            )
 
+        # TODO add switch for more variation in answers, e.g. if varied_ans then never return overlapping answers
         pos_answer_dedup = self.deduplicate(pos_answers_flat)
-        pos_answers_sorted = sorted(pos_answer_dedup, key=lambda x: x[2], reverse=True)
-        pos_answers_reduced = pos_answers_sorted[:self.n_best]
-        no_answer_pred = [-1, -1, max(no_answer_scores)]
 
-        # This is how big the no_answer threshold needs to be to change a no_answer to a pos answer
-        #  (or vice versa). This can in future be used to train the threshold value
-        no_ans_gap = max([nas - pbs for nas, pbs in zip(no_answer_scores, passage_best_score)])
+        # This is how much no_ans_boost needs to change to turn a no_answer to a positive answer (or vice versa)
+        no_ans_gap = -min([nas - pbs for nas, pbs in zip(no_answer_scores, passage_best_score)])
 
-        if document_no_answer:
-            n_preds = [no_answer_pred] + pos_answers_reduced[:-1]
-        else:
-            n_preds = pos_answers_reduced
-        return n_preds, no_ans_gap
+        # "no answer" scores and positive answers scores are difficult to compare, because
+        # + a positive answer score is related to a specific text qa_answer
+        # - a "no answer" score is related to all input texts
+        # Thus we compute the "no answer" score relative to the best possible answer and adjust it by
+        # the most significant difference between scores.
+        # Most significant difference: change top prediction from "no answer" to answer (or vice versa)
+        best_overall_positive_score = max(x.score for x in pos_answer_dedup)
+        no_answer_pred = QACandidate(offset_answer_start=-1,
+                                     offset_answer_end=-1,
+                                     score=best_overall_positive_score - no_ans_gap,
+                                     answer_type="is_impossible",
+                                     offset_unit="token",
+                                     aggregation_level="document",
+                                     sample_idx=None,
+                                     n_samples_in_doc=n_samples)
+
+        # Add no answer to positive answers, sort the order and return the n_best
+        n_preds = [no_answer_pred] + pos_answer_dedup
+        n_preds_sorted = sorted(n_preds, key=lambda x: x.score, reverse=True)
+        n_preds_reduced = n_preds_sorted[:self.n_best]
+        return n_preds_reduced, no_ans_gap
 
     @staticmethod
     def deduplicate(flat_pos_answers):
         # Remove duplicate spans that might be twice predicted in two different passages
         seen = {}
-        for (start, end, score) in flat_pos_answers:
-            if (start, end) not in seen:
-                seen[(start, end)] = score
+        for qa_answer in flat_pos_answers:
+            if (qa_answer.offset_answer_start, qa_answer.offset_answer_end) not in seen:
+                seen[(qa_answer.offset_answer_start, qa_answer.offset_answer_end)] = qa_answer
             else:
-                seen_score = seen[(start, end)]
-                if score > seen_score:
-                    seen[(start, end)] = score
-        return [(start, end, score) for (start, end), score in seen.items()]
+                seen_score = seen[(qa_answer.offset_answer_start, qa_answer.offset_answer_end)].score
+                if qa_answer.score > seen_score:
+                    seen[(qa_answer.offset_answer_start, qa_answer.offset_answer_end)] = qa_answer
+        return list(seen.values())
 
 
 
@@ -1342,7 +1464,10 @@ class QuestionAnsweringHead(PredictionHead):
 
     @staticmethod
     def get_no_answer_score(preds):
-        for start, end, score in preds:
+        for qa_answer in preds:
+            start = qa_answer.offset_answer_start
+            end = qa_answer.offset_answer_end
+            score = qa_answer.score
             if start == -1 and end == -1:
                 return score
         raise Exception
@@ -1351,9 +1476,11 @@ class QuestionAnsweringHead(PredictionHead):
     def pred_to_doc_idxs(pred, passage_start_t):
         """ Converts the passage level predictions to document level predictions. Note that on the doc level we
         don't have special tokens or question tokens. This means that a no answer
-        cannot be prepresented by a (0,0) span but will instead be represented by (-1, -1)"""
+        cannot be prepresented by a (0,0) qa_answer but will instead be represented by (-1, -1)"""
         new_pred = []
-        for start, end, score in pred:
+        for qa_answer in pred:
+            start = qa_answer.offset_answer_start
+            end = qa_answer.offset_answer_end
             if start == 0:
                 start = -1
             else:
@@ -1364,7 +1491,8 @@ class QuestionAnsweringHead(PredictionHead):
             else:
                 end += passage_start_t
                 assert start >= 0
-            new_pred.append([start, end, score])
+            qa_answer.to_doc_level(start, end)
+            new_pred.append(qa_answer)
         return new_pred
 
     @staticmethod
@@ -1385,3 +1513,59 @@ class QuestionAnsweringHead(PredictionHead):
 
     def prepare_labels(self, labels, start_of_word, **kwargs):
         return labels
+
+    @staticmethod
+    def merge_formatted_preds(preds_all):
+        """ Merges results from the two prediction heads used for NQ style QA. Takes the prediction from QA head and
+        assigns it the appropriate classification label. This mapping is achieved through sample_idx.
+        preds_all should contain [QuestionAnsweringHead.formatted_preds(), TextClassificationHead()]. The first item
+        of this list should be of len=n_documents while the second item should be of len=n_passages"""
+
+        ret = []
+
+        # This fn is used to align QA output of len=n_docs and Classification output of len=n_passages
+        def chunk(iterable, lengths):
+            assert sum(lengths) == len(iterable)
+            cumsum = list(np.cumsum(lengths))
+            cumsum = [0] + cumsum
+            spans = [(cumsum[i], cumsum[i+1]) for i in range(len(cumsum) - 1)]
+            ret = [iterable[start:end] for start, end in spans]
+            return ret
+
+        cls_preds = preds_all[1][0]["predictions"]
+        qa_preds = preds_all[0][0]
+        samples_per_doc = [doc_pred.n_samples for doc_pred in preds_all[0][0]]
+        cls_preds_grouped = chunk(cls_preds, samples_per_doc)
+
+        for qa_doc_pred, cls_preds in zip(qa_preds, cls_preds_grouped):
+            pred_qa_answers = qa_doc_pred.prediction
+            pred_qa_answers_new = []
+            for pred_qa_answer in pred_qa_answers:
+                sample_idx = pred_qa_answer.sample_idx
+                if sample_idx is not None:
+                    cls_pred = cls_preds[sample_idx]["label"]
+                # i.e. if is_impossible
+                else:
+                    cls_pred = "is_impossible"
+                pred_qa_answer.add_cls(cls_pred)
+                pred_qa_answers_new.append(pred_qa_answer)
+            qa_doc_pred.prediction = pred_qa_answers_new
+            ret.append(qa_doc_pred)
+        return ret
+
+
+def pick_single_fn(heads, fn_name):
+    """ Iterates over heads and returns a static method called fn_name
+    if and only if one head has a method of that name. If no heads have such a method, None is returned.
+    If more than one head has such a method, an Exception is thrown"""
+    merge_fns = []
+    for h in heads:
+        merge_fns.append(getattr(h, fn_name, None))
+
+    merge_fns = [x for x in merge_fns if x is not None]
+    if len(merge_fns) == 0:
+        return None
+    elif len(merge_fns) == 1:
+        return merge_fns[0]
+    else:
+        raise Exception(f"More than one of the prediction heads have a {fn_name}() function")

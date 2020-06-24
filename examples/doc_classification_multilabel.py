@@ -40,7 +40,7 @@ def doc_classification_multilabel():
         do_lower_case=do_lower_case)
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
-    # Here we load GermEval 2018 Data.
+    # Here we load Toxic Comments Data automaticaly if it is not available.
 
     label_list = ["toxic","severe_toxic","obscene","threat","insult","identity_hate"]
     metric = "acc"
@@ -56,7 +56,7 @@ def doc_classification_multilabel():
                                             train_filename="train.tsv",
                                             dev_filename="val.tsv",
                                             test_filename=None,
-                                            dev_split=0
+                                            dev_split=0,
                                             )
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
@@ -68,7 +68,7 @@ def doc_classification_multilabel():
     # a) which consists of a pretrained language model as a basis
     language_model = LanguageModel.load(lang_model)
     # b) and a prediction head on top that is suited for our task => Text classification
-    prediction_head = MultiLabelTextClassificationHead()
+    prediction_head = MultiLabelTextClassificationHead(num_labels=len(label_list))
 
     model = AdaptiveModel(
         language_model=language_model,
@@ -87,6 +87,7 @@ def doc_classification_multilabel():
 
     # 6. Feed everything to the Trainer, which keeps care of growing our model into powerful plant and evaluates it from time to time
     trainer = Trainer(
+        model=model,
         optimizer=optimizer,
         data_silo=data_silo,
         epochs=n_epochs,
@@ -96,7 +97,7 @@ def doc_classification_multilabel():
         device=device)
 
     # 7. Let it grow
-    model = trainer.train(model)
+    trainer.train()
 
     # 8. Hooray! You have a model. Store it:
     save_dir = Path("../saved_models/bert-german-multi-doc-tutorial")

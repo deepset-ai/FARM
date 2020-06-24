@@ -27,7 +27,7 @@ for model_dir in MODELS_DIRS:
 
 INFERENCERS = {}
 for idx, model_dir in enumerate(model_paths):
-    INFERENCERS[idx + 1] = Inferencer.load(str(model_dir))
+    INFERENCERS[idx + 1] = Inferencer.load(str(model_dir), num_processes=0)
 
 app = Flask(__name__)
 CORS(app)
@@ -42,10 +42,14 @@ class ModelListEndpoint(Resource):
         resp = []
 
         for idx, model in INFERENCERS.items():
+
+            #TODO UI still relies on the old prediction_type attribute, but we should switch this to inferencer.task_type
+            prediction_type = model.model.prediction_heads[0].model_type
+
             _res = {
                 "id": idx,
                 "name": model.name,
-                "prediction_type": model.prediction_type,
+                "prediction_type": prediction_type,
                 "language": model.language,
             }
             resp.append(_res)
@@ -79,7 +83,7 @@ class InferenceEndpoint(Resource):
         dicts = request.get_json().get("input", None)
         if not dicts:
             return {}
-        results = model.inference_from_dicts(dicts=dicts, rest_api_schema=True, max_processes=1)
+        results = model.inference_from_dicts(dicts=dicts, rest_api_schema=True)
         return results[0]
 
 

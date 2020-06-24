@@ -34,13 +34,14 @@ def question_answering():
     batch_size = 24
     n_epochs = 2
     evaluate_every = 2000
-    base_LM_model = "roberta-base"
+    lang_model = "roberta-base"
+    do_lower_case = False # roberta is a cased model
     train_filename = "train-v2.0.json"
     dev_filename = "dev-v2.0.json"
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
-        pretrained_model_name_or_path=base_LM_model, do_lower_case=False
+        pretrained_model_name_or_path=lang_model, do_lower_case=do_lower_case
     )
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
     label_list = ["start_token", "end_token"]
@@ -62,7 +63,7 @@ def question_answering():
 
     # 4. Create an AdaptiveModel
     # a) which consists of a pretrained language model as a basis
-    language_model = LanguageModel.load(base_LM_model)
+    language_model = LanguageModel.load(lang_model)
     # b) and a prediction head on top that is suited for our task => Question Answering
     prediction_head = QuestionAnsweringHead()
 
@@ -85,6 +86,7 @@ def question_answering():
     )
     # 6. Feed everything to the Trainer, which keeps care of growing our model and evaluates it from time to time
     trainer = Trainer(
+        model=model,
         optimizer=optimizer,
         data_silo=data_silo,
         epochs=n_epochs,
@@ -94,7 +96,7 @@ def question_answering():
         device=device,
     )
     # 7. Let it grow! Watch the tracked metrics live on the public mlflow server: https://public-mlflow.deepset.ai
-    model = trainer.train(model)
+    trainer.train()
 
     # 8. Hooray! You have a model. Store it:
     save_dir = Path("../saved_models/bert-english-qa-tutorial")
@@ -109,16 +111,17 @@ def question_answering():
             }]
 
     model = Inferencer.load(save_dir, batch_size=40, gpu=True)
-    result = model.inference_from_dicts(dicts=QA_input)
+    result = model.inference_from_dicts(dicts=QA_input)[0]
 
     pprint.pprint(result)
 
     # 10. Do Inference on whole SQuAD Dataset & write the predictions file to disk
     filename = os.path.join(processor.data_dir,processor.dev_filename)
-    result = model.inference_from_file(file=filename)
+    result = model.inference_from_file(file=filename, return_json=False)
+    result_squad = [x.to_squad_eval() for x in result]
 
     write_squad_predictions(
-        predictions=result,
+        predictions=result_squad,
         predictions_filename=filename,
         out_filename="predictions.json"
     )

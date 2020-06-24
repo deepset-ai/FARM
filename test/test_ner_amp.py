@@ -15,8 +15,9 @@ from farm.utils import set_all_seeds, initialize_device_settings
 import logging
 
 
-def test_ner():
-    #caplog.set_level(logging.CRITICAL)
+def test_ner_amp(caplog):
+    if caplog:
+        caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)
@@ -50,7 +51,7 @@ def test_ner():
 
     data_silo = DataSilo(processor=processor, batch_size=batch_size, max_processes=1)
     language_model = LanguageModel.load(lang_model)
-    prediction_head = TokenClassificationHead()
+    prediction_head = TokenClassificationHead(num_labels=13)
 
     model = AdaptiveModel(
         language_model=language_model,
@@ -70,6 +71,7 @@ def test_ner():
         use_amp=use_amp)
 
     trainer = Trainer(
+        model=model,
         optimizer=optimizer,
         data_silo=data_silo,
         epochs=n_epochs,
@@ -80,19 +82,19 @@ def test_ner():
     )
 
     save_dir = Path("testsave/ner")
-    model = trainer.train(model)
+    trainer.train()
     model.save(save_dir)
     processor.save(save_dir)
 
     basic_texts = [
         {"text": "1980 kam der Crown von Toyota"},
     ]
-    model = Inferencer.load(save_dir, gpu=True)
-    result = model.inference_from_dicts(dicts=basic_texts, max_processes=1)
-    print(result)
+    model = Inferencer.load(save_dir, num_processes=0)
+    result = model.inference_from_dicts(dicts=basic_texts)
+
     assert result[0]["predictions"][0]["context"] == "Crown"
     assert isinstance(result[0]["predictions"][0]["probability"], np.float32)
 
 
 if __name__ == "__main__":
-    test_ner()
+    test_ner_amp(None)

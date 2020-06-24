@@ -20,6 +20,7 @@ try:
     AMP_AVAILABLE = True
 except ImportError:
     AMP_AVAILABLE = False
+    APEX_PARALLEL_AVAILABLE = False
 
 from farm.utils import MLFlowLogger as MlLogger
 
@@ -119,9 +120,8 @@ def initialize_optimizer(model,
                           'Please install Apex if you want to make use of automatic mixed precision. '
                           'https://github.com/NVIDIA/apex')
 
-    num_train_optimization_steps = calculate_optimization_steps(
-        n_batches, grad_acc_steps, n_epochs, local_rank
-    )
+    num_train_optimization_steps = int(n_batches / grad_acc_steps) * n_epochs
+
     # Log params
     MlLogger.log_params({
          "use_amp": use_amp,
@@ -146,11 +146,11 @@ def initialize_optimizer(model,
     # Get optimizer from pytorch, transformers or apex
     optimizer = _get_optim(model, optimizer_opts)
 
-    # Get learning rate schedule
-    scheduler = _get_scheduler(optimizer, schedule_opts)
-
     # Adjust for parallel training + amp
-    model, optimizer = _optimize_model(model, device, local_rank, optimizer, distributed, use_amp)
+    model, optimizer = optimize_model(model, device, local_rank, optimizer, distributed, use_amp)
+
+    # Get learning rate schedule - moved below to supress warning
+    scheduler = get_scheduler(optimizer, schedule_opts)
 
     return model, optimizer, scheduler
 
@@ -212,14 +212,14 @@ def _get_optim(model, opts):
     return optim_constructor(optimizable_parameters)
 
 
-def _get_scheduler(optimizer, opts):
+def get_scheduler(optimizer, opts):
     """ Get the scheduler based on dictionary with options. Options are passed to the scheduler constructor.
 
     :param optimizer: optimizer whose learning rate to control
     :param opts: dictionary of args to be passed to constructor of schedule
     :return: created scheduler
     """
-    schedule_name = opts.pop('name', None)
+    schedule_name = opts.get('name')
     try:
         sched_constructor = getattr(import_module('torch.optim.lr_scheduler'), schedule_name)
     except AttributeError:
@@ -227,7 +227,8 @@ def _get_scheduler(optimizer, opts):
             # The method names in transformers became quite long and unhandy.
             # for convenience we offer usage of shorter alias (e.g. "LinearWarmup")
             scheduler_translations = {"LinearWarmup": "get_linear_schedule_with_warmup",
-                                      "Constant": "get_constant_schedule_with_warmup",
+                                      "ConstantWarmup": "get_constant_schedule_with_warmup",
+                                      "Constant": "get_constant_schedule",
                                       "CosineWarmup": "get_cosine_schedule_with_warmup",
                                      "CosineWarmupWithRestarts": "get_cosine_with_hard_restarts_schedule_with_warmup"
             }
@@ -243,47 +244,62 @@ def _get_scheduler(optimizer, opts):
     # get supported args of constructor
     allowed_args = inspect.signature(sched_constructor).parameters.keys()
 
-    # convert from warmup proporation to steps if required
+    # convert from warmup proportion to steps if required
     if 'num_warmup_steps' in allowed_args and 'num_warmup_steps' not in opts and 'warmup_proportion' in opts:
         opts['num_warmup_steps'] = int(opts["warmup_proportion"] * opts["num_training_steps"])
         MlLogger.log_params({"warmup_proportion": opts["warmup_proportion"]})
 
     # only pass args that are supported by the constructor
-    opts = {k: v for k, v in opts.items() if k in allowed_args}
+    constructor_opts = {k: v for k, v in opts.items() if k in allowed_args}
 
     # Logging
-    logger.info(f"Loading schedule `{schedule_name}`: '{opts}'")
-    MlLogger.log_params(opts)
+    logger.info(f"Loading schedule `{schedule_name}`: '{constructor_opts}'")
+    MlLogger.log_params(constructor_opts)
     MlLogger.log_params({"schedule_name": schedule_name})
-    return sched_constructor(optimizer, **opts)
+
+    scheduler = sched_constructor(optimizer, **constructor_opts)
+    scheduler.opts = opts  # save the opts with the scheduler to use in load/save
+    return scheduler
 
 
-def calculate_optimization_steps(n_batches, grad_acc_steps, n_epochs, local_rank):
-    optimization_steps = int(n_batches / grad_acc_steps) * n_epochs
-    if local_rank != -1:
-        optimization_steps = optimization_steps // torch.distributed.get_world_size()
-    return optimization_steps
+def optimize_model(model, device, local_rank, optimizer=None, distributed=False, use_amp=None):
+    """
+        Wraps MultiGPU or distributed usage around a model
+        No support for ONNX models
 
-
-def _optimize_model(model, device, local_rank, optimizer=None, distributed=False, use_amp=None):
+        :param model: model to optimize (e.g. trimming weights to fp16 / mixed precision)
+        :type model: AdaptiveModel
+        :param device: either gpu or cpu, get the device from initialize_device_settings()
+        :param distributed: Whether training on distributed machines
+        :param local_rank: rank of the machine in a distributed setting
+        :param use_amp: Optimization level of nvidia's automatic mixed precision (AMP). The higher the level, the faster the model.
+                        Options:
+                        "O0" (Normal FP32 training)
+                        "O1" (Mixed Precision => Recommended)
+                        "O2" (Almost FP16)
+                        "O3" (Pure FP16).
+                        See details on: https://nvidia.github.io/apex/amp.html
+        :return: model, optimizer
+        """
     model, optimizer = _init_amp(model, device, optimizer, use_amp)
 
     if distributed:
         if APEX_PARALLEL_AVAILABLE:
             model = convert_syncbn_model(model)
+            logger.info("Multi-GPU Training via DistributedDataParallel and apex.parallel")
+        else:
+            logger.info("Multi-GPU Training via DistributedDataParallel")
 
-        n_gpu = torch.cuda.device_count() // torch.distributed.get_world_size()
-        device_ids = list(range(local_rank * n_gpu, (local_rank + 1) * n_gpu))
         # for some models DistributedDataParallel might complain about parameters
         # not contributing to loss. find_used_parameters remedies that.
-        #TODO check if Wrapped DDP still needed?
-        model = DistributedDataParallel(model,
-                                        device_ids=device_ids,
-                                        output_device=device_ids[0],
-                                        find_unused_parameters=True)
+        model = WrappedDDP(model,
+                           device_ids=[local_rank],
+                           output_device=local_rank,
+                           find_unused_parameters=True)
 
-    elif torch.cuda.device_count() > 1:
+    elif torch.cuda.device_count() > 1 and device.type == "cuda":
         model = WrappedDataParallel(model)
+        logger.info("Multi-GPU Training via DataParallel")
 
     return model, optimizer
 

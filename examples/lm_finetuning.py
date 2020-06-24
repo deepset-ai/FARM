@@ -33,16 +33,23 @@ def lm_finetuning():
     batch_size = 32
     evaluate_every = 30
     lang_model = "bert-base-cased"
+    do_lower_case = False
+    next_sent_pred_style = "bert-style"
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
-        pretrained_model_name_or_path=lang_model, do_lower_case=False
+        pretrained_model_name_or_path=lang_model, do_lower_case=do_lower_case
     )
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
     processor = BertStyleLMProcessor(
-        data_dir=Path("../data/lm_finetune_nips"), tokenizer=tokenizer, max_seq_len=128, max_docs=20
+        data_dir=Path("../data/lm_finetune_nips"),
+        tokenizer=tokenizer,
+        max_seq_len=128,
+        max_docs=20, # We have set max_docs to 20 to speed up data processing
+        next_sent_pred_style=next_sent_pred_style
     )
+
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
     data_silo = DataSilo(processor=processor, batch_size=batch_size, max_multiprocessing_chunksize=20)
 
@@ -72,6 +79,7 @@ def lm_finetuning():
 
     # 6. Feed everything to the Trainer, which keeps care of growing our model into powerful plant and evaluates it from time to time
     trainer = Trainer(
+        model=model,
         optimizer=optimizer,
         data_silo=data_silo,
         epochs=n_epochs,
@@ -82,7 +90,7 @@ def lm_finetuning():
     )
 
     # 7. Let it grow! Watch the tracked metrics live on the public mlflow server: https://public-mlflow.deepset.ai
-    model = trainer.train(model)
+    trainer.train()
 
     # 8. Hooray! You have a model. Store it:
     save_dir = Path("saved_models/bert-english-lm-tutorial")

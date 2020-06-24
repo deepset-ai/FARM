@@ -1,21 +1,37 @@
-import os
-from pathlib import Path
-
-import boto3
 import pytest
 
 from farm.infer import Inferencer
 
 
-@pytest.fixture(scope="module")
-def adaptive_model_qa():
-    # download the model from S3
-    s3_resource = boto3.resource("s3")
-    bucket = s3_resource.Bucket("deepset.ai-farm-models")
-    prefix = "0.3.0/bert-english-qa-large/"
-    for object in bucket.objects.filter(Prefix=prefix):
-        if not os.path.exists(Path(object.key).parent):
-            os.makedirs(os.path.dirname(object.key))
-        bucket.download_file(object.key, object.key)
-    model = Inferencer.load(Path(prefix), batch_size=16)
+def pytest_addoption(parser):
+    """
+    Hook to pass pytest-fixture arguments to tests from the command line.
+    """
+    parser.addoption("--use_gpu", action="store_true", default=False)
+
+
+def pytest_generate_tests(metafunc):
+    """
+    This method gets called for all test cases. Here, we set the arguments supplied in pytest_addoption().
+    """
+    option_value = metafunc.config.option.use_gpu
+    if 'use_gpu' in metafunc.fixturenames:
+        if option_value:
+            metafunc.parametrize("use_gpu", [True], scope="session")
+        else:
+            metafunc.parametrize("use_gpu", [False], scope="session")
+
+
+@pytest.fixture(scope="session")
+def adaptive_model_qa(use_gpu, num_processes):
+    """
+    PyTest Fixture for a Question Answering Inferencer based on PyTorch.
+    """
+    model = Inferencer.load(
+        "deepset/bert-base-cased-squad2",
+        task_type="question_answering",
+        batch_size=16,
+        num_processes=num_processes,
+        gpu=use_gpu,
+    )
     return model

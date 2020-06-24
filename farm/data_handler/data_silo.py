@@ -1,15 +1,15 @@
 import copy
 import logging
 import torch.multiprocessing as mp
-import os
 from contextlib import ExitStack
 from functools import partial
 import random
 from pathlib import Path
+from itertools import chain, groupby
 
 import numpy as np
 from sklearn.utils.class_weight import compute_class_weight
-from torch.utils.data import ConcatDataset, Dataset, Subset
+from torch.utils.data import ConcatDataset, Dataset, Subset, IterableDataset
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
 import torch
@@ -17,14 +17,17 @@ from sklearn.model_selection import StratifiedKFold, KFold
 from tqdm import tqdm
 
 from farm.data_handler.dataloader import NamedDataLoader
-from farm.data_handler.processor import Processor
+from farm.data_handler.processor import Processor, BertStyleLMProcessor
 from farm.data_handler.utils import grouper
+from farm.modeling.tokenization import EmbeddingTokenizer
 from farm.utils import MLFlowLogger as MlLogger
 from farm.utils import log_ascii_workers, calc_chunksize
 from farm.utils import get_dict_checksum
 from farm.visual.ascii.images import TRACTOR_SMALL
 
+
 logger = logging.getLogger(__name__)
+
 
 
 class DataSilo:
@@ -41,7 +44,8 @@ class DataSilo:
         automatic_loading=True,
         max_multiprocessing_chunksize=2000,
         max_processes=128,
-        checkpointing=False,
+        caching=False,
+        cache_path=Path("cache/data_silo"),
     ):
         """
         :param processor: A dataset specific Processor object which will turn input (file or dict) into a Pytorch Dataset.
@@ -56,7 +60,15 @@ class DataSilo:
             in `farm.utils`. For certain cases like lm_finetuning, a smaller value can be set, as the default chunksize
             values are rather large that might cause memory issues.
         :type max_multiprocessing_chunksize: int
-
+        :param max_processes: the maximum number of processes to spawn in the multiprocessing.Pool used in DataSilo.
+                              It can be set to 1 to disable the use of multiprocessing ot make debugging easier.
+        :type max_processes: int
+        :param caching: save the processed datasets on disk to save time/compute if the same train data is used to run
+                        multiple experiments. Each cache has a checksum based on the train_filename of the Processor
+                        and the batch size.
+        :type caching: bool
+        :param cache_path: root dir for storing the datasets' cache.
+        :type cache_path: Path
         """
         self.distributed = distributed
         self.processor = processor
@@ -65,14 +77,25 @@ class DataSilo:
         self.class_weights = None
         self.max_processes = max_processes
         self.max_multiprocessing_chunksize = max_multiprocessing_chunksize
+        self.caching = caching
+        self.cache_path = cache_path
+        self.tensor_names = None
+
+        if len(self.processor.tasks) == 0:
+            raise Exception("No task initialized. Try initializing the processor with a metric and a label list. "
+                            "Alternatively you can add a task using Processor.add_task()")
+
+        if type(self.processor.tokenizer) == EmbeddingTokenizer:
+            if max_processes != 1:
+                logger.warning("Multiprocessing not efficient for WordEmbedding Tokenizers. Please set max_process \n"
+                            "argument in DataSilo to 1.")
 
         loaded_from_cache = False
-        if checkpointing:  # Check if DataSets are present in cache
+        if self.caching:  # Check if DataSets are present in cache
             checksum = self._get_checksum()
-            dataset_path = Path(f"cache/data_silo/{checksum}")
+            dataset_path = self.cache_path / checksum
 
             if dataset_path.exists():
-                logger.info("Loading datasets from cache ...")
                 self._load_dataset_from_cache(dataset_path)
                 loaded_from_cache = True
 
@@ -107,7 +130,7 @@ class DataSilo:
 
         # loading dicts from file (default)
         if dicts is None:
-            dicts = self.processor.file_to_dicts(filename)
+            dicts = list(self.processor.file_to_dicts(filename))
             #shuffle list of dicts here if we later want to have a random dev set splitted from train set
             if str(self.processor.train_filename) in str(filename):
                 if not self.processor.dev_filename:
@@ -146,11 +169,16 @@ class DataSilo:
 
             datasets = []
 
-            with tqdm(total=len(dicts), unit=' Dicts', desc="Preprocessing Dataset") as pbar:
+            desc = f"Preprocessing Dataset"
+            if filename:
+                desc += f" {filename}"
+            with tqdm(total=len(dicts), unit=' Dicts', desc=desc) as pbar:
                 for dataset, tensor_names in results:
                     datasets.append(dataset)
-                    pbar.update(multiprocessing_chunk_size)
-
+                    # update progress bar (last step can have less dicts than actual chunk_size)
+                    pbar.update(min(multiprocessing_chunk_size, pbar.total-pbar.n))
+            # _dataset_from_chunk can return a None in cases where downsampling has occurred
+            datasets = [d for d in datasets if d]
             concat_datasets = ConcatDataset(datasets)
             return concat_datasets, tensor_names
 
@@ -172,11 +200,14 @@ class DataSilo:
             # either from supplied dicts
             logger.info("Loading train set from supplied dicts ")
             self.data["train"], self.tensor_names = self._get_dataset(filename=None, dicts=train_dicts)
-        else:
+        elif self.processor.train_filename:
             # or from a file (default)
             train_file = self.processor.data_dir / self.processor.train_filename
             logger.info("Loading train set from: {} ".format(train_file))
             self.data["train"], self.tensor_names = self._get_dataset(train_file)
+        else:
+            logger.info("No train set is being loaded")
+            self.data["train"] = None
 
         # dev data
         if dev_dicts:
@@ -205,12 +236,16 @@ class DataSilo:
             # or from file (default)
             test_file = self.processor.data_dir / self.processor.test_filename
             logger.info("Loading test set from: {}".format(test_file))
-            self.data["test"], _ = self._get_dataset(test_file)
+            if self.tensor_names:
+                self.data["test"], _ = self._get_dataset(test_file)
+            else:
+                self.data["test"], self.tensor_names = self._get_dataset(test_file)
         else:
             logger.info("No test set is being loaded")
             self.data["test"] = None
 
-        self._save_dataset_to_cache()
+        if self.caching:
+            self._save_dataset_to_cache()
 
         # derive stats and meta data
         self._calculate_statistics()
@@ -218,21 +253,11 @@ class DataSilo:
 
         self._initialize_data_loaders()
 
-    def _get_checksum(self):
-        """
-        Get checksum based on a dict to ensure validity of cached DataSilo
-        """
-        # keys in the dict identifies uniqueness for a given DataSilo.
-        payload_dict = {
-            "train_filename": str(Path(self.processor.train_filename).absolute())
-        }
-        checksum = get_dict_checksum(payload_dict)
-        return checksum
-
     def _load_dataset_from_cache(self, cache_dir):
         """
         Load serialized dataset from a cache.
         """
+        logger.info(f"Loading datasets from cache at {cache_dir}")
         self.data["train"] = torch.load(cache_dir / "train_dataset")
 
         dev_dataset_path = cache_dir / "dev_dataset"
@@ -255,13 +280,28 @@ class DataSilo:
 
         self._initialize_data_loaders()
 
+    def _get_checksum(self):
+        """
+        Get checksum based on a dict to ensure validity of cached DataSilo
+        """
+        # keys in the dict identifies uniqueness for a given DataSilo.
+        payload_dict = {
+            "train_filename": str(Path(self.processor.train_filename).absolute()),
+            "data_dir": str(self.processor.data_dir.absolute()),
+            "max_seq_len": self.processor.max_seq_len,
+            "dev_split": self.processor.dev_split,
+            "tasks": self.processor.tasks
+        }
+        checksum = get_dict_checksum(payload_dict)
+        return checksum
+
     def _save_dataset_to_cache(self):
         """
         Serialize and save dataset to a cache.
         """
         checksum = self._get_checksum()
 
-        cache_dir = Path(f"cache/data_silo/{checksum}")
+        cache_dir = self.cache_path / checksum
         cache_dir.mkdir(parents=True, exist_ok=True)
 
         torch.save(self.data["train"], cache_dir / "train_dataset")
@@ -273,21 +313,25 @@ class DataSilo:
             torch.save(self.data["test"], cache_dir / "test_dataset")
 
         torch.save(self.tensor_names, cache_dir / "tensor_names")
+        logger.info(f"Cached the datasets at {cache_dir}")
 
     def _initialize_data_loaders(self):
         """ Initializing train, dev and test data loaders for the already loaded datasets """
 
-        if self.distributed:
-            sampler_train = DistributedSampler(self.data["train"])
-        else:
-            sampler_train = RandomSampler(self.data["train"])
+        if self.processor.train_filename:
+            if self.distributed:
+                sampler_train = DistributedSampler(self.data["train"])
+            else:
+                sampler_train = RandomSampler(self.data["train"])
 
-        data_loader_train = NamedDataLoader(
-            dataset=self.data["train"],
-            sampler=sampler_train,
-            batch_size=self.batch_size,
-            tensor_names=self.tensor_names,
-        )
+            data_loader_train = NamedDataLoader(
+                dataset=self.data["train"],
+                sampler=sampler_train,
+                batch_size=self.batch_size,
+                tensor_names=self.tensor_names,
+            )
+        else:
+            data_loader_train = None
 
         if self.data["dev"] is not None:
             data_loader_dev = NamedDataLoader(
@@ -362,9 +406,12 @@ class DataSilo:
     def _calculate_statistics(self):
         """ Calculate and log simple summary statistics of the datasets """
 
-        self.counts = {
-            "train": len(self.data["train"])
-        }
+        self.counts = {}
+
+        if self.data["train"]:
+            self.counts["train"] = len(self.data["train"])
+        else:
+            self.counts["train"] = 0
 
         if self.data["dev"]:
             self.counts["dev"] = len(self.data["dev"])
@@ -377,26 +424,28 @@ class DataSilo:
             self.counts["test"] = 0
 
         seq_lens = []
-        for dataset in self.data["train"].datasets:
-            train_input_numpy = dataset[:][0].numpy()
-            seq_lens.extend(np.sum(train_input_numpy != self.processor.tokenizer.pad_token_id, axis=1))
-        max_seq_len = dataset[:][0].shape[1]
+        if self.data["train"]:
+            for dataset in self.data["train"].datasets:
+                train_input_numpy = dataset[:][0].numpy()
+                seq_lens.extend(np.sum(train_input_numpy != self.processor.tokenizer.pad_token_id, axis=1))
+            max_seq_len = dataset[:][0].shape[1]
 
-        self.clipped = np.mean(np.array(seq_lens) == max_seq_len)
-        self.ave_len = np.mean(seq_lens)
+        self.clipped = np.mean(np.array(seq_lens) == max_seq_len) if seq_lens else 0
+        self.ave_len = np.mean(seq_lens) if seq_lens else 0
 
         logger.info("Examples in train: {}".format(self.counts["train"]))
         logger.info("Examples in dev  : {}".format(self.counts["dev"]))
         logger.info("Examples in test : {}".format(self.counts["test"]))
         logger.info("")
-        logger.info("Max sequence length:     {}".format(max(seq_lens)))
-        logger.info("Average sequence length after clipping: {}".format(self.ave_len))
-        logger.info("Proportion clipped:      {}".format(self.clipped))
-        if self.clipped > 0.5:
-            logger.info("[Farmer's Tip] {}% of your samples got cut down to {} tokens. "
-                        "Consider increasing max_seq_len. "
-                        "This will lead to higher memory consumption but is likely to "
-                        "improve your model performance".format(round(self.clipped * 100, 1), max_seq_len))
+        if self.data["train"]:
+            logger.info("Longest sequence length observed after clipping:     {}".format(max(seq_lens)))
+            logger.info("Average sequence length after clipping: {}".format(self.ave_len))
+            logger.info("Proportion clipped:      {}".format(self.clipped))
+            if self.clipped > 0.5:
+                logger.info("[Farmer's Tip] {}% of your samples got cut down to {} tokens. "
+                            "Consider increasing max_seq_len. "
+                            "This will lead to higher memory consumption but is likely to "
+                            "improve your model performance".format(round(self.clipped * 100, 1), max_seq_len))
 
         MlLogger.log_params(
             {
@@ -405,7 +454,7 @@ class DataSilo:
                 "n_samples_test": self.counts["test"],
                 "batch_size": self.batch_size,
                 "ave_seq_len": self.ave_len,
-                "clipped": self.clipped
+                "clipped": self.clipped,
             }
         )
 
@@ -416,7 +465,7 @@ class DataSilo:
         :param task_name: name of the task as used in the processor
         :type task_name: str
         """
-
+        
         tensor_name = self.processor.tasks[task_name]["label_tensor_name"]
         label_list = self.processor.tasks[task_name]["label_list"]
         tensor_idx = list(self.tensor_names).index(tensor_name)
@@ -429,22 +478,235 @@ class DataSilo:
         else:
             raise Exception("source argument expects one of [\"train\", \"all\"]")
         for dataset in datasets:
-            if dataset is not None:
+            if "multilabel" in self.processor.tasks[task_name]["task_type"]:
+                for x in dataset:
+                    observed_labels += [label_list[label_id] for label_id in (x[tensor_idx] == 1).nonzero()]
+            else:
                 observed_labels += [label_list[x[tensor_idx].item()] for x in dataset]
+
         #TODO scale e.g. via logarithm to avoid crazy spikes for rare classes
-        class_weights = list(compute_class_weight("balanced", np.asarray(label_list), observed_labels))
+        class_weights = compute_class_weight("balanced", np.asarray(label_list), observed_labels)
+        # conversion necessary to have class weights of same type as model weights
+        class_weights = class_weights.astype(np.float32)
         return class_weights
 
-    def get_data_loader(self, dataset):
-        return self.loaders[dataset]
+    def get_data_loader(self, dataset_name):
+        return self.loaders[dataset_name]
 
-    def n_samples(self, dataset):
+    def n_samples(self, dataset_name):
         """
         Returns the number of samples in a given dataset.
 
-        :param dataset: Choose from train, dev or test
+        :param dataset_name: Choose from train, dev or test
+        :type dataset_name: str
         """
-        return self.counts[dataset]
+        return self.counts[dataset_name]
+
+
+class StreamingDataSilo:
+    """
+    Streaming Data Silo loads and preprocesses datasets in parallel to the model training.
+
+    The samples are lazily created from the input file and batches are yielded on-the-fly when required during training.
+    This is useful if you:
+    - work with large datasets that don't fit in memory
+    - want to save time (by not preprocessing the entire dataset before starting training)
+
+    For optimal training performance and efficient utilization of shiny GPUs, the pipeline always keeps a few
+    pre-computed batches ready to avoid any waiting time when a batch is requested during training.
+
+    To parallelize the creation of batches, PyTorch DataLoader provide an option to use
+    multiple workers that utilize the available CPU cores and ensure enough pre-computed batches.
+    """
+
+    def __init__(self, processor, batch_size, distributed=False, dataloader_workers=8):
+        """
+        :param processor: A dataset specific Processor object which will turn input file into a Pytorch Dataset.
+        :type processor: Processor
+        :param batch_size: The size of batch to use for model training.
+        :type batch_size: int
+        :param dataloader_workers: number of workers for PyTorch DataLoader to create batches in parallel
+        :type dataloader_workers: int
+        """
+
+        self.processor = processor
+        self.batch_size = batch_size
+        self.dataloader_workers = dataloader_workers
+        self.distributed = distributed
+
+    def get_data_loader(self, dataset_name):
+        """
+        Returns a new instance of dataloader for the given dataset.
+
+        The dataloader lazily yields from Iterable DataSets. After a complete iteration
+        over the input data, the generators gets exhausted. So, for instance, in the 
+        case of model training, a new train dataloader must be used for each train epoch.
+
+        :param dataset_name: 'train', 'dev', or 'test' set.
+        :type dataset_name: str
+        """
+        filename = None
+        if dataset_name == "train":
+            filename = self.processor.train_filename
+        elif dataset_name == "dev":
+            if self.processor.dev_split > 0.0:
+                raise NotImplemented(
+                            "StreamingDataSilo does not have dev_split implemented. "
+                            "To use dev data, supply a dev filename when creating the Processor."
+                )
+            elif self.processor.dev_filename:
+                filename = self.processor.dev_filename
+        elif dataset_name == "test":
+            if self.processor.test_filename:
+                filename = self.processor.test_filename
+
+        if not filename:
+            return None
+
+        #  Batching:
+        #
+        #  The model Trainer is passed a PyTorch DataLoader instance that yields dataset batches for training.
+        #
+        #  By default, the PyTorch DataLoader prefetch (2 * num_workers) samples. However, given the higher
+        #  batch sizes(usually >64) for model training, the default prefetch is not sufficient to keep the
+        #  model Training saturated with datasets.
+        #
+        #  As a workaround, we yield batches of samples instead of yielding individual samples. The DataLoader
+        #  can then prefetch (2 * num_workers) number of batches of samples.
+        #
+        #  Since the batching is now handled within _StreamingDataSet, we disable the batching on DataLoader side
+        #  by initializing the data loader with batch_size as 1.
+
+        if isinstance(filename, Path) and filename.is_dir():
+            filepath = filename
+        else:
+            filepath = self.processor.data_dir / filename
+
+        data_set = _StreamingDataSet(
+            processor=self.processor,
+            filepath=filepath,
+            batch_size=self.batch_size,
+            dataloader_workers=self.dataloader_workers,
+            distributed = self.distributed
+        )
+
+        data_loader = NamedDataLoader(
+            dataset=data_set, batch_size=1, num_workers=self.dataloader_workers, pin_memory=True
+        )
+        return data_loader
+
+
+class _StreamingDataSet(IterableDataset):
+    def __init__(self, processor, filepath, batch_size, dataloader_workers, distributed=False, n_samples=None):
+        """
+        :param processor: A dataset specific Processor object which will turn input file into a Pytorch Dataset.
+        :type processor: Processor
+        :param batch_size: The size of batch that should be returned by the DataLoaders.
+        :type batch_size: int
+        :param filepath: input filename to load the dataset from
+        :type filepath: Path
+        :param dataloader_workers: number of workers for PyTorch Dataloader
+        :type dataloader_workers: int
+        """
+
+        self.batch_size = batch_size
+        self.processor = processor
+        self.filepath = filepath
+        self.dataloader_workers = dataloader_workers
+        self.distributed = distributed
+
+        # calculate or estimate number of samples so that the data loader can derive number of training steps
+        if filepath.is_file():
+            files = [filepath]
+        else:
+            files = [file for file in filepath.iterdir()]
+
+        if n_samples:
+            self.n_samples = n_samples
+        else:
+            try:
+                self.n_samples = self.processor.estimate_n_samples(files[0]) * len(files)
+            except AttributeError:
+                AttributeError(f"Could not estimate n_samples for {self.processor.__class__.__name__} in StreamingDataSilo. "
+                                    f"Make sure that your Processor has `estimate_n_samples()` implemented")
+        logger.info(f"Found data for {self.n_samples} samples")
+        self.shuffle_files(files)
+
+        dicts_from_files = [processor.file_to_dicts(file) for file in files]
+        self.file_to_dicts_generator = chain(*dicts_from_files)
+
+        if self.distributed:
+            self.rank = torch.distributed.get_rank()
+            self.world_size = torch.distributed.get_world_size()
+
+    def __len__(self):
+        if self.distributed:
+            # only a heuristic as we don't necessarily split samples equally across ranks
+            len = self.n_samples // self.world_size
+        else:
+            len = self.n_samples
+        return len
+
+    def __iter__(self):
+        #  With IterableDataset, the same __iter__ is copied over to the multiple workers of
+        #  a Dataloader. Hence, we need to configure the __iter__ to not yield duplicated data
+        #  when more than 1 workers are used.
+        #
+        #  To avoid duplicates, we need to split the input dicts between the workers.
+        #  The grouper() converts a dict generator given as input and yields only the
+        #  dicts that are to be processed by the given worker_id.
+        #
+        #  For instance, consider input as [dictA, dictB, dictC, ...], then the grouper
+        #  (with n=2) will return, [[dictA, dictB], [dictE, dictF] ...] for worker 1 and
+        #  [[dictC, dictD], [dictG, dictH] ...] for worker 2.
+
+        worker_info = torch.utils.data.get_worker_info()
+        if self.distributed:
+            worker_id = self.rank * worker_info.num_workers + worker_info.id
+            total_workers = self.world_size * worker_info.num_workers
+        else:
+            worker_id = worker_info.id
+            total_workers = self.dataloader_workers
+
+        dicts = grouper(self.file_to_dicts_generator, n=10, worker_id=worker_id, total_workers=total_workers)
+        results = map(self._dataset_from_chunk, dicts)
+
+        batch = []
+        for datasets, tensor_names in results:
+            if not datasets:
+                continue
+            self.tensor_names = tensor_names
+            for ds in datasets:
+                batch.append(ds)
+                if len(batch) == self.batch_size:
+                    yield batch
+                    batch = []
+        if batch:
+            yield batch
+
+    def _dataset_from_chunk(self, chunk):
+        """
+        Creating a dataset for a chunk (= subset) of dicts.
+        :param chunk: Instead of only having a list of dicts here we also supply an index (ascending int) for each.
+            => [(0, dict), (1, dict) ...]
+        :type chunk: list of tuples
+        :return: PyTorch Dataset
+        """
+        dicts = [d[1] for d in chunk]
+        # need at least 2 documents to sample random sentences from
+        if len(dicts) < 2 and type(self.processor) == BertStyleLMProcessor:
+            logger.info("Skipping a dict chunk as it contains less than 2 documents ...")
+            return None, None
+        indices = [x[0] for x in chunk]
+        datasets, tensor_names = self.processor.dataset_from_dicts(dicts=dicts, indices=indices)
+        return datasets, tensor_names
+
+    def shuffle_files(self, files, seed=None):
+        if not seed:
+            seed = random.randrange(100)
+        random.seed(seed)
+        random.shuffle(files)
+        return files
 
 
 class DataSiloForCrossVal:
@@ -490,9 +752,115 @@ class DataSiloForCrossVal:
     def get_data_loader(self, which):
         return self.loaders[which]
 
+    @classmethod
+    def make(cls, datasilo, sets=["train", "dev", "test"], n_splits=5, shuffle=True, random_state=None,
+             stratified=True, n_neg_answers_per_question=1):
+        """
+        Create number of folds data-silo-like objects which can be used for training from the
+        original data silo passed on.
+
+        :param datasilo: the data silo that contains the original data
+        :type datasilo: DataSilo
+        :param sets: which sets to use to create the xval folds (strings)
+        :type sets: list
+        :param n_splits: number of folds to create
+        :type n_splits: int
+        :param shuffle: shuffle each class' samples before splitting
+        :type shuffle: bool
+        :param random_state: random state for shuffling
+        :type random_state: int
+        :param stratified: if class stratification should be done
+        :type stratified: bool
+        :param n_neg_answers_per_question: number of negative answers per question to include for training
+        :type n_neg_answers_per_question: int
+        """
+
+        if "question_answering" in datasilo.processor.tasks:
+            return cls._make_question_answering(datasilo, sets, n_splits, shuffle, random_state, n_neg_answers_per_question)
+        else:
+            return cls._make(datasilo, sets, n_splits, shuffle, random_state, stratified)
+
+    @classmethod
+    def _make_question_answering(cls, datasilo, sets=["train", "dev", "test"], n_splits=5, shuffle=True,
+                                 random_state=None, n_neg_answers_per_question=1):
+        """
+        Create number of folds data-silo-like objects which can be used for training from the
+        original data silo passed on. This function takes into account the characteristics of the
+        data for question-answering-
+
+        :param datasilo: the data silo that contains the original data
+        :type datasilo: DataSilo
+        :param sets: which sets to use to create the xval folds (strings)
+        :type sets: list
+        :param n_splits: number of folds to create
+        :type n_splits: int
+        :param shuffle: shuffle each class' samples before splitting
+        :type shuffle: bool
+        :param random_state: random state for shuffling
+        :type random_state: int
+        :param n_neg_answers_per_question: number of negative answers per question to include for training
+        :type n_neg_answers_per_question: int
+        """
+        assert datasilo.tensor_names[4] == "id", f"Expected tensor 'id' at index 4, found {datasilo.tensor_names[4]}"
+        assert datasilo.tensor_names[7] == "labels", f"Expected tensor 'labels' at index 7, found {datasilo.tensor_names[7]}"
+
+        sets_to_concat = []
+        for setname in sets:
+            if datasilo.data[setname]:
+                sets_to_concat.extend(datasilo.data[setname])
+        all_data = ConcatDataset(sets_to_concat)
+
+        documents = []
+        keyfunc = lambda x: x[4][0]
+        all_data = sorted(all_data.datasets, key=keyfunc)
+        for key, document in groupby(all_data, key=keyfunc):
+            documents.append(list(document))
+
+        xval_split = cls._split_for_qa(documents, n_splits, shuffle, random_state)
+        silos = []
+
+        for train_set, test_set in xval_split:
+            # Each training set is further divided into actual train and dev set
+            if datasilo.processor.dev_split > 0:
+                dev_split = datasilo.processor.dev_split
+                n_dev = int(np.ceil(dev_split * len(train_set)))
+                assert n_dev > 0, f"dev split of {dev_split} is not large enough to split away a development set"
+                n_actual_train = len(train_set) - n_dev
+                actual_train_set = train_set[:n_actual_train]
+                dev_set = train_set[n_actual_train:]
+                ds_dev = [sample for document in dev_set for sample in document]
+            else:
+                ds_dev = None
+                actual_train_set = train_set
+
+            train_samples = []
+            for doc in actual_train_set:
+                keyfunc = lambda x: x[4][1]
+                doc = sorted(doc, key=keyfunc)
+                for key, question in groupby(doc, key=keyfunc):
+                    # add all available answrs to train set
+                    sample_list = list(question)
+                    neg_answer_idx = []
+                    for index, sample in enumerate(sample_list):
+                        if sample[7][0][0] or sample[7][0][1]:
+                            train_samples.append(sample)
+                        else:
+                            neg_answer_idx.append(index)
+                    # add random n_neg_answers_per_question samples to train set
+                    if len(neg_answer_idx) <= n_neg_answers_per_question:
+                        train_samples.extend([sample_list[idx] for idx in neg_answer_idx])
+                    else:
+                        neg_answer_idx = random.sample(neg_answer_idx, n_neg_answers_per_question)
+                        train_samples.extend([sample_list[idx] for idx in neg_answer_idx])
+
+            ds_train = train_samples
+            ds_test = [sample for document in test_set for sample in document]
+            silos.append(DataSiloForCrossVal(datasilo, ds_train, ds_dev, ds_test))
+        return silos
+
     @staticmethod
-    def make(datasilo, sets=["train", "dev", "test"], n_splits=5, stratified=True,
-             shuffle=True, random_state=None, dev_split=0.2):
+    def _make(datasilo, sets=["train", "dev", "test"], n_splits=5, shuffle=True,
+              random_state=None, stratified=True):
         """
         Create number of folds data-silo-like objects which can be used for training from the
         original data silo passed on.
@@ -500,14 +868,14 @@ class DataSiloForCrossVal:
         :param datasilo: the data silo that contains the original data
         :param sets: which sets to use to create the xval folds
         :param n_splits: number of folds to create
-        :param stratified: if class stratificiation should be done
         :param shuffle: shuffle each class' samples before splitting
         :param random_state: random state for shuffling
-        :param dev_split: size of the dev set for a fold, held out from the training set
+        :param stratified: if class stratification should be done
         """
         setstoconcat = [datasilo.data[setname] for setname in sets]
         ds_all = ConcatDataset(setstoconcat)
         idxs = list(range(len(ds_all)))
+        dev_split = datasilo.processor.dev_split
         if stratified:
             # get all the labels for stratification
             ytensors = [t[3][0] for t in ds_all]
@@ -534,3 +902,35 @@ class DataSiloForCrossVal:
             ds_test = Subset(ds_all, test_idx)
             silos.append(DataSiloForCrossVal(datasilo, ds_train, ds_dev, ds_test))
         return silos
+
+    @staticmethod
+    def _split_for_qa(documents, n_splits=5, shuffle=True, random_state=None):
+        keyfunc = lambda x: x[4][1]
+        if shuffle:
+            random.shuffle(documents, random_state)
+
+        questions_per_doc = []
+        for doc in documents:
+            # group samples in current doc by question id
+            doc = sorted(doc, key=keyfunc)
+            questions = list(groupby(doc, key=keyfunc))
+            questions_per_doc.append(len(questions))
+
+        # split documents into n_splits splits with approximately same number of questions per split
+        questions_per_doc = np.array(questions_per_doc)
+        accumulated_questions_per_doc = questions_per_doc.cumsum()
+        questions_per_fold = accumulated_questions_per_doc[-1] // n_splits
+        accumulated_questions_per_fold = np.array(range(1, n_splits)) * questions_per_fold
+        if accumulated_questions_per_fold[0] < accumulated_questions_per_doc[0]:
+            accumulated_questions_per_fold[0] = accumulated_questions_per_doc[0] + 1
+        indices_to_split_at = np.searchsorted(accumulated_questions_per_doc, accumulated_questions_per_fold, side="right")
+        splits = np.split(documents, indices_to_split_at)
+
+        for split in splits:
+            assert len(split) > 0
+
+        for idx, split in enumerate(splits):
+            current_test_set = split
+            current_train_set = np.hstack(np.delete(splits, idx, axis=0))
+
+            yield current_train_set, current_test_set

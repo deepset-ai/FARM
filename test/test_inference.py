@@ -1,10 +1,15 @@
 import pytest
+import numpy as np
+from farm.infer import Inferencer
 
 
-@pytest.mark.parametrize("max_processes", [2, 1])
-@pytest.mark.parametrize("rest_api_schema", [True, False])
-def test_qa_format_and_results(adaptive_model_qa, max_processes, rest_api_schema):
-
+@pytest.mark.parametrize("streaming", [True, False])
+@pytest.mark.parametrize("multiprocessing_chunksize", [None, 2])
+# TODO: Below is a TEMPORARY fix for CI problems caused by OOM caused by an unclosed worker pool.
+# see https://github.com/deepset-ai/FARM/pull/403
+#@pytest.mark.parametrize("num_processes", [2, 0, None], scope="session")
+@pytest.mark.parametrize("num_processes", [0], scope="session")
+def test_qa_format_and_results(adaptive_model_qa, streaming, multiprocessing_chunksize):
     qa_inputs_dicts = [
         {
             "questions": ["In what country is Normandy"],
@@ -25,8 +30,8 @@ def test_qa_format_and_results(adaptive_model_qa, max_processes, rest_api_schema
 
     results = adaptive_model_qa.inference_from_dicts(
         dicts=qa_inputs_dicts,
-        max_processes=max_processes,
-        rest_api_schema=True,
+        multiprocessing_chunksize=multiprocessing_chunksize,
+        streaming=streaming,
     )
     # sample results
     # [
@@ -54,7 +59,7 @@ def test_qa_format_and_results(adaptive_model_qa, max_processes, rest_api_schema
     #         ],
     #     }
     # ]
-    predictions = results[0]["predictions"]
+    predictions = list(results)[0]["predictions"]
 
     for prediction, ground_truth, qa_input_dict in zip(
         predictions, ground_truths, qa_inputs_dicts
@@ -64,18 +69,34 @@ def test_qa_format_and_results(adaptive_model_qa, max_processes, rest_api_schema
         assert answer["answer"] in answer["context"]
         assert answer["answer"] == ground_truth
         assert (
-                set(
-                    (
-                        "answer",
-                        "score",
-                        "probability",
-                        "offset_answer_start",
-                        "offset_answer_end",
-                        "context",
-                        "offset_context_start",
-                        "offset_context_end",
-                        "document_id",
-                    )
-                )
+                {"answer", "score", "probability", "offset_answer_start", "offset_answer_end", "context",
+                 "offset_context_start", "offset_context_end", "document_id"}
                 == answer.keys()
         )
+
+
+@pytest.mark.parametrize("num_processes", [0], scope="session")
+def test_embeddings_extraction(num_processes):
+    # Input
+    basic_texts = [
+        {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot ist"},
+        {"text": "Martin Müller spielt Fussball"},
+    ]
+
+    # Load model, tokenizer and processor directly into Inferencer
+    model = Inferencer.load(
+        model_name_or_path="bert-base-german-cased",
+        task_type="embeddings",
+        gpu=False,
+        batch_size=5,
+        extraction_strategy="reduce_mean",
+        extraction_layer=-2,
+        num_processes=num_processes)
+
+    # Get embeddings for input text (you can vary the strategy and layer)
+    result = model.inference_from_dicts(dicts=basic_texts)
+    assert result[0]["context"] == ['Schar', '##tau', 'sagte', 'dem', 'Tages', '##spiegel', ',', 'dass', 'Fischer', 'ein', 'Id', '##iot', 'ist']
+    assert np.isclose(result[0]["vec"][0], 1.50174605e-02)
+
+if __name__ == "__main__":
+    test_embeddings_extraction()

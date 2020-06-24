@@ -16,13 +16,13 @@ from farm.utils import set_all_seeds, initialize_device_settings
 import logging
 
 
-def test_ner(caplog=None):
+def test_ner(caplog):
     if caplog:
         caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
-    device, n_gpu = initialize_device_settings(use_cuda=True)
-    n_epochs = 5
+    device, n_gpu = initialize_device_settings(use_cuda=False)
+    n_epochs = 3
     batch_size = 2
     evaluate_every = 1
     lang_model = "distilbert-base-german-cased"
@@ -48,7 +48,7 @@ def test_ner(caplog=None):
 
     data_silo = DataSilo(processor=processor, batch_size=batch_size, max_processes=1)
     language_model = LanguageModel.load(lang_model)
-    prediction_head = TokenClassificationHead()
+    prediction_head = TokenClassificationHead(num_labels=13)
 
     model = AdaptiveModel(
         language_model=language_model,
@@ -68,6 +68,7 @@ def test_ner(caplog=None):
         schedule_opts={'name': 'LinearWarmup', 'warmup_proportion': 0.1}
     )
     trainer = Trainer(
+        model=model,
         optimizer=optimizer,
         data_silo=data_silo,
         epochs=n_epochs,
@@ -78,19 +79,23 @@ def test_ner(caplog=None):
     )
 
     save_dir = Path("testsave/ner")
-    model = trainer.train(model)
+    model = trainer.train()
     model.save(save_dir)
     processor.save(save_dir)
 
     basic_texts = [
-        {"text": "Albrecht Lehman ist eine Person"},
+        {"text": "Paris is a town in France."},
     ]
-    model = Inferencer.load(save_dir)
-    result = model.inference_from_dicts(dicts=basic_texts, max_processes=1)
-    print(result)
-    #assert result[0]["predictions"][0]["context"] == "sagte"
-    #assert isinstance(result[0]["predictions"][0]["probability"], np.float32)
+    model = Inferencer.load(model_name_or_path="dbmdz/bert-base-cased-finetuned-conll03-english", num_processes=0, task_type="ner")
+    # labels arent correctly inserted from transformers
+    # They are converted to LABEL_1 ... LABEL_N
+    # For the inference result to contain predictions we need them in IOB NER format
+    model.processor.tasks["ner"]["label_list"][-1] = "B-LOC"
+    result = model.inference_from_dicts(dicts=basic_texts)
+
+    assert result[0]["predictions"][0]["context"] == "Paris"
+    assert isinstance(result[0]["predictions"][0]["probability"], np.float32)
 
 
 if __name__ == "__main__":
-    test_ner()
+    test_ner(None)

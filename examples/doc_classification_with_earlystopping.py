@@ -12,9 +12,8 @@ from farm.modeling.prediction_head import TextClassificationHead
 from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer, EarlyStopping
 from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
-from farm.eval import Evaluator
-from sklearn.metrics import matthews_corrcoef, recall_score, precision_score, f1_score, mean_squared_error, r2_score
-from farm.metrics import simple_accuracy, register_metrics
+from sklearn.metrics import f1_score
+from farm.evaluation.metrics import simple_accuracy, register_metrics
 
 def doc_classification_with_earlystopping():
     logging.basicConfig(
@@ -37,14 +36,16 @@ def doc_classification_with_earlystopping():
     batch_size = 32
     evaluate_every = 100
     lang_model = "bert-base-german-cased"
+    do_lower_case = False
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
         pretrained_model_name_or_path=lang_model,
-        do_lower_case=False)
+        do_lower_case=do_lower_case)
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
-    # Here we load GermEval 2018 Data.
+    # Here we load GermEval 2018 Data automaticaly if it is not available.
+    # GermEval 2018 only has train.tsv and test.tsv dataset - no dev.tsv
 
     # The processor wants to know the possible labels ...
     label_list = ["OTHER", "OFFENSE"]
@@ -80,7 +81,7 @@ def doc_classification_with_earlystopping():
     # a) which consists of a pretrained language model as a basis
     language_model = LanguageModel.load(lang_model)
     # b) and a prediction head on top that is suited for our task => Text classification
-    prediction_head = TextClassificationHead(layer_dims=[768, len(processor.tasks["text_classification"]["label_list"])],
+    prediction_head = TextClassificationHead(num_labels=len(label_list),
                                              class_weights=data_silo.calculate_class_weights(task_name="text_classification"))
 
 
@@ -115,6 +116,7 @@ def doc_classification_with_earlystopping():
     )
 
     trainer = Trainer(
+        model=model,
         optimizer=optimizer,
         data_silo=data_silo,
         epochs=n_epochs,
@@ -125,7 +127,7 @@ def doc_classification_with_earlystopping():
         early_stopping=earlystopping)
 
     # 7. Let it grow
-    model = trainer.train(model)
+    trainer.train()
 
     # 8. Hooray! You have a model.
     # NOTE: if early stopping is used, the best model has been stored already in the directory

@@ -7,29 +7,38 @@ import random
 from abc import ABC
 from inspect import signature
 from pathlib import Path
+from random import randint
 
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 
+from numpy.random import random as random_float
 from farm.data_handler.dataset import convert_features_to_dataset
 from farm.data_handler.input_features import (
     samples_to_features_ner,
     samples_to_features_bert_lm,
     sample_to_features_text,
-    sample_to_features_squad,
+    sample_to_features_qa,
 )
 from farm.data_handler.samples import (
     Sample,
     SampleBasket,
-    create_samples_squad,
+    create_samples_qa
 )
+
 from farm.data_handler.utils import (
     read_tsv,
+    read_tsv_sentence_pair,
     read_docs_from_txt,
     read_ner_file,
     read_squad_file,
+    read_jsonl,
     is_json,
     get_sentence_pair,
+    split_with_metadata,
+    convert_qa_input_dict,
+    get_sequence_pair,
+    join_sentences
 )
 from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
 from farm.utils import MLFlowLogger as MlLogger
@@ -97,7 +106,8 @@ class Processor(ABC):
         self.dev_split = dev_split
         if data_dir:
             self.data_dir = Path(data_dir)
-
+        else:
+            self.data_dir = None
         self.baskets = []
 
         self._log_params()
@@ -134,12 +144,14 @@ class Processor(ABC):
         :type max_seq_len: int
         :param train_filename: The name of the file containing training data.
         :type train_filename: str
-        :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
+        :param dev_filename: The name of the file containing the dev data.
+                             If None and 0.0 < dev_split < 1.0 the dev set
                              will be a slice of the train set.
         :type dev_filename: str or None
         :param test_filename: The name of the file containing test data.
         :type test_filename: str
-        :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
+        :param dev_split: The proportion of the train set that will sliced.
+                          Only works if dev_filename is set to None
         :type dev_split: float
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
@@ -176,6 +188,7 @@ class Processor(ABC):
         # read config
         processor_config_file = Path(load_dir) / "processor_config.json"
         config = json.load(open(processor_config_file))
+        config["inference"] = True
         # init tokenizer
         if "lower_case" in config.keys():
             logger.warning("Loading tokenizer from deprecated FARM config. "
@@ -190,7 +203,12 @@ class Processor(ABC):
         processor = cls.load(tokenizer=tokenizer, processor_name=config["processor"], **config)
 
         for task_name, task in config["tasks"].items():
-            processor.add_task(name=task_name, metric=task["metric"], label_list=task["label_list"])
+            processor.add_task(name=task_name,
+                               metric=task["metric"],
+                               label_list=task["label_list"],
+                               label_column_name=task["label_column_name"],
+                               text_column_name=task.get("text_column_name", None),
+                               task_type=task["task_type"])
 
         if processor is None:
             raise Exception
@@ -229,7 +247,8 @@ class Processor(ABC):
                 config[key] = value
         return config
 
-    def add_task(self, name,  metric, label_list, label_column_name=None, label_name=None, task_type=None):
+    def add_task(self, name,  metric, label_list, label_column_name=None,
+                 label_name=None, task_type=None, text_column_name=None):
         if type(label_list) is not list:
             raise ValueError(f"Argument `label_list` must be of type list. Got: f{type(label_list)}")
 
@@ -242,6 +261,7 @@ class Processor(ABC):
             "label_tensor_name": label_tensor_name,
             "label_name": label_name,
             "label_column_name": label_column_name,
+            "text_column_name": text_column_name,
             "task_type": task_type
         }
 
@@ -257,25 +277,25 @@ class Processor(ABC):
     def _sample_to_features(cls, sample: Sample) -> dict:
         raise NotImplementedError()
 
-    def _init_baskets_from_file(self, file):
-        dicts = self.file_to_dicts(file)
-        dataset_name = file.stem
-        baskets = [
-            SampleBasket(raw=tr, id=f"{dataset_name}-{i}") for i, tr in enumerate(dicts)
-        ]
-        return baskets
-
     def _init_samples_in_baskets(self):
         for basket in self.baskets:
             all_dicts = [b.raw for b in self.baskets]
-            basket.samples = self._dict_to_samples(dictionary=basket.raw, all_dicts=all_dicts)
-            for num, sample in enumerate(basket.samples):
-                 sample.id = f"{basket.id}-{num}"
+            try:
+                basket.samples = self._dict_to_samples(dictionary=basket.raw, all_dicts=all_dicts)
+                for num, sample in enumerate(basket.samples):
+                     sample.id = f"{basket.id}-{num}"
+            except:
+                logger.error(f"Could not create sample(s) from this dict: \n {basket.raw}")
+                raise
 
     def _featurize_samples(self):
         for basket in self.baskets:
             for sample in basket.samples:
-                sample.features = self._sample_to_features(sample=sample)
+                try:
+                    sample.features = self._sample_to_features(sample=sample)
+                except:
+                    logger.error(f"Could not convert this sample to features: \n {sample}")
+                    raise
 
     def _create_dataset(self, keep_baskets=False):
         features_flat = []
@@ -316,9 +336,9 @@ class Processor(ABC):
         self._featurize_samples()
         if indices:
             if 0 in indices:
-                self._log_samples(3)
+                self._log_samples(2)
         else:
-            self._log_samples(3)
+            self._log_samples(2)
         if return_baskets:
             dataset, tensor_names = self._create_dataset(keep_baskets=True)
             return dataset, tensor_names, self.baskets
@@ -342,10 +362,7 @@ class Processor(ABC):
         for name in names:
             value = getattr(self, name)
             params.update({name: str(value)})
-        try:
-            MlLogger.log_params(params)
-        except Exception as e:
-            logger.warning(f"ML logging didn't work: {e}")
+        MlLogger.log_params(params)
 
 
 #########################################
@@ -374,13 +391,18 @@ class TextClassificationProcessor(Processor):
         header=0,
         proxies=None,
         max_samples=None,
+        text_column_name="text",
         **kwargs
     ):
         """
         :param tokenizer: Used to split a sentence (str) into tokens.
         :param max_seq_len: Samples are truncated after this many tokens.
         :type max_seq_len: int
-        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
+        :param data_dir: The directory in which the train and dev files can be found.
+                         If not available the dataset will be loaded automaticaly
+                         if the last directory has the same name as a predefined dataset.
+                         These predefined datasets are defined as the keys in the dict at
+                         `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
         :type data_dir: str
         :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
         :type label_list: list
@@ -412,6 +434,8 @@ class TextClassificationProcessor(Processor):
         :param proxies: proxy configuration to allow downloads of remote datasets.
                         Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
         :type proxies: dict
+        :param text_column_name: name of the column in the input csv/tsv that shall be used as training text
+        :type text_column_name: str
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
         """
@@ -445,13 +469,17 @@ class TextClassificationProcessor(Processor):
                           metric=metric,
                           label_list=label_list,
                           label_column_name=label_column_name,
+                          text_column_name=text_column_name,
                           task_type=task_type)
         else:
             logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
                         "using the default task or add a custom task later via processor.add_task()")
 
     def file_to_dicts(self, file: str) -> [dict]:
-        column_mapping = {task["label_column_name"]: task["label_name"] for task in self.tasks.values()}
+        column_mapping = {}
+        for task in self.tasks.values():
+            column_mapping[task["label_column_name"]] = task["label_name"]
+            column_mapping[task["text_column_name"]] = "text"
         dicts = read_tsv(
             filename=file,
             delimiter=self.delimiter,
@@ -467,7 +495,11 @@ class TextClassificationProcessor(Processor):
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets and a start_of_word mask
-        tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer)
+        text = dictionary["text"]
+        tokenized = tokenize_with_metadata(text, self.tokenizer)
+        if len(tokenized["tokens"]) == 0:
+            logger.warning(f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text}")
+            return []
         # truncate tokens, offsets and start_of_word to max_seq_len that can be handled by the model
         for seq_name in tokenized.keys():
             tokenized[seq_name], _, _ = truncate_sequences(seq_a=tokenized[seq_name], seq_b=None, tokenizer=self.tokenizer,
@@ -482,6 +514,46 @@ class TextClassificationProcessor(Processor):
             tokenizer=self.tokenizer,
         )
         return features
+
+class TextPairClassificationProcessor(TextClassificationProcessor):
+    """
+    Used to handle text pair classification datasets (e.g. Answer Selection or Natural Inference) that come in
+    tsv format. The columns should be called text, text_b and label.
+    """
+    def __init__(self, **kwargs):
+        super(TextPairClassificationProcessor, self).__init__(**kwargs)
+
+    def file_to_dicts(self, file: str) -> [dict]:
+        column_mapping = {task["label_column_name"]: task["label_name"] for task in self.tasks.values()}
+        dicts = read_tsv_sentence_pair(
+            rename_columns=column_mapping,
+            filename=file,
+            delimiter=self.delimiter,
+            skiprows=self.skiprows,
+            proxies=self.proxies,
+        )
+        return dicts
+
+    def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
+        tokenized_a = tokenize_with_metadata(dictionary["text"], self.tokenizer)
+        tokenized_b = tokenize_with_metadata(dictionary["text_b"], self.tokenizer)
+
+        if len(tokenized_a["tokens"]) == 0:
+            text = dictionary["text"]
+            logger.warning(f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text}")
+            return []
+        if len(tokenized_b["tokens"]) == 0:
+            text_b = dictionary["text_b"]
+            logger.warning(f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text_b}")
+            return []
+
+        tokenized = {"tokens": tokenized_a["tokens"],
+                     "tokens_b": tokenized_b["tokens"]}
+        tokenized["tokens"], tokenized["tokens_b"], _ = truncate_sequences(seq_a=tokenized["tokens"],
+                                                                           seq_b=tokenized["tokens_b"],
+                                                                           tokenizer=self.tokenizer,
+                                                                           max_seq_len=self.max_seq_len)
+        return [Sample(id=None, clear_text=dictionary, tokenized=tokenized)]
 
 
 #########################################
@@ -587,7 +659,11 @@ class NERProcessor(Processor):
         :param tokenizer: Used to split a sentence (str) into tokens.
         :param max_seq_len: Samples are truncated after this many tokens.
         :type max_seq_len: int
-        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
+        :param data_dir: The directory in which the train and dev files can be found.
+                         If not available the dataset will be loaded automaticaly
+                         if the last directory has the same name as a predefined dataset.
+                         These predefined datasets are defined as the keys in the dict at
+                         `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
         :type data_dir: str
         :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
         :type label_list: list
@@ -604,7 +680,7 @@ class NERProcessor(Processor):
         :type test_filename: str
         :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
         :type dev_split: float
-        :param delimiter: Separator used in the input tsv / csv file
+        :param delimiter: Separator used in the input tsv / csv file. German version of Conll03 uses a whitespace. GermEval 2014 is tab separated \t
         :type delimiter: str
         :param proxies: proxy configuration to allow downloads of remote datasets.
                         Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
@@ -640,6 +716,10 @@ class NERProcessor(Processor):
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets, which helps to map our entity tags back to original positions
         tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer)
+        if len(tokenized["tokens"]) == 0:
+            text = dictionary["text"]
+            logger.warning(f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text}")
+            return []
         # truncate tokens, offsets and start_of_word to max_seq_len that can be handled by the model
         for seq_name in tokenized.keys():
             tokenized[seq_name], _, _ = truncate_sequences(seq_a=tokenized[seq_name], seq_b=None, tokenizer=self.tokenizer,
@@ -674,6 +754,7 @@ class BertStyleLMProcessor(Processor):
         test_filename="test.txt",
         dev_split=0.0,
         next_sent_pred=True,
+        next_sent_pred_style="sentence",
         max_docs=None,
         proxies=None,
         **kwargs
@@ -682,7 +763,11 @@ class BertStyleLMProcessor(Processor):
         :param tokenizer: Used to split a sentence (str) into tokens.
         :param max_seq_len: Samples are truncated after this many tokens.
         :type max_seq_len: int
-        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
+        :param data_dir: The directory in which the train and dev files can be found.
+                         If not available the dataset will be loaded automaticaly
+                         if the last directory has the same name as a predefined dataset.
+                         These predefined datasets are defined as the keys in the dict at
+                         `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
         :type data_dir: str
         :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
         :type label_list: list
@@ -701,6 +786,12 @@ class BertStyleLMProcessor(Processor):
         :type dev_split: float
         :param next_sent_pred: Whether to use next_sentence_prediction objective or not
         :type next_sent_pred: bool
+        :param next_sent_pred_style:
+            Two different styles for next sentence prediction available:
+                - "sentence":   Use of a single sentence for Sequence A and a single sentence for Sequence B
+                - "bert-style": Fill up all of max_seq_len tokens and split into Sequence A and B at sentence border.
+                                If there are too many tokens, Sequence B will be truncated.
+        :type next_sent_pred_style: str
         :param max_docs: maximum number of documents to include from input dataset
         :type max_docs: int
         :param proxies: proxy configuration to allow downloads of remote datasets.
@@ -726,6 +817,7 @@ class BertStyleLMProcessor(Processor):
         )
 
         self.next_sent_pred = next_sent_pred
+        self.next_sent_pred_style = next_sent_pred_style
         added_tokens = self.get_added_tokens()
         self.add_task("lm", "acc", list(self.tokenizer.vocab) + added_tokens)
         if self.next_sent_pred:
@@ -741,55 +833,144 @@ class BertStyleLMProcessor(Processor):
         return dicts
 
     def _dict_to_samples(self, dictionary, all_dicts=None):
-        assert len(all_dicts) > 1, "Need at least 2 documents to sample random sentences from"
         doc = dictionary["doc"]
+
+        # next sentence prediction...
+        if self.next_sent_pred:
+            assert len(all_dicts) > 1, "Need at least 2 documents to sample random sentences from"
+            # ...with single sentences
+            if self.next_sent_pred_style == "sentence":
+                samples = self._dict_to_samples_single_sentence(doc, all_dicts)
+            # ...bert style
+            elif self.next_sent_pred_style == "bert-style":
+                samples = self._dict_to_samples_bert_style(doc, all_dicts)
+            else:
+                raise NotImplementedError("next_sent_pred_style has to be 'sentence' or 'bert-style'")
+
+        # no next sentence prediction
+        else:
+            samples = self._dict_to_samples_no_next_sent(doc)
+
+        return samples
+
+    def _dict_to_samples_single_sentence(self, doc, all_dicts):
         samples = []
 
         # create one sample for each sentence in the doc (except for the very last -> "nextSentence" is impossible)
         for idx in range(len(doc) - 1):
             tokenized = {}
-            if self.next_sent_pred:
-                text_a, text_b, is_next_label = get_sentence_pair(doc, all_dicts, idx)
-                sample_in_clear_text = {
-                    "text_a": text_a,
-                    "text_b": text_b,
-                    "nextsentence_label": is_next_label,
-                }
-                # tokenize
-                tokenized["text_a"] = tokenize_with_metadata(
-                    text_a, self.tokenizer
+            text_a, text_b, is_next_label = get_sentence_pair(doc, all_dicts, idx)
+            sample_in_clear_text = {
+                "text_a" : text_a,
+                "text_b" : text_b,
+                "nextsentence_label" : is_next_label,
+            }
+            # tokenize
+            tokenized["text_a"] = tokenize_with_metadata(text_a, self.tokenizer)
+            tokenized["text_b"] = tokenize_with_metadata(text_b, self.tokenizer)
+
+            if len(tokenized["text_a"]["tokens"]) == 0:
+                logger.warning(
+                    f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text_a}")
+                continue
+            if len(tokenized["text_b"]["tokens"]) == 0:
+                logger.warning(
+                    f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text_b}")
+                continue
+
+            # truncate to max_seq_len
+            for seq_name in ["tokens", "offsets", "start_of_word"]:
+                tokenized["text_a"][seq_name], tokenized["text_b"][seq_name], _ = truncate_sequences(
+                    seq_a=tokenized["text_a"][seq_name],
+                    seq_b=tokenized["text_b"][seq_name],
+                    tokenizer=self.tokenizer,
+                    max_seq_len=self.max_seq_len)
+
+            samples.append(Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized))
+
+        return samples
+
+    def _dict_to_samples_bert_style(self, doc, all_dicts):
+        samples = []
+        # account for [CLS], [SEP], [SEP]
+        max_num_tokens = self.max_seq_len - 3
+
+        # tokenize
+        doc_tokenized = []
+        for sentence in doc:
+            doc_tokenized.append(tokenize_with_metadata(sentence, self.tokenizer))
+
+        current_chunk = []
+        current_chunk_clear_text = []
+        current_length = 0
+        i = 0
+        while i < len(doc_tokenized):
+            current_segment = doc_tokenized[i]
+            current_length += len(current_segment["tokens"])
+            current_chunk.append(current_segment)
+            current_chunk_clear_text.append(doc[i])
+
+            # reached end of document or max_num_tokens
+            if (i == len(doc_tokenized) - 1) or (current_length >= max_num_tokens):
+                sequence_a, sequence_b, sample_in_clear_text, num_unused_segments = get_sequence_pair(
+                    doc,
+                    current_chunk,
+                    current_chunk_clear_text,
+                    all_dicts,
+                    self.tokenizer,
+                    max_num_tokens,
                 )
-                tokenized["text_b"] = tokenize_with_metadata(
-                    text_b, self.tokenizer
-                )
-                # truncate to max_seq_len
+
+                sequence_a = join_sentences(sequence_a)
+                sequence_b = join_sentences(sequence_b)
                 for seq_name in ["tokens", "offsets", "start_of_word"]:
-                    tokenized["text_a"][seq_name], tokenized["text_b"][seq_name], _ = truncate_sequences(
-                        seq_a=tokenized["text_a"][seq_name],
-                        seq_b=tokenized["text_b"][seq_name],
+                    sequence_a[seq_name], sequence_b[seq_name], _ = truncate_sequences(
+                        seq_a=sequence_a[seq_name],
+                        seq_b=sequence_b[seq_name],
                         tokenizer=self.tokenizer,
-                        max_seq_len=self.max_seq_len)
+                        max_seq_len=max_num_tokens,
+                        with_special_tokens=False,
+                        truncation_strategy="only_second",
+                    )
+                tokenized = {"text_a" : sequence_a, "text_b" : sequence_b}
                 samples.append(Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized))
-            # if we don't do next sentence prediction, we should feed in a single sentence
-            else:
-                text_a = doc[idx]
-                sample_in_clear_text = {
-                    "text_a": text_a,
-                    "text_b": None,
-                    "nextsentence_label": None,
-                }
-                # tokenize
-                tokenized["text_a"] = tokenize_with_metadata(
-                    text_a, self.tokenizer
+
+                i -= num_unused_segments
+
+                current_chunk = []
+                current_chunk_clear_text = []
+                current_length = 0
+            i += 1
+        return samples
+
+    def _dict_to_samples_no_next_sent(self, doc):
+        samples = []
+
+        for idx in range(len(doc)):
+            tokenized = {}
+            text_a = doc[idx]
+            sample_in_clear_text = {
+                "text_a": text_a,
+                "text_b": None,
+                "nextsentence_label": None,
+            }
+            # tokenize
+            tokenized["text_a"] = tokenize_with_metadata(
+                text_a, self.tokenizer
+            )
+            if len(tokenized["text_a"]["tokens"]) == 0:
+                continue
+            # truncate to max_seq_len
+            for seq_name in ["tokens", "offsets", "start_of_word"]:
+                tokenized["text_a"][seq_name], _, _ = truncate_sequences(
+                    seq_a=tokenized["text_a"][seq_name],
+                    seq_b=None,
+                    tokenizer=self.tokenizer,
+                    max_seq_len=self.max_seq_len,
                 )
-                # truncate to max_seq_len
-                for seq_name in ["tokens", "offsets", "start_of_word"]:
-                    tokenized["text_a"][seq_name], _, _ = truncate_sequences(
-                        seq_a=tokenized["text_a"][seq_name],
-                        seq_b=None,
-                        tokenizer=self.tokenizer,
-                        max_seq_len=self.max_seq_len)
-                samples.append(Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized))
+
+            samples.append(Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized))
+
         return samples
 
     def _sample_to_features(self, sample) -> dict:
@@ -799,9 +980,49 @@ class BertStyleLMProcessor(Processor):
         )
         return features
 
+    def estimate_n_samples(self, filepath, max_docs=500):
+        """
+        Estimates the number of samples from a given file BEFORE preprocessing.
+        Used in StreamingDataSilo to estimate the number of steps before actually processing the data.
+        The estimated number of steps will impact some types of Learning Rate Schedules.
+        :param filepath: str or Path, file with data used to create samples (e.g. train.txt)
+        :param max_docs: int, maximum number of docs to read in & use for our estimate of n_samples
+        :return: int, number of samples in the given dataset
+        """
+
+        total_lines = sum(1 for line in open(filepath, encoding="utf-8"))
+        empty_lines = sum(1 if line == "\n" else 0 for line in open(filepath, encoding="utf-8"))
+
+        if self.next_sent_pred_style == "sentence":
+            # one sample = two lines (except last line in doc)
+            n_samples = total_lines - (2 * empty_lines)
+        elif self.next_sent_pred_style == "bert-style":
+            # Original BERT LM training (filling up sequence pairs with sentences until max_seq_len)
+            # (This is a very rough heuristic, as we can only estimate the real number of samples AFTER tokenization)
+            logging.info(f"Estimating total number of samples ...")
+            # read in subset of docs
+            if self.max_docs:
+                temp = self.max_docs
+                self.max_docs = min(max_docs, temp)
+                dicts = list(self.file_to_dicts(filepath))
+                self.max_docs = temp
+            else:
+                self.max_docs = max_docs
+                dicts = list(self.file_to_dicts(filepath))
+                self.max_docs = None
+            # count samples
+            n_samples = 0
+            for d in dicts:
+                n_samples += len(self._dict_to_samples_bert_style(doc=d["doc"], all_dicts=dicts))
+            n_samples = int(n_samples / len(dicts)) * (empty_lines+1)
+            logging.info(f"Heuristic estimate of number of samples in {filepath} based on {len(dicts)} docs: {n_samples}")
+        else:
+            raise NotImplementedError(f"No estimate logic for next_sent_pred_style={self.next_sent_pred_style} implemented")
+        return n_samples
+
 
 #########################################
-# SQUAD 2.0 Processor ####
+# QA Processors ####
 #########################################
 
 class SquadProcessor(Processor):
@@ -827,11 +1048,15 @@ class SquadProcessor(Processor):
         :param tokenizer: Used to split a sentence (str) into tokens.
         :param max_seq_len: Samples are truncated after this many tokens.
         :type max_seq_len: int
-        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
+        :param data_dir: The directory in which the train and dev files can be found.
+                         If not available the dataset will be loaded automaticaly
+                         if the last directory has the same name as a predefined dataset.
+                         These predefined datasets are defined as the keys in the dict at
+                         `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
         :type data_dir: str
         :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
         :type label_list: list
-        :param metric: name of metric that shall be used for evaluation, can be "squad" or "squad_top_recall"
+        :param metric: name of metric that shall be used for evaluation, can be "squad" or "top_n_accuracy"
         :type metric: str
         :param train_filename: The name of the file containing training data.
         :type train_filename: str
@@ -874,13 +1099,12 @@ class SquadProcessor(Processor):
             logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
                         "using the default task or add a custom task later via processor.add_task()")
 
-    def dataset_from_dicts(self, dicts, indices=None, rest_api_schema=False, return_baskets=False):
+    def dataset_from_dicts(self, dicts, indices=None, return_baskets=False):
         """ Overwrites the method from the base class since Question Answering processing is quite different.
         This method allows for documents and questions to be tokenized earlier. Then SampleBaskets are initialized
         with one document and one question. """
 
-        if rest_api_schema:
-            dicts = [self._convert_rest_api_dict(x) for x in dicts]
+        dicts = [convert_qa_input_dict(x) for x in dicts]
         self.baskets = self._dicts_to_baskets(dicts, indices)
         self._init_samples_in_baskets()
         self._featurize_samples()
@@ -896,13 +1120,14 @@ class SquadProcessor(Processor):
             return dataset, tensor_names
 
     def _dicts_to_baskets(self, dicts, indices):
-        # Perform tokenization on documents and questions resulting in a nested list of doc-question pairs
+        # Perform tokenization on documents and questions resulting in an unnested list of doc-question pairs
         dicts_tokenized = [self.apply_tokenization(d) for d in dicts]
 
         baskets = []
         for index, document in zip(indices, dicts_tokenized):
             for q_idx, raw in enumerate(document):
-                basket = SampleBasket(raw=raw, id=f"{index}-{q_idx}")
+                # In case of Question Answering the external ID is used for document IDs
+                basket = SampleBasket(raw=raw, id=f"{index}-{q_idx}", external_id=raw.get("document_id",None))
                 baskets.append(basket)
         return baskets
 
@@ -912,7 +1137,10 @@ class SquadProcessor(Processor):
         where each entry is a dictionary for one document-question pair (potentially mutliple answers). """
 
         raw_baskets = []
+        dictionary = convert_qa_input_dict(dictionary)
         document_text = dictionary["context"]
+        document_id = dictionary.get("document_id",None)
+
         document_tokenized = tokenize_with_metadata(document_text, self.tokenizer)
         document_start_of_word = [int(x) for x in document_tokenized["start_of_word"]]
         questions = dictionary["qas"]
@@ -923,8 +1151,13 @@ class SquadProcessor(Processor):
                 squad_id = question["id"]
                 question_text = question["question"]
                 for answer in question["answers"]:
+                    if answer["text"] == "":
+                        answer_type = "is_impossible"
+                    else:
+                        answer_type = "span"
                     a = {"text": answer["text"],
-                         "offset": answer["answer_start"]}
+                         "offset": answer["answer_start"],
+                         "answer_type": answer_type}
                     answers.append(a)
             # For inference where samples are read in as dicts without an id or answers
             except TypeError:
@@ -933,43 +1166,29 @@ class SquadProcessor(Processor):
             question_tokenized = tokenize_with_metadata(question_text, self.tokenizer)
             question_start_of_word = [int(x) for x in question_tokenized["start_of_word"]]
 
+            # TODO for Squad and NQ, answer_type should be paired with the question and not the passage
+            # TODO make this change for both processors
             if "is_impossible" not in question:
-                is_impossible = False
+                answer_type = "span"
             else:
-                is_impossible = question["is_impossible"]
+                if question["is_impossible"]:
+                    answer_type = "is_impossible"
+                else:
+                    answer_type = "span"
             raw = {"document_text": document_text,
                    "document_tokens": document_tokenized["tokens"],
                    "document_offsets": document_tokenized["offsets"],
                    "document_start_of_word": document_start_of_word,
+                   "document_id": document_id,
                    "question_text": question_text,
                    "question_tokens": question_tokenized["tokens"],
                    "question_offsets": question_tokenized["offsets"],
                    "question_start_of_word": question_start_of_word,
                    "answers": answers,
-                   "is_impossible": is_impossible,
+                   "answer_type": answer_type,
                    "squad_id": squad_id}
             raw_baskets.append(raw)
         return raw_baskets
-
-    def _convert_rest_api_dict(self, infer_dict):
-        # convert input coming from inferencer to SQuAD format
-        if len(infer_dict.get("questions")) > 1:
-            raise ValueError("Inferencer currently does not support answering multiple questions on a text."
-                                "As a workaround, multiple input dicts with text and question pairs can be "
-                                "supplied in a single API request.")
-        converted = {
-            "qas": [
-                {
-                    "question": infer_dict.get("questions", ["Missing?"])[0],
-                    "id": None,
-                    "answers": [],
-                    "is_impossible": False
-                }
-            ],
-            "context": infer_dict.get("text", "Missing!"),
-            "document_id": infer_dict.get("document_id", None),
-        }
-        return converted
 
     def file_to_dicts(self, file: str) -> [dict]:
         nested_dicts = read_squad_file(filename=file)
@@ -977,8 +1196,8 @@ class SquadProcessor(Processor):
         return dicts
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
-        n_special_tokens = self.tokenizer.num_added_tokens(pair=True)
-        samples = create_samples_squad(dictionary=dictionary,
+        n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
+        samples = create_samples_qa(dictionary=dictionary,
                                        max_query_len=self.max_query_length,
                                        max_seq_len=self.max_seq_len,
                                        doc_stride=self.doc_stride,
@@ -987,10 +1206,361 @@ class SquadProcessor(Processor):
 
     def _sample_to_features(self, sample) -> dict:
         # TODO, make this function return one set of features per sample
-        features = sample_to_features_squad(sample=sample,
-                                            tokenizer=self.tokenizer,
-                                            max_seq_len=self.max_seq_len)
+        features = sample_to_features_qa(sample=sample,
+                                         tokenizer=self.tokenizer,
+                                         max_seq_len=self.max_seq_len)
         return features
+
+class NaturalQuestionsProcessor(Processor):
+    """ Used to handle the Natural Question QA dataset"""
+
+    def __init__(
+        self,
+        tokenizer,
+        max_seq_len,
+        data_dir,
+        train_filename=Path("train-v2.0.json"),
+        dev_filename=Path("dev-v2.0.json"),
+        test_filename=None,
+        dev_split=0,
+        doc_stride=128,
+        max_query_length=64,
+        proxies=None,
+        keep_is_impossible=0.02,
+        downsample_context_size=None,
+        inference=False,
+        **kwargs):
+        """
+        Deals with all the preprocessing steps needed for Natural Questions. Follows Alberti 2019 et al. (https://arxiv.org/abs/1901.08634)
+        in merging multiple disjoint short answers into the one longer label span and also by downsampling
+        samples of is_impossible during training
+
+        :param tokenizer: Used to split a sentence (str) into tokens.
+        :param max_seq_len: Samples are truncated after this many tokens.
+        :type max_seq_len: int
+        :param data_dir: The directory in which the train and dev files can be found.
+                         If not available the dataset will be loaded automaticaly
+                         if the last directory has the same name as a predefined dataset.
+                         These predefined datasets are defined as the keys in the dict at
+                         `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
+        :type data_dir: str
+        :param train_filename: The name of the file containing training data.
+        :type train_filename: str
+        :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
+                             will be a slice of the train set.
+        :type dev_filename: str or None
+        :param test_filename: The name of the file containing the test data.
+        :type test_filename: str
+        :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
+        :type dev_split: float
+        :param doc_stride: When the document containing the answer is too long it gets split into parts, strided by doc_stride
+        :type doc_stride: int
+        :param max_query_length: Maximum length of the question (in number of subword tokens)
+        :type max_query_length: int
+        :param keep_is_impossible: The probability that a sample with an is_impossible label is kept
+                                    (0.0 < keep_is_impossible <= 1.0). Only works if inference is False
+        :type keep_is_impossible: float
+        :param downsample_context_size: Downsampling before any data conversion by taking a short text window of size
+                                        downsample_context_size around the long answer span. To disable set to None
+        :type downsample_context_size: int
+        :param inference: Whether we are currently using the Processsor for model inference. If True, the
+                          keep_is_impossible will be overridden and set to 1
+        :type inference: bool
+        :param kwargs: placeholder for passing generic parameters
+        :type kwargs: object
+        """
+        self.target = "classification"
+        self.ph_output_type = "per_token_squad"
+
+        # These are classification labels from Natural Questions. Note that in this implementation, we are merging
+        # the "long_answer" and "short_answer" labels into the one "span" label
+        self.answer_type_list = ["is_impossible", "span", "yes", "no"]
+
+        self.doc_stride = doc_stride
+        self.max_query_length = max_query_length
+        self.keep_is_impossible = keep_is_impossible
+        self.downsample_context_size = downsample_context_size
+        self.inference = inference
+
+        super(NaturalQuestionsProcessor, self).__init__(
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            train_filename=train_filename,
+            dev_filename=dev_filename,
+            test_filename=test_filename,
+            dev_split=dev_split,
+            data_dir=data_dir,
+            tasks={},
+            proxies=proxies
+        )
+
+        # Todo rename metric from squad to maybe QA spans or something like that
+        self.add_task("question_answering", "squad", ["start_token", "end_token"])
+        self.add_task("text_classification", "f1_macro", self.answer_type_list, label_name="answer_type")
+
+
+    def file_to_dicts(self, file: str) -> [dict]:
+        dicts = read_jsonl(file, proxies=self.proxies)
+        return dicts
+
+
+    def _dict_to_samples(self, dictionary: dict, all_dicts=None) -> [Sample]:
+        """
+            This method will split question-document pairs from the SampleBasket into question-passage pairs which will
+        each form one sample. The "t" and "c" in variables stand for token and character respectively. This uses many
+        methods that the SquadProcessor calls but note that the SquadProcessor overwrites Processor._dicts_to_baskets()
+        while the NaturalQuestionsProcessor does not. This was done in Squad to avoid retokenizing documents that are
+        paired with multiple questions. This is not necessary for Natural Questions since there is generally a 1 to 1
+        mapping from document to question. Input dictionaries can have either ["context", "qas"] (internal format) as
+        keys or ["text", "questions"] (api format). Both are supported.
+        """
+        # Turns a NQ dictionaries into a SQuAD style dictionaries
+        if not self.inference:
+            dictionary = self.prepare_dict(dictionary=dictionary)
+
+        dictionary_tokenized = self.apply_tokenization(dictionary)[0]
+        n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
+        samples = create_samples_qa(dictionary_tokenized,
+                                    self.max_query_length,
+                                    self.max_seq_len,
+                                    self.doc_stride,
+                                    n_special_tokens)
+        # Downsample the number of samples with an is_impossible label. This fn will always return at least one sample
+        # so that we don't end up with a basket with 0 samples
+        if not self.inference:
+            samples = self.downsample(samples, self.keep_is_impossible)
+        return samples
+
+    def downsample(self, samples, keep_prob):
+        # Downsamples samples with a is_impossible label (since there is an overrepresentation of these in NQ)
+        # This method will always return at least one sample. This is done so that we don't end up with SampleBaskets
+        # with 0 samples
+        ret = []
+        for s in samples:
+            if self.check_is_impossible(s):
+                if random_float() > 1 - keep_prob:
+                    ret.append(s)
+            else:
+                ret.append(s)
+        if len(ret) == 0:
+            ret = [random.choice(samples)]
+        return ret
+
+    @staticmethod
+    def check_is_impossible(sample):
+        sample_tok = sample.tokenized
+        if len(sample_tok["answers"]) == 0:
+            return True
+        first_answer = sample_tok["answers"][0]
+        if first_answer["start_t"] < sample_tok["passage_start_t"]:
+            return True
+        if first_answer["end_t"] > sample_tok["passage_start_t"] + len(sample_tok["passage_tokens"]):
+            return True
+        if first_answer["answer_type"] == "is_impossible":
+            return True
+        else:
+            return False
+
+    def downsample_unprocessed(self, dictionary):
+        doc_text = dictionary["document_text"]
+        doc_tokens = doc_text.split(" ")
+        annotations = dictionary.get("annotations",[])
+        # for simplicity we only downsample wiki pages with one long answer annotation
+        if len(annotations) == 1:
+            annotation = annotations[0]
+            # There seem to be cases where there is no answer but an annotation is given as a (-1, -1) long answer
+            if self.check_no_answer(annotation):
+                dictionary["document_text"] = " ".join(doc_tokens[:self.max_seq_len+randint(1,self.downsample_context_size)])
+            else:
+                # finding earliest start and latest end labels
+                long_answer_start = annotation['long_answer']['start_token']
+                long_answer_end = annotation['long_answer']['end_token']
+                short_answer_start = 1e10
+                short_answer_end = -1
+                for s in annotation["short_answers"]:
+                    if s["start_token"] < short_answer_start:
+                        short_answer_start = s["start_token"]
+                    if s["end_token"] > short_answer_end:
+                        short_answer_end = s["end_token"]
+
+                start_threshold = min(long_answer_start,short_answer_start) - randint(1,self.downsample_context_size)
+                start_threshold = max(0, start_threshold)
+                end_threshold = max(long_answer_end,short_answer_end) + randint(1,self.downsample_context_size)
+
+                # taking subset of doc text and shift labels
+                sub_document_text = " ".join(
+                    doc_tokens[start_threshold:end_threshold]
+                )
+                dictionary["document_text"] = sub_document_text
+                # change of offsets happens in place (of dictionary)
+                annotation['long_answer']['start_token'] -= start_threshold
+                annotation['long_answer']['end_token'] -= start_threshold
+                for s in annotation["short_answers"]:
+                    s["start_token"] -= start_threshold
+                    s["end_token"] -= start_threshold
+
+        return dictionary
+
+
+    def prepare_dict(self, dictionary):
+        """ Casts a Natural Questions dictionary that is loaded from a jsonl file into SQuAD format so that
+        the same featurization functions can be called for both tasks. Each annotation can be one of four answer types,
+        ["yes", "no", "span", "is_impossible"]"""
+
+        if self.downsample_context_size is not None:
+            dictionary = self.downsample_unprocessed(dictionary)
+
+        converted_answers = []
+        doc_text = dictionary["document_text"]
+        _, tok_to_ch = split_with_metadata(doc_text)
+        for annotation in dictionary["annotations"]:
+            # There seem to be cases where there is no answer but an annotation is given as a (-1, -1) long answer
+            if self.check_no_answer(annotation):
+                continue
+            sa_text, sa_start_c = self.unify_short_answers(annotation["short_answers"], doc_text, tok_to_ch)
+            la_text, la_start_c = self.retrieve_long_answer(annotation["long_answer"]["start_token"],
+                                                            annotation["long_answer"]["end_token"],
+                                                            tok_to_ch,
+                                                            doc_text)
+            # Picks the span to be considered as annotation by choosing between short answer, long answer and is_impossible
+            text, start_c = self.choose_span(sa_text, sa_start_c, la_text, la_start_c)
+            converted_answers.append({"text": text,
+                                      "answer_start": start_c})
+        if len(converted_answers) == 0:
+            answer_type = "is_impossible"
+        else:
+            answer_type = dictionary["annotations"][0]["yes_no_answer"].lower()
+            if answer_type == "none":
+                answer_type = "span"
+        converted = {"id": dictionary["example_id"],
+                     "context": doc_text,
+                     "qas": [{"question": dictionary["question_text"],
+                              "id": dictionary["example_id"],
+                              "answers": converted_answers,
+                              "answer_type": answer_type}]}
+        return converted
+
+    @staticmethod
+    def check_no_answer(annotation):
+        if annotation["long_answer"]["start_token"] > -1 or annotation["long_answer"]["end_token"] > -1:
+            return False
+        for sa in annotation["short_answers"]:
+            if sa["start_token"] > -1 or sa["end_token"] > -1:
+                return False
+        else:
+            return True
+
+    def retrieve_long_answer(self, start_t, end_t, tok_to_ch, doc_text):
+        """ Retrieves the string long answer and also its starting character index"""
+        start_c, end_c = self.convert_tok_to_ch(start_t, end_t, tok_to_ch, doc_text)
+        text = doc_text[start_c: end_c]
+        return text, start_c
+
+    @staticmethod
+    def choose_span(sa_text, sa_start_c, la_text, la_start_c):
+        if sa_text:
+            return sa_text, sa_start_c
+        elif la_text:
+            return la_text, la_start_c
+        else:
+            return "", -1
+
+    def unify_short_answers(self, short_answers, doc_text, tok_to_ch):
+        """ In cases where an NQ sample has multiple disjoint short answers, this fn generates the single shortest
+        span that contains all the answers"""
+        if not short_answers:
+            return "", -1
+        short_answer_idxs = []
+        # TODO write comment explaining this
+        for short_answer in short_answers:
+            short_answer_idxs.append(short_answer["start_token"])
+            short_answer_idxs.append(short_answer["end_token"])
+        answer_start_t = min(short_answer_idxs)
+        answer_end_t = max(short_answer_idxs)
+        answer_start_c, answer_end_c = self.convert_tok_to_ch(answer_start_t, answer_end_t, tok_to_ch, doc_text)
+        answer_text = doc_text[answer_start_c: answer_end_c]
+        assert answer_text == " ".join(doc_text.split()[answer_start_t: answer_end_t])
+        return answer_text, answer_start_c
+
+    @staticmethod
+    def convert_tok_to_ch(start_t, end_t, tok_to_ch, doc_text):
+        n_tokens = len(tok_to_ch)
+        if start_t == -1 and end_t == -1:
+            return -1, -1
+        start_c = tok_to_ch[start_t]
+        # when the end of the answer span is the end of the text
+        if end_t == n_tokens:
+            end_c = len(doc_text)
+        else:
+            next_word_start_c = tok_to_ch[end_t]
+            span = doc_text[:next_word_start_c].strip()
+            end_c = len(span)
+        return start_c, end_c
+
+    def apply_tokenization(self, dictionary):
+        """ This performs tokenization on all documents and questions. The result is a list
+        where each entry is a dictionary for one document-question pair (potentially mutliple answers). This is based on
+        the apply_tokenization method of SquadProcessor but slightly modified.
+
+        TODO: See if this can be merged with SquadProcessor.apply_tokenization()"""
+
+        raw_baskets = []
+        # Input dictionaries can have ["context", "qas"] (SQuAD format) as keys or
+        # ["text", "questions"] (FARM format). Both are supported
+        dictionary = convert_qa_input_dict(dictionary)
+        document_text = dictionary["context"]
+        document_id = dictionary.get("document_id", None)
+
+        document_tokenized = tokenize_with_metadata(document_text, self.tokenizer)
+        document_start_of_word = [int(x) for x in document_tokenized["start_of_word"]]
+        questions = dictionary["qas"]
+        for question in questions:
+            answers = []
+            # For training and dev with labelled examples
+            try:
+                nq_id = question["id"]
+                question_text = question["question"]
+                for answer in question["answers"]:
+                    a = {"text": answer["text"],
+                         "offset": answer["answer_start"],
+                         "answer_type": question["answer_type"]}
+                    answers.append(a)
+            # For inference where samples are read in without an id or answers
+            except TypeError:
+                nq_id = None
+                question_text = question
+            question_tokenized = tokenize_with_metadata(question_text, self.tokenizer)
+            question_start_of_word = [int(x) for x in question_tokenized["start_of_word"]]
+
+            # TODO compare data format with Squad to explain what this section is doing exactly
+            # TODO suspect that this might not be right for NQ
+            if "is_impossible" not in question:
+                answer_type = "span"
+            else:
+                answer_type = question["is_impossible"]
+
+            raw = {"document_text": document_text,
+                   "document_tokens": document_tokenized["tokens"],
+                   "document_offsets": document_tokenized["offsets"],
+                   "document_start_of_word": document_start_of_word,
+                   "document_id": document_id,
+                   "question_text": question_text,
+                   "question_tokens": question_tokenized["tokens"],
+                   "question_offsets": question_tokenized["offsets"],
+                   "question_start_of_word": question_start_of_word,
+                   "answers": answers,
+                   "answer_type": answer_type,
+                   "nq_id": nq_id}
+            raw_baskets.append(raw)
+        return raw_baskets
+
+    def _sample_to_features(self, sample: Sample) -> dict:
+        features = sample_to_features_qa(sample=sample,
+                                         tokenizer=self.tokenizer,
+                                         max_seq_len=self.max_seq_len,
+                                         answer_type_list=self.answer_type_list)
+        return features
+
 
 class RegressionProcessor(Processor):
     """
@@ -1013,19 +1583,24 @@ class RegressionProcessor(Processor):
         scaler_mean=None,
         scaler_scale=None,
         proxies=None,
+        text_column_name="text",
         **kwargs
     ):
         """
         :param tokenizer: Used to split a sentence (str) into tokens.
         :param max_seq_len: Samples are truncated after this many tokens.
         :type max_seq_len: int
-        :param data_dir: The directory in which the train and dev files can be found. Squad has a private test file
+        :param data_dir: The directory in which the train and dev files can be found.
+                         If not available the dataset will be loaded automaticaly
+                         if the last directory has the same name as a predefined dataset.
+                         These predefined datasets are defined as the keys in the dict at
+                         `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
         :type data_dir: str
         :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
         :type label_list: list
         :param metric: name of metric that shall be used for evaluation, e.g. "acc" or "f1_macro".
-                 Alternatively you can also supply a custom function, that takes preds and labels as args and returns a numerical value.
-                 For using multiple metrics supply them as a list, e.g ["acc", my_custom_metric_fn].
+                 Alternatively you can also supply a custom function, that takes preds and labels as args and returns a
+                 numerical value. For using multiple metrics supply them as a list, e.g ["acc", my_custom_metric_fn].
         :type metric: str, function, or list
         :param train_filename: The name of the file containing training data.
         :type train_filename: str
@@ -1053,6 +1628,8 @@ class RegressionProcessor(Processor):
         :param proxies: proxy configuration to allow downloads of remote datasets.
                         Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
         :type proxies: dict
+        :param text_column_name: name of the column in the input csv/tsv that shall be used as training text
+        :type text_column_name: str
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
         """
@@ -1074,10 +1651,19 @@ class RegressionProcessor(Processor):
         )
 
         # Note that label_list is being hijacked to store the scaling mean and scale
-        self.add_task(name="regression", metric="mse", label_list= [scaler_mean, scaler_scale], label_column_name=label_column_name, task_type="regression", label_name=label_name)
+        self.add_task(name="regression",
+                      metric="mse",
+                      label_list=[scaler_mean, scaler_scale],
+                      label_column_name=label_column_name,
+                      task_type="regression",
+                      label_name=label_name,
+                      text_column_name=text_column_name)
 
     def file_to_dicts(self, file: str) -> [dict]:
-        column_mapping = {task["label_column_name"]: task["label_name"] for task in self.tasks.values()}
+        column_mapping = {}
+        for task in self.tasks.values():
+            column_mapping[task["label_column_name"]] = task["label_name"]
+            column_mapping[task["text_column_name"]] = "text"
         dicts = read_tsv(
             rename_columns=column_mapping,
             filename=file,
@@ -1086,7 +1672,7 @@ class RegressionProcessor(Processor):
             quotechar=self.quote_char,
             proxies=self.proxies
         )
-        
+
         # collect all labels and compute scaling stats
         train_labels = []
         for d in dicts:
@@ -1101,6 +1687,10 @@ class RegressionProcessor(Processor):
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
         # this tokenization also stores offsets
         tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer)
+        if len(tokenized["tokens"]) == 0:
+            text = dictionary["text"]
+            logger.warning(f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text}")
+            return []
         # truncate tokens, offsets and start_of_word to max_seq_len that can be handled by the model
         for seq_name in tokenized.keys():
             tokenized[seq_name], _, _ = truncate_sequences(seq_a=tokenized[seq_name], seq_b=None,

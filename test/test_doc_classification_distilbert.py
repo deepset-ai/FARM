@@ -14,12 +14,12 @@ from farm.train import Trainer
 from farm.utils import set_all_seeds, initialize_device_settings
 
 
-def test_doc_classification(caplog=None):
+def test_doc_classification(caplog):
     if caplog:
         caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
-    device, n_gpu = initialize_device_settings(use_cuda=True)
+    device, n_gpu = initialize_device_settings(use_cuda=False)
     n_epochs = 1
     batch_size = 1
     evaluate_every = 2
@@ -45,7 +45,7 @@ def test_doc_classification(caplog=None):
         batch_size=batch_size)
 
     language_model = DistilBert.load(lang_model)
-    prediction_head = TextClassificationHead()
+    prediction_head = TextClassificationHead(num_labels=2)
     model = AdaptiveModel(
         language_model=language_model,
         prediction_heads=[prediction_head],
@@ -62,6 +62,7 @@ def test_doc_classification(caplog=None):
         schedule_opts=None)
 
     trainer = Trainer(
+        model=model,
         optimizer=optimizer,
         data_silo=data_silo,
         epochs=n_epochs,
@@ -70,7 +71,7 @@ def test_doc_classification(caplog=None):
         evaluate_every=evaluate_every,
         device=device)
 
-    model = trainer.train(model)
+    trainer.train()
 
     save_dir = Path("testsave/doc_class")
     model.save(save_dir)
@@ -81,11 +82,10 @@ def test_doc_classification(caplog=None):
         {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei."}
     ]
 
-
-    inf = Inferencer.load(save_dir, batch_size=2)
+    inf = Inferencer.load(save_dir, batch_size=2, num_processes=0)
     result = inf.inference_from_dicts(dicts=basic_texts)
     assert isinstance(result[0]["predictions"][0]["probability"], np.float32)
 
 
 if __name__ == "__main__":
-    test_doc_classification()
+    test_doc_classification(None)

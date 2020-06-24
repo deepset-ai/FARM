@@ -3,12 +3,17 @@ import json
 import logging
 import random
 import os
-
+import signal
 import numpy as np
 import torch
+from requests.exceptions import ConnectionError
 from torch import multiprocessing as mp
 import mlflow
 from copy import deepcopy
+import pandas as pd
+from tqdm import tqdm
+
+
 from farm.visual.ascii.images import WELCOME_BARN, WORKER_M, WORKER_F, WORKER_X
 
 
@@ -69,8 +74,8 @@ def initialize_device_settings(use_cuda, local_rank=-1, use_amp=None):
         else:
             n_gpu = torch.cuda.device_count()
     else:
-        torch.cuda.set_device(local_rank)
         device = torch.device("cuda", local_rank)
+        torch.cuda.set_device(device)
         n_gpu = 1
         # Initializes the distributed backend which will take care of sychronizing nodes/GPUs
         torch.distributed.init_process_group(backend="nccl")
@@ -109,27 +114,73 @@ class BaseMLLogger:
         raise NotImplementedError()
 
 
+class StdoutLogger(BaseMLLogger):
+    """ Minimal logger printing metrics and params to stdout.
+    Useful for services like AWS SageMaker, where you parse metrics from the actual logs"""
+
+    def init_experiment(self, experiment_name, run_name=None, nested=True):
+        logger.info(f"\n **** Starting experiment '{experiment_name}' (Run: {run_name})  ****")
+
+    @classmethod
+    def log_metrics(cls, metrics, step):
+        logger.info(f"Logged metrics at step {step}: \n {metrics}")
+
+    @classmethod
+    def log_params(cls, params):
+        logger.info(f"Logged parameters: \n {params}")
+
+    @classmethod
+    def log_artifacts(cls, dir_path, artifact_path=None):
+        raise NotImplementedError
+
+    @classmethod
+    def end_run(cls):
+        logger.info(f"**** End of Experiment **** ")
+
+
 class MLFlowLogger(BaseMLLogger):
     """
     Logger for MLFlow experiment tracking.
     """
 
     def init_experiment(self, experiment_name, run_name=None, nested=True):
-        mlflow.set_tracking_uri(self.tracking_uri)
-        mlflow.set_experiment(experiment_name)
-        mlflow.start_run(run_name=run_name, nested=nested)
+        try:
+            mlflow.set_tracking_uri(self.tracking_uri)
+            mlflow.set_experiment(experiment_name)
+            mlflow.start_run(run_name=run_name, nested=nested)
+        except ConnectionError:
+            raise Exception(
+                f"MLFlow cannot connect to the remote server at {self.tracking_uri}.\n"
+                f"MLFlow also supports logging runs locally to files. Set the MLFlowLogger "
+                f"tracking_uri to an empty string to use that."
+            )
 
     @classmethod
     def log_metrics(cls, metrics, step):
-        mlflow.log_metrics(metrics, step=step)
+        try:
+            mlflow.log_metrics(metrics, step=step)
+        except ConnectionError:
+            logger.warning(f"ConnectionError in logging metrics to MLFlow.")
+        except Exception as e:
+            logger.warning(f"Failed to log metrics: {e}")
 
     @classmethod
     def log_params(cls, params):
-        mlflow.log_params(params)
+        try:
+            mlflow.log_params(params)
+        except ConnectionError:
+            logger.warning("ConnectionError in logging params to MLFlow")
+        except Exception as e:
+            logger.warning(f"Failed to log params: {e}")
 
     @classmethod
     def log_artifacts(cls, dir_path, artifact_path=None):
-        mlflow.log_artifacts(dir_path, artifact_path)
+        try:
+            mlflow.log_artifacts(dir_path, artifact_path)
+        except ConnectionError:
+            logger.warning(f"ConnectionError in logging artifacts to MLFlow")
+        except Exception as e:
+            logger.warning(f"Failed to log artifacts: {e}")
 
     @classmethod
     def end_run(cls):
@@ -167,6 +218,7 @@ def to_numpy(container):
 
 
 def convert_iob_to_simple_tags(preds, spans):
+    contains_named_entity = len([x for x in preds if "B-" in x]) != 0
     simple_tags = []
     merged_spans = []
     open_tag = False
@@ -203,6 +255,10 @@ def convert_iob_to_simple_tags(preds, spans):
         merged_spans.append(cur_span)
         simple_tags.append(cur_tag)
         open_tag = False
+    if contains_named_entity and len(simple_tags) == 0:
+        raise Exception("Predicted Named Entities lost when converting from IOB to simple tags. Please check the format"
+                        "of the training data adheres to either adheres to IOB2 format or is converted when "
+                        "read_ner_file() is called.")
     return simple_tags, merged_spans
 
 
@@ -252,3 +308,143 @@ def get_dict_checksum(payload_dict):
     """
     checksum = hashlib.md5(json.dumps(payload_dict, sort_keys=True).encode("utf-8")).hexdigest()
     return checksum
+
+
+class GracefulKiller:
+    kill_now = False
+
+    def __init__(self):
+        signal.signal(signal.SIGTERM, self.exit_gracefully)
+
+    def exit_gracefully(self, signum, frame):
+        self.kill_now = True
+
+
+def get_dict_checksum(payload_dict):
+    """
+    Get MD5 checksum for a dict.
+    """
+    checksum = hashlib.md5(json.dumps(payload_dict, sort_keys=True).encode("utf-8")).hexdigest()
+    return checksum
+
+def reformat_msmarco_train(filename, output_filename):
+    """
+    Given a df of structure [query, pos_passage, neg_passage], this function converts it to [query, passage, label]
+    """
+    print("Reformatting MSMarco train data...")
+    df = pd.read_csv(filename, header=None, sep="\t")
+    samples = []
+    for i, row in tqdm(df.iterrows()):
+       query = row[0]
+       pos = row[1]
+       neg = row[2]
+       samples.append([query, pos, 1])
+       samples.append([query, neg, 0])
+    with open(output_filename, "w") as f:
+        f.write("text\ttext_b\tlabel\n")
+        for (query, passage, label) in samples:
+            f.write(f"{query}\t{passage}\t{label}\n")
+    print(f"MSMarco train data saved at {output_filename}")
+
+def reformat_msmarco_dev(queries_filename, passages_filename, qrels_filename, top1000_filename, output_filename):
+    print("Reformatting MSMarco dev data...")
+    top1000_file = open(top1000_filename)
+    qrels_file = open(qrels_filename)
+    queries_file = open(queries_filename)
+    passages_file = open(passages_filename)
+
+    # Generate a top1000 dict
+    top1000 = dict()
+    for l in tqdm(top1000_file):
+        qid, pid, _, _ = l.split("\t")
+        if qid not in top1000:
+            top1000[qid] = []
+        top1000[qid].append(pid)
+
+    # Generate a qrels dict
+    qrels = dict()
+    for l in qrels_file:
+        qid, _, pid, _ = l.split("\t")
+        if qid not in qrels:
+            qrels[qid] = []
+        qrels[qid].append(pid)
+
+    # Generate a queries dict
+    queries = dict()
+    for l in queries_file:
+        qid, query = l.split("\t")
+        queries[qid] = query[:-1]
+
+    # Generate a passages dict
+    passages = dict()
+    for l in tqdm(passages_file):
+        pid, passage = l.split("\t")
+        passages[pid] = passage[:-1]
+
+    # Generate dict with all needed info
+    final = dict()
+    for qid in tqdm(top1000):
+        if qid not in final:
+            final[qid] = []
+        query = queries[qid]
+        curr_qrel = qrels[qid]
+        curr_top1000 = top1000[qid]
+        for ct in curr_top1000:
+            is_relevant = int(ct in curr_qrel)
+            passage = passages[ct]
+            quad = list([query, ct, passage, is_relevant])
+            final[qid].append(quad)
+
+    # Flatten the structure of final and convert to df
+    records = []
+    for k, v in tqdm(final.items()):
+        for x in v:
+            records.append([k] + x)
+    df = pd.DataFrame(records, columns=["qid", "text", "pid", "text_b", "label"])
+    df.to_csv(output_filename, sep="\t", index=None)
+    print(f"MSMarco train data saved at {output_filename}")
+
+
+def write_msmarco_results(results, output_filename):
+    out_file = open(output_filename, "w")
+    for dictionary in results:
+        for pred in dictionary["predictions"]:
+            if pred["label"] == "1":
+                score = pred["probability"]
+            elif pred["label"] == "0":
+                score = 1 - pred["probability"]
+            out_file.write(str(score))
+            out_file.write("\n")
+
+def stack(list_of_lists):
+    n_lists_final = len(list_of_lists[0])
+    ret = [list() for _ in range(n_lists_final)]
+    for l in list_of_lists:
+        for i, x in enumerate(l):
+            ret[i] += (x)
+    return ret
+
+def span_to_string(start_t, end_t, token_offsets, clear_text):
+
+    # If it is a no_answer prediction
+    if start_t == -1 and end_t == -1:
+        return "", 0, 0
+
+    n_tokens = len(token_offsets)
+
+    # We do this to point to the beginning of the first token after the span instead of
+    # the beginning of the last token in the span
+    end_t += 1
+
+    # Predictions sometimes land on the very final special token of the passage. But there are no
+    # special tokens on the document level. We will just interpret this as a span that stretches
+    # to the end of the document
+    end_t = min(end_t, n_tokens)
+
+    start_ch = token_offsets[start_t]
+    # i.e. pointing at the END of the last token
+    if end_t == n_tokens:
+        end_ch = len(clear_text)
+    else:
+        end_ch = token_offsets[end_t]
+    return clear_text[start_ch: end_ch].strip(), start_ch, end_ch

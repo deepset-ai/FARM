@@ -8,7 +8,7 @@ from farm.modeling.optimization import initialize_optimizer
 from farm.modeling.prediction_head import PredictionHead
 from farm.modeling.tokenization import Tokenizer
 from farm.data_handler.processor import Processor
-from farm.train import Trainer
+from farm.train import Trainer, EarlyStopping
 from farm.utils import set_all_seeds, initialize_device_settings
 from farm.utils import MLFlowLogger as MlLogger
 from farm.file_utils import read_config, unnestConfig
@@ -23,8 +23,8 @@ logging.basicConfig(
 
 
 def load_experiments(file):
-    args = read_config(file, flattend=False)
-    experiments = unnestConfig(args, flattened=False)
+    args = read_config(file)
+    experiments = unnestConfig(args)
     return experiments
 
 
@@ -54,8 +54,7 @@ def run_experiment(args):
     args.parameter.batch_size = int(
         args.parameter.batch_size // args.parameter.gradient_accumulation_steps
     )
-    # if n_gpu > 1:
-    #     args.parameter.batch_size = args.parameter.batch_size * n_gpu
+
     set_all_seeds(args.general.seed)
 
     # Prepare Data
@@ -94,8 +93,8 @@ def run_experiment(args):
     )
 
     # Init optimizer
-    optimizer_opts = dict(args.optimizer.optimizer_opts) if args.optimizer.optimizer_opts else None
-    schedule_opts = dict(args.optimizer.schedule_opts) if args.optimizer.schedule_opts else None
+    optimizer_opts = args.optimizer.optimizer_opts.toDict() if args.optimizer.optimizer_opts else None
+    schedule_opts = args.optimizer.schedule_opts.toDict() if args.optimizer.schedule_opts else None
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
         learning_rate=args.optimizer.learning_rate,
@@ -108,7 +107,24 @@ def run_experiment(args):
         device=device
     )
 
+    model_name = (
+        f"{model.language_model.name}-{model.language_model.language}-{args.task.name}"
+    )
+
+    # An early stopping instance can be used to save the model that performs best on the dev set
+    # according to some metric and stop training when no improvement is happening for some iterations.
+    if "early_stopping" in args:
+        early_stopping = EarlyStopping(
+            metric=args.task.metric,
+            mode=args.early_stopping.mode,
+            save_dir=Path(f"{args.general.output_dir}/{model_name}_early_stopping"),  # where to save the best model
+            patience=args.early_stopping.patience    # number of evaluations to wait for improvement before terminating the training
+        )
+    else:
+        early_stopping = None
+
     trainer = Trainer(
+        model=model,
         optimizer=optimizer,
         data_silo=data_silo,
         epochs=args.parameter.epochs,
@@ -119,13 +135,11 @@ def run_experiment(args):
         lr_schedule=lr_schedule,
         evaluate_every=args.logging.eval_every,
         device=device,
+        early_stopping=early_stopping
     )
 
-    model = trainer.train(model)
+    model = trainer.train()
 
-    model_name = (
-        f"{model.language_model.name}-{model.language_model.language}-{args.task.name}"
-    )
     processor.save(Path(f"{args.general.output_dir}/{model_name}"))
     model.save(Path(f"{args.general.output_dir}/{model_name}"))
 
