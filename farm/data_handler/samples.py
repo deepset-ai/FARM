@@ -11,7 +11,7 @@ class SampleBasket:
     is needed for tasks like question answering where the source text can generate multiple input - label
     pairs."""
 
-    def __init__(self, id: str, raw: dict, external_id=None, samples=None):
+    def __init__(self, id_internal: str, raw: dict, id_external=None, samples=None):
         """
         :param id: A unique identifying id. Used for identification within FARM.
         :type id: str
@@ -22,8 +22,8 @@ class SampleBasket:
         :param samples: An optional list of Samples used to populate the basket at initialization.
         :type samples: Sample
         """
-        self.id = id
-        self.external_id = external_id
+        self.id_internal = id_internal
+        self.id_external = id_external
         self.raw = raw
         self.samples = samples
 
@@ -91,27 +91,6 @@ class Sample(object):
         return s
 
 
-class Squad_cleartext:
-    def __init__(
-        self,
-        qas_id,
-        question_text,
-        doc_tokens,
-        orig_answer_text,
-        start_position,
-        end_position,
-        is_impossible,
-    ):
-
-        self.qas_id = qas_id
-        self.question_text = question_text
-        self.doc_tokens = doc_tokens
-        self.orig_answer_text = orig_answer_text
-        self.start_position = start_position
-        self.end_position = end_position
-        self.is_impossible = is_impossible
-
-
 def create_sample_one_label_one_text(raw_data, text_index, label_index, basket_id):
 
     # text = " ".join(raw_data[text_index:])
@@ -127,78 +106,6 @@ def create_sample_ner(split_text, label, basket_id):
     label = label
 
     return [Sample(id=basket_id + "-0", clear_text={"text": text, "label": label})]
-
-
-# TODO Remove - This has been superceded by create_samples_qa which can handle both Squad and Natural Questions
-# def create_samples_squad(dictionary, max_query_len, max_seq_len, doc_stride, n_special_tokens):
-#     """
-#     This method will split question-document pairs from the SampleBasket into question-passage pairs which will
-#     each form one sample. The "t" and "c" in variables stand for token and character respectively.
-#     """
-#
-#     # Initialize some basic variables
-#     # is_training = check_if_training(dictionary)
-#     question_tokens = dictionary["question_tokens"][:max_query_len]
-#     question_len_t = len(question_tokens)
-#     question_offsets = dictionary["question_offsets"]
-#     doc_tokens = dictionary["document_tokens"]
-#     doc_offsets = dictionary["document_offsets"]
-#     doc_text = dictionary["document_text"]
-#     doc_start_of_word = dictionary["document_start_of_word"]
-#     samples = []
-#
-#     # Calculate the number of tokens that can be reserved for the passage. This is calculated by considering
-#     # the max_seq_len, the number of tokens in the question and the number of special tokens that will be added
-#     # when the question and passage are joined (e.g. [CLS] and [SEP])
-#     passage_len_t = max_seq_len - question_len_t - n_special_tokens
-#
-#     # Perform chunking of document into passages. The sliding window moves in steps of doc_stride.
-#     # passage_spans is a list of dictionaries where each defines the start and end of each passage
-#     # on both token and character level
-#     passage_spans = chunk_into_passages(doc_offsets,
-#                                         doc_stride,
-#                                         passage_len_t,
-#                                         doc_text)
-#     for passage_span in passage_spans:
-#         # Unpack each variable in the dictionary. The "_t" and "_c" indicate
-#         # whether the index is on the token or character level
-#         passage_start_t = passage_span["passage_start_t"]
-#         passage_end_t = passage_span["passage_end_t"]
-#         passage_start_c = passage_span["passage_start_c"]
-#         passage_end_c = passage_span["passage_end_c"]
-#         passage_id = passage_span["passage_id"]
-#
-#         # passage_offsets will be relative to the start of the passage (i.e. they will start at 0)
-#         # TODO: Is passage offsets actually needed? At this point, maybe we only care about token level
-#         passage_offsets = doc_offsets[passage_start_t: passage_end_t]
-#         passage_start_of_word = doc_start_of_word[passage_start_t: passage_end_t]
-#         passage_offsets = [x - passage_offsets[0] for x in passage_offsets]
-#         passage_tokens = doc_tokens[passage_start_t: passage_end_t]
-#         passage_text = dictionary["document_text"][passage_start_c: passage_end_c]
-#
-#         # Deal with the potentially many answers (e.g. Squad dev set)
-#         answers_clear, answers_tokenized = process_answers(dictionary["answers"],
-#                                                            doc_offsets,
-#                                                            passage_start_c,
-#                                                            passage_start_t)
-#
-#         clear_text = {"passage_text": passage_text,
-#                       "question_text": dictionary["question_text"],
-#                       "passage_id": passage_id,
-#                       "answers": answers_clear,
-#                       "answer_type": dictionary["answer_type"]}
-#         tokenized = {"passage_start_t": passage_start_t,
-#                      "passage_tokens": passage_tokens,
-#                      "passage_offsets": passage_offsets,
-#                      "passage_start_of_word": passage_start_of_word,
-#                      "question_tokens": question_tokens,
-#                      "question_offsets": question_offsets,
-#                      "question_start_of_word": dictionary["question_start_of_word"][:max_query_len],
-#                      "answers": answers_tokenized}
-#         samples.append(Sample(id=passage_id,
-#                               clear_text=clear_text,
-#                               tokenized=tokenized))
-#     return samples
 
 
 def process_answers(answers, doc_offsets, passage_start_c, passage_start_t):
@@ -350,10 +257,3 @@ def offset_to_token_idx(token_offsets, ch_idx):
     for i in range(n_tokens):
         if (i + 1 == n_tokens) or (token_offsets[i] <= ch_idx < token_offsets[i + 1]):
             return i
-
-
-def check_if_training(dictionary):
-    if "is_impossible" in dictionary:
-        return True
-    return False
-
