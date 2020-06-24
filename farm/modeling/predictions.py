@@ -1,11 +1,16 @@
-from farm.utils import span_to_string
+from abc import ABC
 from typing import List, Any
+import logging
 
-class Pred:
+from farm.utils import span_to_string
+
+logger = logging.getLogger(__name__)
+
+class Pred(ABC):
     """
-    Base class for predictions of every task. Note that it inherits from pydantic.BaseModel which creates an
-    __init__() with the attributes defined in this class (i.e. id, prediction, context)
+    Base Abstract Class for predictions of every task.
     """
+
     def __init__(self,
                  id: str,
                  prediction: List[Any],
@@ -17,11 +22,13 @@ class Pred:
     def to_json(self):
         raise NotImplementedError
 
+
 class QACandidate:
     """
-    A single QA candidate answer. Note that it inherits from pydantic.BaseModel which builds the __init__() method.
+    A single QA candidate answer.
     See class definition to find list of compulsory and optional arguments and also comments on how they are used.
     """
+
     def __init__(self,
                  answer_type: str,
                  score: str,
@@ -94,13 +101,17 @@ class QACandidate:
 
     def add_answer(self, string):
         if string == "":
-            self.answer = "no_answer"
-            assert self.offset_answer_end == -1
-            assert self.offset_answer_start == -1
+            self.answer = "is_impossible"
+            if self.offset_answer_start != -1 or self.offset_answer_end != -1:
+                logger.error(f"Something went wrong in tokenization. We have start and end offsets: "
+                             f"{self.offset_answer_start, self.offset_answer_end} with an empty answer. "
+                             f"\nContext: {self.context}")
         else:
             self.answer = string
-            assert self.offset_answer_end >= 0
-            assert self.offset_answer_start >= 0
+            if self.offset_answer_start == -1 or self.offset_answer_end == -1:
+                logger.error(f"Something went wrong in tokenization. We have start and end offsets: "
+                             f"{self.offset_answer_start, self.offset_answer_end} with answer: {string}. "
+                             f"\nContext: {self.context}")
 
     def to_list(self):
         return [self.answer, self.offset_answer_start, self.offset_answer_end, self.score, self.passage_id]
@@ -109,13 +120,13 @@ class QACandidate:
 class QAPred(Pred):
     """Question Answering predictions for a passage or a document. The self.prediction attribute is populated by a
     list of QACandidate objects. Note that this object inherits from the Pred class which is why some of
-    the attributes are found in the Pred class and not here. Pred in turn inherits from pydantic.BaseModel
-    which creates an __init__() method. See class definition for required and optional arguments.
+    the attributes are found in the Pred class and not here.
+    See class definition for required and optional arguments.
     """
 
     def __init__(self,
                  id: str,
-                 prediction: List[Any],
+                 prediction: List[QACandidate],
                  context: str,
                  question: str,
                  token_offsets: List[int],
@@ -125,11 +136,12 @@ class QAPred(Pred):
                  ground_truth_answer: str =None,
                  no_answer_gap: float =None,
                  n_passages: int=None
+
                  ):
         super().__init__(id, prediction, context)
         self.question = question
         self.token_offsets = token_offsets
-        self.context_window_size = context_window_size #TODO only needed for to_json() - can we get rid context_window_size, TODO Do we really need this?
+        self.context_window_size = context_window_size  # TODO only needed for to_json() - can we get rid context_window_size, TODO Do we really need this?
         self.aggregation_level = aggregation_level
         self.answer_types = answer_types
         self.ground_truth_answer = ground_truth_answer
@@ -146,7 +158,7 @@ class QAPred(Pred):
                     "question_id": self.id,
                     "ground_truth": self.ground_truth_answer,
                     "answers": answers,
-                    "no_ans_gap": self.no_answer_gap # Add no_ans_gap to current no_ans_boost for switching top prediction
+                    "no_ans_gap": self.no_answer_gap, # Add no_ans_gap to current no_ans_boost for switching top prediction
                 }
             ],
         }
@@ -162,7 +174,9 @@ class QAPred(Pred):
             end_t = qa_candidate.offset_answer_end
 
             _, ans_start_ch, ans_end_ch = span_to_string(start_t, end_t, self.token_offsets, self.context)
-            context_string, context_start_ch, context_end_ch = self.create_context(ans_start_ch, ans_end_ch, self.context)
+            context_string, context_start_ch, context_end_ch = self.create_context(ans_start_ch,
+                                                                                   ans_end_ch,
+                                                                                   self.context)
             if squad:
                 if string == "no_answer":
                     string = ""
