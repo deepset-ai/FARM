@@ -16,7 +16,7 @@ from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
 
 from farm.data_handler.utils import is_json
-from farm.utils import convert_iob_to_simple_tags, span_to_string
+from farm.utils import convert_iob_to_simple_tags, span_to_string, try_get
 from farm.modeling.predictions import QACandidate, QAPred
 
 logger = logging.getLogger(__name__)
@@ -1143,16 +1143,16 @@ class QuestionAnsweringHead(PredictionHead):
                                                       answer_type="span",
                                                       offset_unit="token",
                                                       aggregation_level="passage",
-                                                      sample_idx=sample_idx))
+                                                      passage_id=sample_idx))
 
         no_answer_score = start_end_matrix[0, 0].item()
         top_candidates.append(QACandidate(offset_answer_start=0,
                                           offset_answer_end=0,
                                           score=no_answer_score,
-                                          answer_type="is_impossible",
+                                          answer_type="no_answer",
                                           offset_unit="token",
                                           aggregation_level="passage",
-                                          sample_idx=None))
+                                          passage_id=None))
 
         return top_candidates
 
@@ -1207,7 +1207,7 @@ class QuestionAnsweringHead(PredictionHead):
         assert logits is None, "Logits are not None, something is passed wrongly into formatted_preds() in infer.py"
         assert preds_p is not None, "No preds_p passed to formatted_preds()"
         samples = [s for b in baskets for s in b.samples]
-        ids = [s.id.split("-") for s in samples]
+        ids = [s.id for s in samples]
         passage_start_t = [s.features[0]["passage_start_t"] for s in samples]
         seq_2_start_t = [s.features[0]["seq_2_start_t"] for s in samples]
 
@@ -1233,37 +1233,18 @@ class QuestionAnsweringHead(PredictionHead):
 
         # Iterate over each set of document level prediction
         for pred_d, no_ans_gap, basket in zip(top_preds, no_ans_gaps, baskets):
-            # TODO the follow try catch is because of difference in Basket structure between NQ and SQuAD - resolve this!!!
-            # TODO This code is horrible - will be cleaned soon
 
-            # Unpack document offsets, clear text and squad_id
-            try:
-                token_offsets = basket.samples[0].tokenized["document_offsets"] # NQ style
-            except KeyError:
-                token_offsets = basket.raw["document_offsets"]                  # SQuAD style
+            # Unpack document offsets, clear text and id
+            token_offsets = basket.samples[0].tokenized["document_offsets"]
+            basket_id = basket.id_external if basket.id_external else basket.id_internal
 
-            try:
-                document_text = basket.raw["context"]       # SQuAD style
-            except KeyError:
-                try:
-                    document_text = basket.raw["text"] # NQ style
-                except KeyError:
-                    document_text = basket.raw["document_text"]
+            # These options reflect the different input dicts that can be assigned to the basket
+            # before any kind of normalization or preprocessing can happen
+            question_names = ["question_text", "qas", "questions"]
+            doc_names = ["document_text", "context", "text"]
 
-            try:
-                question = basket.raw["questions"][0]  # SQuAD style
-            except KeyError:
-                try:
-                    question = basket.raw["qas"][0]         # NQ style
-                except KeyError:
-                    question = basket.raw["question_text"]
-
-            try:
-                question_id = basket.raw["squad_id"]
-            except KeyError:
-                question_id = None # TODO add NQ id here
-
-            basket_id = basket.id
+            document_text = try_get(doc_names, basket.raw)
+            question = try_get(question_names, basket.raw)
 
             # Iterate over each prediction on the one document
             full_preds = []
@@ -1275,19 +1256,19 @@ class QuestionAnsweringHead(PredictionHead):
                                                 document_text)
                 qa_answer.add_answer(pred_str)
                 full_preds.append(qa_answer)
-            n_samples = full_preds[0].n_samples_in_doc
+            n_samples = full_preds[0].n_passages_in_doc
+
             curr_doc_pred = QAPred(id=basket_id,
                                    prediction=full_preds,
                                    context=document_text,
                                    question=question,
-                                   question_id=question_id,
                                    token_offsets=token_offsets,
                                    context_window_size=self.context_window_size,
                                    aggregation_level="document",
                                    answer_types=[],  # TODO
                                    no_answer_gap=no_ans_gap,
-                                   n_samples=n_samples
-            )
+                                   n_passages=n_samples
+                                   )
             ret.append(curr_doc_pred)
         return ret
 
@@ -1308,10 +1289,11 @@ class QuestionAnsweringHead(PredictionHead):
         all_basket_preds = {}
         all_basket_labels = {}
 
-        # Iterate over the preds of each sample
+        # Iterate over the preds of each sample - remove final number which is the sample id and not needed for aggregation
         for sample_idx in range(n_samples):
-            id_1, id_2, _ = ids[sample_idx]
-            basket_id = f"{id_1}-{id_2}"
+            basket_id = ids[sample_idx]
+            basket_id = basket_id.split("-")[:-1]
+            basket_id = "-".join(basket_id)
 
             # curr_passage_start_t is the token offset of the current passage
             # It will always be a multiple of doc_stride
@@ -1394,8 +1376,8 @@ class QuestionAnsweringHead(PredictionHead):
                                                         answer_type=qa_answer.answer_type,
                                                         offset_unit="token",
                                                         aggregation_level="passage",
-                                                        sample_idx=sample_idx,
-                                                        n_samples_in_doc=n_samples)
+                                                        passage_id=sample_idx,
+                                                        n_passages_in_doc=n_samples)
                                             )
 
         # TODO add switch for more variation in answers, e.g. if varied_ans then never return overlapping answers
@@ -1414,11 +1396,11 @@ class QuestionAnsweringHead(PredictionHead):
         no_answer_pred = QACandidate(offset_answer_start=-1,
                                      offset_answer_end=-1,
                                      score=best_overall_positive_score - no_ans_gap,
-                                     answer_type="is_impossible",
+                                     answer_type="no_answer",
                                      offset_unit="token",
                                      aggregation_level="document",
-                                     sample_idx=None,
-                                     n_samples_in_doc=n_samples)
+                                     passage_id=None,
+                                     n_passages_in_doc=n_samples)
 
         # Add no answer to positive answers, sort the order and return the n_best
         n_preds = [no_answer_pred] + pos_answer_dedup
@@ -1517,7 +1499,7 @@ class QuestionAnsweringHead(PredictionHead):
     @staticmethod
     def merge_formatted_preds(preds_all):
         """ Merges results from the two prediction heads used for NQ style QA. Takes the prediction from QA head and
-        assigns it the appropriate classification label. This mapping is achieved through sample_idx.
+        assigns it the appropriate classification label. This mapping is achieved through passage_id.
         preds_all should contain [QuestionAnsweringHead.formatted_preds(), TextClassificationHead()]. The first item
         of this list should be of len=n_documents while the second item should be of len=n_passages"""
 
@@ -1534,19 +1516,19 @@ class QuestionAnsweringHead(PredictionHead):
 
         cls_preds = preds_all[1][0]["predictions"]
         qa_preds = preds_all[0][0]
-        samples_per_doc = [doc_pred.n_samples for doc_pred in preds_all[0][0]]
+        samples_per_doc = [doc_pred.n_passages for doc_pred in preds_all[0][0]]
         cls_preds_grouped = chunk(cls_preds, samples_per_doc)
 
         for qa_doc_pred, cls_preds in zip(qa_preds, cls_preds_grouped):
             pred_qa_answers = qa_doc_pred.prediction
             pred_qa_answers_new = []
             for pred_qa_answer in pred_qa_answers:
-                sample_idx = pred_qa_answer.sample_idx
-                if sample_idx is not None:
-                    cls_pred = cls_preds[sample_idx]["label"]
-                # i.e. if is_impossible
+                passage_id = pred_qa_answer.passage_id
+                if passage_id is not None:
+                    cls_pred = cls_preds[passage_id]["label"]
+                # i.e. if no_answer
                 else:
-                    cls_pred = "is_impossible"
+                    cls_pred = "no_answer"
                 pred_qa_answer.add_cls(cls_pred)
                 pred_qa_answers_new.append(pred_qa_answer)
             qa_doc_pred.prediction = pred_qa_answers_new

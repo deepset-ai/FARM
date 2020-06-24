@@ -42,6 +42,7 @@ from farm.data_handler.utils import (
 )
 from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
 from farm.utils import MLFlowLogger as MlLogger
+from farm.utils import try_get
 
 
 logger = logging.getLogger(__name__)
@@ -283,7 +284,7 @@ class Processor(ABC):
             try:
                 basket.samples = self._dict_to_samples(dictionary=basket.raw, all_dicts=all_dicts)
                 for num, sample in enumerate(basket.samples):
-                     sample.id = f"{basket.id}-{num}"
+                     sample.id = f"{basket.id_internal}-{num}"
             except:
                 logger.error(f"Could not create sample(s) from this dict: \n {basket.raw}")
                 raise
@@ -308,7 +309,7 @@ class Processor(ABC):
         dataset, tensor_names = convert_features_to_dataset(features=features_flat)
         return dataset, tensor_names
 
-    def dataset_from_dicts(self, dicts, indices=None, rest_api_schema=False, return_baskets = False):
+    def dataset_from_dicts(self, dicts, indices=None, return_baskets = False):
         """
         Contains all the functionality to turn a list of dict objects into a PyTorch Dataset and a
         list of tensor names. This can be used for inference mode.
@@ -317,21 +318,15 @@ class Processor(ABC):
         :type dicts: list of dicts
         :return: a Pytorch dataset and a list of tensor names.
         """
-        if rest_api_schema:
-            id_prefix = "infer"
-        else:
-            id_prefix = "train"
         # We need to add the index (coming from multiprocessing chunks) to have a unique basket ID
-        if indices:
-            self.baskets = [
-                SampleBasket(raw=tr, id=f"{id_prefix}-{index}")
-                for (tr, index) in zip(dicts, indices)
-            ]
-        else:
-            self.baskets = [
-                SampleBasket(raw=tr, id=f"{id_prefix}-{i}")
-                for (i, tr) in enumerate(dicts)
-            ]
+
+        self.baskets = []
+        for id_internal, d in enumerate(dicts):
+            id_external = self._id_from_dict(d)
+            if indices:
+                id_internal = indices[id_internal]
+            self.baskets.append(SampleBasket(raw=d, id_external=id_external, id_internal=id_internal))
+
         self._init_samples_in_baskets()
         self._featurize_samples()
         if indices:
@@ -363,6 +358,21 @@ class Processor(ABC):
             value = getattr(self, name)
             params.update({name: str(value)})
         MlLogger.log_params(params)
+
+    @staticmethod
+    def _id_from_dict(d):
+        candidates = []
+        candidates.append(d.get("example_id", None))
+        candidates.append(d.get("external_id", None))
+        candidates = [x for x in candidates if x]
+        if len(candidates) == 0:
+            return None
+        elif len(candidates) == 1:
+            return candidates[0]
+        else:
+            raise Exception
+
+
 
 
 #########################################
@@ -1121,74 +1131,18 @@ class SquadProcessor(Processor):
 
     def _dicts_to_baskets(self, dicts, indices):
         # Perform tokenization on documents and questions resulting in an unnested list of doc-question pairs
-        dicts_tokenized = [self.apply_tokenization(d) for d in dicts]
+        dicts_tokenized = [apply_tokenization(d, self.tokenizer) for d in dicts]
 
         baskets = []
+
         for index, document in zip(indices, dicts_tokenized):
             for q_idx, raw in enumerate(document):
                 # In case of Question Answering the external ID is used for document IDs
-                basket = SampleBasket(raw=raw, id=f"{index}-{q_idx}", external_id=raw.get("document_id",None))
+                id_external = self._id_from_dict(raw)
+                id_internal = f"{index}-{q_idx}"
+                basket = SampleBasket(raw=raw, id_internal=id_internal, id_external=id_external)
                 baskets.append(basket)
         return baskets
-
-
-    def apply_tokenization(self, dictionary):
-        """ This performs tokenization on all documents and questions. The result is a list (unnested)
-        where each entry is a dictionary for one document-question pair (potentially mutliple answers). """
-
-        raw_baskets = []
-        dictionary = convert_qa_input_dict(dictionary)
-        document_text = dictionary["context"]
-        document_id = dictionary.get("document_id",None)
-
-        document_tokenized = tokenize_with_metadata(document_text, self.tokenizer)
-        document_start_of_word = [int(x) for x in document_tokenized["start_of_word"]]
-        questions = dictionary["qas"]
-        for question in questions:
-            answers = []
-            # For training and dev where labelled samples are read in from a SQuAD style file
-            try:
-                squad_id = question["id"]
-                question_text = question["question"]
-                for answer in question["answers"]:
-                    if answer["text"] == "":
-                        answer_type = "is_impossible"
-                    else:
-                        answer_type = "span"
-                    a = {"text": answer["text"],
-                         "offset": answer["answer_start"],
-                         "answer_type": answer_type}
-                    answers.append(a)
-            # For inference where samples are read in as dicts without an id or answers
-            except TypeError:
-                squad_id = None
-                question_text = question
-            question_tokenized = tokenize_with_metadata(question_text, self.tokenizer)
-            question_start_of_word = [int(x) for x in question_tokenized["start_of_word"]]
-
-            # TODO for Squad and NQ, answer_type should be paired with the question and not the passage
-            # TODO make this change for both processors
-            if "is_impossible" not in question:
-                answer_type = "span"
-            else:
-                if question["is_impossible"]:
-                    answer_type = "is_impossible"
-                else:
-                    answer_type = "span"
-            raw = {"document_text": document_text,
-                   "document_tokens": document_tokenized["tokens"],
-                   "document_offsets": document_tokenized["offsets"],
-                   "document_start_of_word": document_start_of_word,
-                   "document_id": document_id,
-                   "question_text": question_text,
-                   "question_tokens": question_tokenized["tokens"],
-                   "question_offsets": question_tokenized["offsets"],
-                   "question_start_of_word": question_start_of_word,
-                   "answers": answers,
-                   "answer_type": answer_type,
-                   "squad_id": squad_id}
-            raw_baskets.append(raw)
-        return raw_baskets
 
     def file_to_dicts(self, file: str) -> [dict]:
         nested_dicts = read_squad_file(filename=file)
@@ -1226,14 +1180,14 @@ class NaturalQuestionsProcessor(Processor):
         doc_stride=128,
         max_query_length=64,
         proxies=None,
-        keep_is_impossible=0.02,
+        keep_no_answer=0.02,
         downsample_context_size=None,
         inference=False,
         **kwargs):
         """
         Deals with all the preprocessing steps needed for Natural Questions. Follows Alberti 2019 et al. (https://arxiv.org/abs/1901.08634)
         in merging multiple disjoint short answers into the one longer label span and also by downsampling
-        samples of is_impossible during training
+        samples of no_answer during training
 
         :param tokenizer: Used to split a sentence (str) into tokens.
         :param max_seq_len: Samples are truncated after this many tokens.
@@ -1257,14 +1211,14 @@ class NaturalQuestionsProcessor(Processor):
         :type doc_stride: int
         :param max_query_length: Maximum length of the question (in number of subword tokens)
         :type max_query_length: int
-        :param keep_is_impossible: The probability that a sample with an is_impossible label is kept
-                                    (0.0 < keep_is_impossible <= 1.0). Only works if inference is False
-        :type keep_is_impossible: float
+        :param keep_no_answer: The probability that a sample with an no_answer label is kept
+                                    (0.0 < keep_no_answer <= 1.0). Only works if inference is False
+        :type keep_no_answer: float
         :param downsample_context_size: Downsampling before any data conversion by taking a short text window of size
                                         downsample_context_size around the long answer span. To disable set to None
         :type downsample_context_size: int
         :param inference: Whether we are currently using the Processsor for model inference. If True, the
-                          keep_is_impossible will be overridden and set to 1
+                          keep_no_answer will be overridden and set to 1
         :type inference: bool
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
@@ -1274,11 +1228,11 @@ class NaturalQuestionsProcessor(Processor):
 
         # These are classification labels from Natural Questions. Note that in this implementation, we are merging
         # the "long_answer" and "short_answer" labels into the one "span" label
-        self.answer_type_list = ["is_impossible", "span", "yes", "no"]
+        self.answer_type_list = ["no_answer", "span", "yes", "no"]
 
         self.doc_stride = doc_stride
         self.max_query_length = max_query_length
-        self.keep_is_impossible = keep_is_impossible
+        self.keep_no_answer = keep_no_answer
         self.downsample_context_size = downsample_context_size
         self.inference = inference
 
@@ -1318,26 +1272,26 @@ class NaturalQuestionsProcessor(Processor):
         if not self.inference:
             dictionary = self.prepare_dict(dictionary=dictionary)
 
-        dictionary_tokenized = self.apply_tokenization(dictionary)[0]
+        dictionary_tokenized = apply_tokenization(dictionary, self.tokenizer)[0]
         n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
         samples = create_samples_qa(dictionary_tokenized,
                                     self.max_query_length,
                                     self.max_seq_len,
                                     self.doc_stride,
                                     n_special_tokens)
-        # Downsample the number of samples with an is_impossible label. This fn will always return at least one sample
+        # Downsample the number of samples with an no_answer label. This fn will always return at least one sample
         # so that we don't end up with a basket with 0 samples
         if not self.inference:
-            samples = self.downsample(samples, self.keep_is_impossible)
+            samples = self.downsample(samples, self.keep_no_answer)
         return samples
 
     def downsample(self, samples, keep_prob):
-        # Downsamples samples with a is_impossible label (since there is an overrepresentation of these in NQ)
+        # Downsamples samples with a no_answer label (since there is an overrepresentation of these in NQ)
         # This method will always return at least one sample. This is done so that we don't end up with SampleBaskets
         # with 0 samples
         ret = []
         for s in samples:
-            if self.check_is_impossible(s):
+            if self.check_no_answer_sample(s):
                 if random_float() > 1 - keep_prob:
                     ret.append(s)
             else:
@@ -1345,21 +1299,6 @@ class NaturalQuestionsProcessor(Processor):
         if len(ret) == 0:
             ret = [random.choice(samples)]
         return ret
-
-    @staticmethod
-    def check_is_impossible(sample):
-        sample_tok = sample.tokenized
-        if len(sample_tok["answers"]) == 0:
-            return True
-        first_answer = sample_tok["answers"][0]
-        if first_answer["start_t"] < sample_tok["passage_start_t"]:
-            return True
-        if first_answer["end_t"] > sample_tok["passage_start_t"] + len(sample_tok["passage_tokens"]):
-            return True
-        if first_answer["answer_type"] == "is_impossible":
-            return True
-        else:
-            return False
 
     def downsample_unprocessed(self, dictionary):
         doc_text = dictionary["document_text"]
@@ -1405,7 +1344,7 @@ class NaturalQuestionsProcessor(Processor):
     def prepare_dict(self, dictionary):
         """ Casts a Natural Questions dictionary that is loaded from a jsonl file into SQuAD format so that
         the same featurization functions can be called for both tasks. Each annotation can be one of four answer types,
-        ["yes", "no", "span", "is_impossible"]"""
+        ["yes", "no", "span", "no_answer"]"""
 
         if self.downsample_context_size is not None:
             dictionary = self.downsample_unprocessed(dictionary)
@@ -1422,12 +1361,12 @@ class NaturalQuestionsProcessor(Processor):
                                                             annotation["long_answer"]["end_token"],
                                                             tok_to_ch,
                                                             doc_text)
-            # Picks the span to be considered as annotation by choosing between short answer, long answer and is_impossible
+            # Picks the span to be considered as annotation by choosing between short answer, long answer and no_answer
             text, start_c = self.choose_span(sa_text, sa_start_c, la_text, la_start_c)
             converted_answers.append({"text": text,
                                       "answer_start": start_c})
         if len(converted_answers) == 0:
-            answer_type = "is_impossible"
+            answer_type = "no_answer"
         else:
             answer_type = dictionary["annotations"][0]["yes_no_answer"].lower()
             if answer_type == "none":
@@ -1449,6 +1388,21 @@ class NaturalQuestionsProcessor(Processor):
                 return False
         else:
             return True
+
+    @staticmethod
+    def check_no_answer_sample(sample):
+        sample_tok = sample.tokenized
+        if len(sample_tok["answers"]) == 0:
+            return True
+        first_answer = sample_tok["answers"][0]
+        if first_answer["start_t"] < sample_tok["passage_start_t"]:
+            return True
+        if first_answer["end_t"] > sample_tok["passage_start_t"] + len(sample_tok["passage_tokens"]):
+            return True
+        if first_answer["answer_type"] == "no_answer":
+            return True
+        else:
+            return False
 
     def retrieve_long_answer(self, start_t, end_t, tok_to_ch, doc_text):
         """ Retrieves the string long answer and also its starting character index"""
@@ -1496,63 +1450,6 @@ class NaturalQuestionsProcessor(Processor):
             span = doc_text[:next_word_start_c].strip()
             end_c = len(span)
         return start_c, end_c
-
-    def apply_tokenization(self, dictionary):
-        """ This performs tokenization on all documents and questions. The result is a list
-        where each entry is a dictionary for one document-question pair (potentially mutliple answers). This is based on
-        the apply_tokenization method of SquadProcessor but slightly modified.
-
-        TODO: See if this can be merged with SquadProcessor.apply_tokenization()"""
-
-        raw_baskets = []
-        # Input dictionaries can have ["context", "qas"] (SQuAD format) as keys or
-        # ["text", "questions"] (FARM format). Both are supported
-        dictionary = convert_qa_input_dict(dictionary)
-        document_text = dictionary["context"]
-        document_id = dictionary.get("document_id", None)
-
-        document_tokenized = tokenize_with_metadata(document_text, self.tokenizer)
-        document_start_of_word = [int(x) for x in document_tokenized["start_of_word"]]
-        questions = dictionary["qas"]
-        for question in questions:
-            answers = []
-            # For training and dev with labelled examples
-            try:
-                nq_id = question["id"]
-                question_text = question["question"]
-                for answer in question["answers"]:
-                    a = {"text": answer["text"],
-                         "offset": answer["answer_start"],
-                         "answer_type": question["answer_type"]}
-                    answers.append(a)
-            # For inference where samples are read in without an id or answers
-            except TypeError:
-                nq_id = None
-                question_text = question
-            question_tokenized = tokenize_with_metadata(question_text, self.tokenizer)
-            question_start_of_word = [int(x) for x in question_tokenized["start_of_word"]]
-
-            # TODO compare data format with Squad to explain what this section is doing exactly
-            # TODO suspect that this might not be right for NQ
-            if "is_impossible" not in question:
-                answer_type = "span"
-            else:
-                answer_type = question["is_impossible"]
-
-            raw = {"document_text": document_text,
-                   "document_tokens": document_tokenized["tokens"],
-                   "document_offsets": document_tokenized["offsets"],
-                   "document_start_of_word": document_start_of_word,
-                   "document_id": document_id,
-                   "question_text": question_text,
-                   "question_tokens": question_tokenized["tokens"],
-                   "question_offsets": question_tokenized["offsets"],
-                   "question_start_of_word": question_start_of_word,
-                   "answers": answers,
-                   "answer_type": answer_type,
-                   "nq_id": nq_id}
-            raw_baskets.append(raw)
-        return raw_baskets
 
     def _sample_to_features(self, sample: Sample) -> dict:
         features = sample_to_features_qa(sample=sample,
@@ -1711,3 +1608,72 @@ class RegressionProcessor(Processor):
             tokenizer=self.tokenizer
         )
         return features
+
+
+def apply_tokenization(dictionary, tokenizer):
+    raw_baskets = []
+    dictionary = convert_qa_input_dict(dictionary)
+    dictionary["qas"] = is_impossible_to_answer_type(dictionary["qas"])
+    document_text = dictionary["context"]
+
+    document_tokenized = tokenize_with_metadata(document_text, tokenizer)
+    document_start_of_word = [int(x) for x in document_tokenized["start_of_word"]]
+    questions = dictionary["qas"]
+    for question in questions:
+        answers = []
+        # For training and dev with labelled examples
+        try:
+            external_id = question["id"]
+            question_text = question["question"]
+            for answer in question["answers"]:
+                if answer["text"] == "":
+                    answer_type = "no_answer"
+                else:
+                    answer_type = "span"
+                a = {"text": answer["text"],
+                     "offset": answer["answer_start"],
+                     "answer_type": answer_type}
+                answers.append(a)
+        # For inference where samples are read in as dicts without an id or answers
+        except TypeError:
+            external_id = try_get(["example_id", "external_id"], dictionary)
+            question_text = question
+
+        question_tokenized = tokenize_with_metadata(question_text, tokenizer)
+        question_start_of_word = [int(x) for x in question_tokenized["start_of_word"]]
+
+        # During inference, there is no_answer type. Also, question might be a str instead of a dict
+        if type(question) == str:
+            answer_type = None
+        elif type(question) == dict:
+            answer_type = question.get("answer_type", None)
+        else:
+            raise Exception("Question was neither in str nor dict format")
+
+        raw = {"document_text": document_text,
+               "document_tokens": document_tokenized["tokens"],
+               "document_offsets": document_tokenized["offsets"],
+               "document_start_of_word": document_start_of_word,
+               "question_text": question_text,
+               "question_tokens": question_tokenized["tokens"],
+               "question_offsets": question_tokenized["offsets"],
+               "question_start_of_word": question_start_of_word,
+               "answers": answers,
+               "answer_type": answer_type,
+               "external_id": external_id}
+        raw_baskets.append(raw)
+    return raw_baskets
+
+
+def is_impossible_to_answer_type(qas):
+    """ Converts questions from having an is_impossible field to having an answer_type field"""
+    new_qas = []
+    for q in qas:
+        answer_type = "span"
+        if "is_impossible" in q:
+            if q["is_impossible"] == True:
+                answer_type = "no_answer"
+            del q["is_impossible"]
+            q["answer_type"] = answer_type
+        new_qas.append(q)
+    return new_qas

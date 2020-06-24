@@ -12,9 +12,7 @@ from farm.data_handler.samples import Sample
 from farm.data_handler.utils import (
     expand_labels,
     pad,
-    mask_random_words,
-    convert_id
-)
+    mask_random_words)
 from farm.modeling.tokenization import insert_at_special_tokens_pos
 
 logger = logging.getLogger(__name__)
@@ -323,7 +321,7 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, answer_type_list=None,
     passage_start_of_word = sample.tokenized["passage_start_of_word"]
     passage_len_t = len(passage_tokens)
     answers = sample.tokenized["answers"]
-    sample_id = convert_id(sample.id)
+    sample_id = [int(x) for x in sample.id.split("-")]
 
     # Generates a numpy array of shape (max_answers, 2) where (i, 2) indexes into the start and end indices
     # of the ith answer. The array is filled with -1 since the number of answers is often less than max_answers
@@ -392,10 +390,10 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, answer_type_list=None,
                     "padding_mask": padding_mask,
                     "segment_ids": segment_ids,
                     "answer_type_ids": answer_types,
-                    "id": sample_id,
                     "passage_start_t": passage_start_t,
                     "start_of_word": start_of_word,
                     "labels": labels,
+                    "id": sample_id,
                     "seq_2_start_t": seq_2_start_t}
     return [feature_dict]
 
@@ -409,7 +407,7 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
     When the answer is not fully contained in the passage, or the question
     is impossible to answer, the start_idx and end_idx are 0 i.e. start and end are on the very first token
     (in most models, this is the [CLS] token). Note that in our implementation NQ has 4 labels
-    ["is_impossible", "yes", "no", "span"] and this is what answer_type_list should look like"""
+    ["no_answer", "yes", "no", "span"] and this is what answer_type_list should look like"""
 
     label_idxs = np.full((max_answers, 2), fill_value=-1)
     answer_types = np.full((max_answers), fill_value=-1)
@@ -454,12 +452,12 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
         start_label_present = 1 in start_vec
         end_label_present = 1 in end_vec
 
-        # This is triggered if the answer is not in the passage or the question is_impossible
+        # This is triggered if the answer is not in the passage or the question warrants a no_answer
         # In both cases, the token at idx=0 (in BERT, this is the [CLS] token) is given both the start and end label
         if start_label_present is False and end_label_present is False:
             start_vec[0] = 1
             end_vec[0] = 1
-            answer_type = "is_impossible"
+            answer_type = "no_answer"
         elif start_label_present is False or end_label_present is False:
             raise Exception("The label vectors are lacking either a start or end label")
 
@@ -474,7 +472,7 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
         label_idxs[i, 1] = end_idx
 
         # Only Natural Questions trains a classification head on answer_type, SQuAD only has the QA head. answer_type_list
-        # will be None for SQuAD but something like ["is_impossible", "span", "yes", "no"] for Natural Questions
+        # will be None for SQuAD but something like ["no_answer", "span", "yes", "no"] for Natural Questions
         if answer_type_list:
             answer_types[i] = answer_type_list.index(answer_type)
 
@@ -526,138 +524,6 @@ def get_camembert_seq_2_start(input_ids):
     first_backslash_s = input_ids.index(6)
     second_backslash_s = input_ids.index(6, first_backslash_s + 1)
     return second_backslash_s + 1
-
-def sample_to_features_squadOLD(
-    sample, tokenizer, max_seq_len, doc_stride, max_query_length, tasks,
-):
-    sample.clear_text = DotMap(sample.clear_text, _dynamic=False)
-    is_training = sample.clear_text.is_training
-
-    unique_id = 1000000000
-    features = []
-
-    query_tokens = tokenizer.tokenize(sample.clear_text.question_text)
-
-    if len(query_tokens) > max_query_length:
-        query_tokens = query_tokens[0:max_query_length]
-
-    tok_to_orig_index = []
-    orig_to_tok_index = []
-    all_doc_tokens = []
-    for (i, token) in enumerate(sample.clear_text.doc_tokens):
-        orig_to_tok_index.append(len(all_doc_tokens))
-        sub_tokens = tokenizer.tokenize(token)
-        for sub_token in sub_tokens:
-            tok_to_orig_index.append(i)
-            all_doc_tokens.append(sub_token)
-
-    tok_start_position = None
-    tok_end_position = None
-    if is_training and sample.clear_text.is_impossible:
-        tok_start_position = -1
-        tok_end_position = -1
-    if is_training and not sample.clear_text.is_impossible:
-        tok_start_position = orig_to_tok_index[sample.clear_text.start_position]
-        if sample.clear_text.end_position < len(sample.clear_text.doc_tokens) - 1:
-            tok_end_position = orig_to_tok_index[sample.clear_text.end_position + 1] - 1
-        else:
-            tok_end_position = len(all_doc_tokens) - 1
-        (tok_start_position, tok_end_position) = _SQUAD_improve_answer_span(
-            all_doc_tokens,
-            tok_start_position,
-            tok_end_position,
-            tokenizer,
-            sample.clear_text.orig_answer_text,
-        )
-
-    # The -3 accounts for [CLS], [SEP] and [SEP]
-    max_tokens_for_doc = max_seq_len - len(query_tokens) - 3
-
-    # We can have documents that are longer than the maximum sequence length.
-    # To deal with this we do a sliding window approach, where we take chunks
-    # of the up to our max length with a stride of `doc_stride`.
-    _DocSpan = collections.namedtuple(  # pylint: disable=invalid-name
-        "DocSpan", ["start", "length"]
-    )
-    doc_spans = []
-    start_offset = 0
-    while start_offset < len(all_doc_tokens):
-        length = len(all_doc_tokens) - start_offset
-        if length > max_tokens_for_doc:
-            length = max_tokens_for_doc
-        doc_spans.append(_DocSpan(start=start_offset, length=length))
-        if start_offset + length == len(all_doc_tokens):
-            break
-        start_offset += min(length, doc_stride)
-
-    for (doc_span_index, doc_span) in enumerate(doc_spans):
-        tokens = []
-        segment_ids = []
-        tokens.append("[CLS]")
-        segment_ids.append(0)
-        for token in query_tokens:
-            tokens.append(token)
-            segment_ids.append(0)
-        tokens.append("[SEP]")
-        segment_ids.append(0)
-
-        for i in range(doc_span.length):
-            split_token_index = doc_span.start + i
-            tokens.append(all_doc_tokens[split_token_index])
-            segment_ids.append(1)
-        tokens.append("[SEP]")
-        segment_ids.append(1)
-
-        input_ids = tokenizer.convert_tokens_to_ids(tokens)
-
-        # The mask has 1 for real tokens and 0 for padding tokens. Only real
-        # tokens are attended to.
-        padding_mask = [1] * len(input_ids)
-
-        # Zero-pad up to the sequence length.
-        while len(input_ids) < max_seq_len:
-            input_ids.append(0)
-            padding_mask.append(0)
-            segment_ids.append(0)
-
-        assert len(input_ids) == max_seq_len
-        assert len(padding_mask) == max_seq_len
-        assert len(segment_ids) == max_seq_len
-
-        start_position = 0
-        end_position = 0
-        if is_training and not sample.clear_text.is_impossible:
-            # For training, if our document chunk does not contain an annotation
-            # we keep it but set the start and end position to unanswerable
-            doc_start = doc_span.start
-            doc_end = doc_span.start + doc_span.length - 1
-            out_of_span = False
-            if not (tok_start_position >= doc_start and tok_end_position <= doc_end):
-                out_of_span = True
-            if out_of_span:
-                start_position = 0
-                end_position = 0
-            else:
-                doc_offset = len(query_tokens) + 2
-                start_position = tok_start_position - doc_start + doc_offset
-                end_position = tok_end_position - doc_start + doc_offset
-        if is_training and sample.clear_text.is_impossible:
-            start_position = 0
-            end_position = 0
-
-        inp_feat = {}
-        inp_feat["input_ids"] = input_ids
-        inp_feat["padding_mask"] = padding_mask  # attention_mask
-        inp_feat["segment_ids"] = segment_ids  # token_type_ids
-        inp_feat["start_position"] = start_position
-        inp_feat["end_position"] = end_position
-        inp_feat["is_impossible"] = sample.clear_text.is_impossible
-        inp_feat["sample_id"] = sample.id
-        inp_feat["passage_shift"] = doc_span.start
-        features.append(inp_feat)
-        unique_id += 1
-
-    return features
 
 
 def _SQUAD_improve_answer_span(

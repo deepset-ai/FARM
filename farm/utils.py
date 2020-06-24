@@ -448,3 +448,13 @@ def span_to_string(start_t, end_t, token_offsets, clear_text):
     else:
         end_ch = token_offsets[end_t]
     return clear_text[start_ch: end_ch].strip(), start_ch, end_ch
+
+
+def try_get(keys, dictionary):
+    for key in keys:
+        if key in dictionary:
+            ret = dictionary[key]
+            if type(ret) == list:
+                ret = ret[0]
+            return ret
+    return None
