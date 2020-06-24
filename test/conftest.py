@@ -23,7 +23,7 @@ def pytest_generate_tests(metafunc):
             metafunc.parametrize("use_gpu", [False], scope="session")
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture()
 def adaptive_model_qa(use_gpu, num_processes):
     """
     PyTest Fixture for a Question Answering Inferencer based on PyTorch.
