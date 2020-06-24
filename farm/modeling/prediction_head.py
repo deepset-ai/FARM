@@ -1,22 +1,19 @@
-import itertools
 import json
 import logging
 import os
 import numpy as np
-import pandas as pd
-from scipy.special import expit, softmax
-import tqdm
+
 from pathlib import Path
 import torch
 from transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN
 from transformers.modeling_auto import AutoModelForQuestionAnswering, AutoModelForTokenClassification, AutoModelForSequenceClassification
-from transformers.configuration_auto import AutoConfig
+from typing import List
 
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
 
 from farm.data_handler.utils import is_json
-from farm.utils import convert_iob_to_simple_tags, span_to_string, try_get
+from farm.utils import convert_iob_to_simple_tags, try_get
 from farm.modeling.predictions import QACandidate, QAPred
 
 logger = logging.getLogger(__name__)
@@ -1243,14 +1240,11 @@ class QuestionAnsweringHead(PredictionHead):
 
             # Iterate over each prediction on the one document
             full_preds = []
-            for qa_answer, basket in zip(pred_d, baskets):
-                # This should be a method of Span
-                pred_str, _, _ = span_to_string(qa_answer.offset_answer_start,
-                                                qa_answer.offset_answer_end,
-                                                token_offsets,
-                                                document_text)
-                qa_answer.add_answer(pred_str)
-                full_preds.append(qa_answer)
+            for qa_candidate, basket in zip(pred_d, baskets):
+                pred_str, _, _ = qa_candidate.span_to_string(token_offsets,
+                                                             document_text)
+                qa_candidate.add_answer(pred_str)
+                full_preds.append(qa_candidate)
             n_samples = full_preds[0].n_passages_in_doc
 
             pred_id = basket.id_external if basket.id_external else basket.id_internal
@@ -1365,15 +1359,15 @@ class QuestionAnsweringHead(PredictionHead):
         # Get all predictions in flattened list and sort by score
         pos_answers_flat = []
         for sample_idx, passage_preds in enumerate(preds):
-            for qa_answer in passage_preds:
-                if not (qa_answer.offset_answer_start == -1 and qa_answer.offset_answer_end == -1):
-                    pos_answers_flat.append(QACandidate(offset_answer_start=qa_answer.offset_answer_start,
-                                                        offset_answer_end=qa_answer.offset_answer_end,
-                                                        score=qa_answer.score,
-                                                        answer_type=qa_answer.answer_type,
+            for qa_candidate in passage_preds:
+                if not (qa_candidate.offset_answer_start == -1 and qa_candidate.offset_answer_end == -1):
+                    pos_answers_flat.append(QACandidate(offset_answer_start=qa_candidate.offset_answer_start,
+                                                        offset_answer_end=qa_candidate.offset_answer_end,
+                                                        score=qa_candidate.score,
+                                                        answer_type=qa_candidate.answer_type,
                                                         offset_unit="token",
                                                         aggregation_level="passage",
-                                                        passage_id=sample_idx,
+                                                        passage_id=str(sample_idx),
                                                         n_passages_in_doc=n_samples)
                                             )
 
@@ -1384,7 +1378,7 @@ class QuestionAnsweringHead(PredictionHead):
         no_ans_gap = -min([nas - pbs for nas, pbs in zip(no_answer_scores, passage_best_score)])
 
         # "no answer" scores and positive answers scores are difficult to compare, because
-        # + a positive answer score is related to a specific text qa_answer
+        # + a positive answer score is related to a specific text qa_candidate
         # - a "no answer" score is related to all input texts
         # Thus we compute the "no answer" score relative to the best possible answer and adjust it by
         # the most significant difference between scores.

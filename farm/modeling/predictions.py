@@ -1,12 +1,10 @@
-from farm.utils import span_to_string
 from typing import List, Any
 from abc import ABC
 
 
 class Pred(ABC):
     """
-    Base class for predictions of every task. Note that it inherits from pydantic.BaseModel which creates an
-    __init__() with the attributes defined in this class (i.e. id, prediction, context)
+    Abstract base class for predictions of every task
     """
     def __init__(self,
                  id: str,
@@ -21,8 +19,7 @@ class Pred(ABC):
 
 class QACandidate:
     """
-    A single QA candidate answer. Note that it inherits from pydantic.BaseModel which builds the __init__() method.
-    See class definition to find list of compulsory and optional arguments and also comments on how they are used.
+    A single QA candidate answer.
     """
     def __init__(self,
                  answer_type: str,
@@ -42,6 +39,7 @@ class QACandidate:
                  n_passages_in_doc: int=None,
                  passage_id: str=None,
                  ):
+
         # self.answer_type can be "no_answer", "yes", "no" or "span"
         self.answer_type = answer_type
         self.score = score
@@ -72,6 +70,34 @@ class QACandidate:
 
         self.n_passages_in_doc = n_passages_in_doc
         self.passage_id = passage_id
+
+    def span_to_string(self, token_offsets, clear_text):
+
+        start_t = self.offset_answer_start
+        end_t = self.offset_answer_end
+
+        # If it is a no_answer prediction
+        if start_t == -1 and end_t == -1:
+            return "", 0, 0
+
+        n_tokens = len(token_offsets)
+
+        # We do this to point to the beginning of the first token after the span instead of
+        # the beginning of the last token in the span
+        end_t += 1
+
+        # Predictions sometimes land on the very final special token of the passage. But there are no
+        # special tokens on the document level. We will just interpret this as a span that stretches
+        # to the end of the document
+        end_t = min(end_t, n_tokens)
+
+        start_ch = token_offsets[start_t]
+        # i.e. pointing at the END of the last token
+        if end_t == n_tokens:
+            end_ch = len(clear_text)
+        else:
+            end_ch = token_offsets[end_t]
+        return clear_text[start_ch: end_ch].strip(), start_ch, end_ch
 
     def add_cls(self, predicted_class: str):
         """
@@ -110,9 +136,7 @@ class QACandidate:
 
 class QAPred(Pred):
     """Question Answering predictions for a passage or a document. The self.prediction attribute is populated by a
-    list of QACandidate objects. Note that this object inherits from the Pred class which is why some of
-    the attributes are found in the Pred class and not here. Pred in turn inherits from pydantic.BaseModel
-    which creates an __init__() method. See class definition for required and optional arguments.
+    list of QACandidate objects.
     """
 
     def __init__(self,
@@ -160,10 +184,8 @@ class QAPred(Pred):
         # iterate over the top_n predictions of the one document
         for qa_candidate in self.prediction:
             string = qa_candidate.answer
-            start_t = qa_candidate.offset_answer_start
-            end_t = qa_candidate.offset_answer_end
 
-            _, ans_start_ch, ans_end_ch = span_to_string(start_t, end_t, self.token_offsets, self.context)
+            _, ans_start_ch, ans_end_ch = qa_candidate.span_to_string(self.token_offsets, self.context)
             context_string, context_start_ch, context_end_ch = self.create_context(ans_start_ch, ans_end_ch, self.context)
             if squad:
                 if string == "no_answer":
@@ -179,6 +201,7 @@ class QAPred(Pred):
                     "document_id": id}
             ret.append(curr)
         return ret
+
 
     def create_context(self, ans_start_ch, ans_end_ch, clear_text):
         if ans_start_ch == 0 and ans_end_ch == 0:
