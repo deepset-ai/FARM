@@ -1247,7 +1247,6 @@ class QuestionAnsweringHead(PredictionHead):
                 full_preds.append(qa_candidate)
             n_samples = full_preds[0].n_passages_in_doc
 
-
             curr_doc_pred = QAPred(id=pred_id,
                                    prediction=full_preds,
                                    context=document_text,
@@ -1255,10 +1254,8 @@ class QuestionAnsweringHead(PredictionHead):
                                    token_offsets=token_offsets,
                                    context_window_size=self.context_window_size,
                                    aggregation_level="document",
-                                   answer_types=[],  # TODO
                                    no_answer_gap=no_ans_gap,
-                                   n_passages=n_samples
-                                   )
+                                   n_passages=n_samples)
             ret.append(curr_doc_pred)
         return ret
 
