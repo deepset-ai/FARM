@@ -1227,8 +1227,9 @@ class QuestionAnsweringHead(PredictionHead):
         # Iterate over each set of document level prediction
         for pred_d, no_ans_gap, basket in zip(top_preds, no_ans_gaps, baskets):
 
-            # Unpack document offsets, clear text and squad_id
+            # Unpack document offsets, clear text and id
             token_offsets = basket.samples[0].tokenized["document_offsets"]
+            pred_id = basket.id_external if basket.id_external else basket.id_internal
 
             # These options reflect the different input dicts that can be assigned to the basket
             # before any kind of normalization or preprocessing can happen
@@ -1240,14 +1241,12 @@ class QuestionAnsweringHead(PredictionHead):
 
             # Iterate over each prediction on the one document
             full_preds = []
-            for qa_candidate, basket in zip(pred_d, baskets):
-                pred_str, _, _ = qa_candidate.span_to_string(token_offsets,
-                                                             document_text)
+            for qa_candidate in pred_d:
+                pred_str, _, _ = qa_candidate.span_to_string(token_offsets, document_text)
                 qa_candidate.add_answer(pred_str)
                 full_preds.append(qa_candidate)
             n_samples = full_preds[0].n_passages_in_doc
 
-            pred_id = basket.id_external if basket.id_external else basket.id_internal
 
             curr_doc_pred = QAPred(id=pred_id,
                                    prediction=full_preds,
