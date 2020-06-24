@@ -117,6 +117,9 @@ def test_all_tokenizer_on_special_cases(caplog):
     "and another one\n\n\nwithout space",
     "This is a sentence	with tab",
     "This is a sentence			with multiple tabs",
+    """Mary is referred to by the Eastern Orthodox Church, Oriental Orthodoxy, the Anglican Church, and all Eastern Catholic Churches as Theotokos, a title recognized at the Third Ecumenical Council (held at Ephesus to address the teachings of Nestorius, in 431). Theotokos (and its Latin equivalents, "Deipara" and "Dei genetrix") literally means "Godbearer". The equivalent phrase "Mater Dei" (Mother of God) is more common in Latin and so also in the other languages used in the Western Catholic Church, but this same phrase in Greek (Μήτηρ Θεοῦ), in the abbreviated form of the first and last letter of the two words (ΜΡ ΘΥ), is the indication attached to her image in Byzantine icons. The Council stated that the Church Fathers "did not hesitate to speak of the holy Virgin as the Mother of God".""",
+    """The doctrine of pratītyasamutpāda, (Sanskrit; Pali: paticcasamuppāda; Tibetan Wylie: rten cing 'brel bar 'byung ba; Chinese: 緣起) is an important part of Buddhist metaphysics. It states that phenomena arise together in a mutually interdependent web of cause and effect. It is variously rendered into English as "dependent origination", "conditioned genesis", "dependent relationship", "dependent co-arising", "interdependent arising", or "contingency"."""
+
     ]
 
     for tokenizer in tokenizers:

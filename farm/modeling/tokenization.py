@@ -279,9 +279,6 @@ def _words_to_tokens(words, word_offsets, tokenizer):
     idx = 0
     for w, w_off in zip(words, word_offsets):
         idx += 1
-        if idx % 500000 == 0:
-            logger.info(idx)
-        # Get (subword) tokens of single word.
 
         # empty / pure whitespace
         if len(w) == 0:
@@ -305,6 +302,9 @@ def _words_to_tokens(words, word_offsets, tokenizer):
         # get global offset for each token in word + save marker for first tokens of a word
         first_tok = True
         for tok in tokens_word:
+            if len(token_offsets) > 0:
+                if w_off < token_offsets[-1]:
+                    print()
             token_offsets.append(w_off)
             # Depending on the tokenizer type special chars are added to distinguish tokens with preceeding
             # whitespace (=> "start of a word"). We need to get rid of these to calculate the original length of the token
