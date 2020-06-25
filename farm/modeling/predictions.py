@@ -1,11 +1,17 @@
 from typing import List, Any
 from abc import ABC
+import logging
+
+
+logger = logging.getLogger(__name__)
+
 
 
 class Pred(ABC):
     """
     Abstract base class for predictions of every task
     """
+
     def __init__(self,
                  id: str,
                  prediction: List[Any],
@@ -17,10 +23,12 @@ class Pred(ABC):
     def to_json(self):
         raise NotImplementedError
 
+
 class QACandidate:
     """
     A single QA candidate answer.
     """
+
     def __init__(self,
                  answer_type: str,
                  score: str,
@@ -138,12 +146,16 @@ class QACandidate:
         and end indices that are stored in the object. """
         if string == "":
             self.answer = "no_answer"
-            assert self.offset_answer_end == -1
-            assert self.offset_answer_start == -1
+            if self.offset_answer_start != -1 or self.offset_answer_end != -1:
+                logger.error(f"Something went wrong in tokenization. We have start and end offsets: "
+                             f"{self.offset_answer_start, self.offset_answer_end} with an empty answer. "
+                             f"\nContext: {self.context}")
         else:
             self.answer = string
-            assert self.offset_answer_end >= 0
-            assert self.offset_answer_start >= 0
+            if self.offset_answer_start == -1 or self.offset_answer_end == -1:
+                logger.error(f"Something went wrong in tokenization. We have start and end offsets: "
+                             f"{self.offset_answer_start, self.offset_answer_end} with answer: {string}. "
+                             f"\nContext: {self.context}")
 
     def to_list(self):
         return [self.answer, self.offset_answer_start, self.offset_answer_end, self.score, self.passage_id]
@@ -166,8 +178,7 @@ class QAPred(Pred):
                  no_answer_gap: float,
                  n_passages: int,
                  ground_truth_answer: str = None,
-                 answer_types: List[str] = [],
-                 ):
+                 answer_types: List[str] = []):
         """
         :param id: The id of the passage or document
         :param prediction: A list of QACandidate objects for the given question and document
@@ -198,6 +209,7 @@ class QAPred(Pred):
         :param squad: If True, no_answers are represented by the empty string instead of "no_answer"
         :return:
         """
+
         answers = self.answers_to_json(self.id, squad)
         ret = {
             "task": "qa",
@@ -207,7 +219,7 @@ class QAPred(Pred):
                     "question_id": self.id,
                     "ground_truth": self.ground_truth_answer,
                     "answers": answers,
-                    "no_ans_gap": self.no_answer_gap # Add no_ans_gap to current no_ans_boost for switching top prediction
+                    "no_ans_gap": self.no_answer_gap, # Add no_ans_gap to current no_ans_boost for switching top prediction
                 }
             ],
         }
@@ -221,6 +233,7 @@ class QAPred(Pred):
         :param squad: If True, no_answers are represented by the empty string instead of "no_answer"
         :return:
         """
+
         ret = []
 
         # iterate over the top_n predictions of the one document

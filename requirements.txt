@@ -20,8 +20,6 @@ mlflow==1.0.0
 transformers==2.11.0
 # accessing dictionary elements with dot notation
 dotmap==1.3.0
-# creating type checked classes
-pydantic
 # for inference-rest-apis
 Werkzeug==0.16.1
 flask
@@ -31,3 +29,4 @@ dill # pickle extension for (de-)serialization
 # optional for inference
 #fasttext==0.9.1
 #onnxruntime  # Inference with ONNX models. Install onnxruntime-gpu for Inference on GPUs
+psutil

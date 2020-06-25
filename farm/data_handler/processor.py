@@ -1680,6 +1680,7 @@ def is_impossible_to_answer_type(qas):
         new_qas.append(q)
     return new_qas
 
+  
 def valid_answer(dictionary):
     context = dictionary["context"]
     for qa in dictionary["qas"]:
@@ -1691,3 +1692,4 @@ def valid_answer(dictionary):
                 raise Exception(f"The answer extracted by start character index does not match the answer string: "
                                  f"\t {context[start: end]} vs {answer['text']}")
     return True
+

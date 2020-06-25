@@ -13,7 +13,8 @@ from farm.data_handler.dataloader import NamedDataLoader
 from farm.data_handler.processor import Processor, InferenceProcessor, SquadProcessor, NERProcessor, TextClassificationProcessor
 from farm.data_handler.utils import grouper
 from farm.modeling.tokenization import Tokenizer
-from farm.modeling.adaptive_model import AdaptiveModel, BaseAdaptiveModel
+from farm.modeling.adaptive_model import AdaptiveModel, BaseAdaptiveModel, ONNXAdaptiveModel
+from farm.modeling.optimization import optimize_model
 from farm.utils import initialize_device_settings
 from farm.utils import set_all_seeds, calc_chunksize, log_ascii_workers
 from farm.modeling.predictions import QAPred
@@ -85,8 +86,12 @@ class Inferencer:
                           (only needed for task_type="embeddings" and extraction_strategy = "s3e")
         :type s3e_stats: dict
         :param num_processes: the number of processes for `multiprocessing.Pool`. Set to value of 0 to disable
-                              multiprocessing. Set to None to let Inferencer use all CPU cores. If you want to
+                              multiprocessing. Set to None to let Inferencer use all CPU cores minus one. If you want to
                               debug the Language Model, you might need to disable multiprocessing!
+                              **Warning!** If you use multiprocessing you have to close the
+                              `multiprocessing.Pool` again! To do so call
+                              :func:`~farm.infer.Inferencer.close_multiprocessing_pool` after you are
+                              done using this class. The garbage collector will not do this for you!
         :type num_processes: int
         :param disable_tqdm: Whether to disable tqdm logging (can get very verbose in multiprocessing)
         :type disable_tqdm: bool
@@ -174,8 +179,12 @@ class Inferencer:
                           (only needed for task_type="embeddings" and extraction_strategy = "s3e")
         :type s3e_stats: dict
         :param num_processes: the number of processes for `multiprocessing.Pool`. Set to value of 0 to disable
-                              multiprocessing. Set to None to let Inferencer use all CPU cores. If you want to
+                              multiprocessing. Set to None to let Inferencer use all CPU cores minus one. If you want to
                               debug the Language Model, you might need to disable multiprocessing!
+                              **Warning!** If you use multiprocessing you have to close the
+                              `multiprocessing.Pool` again! To do so call
+                              :func:`~farm.infer.Inferencer.close_multiprocessing_pool` after you are
+                              done using this class. The garbage collector will not do this for you!
         :type num_processes: int
         :param disable_tqdm: Whether to disable tqdm logging (can get very verbose in multiprocessing)
         :type disable_tqdm: bool
@@ -245,6 +254,8 @@ class Inferencer:
                                  f"Valid options for arg `task_type`: 'question_answering', "
                                  f"'embeddings', 'text_classification', 'ner'")
 
+        if not isinstance(model,ONNXAdaptiveModel):
+            model, _ = optimize_model(model=model, device=device, local_rank=-1, optimizer=None)
         return cls(
             model,
             processor,
@@ -264,9 +275,13 @@ class Inferencer:
         """
         Initialize a multiprocessing.Pool for instances of Inferencer.
 
-         :param num_processes: the number of processes for `multiprocessing.Pool`. Set to value of 0 to disable
-                               multiprocessing. Set to None to let Inferencer use all CPU cores. If you want to
-                               debug the Language Model, you might need to disable multiprocessing!
+        :param num_processes: the number of processes for `multiprocessing.Pool`. Set to value of 0 to disable
+                              multiprocessing. Set to None to let Inferencer use all CPU cores minus one. If you want to
+                              debug the Language Model, you might need to disable multiprocessing!
+                              **Warning!** If you use multiprocessing you have to close the
+                              `multiprocessing.Pool` again! To do so call
+                              :func:`~farm.infer.Inferencer.close_multiprocessing_pool` after you are
+                              done using this class. The garbage collector will not do this for you!
         :type num_processes: int
         :return:
         """
@@ -281,6 +296,22 @@ class Inferencer:
                 f"Got ya {num_processes} parallel workers to do inference ..."
             )
             log_ascii_workers(n=num_processes,logger=logger)
+
+    def close_multiprocessing_pool(self, join=False):
+        """Close the `multiprocessing.Pool` again.
+
+        If you use multiprocessing you have to close the `multiprocessing.Pool` again!
+        To do so call this function after you are done using this class.
+        The garbage collector will not do this for you!
+
+        :param join: wait for the worker processes to exit
+        :type join: bool
+        """
+        if self.process_pool is not None:
+            self.process_pool.close()
+            if join:
+                self.process_pool.join()
+            self.process_pool = None
 
     def save(self, path):
         self.model.save(path)
