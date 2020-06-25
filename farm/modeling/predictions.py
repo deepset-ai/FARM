@@ -259,9 +259,10 @@ class QAPred(Pred):
 
     def create_context(self, ans_start_ch, ans_end_ch, clear_text):
         """
-        Extract from the clear_text a window that contains the answer and some amount of text on either
+        Extract from the clear_text a window that contains the answer and (usually) some amount of text on either
         side of the answer. Useful for cases where the answer and its surrounding context needs to be
-        displayed in a UI.
+        displayed in a UI. If the self.context_window_size is smaller than the extracted answer, it will be
+        enlarged so that it can contain the answer
 
         :param ans_start_ch: Start character index of the answer
         :param ans_end_ch: End character index of the answer
@@ -271,12 +272,18 @@ class QAPred(Pred):
         if ans_start_ch == 0 and ans_end_ch == 0:
             return "", 0, 0
         else:
+            # If the extracted answer is longer than the context_window_size,
+            # we will increase the context_window_size
+            len_ans = ans_end_ch - ans_start_ch
+            context_window_size = max(self.context_window_size, len_ans + 1)
+
             len_text = len(clear_text)
-            midpoint = int((ans_end_ch - ans_start_ch) / 2) + ans_start_ch
-            half_window = int(self.context_window_size / 2)
+            midpoint = int((len_ans) / 2) + ans_start_ch
+            half_window = int(context_window_size / 2)
             context_start_ch = midpoint - half_window
             context_end_ch = midpoint + half_window
-            # if we have part of the context window overlapping start or end of the passage,
+
+            # if we have part of the context window overlapping the start or end of the passage,
             # we'll trim it and use the additional chars on the other side of the answer
             overhang_start = max(0, -context_start_ch)
             overhang_end = max(0, context_end_ch - len_text)
