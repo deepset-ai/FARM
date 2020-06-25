@@ -1506,20 +1506,20 @@ class QuestionAnsweringHead(PredictionHead):
         samples_per_doc = [doc_pred.n_passages for doc_pred in preds_all[0][0]]
         cls_preds_grouped = chunk(cls_preds, samples_per_doc)
 
-        for qa_doc_pred, cls_preds in zip(qa_preds, cls_preds_grouped):
-            pred_qa_answers = qa_doc_pred.prediction
-            pred_qa_answers_new = []
-            for pred_qa_answer in pred_qa_answers:
-                passage_id = pred_qa_answer.passage_id
+        for qa_pred, cls_preds in zip(qa_preds, cls_preds_grouped):
+            qa_candidates = qa_pred.prediction
+            qa_candidates_new = []
+            for qa_candidate in qa_candidates:
+                passage_id = qa_candidate.passage_id
                 if passage_id is not None:
-                    cls_pred = cls_preds[passage_id]["label"]
+                    cls_pred = cls_preds[int(passage_id)]["label"]
                 # i.e. if no_answer
                 else:
                     cls_pred = "no_answer"
-                pred_qa_answer.add_cls(cls_pred)
-                pred_qa_answers_new.append(pred_qa_answer)
-            qa_doc_pred.prediction = pred_qa_answers_new
-            ret.append(qa_doc_pred)
+                qa_candidate.add_cls(cls_pred)
+                qa_candidates_new.append(qa_candidate)
+            qa_pred.prediction = qa_candidates_new
+            ret.append(qa_pred)
         return ret
 
 
