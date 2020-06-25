@@ -1399,29 +1399,7 @@ class QuestionAnsweringHead(PredictionHead):
                 if qa_answer.score > seen_score:
                     seen[(qa_answer.offset_answer_start, qa_answer.offset_answer_end)] = qa_answer
         return list(seen.values())
-
-
-
-    ## THIS IS A SIMPLER IMPLEMENTATION OF PICKING BEST ANSWERS FOR A DOCUMENT. MATCHES THE HUGGINGFACE METHOD
-    # @staticmethod
-    # def reduce_preds(preds, n_best=5):
-    #     pos_answers = [[(start, end, score) for start, end, score in x if not (start == -1 and end == -1)] for x in preds]
-    #     pos_answer_flat = [x for y in pos_answers for x in y]
-    #     pos_answers_sorted = sorted(pos_answer_flat, key=lambda z: z[2], reverse=True)
-    #     pos_answers_filtered = pos_answers_sorted[:n_best]
-    #     top_pos_answer_score = pos_answers_filtered[0][2]
-    #
-    #     no_answer = [(start, end, score) for x in preds for start, end, score in x if (start == -1 and end == -1)]
-    #     no_answer_sorted = sorted(no_answer, key=lambda z: z[2], reverse=True)
-    #     no_answers_min = no_answer_sorted[-1]
-    #     _, _, no_answer_min_score = no_answers_min
-    #
-    #     # no answer logic
-    #     threshold = 0.
-    #     if no_answer_min_score + threshold > top_pos_answer_score:
-    #         return [no_answers_min] + pos_answers_filtered
-    #     else:
-    #         return pos_answers_filtered + [no_answers_min]
+    
 
     @staticmethod
     def get_no_answer_score(preds):
