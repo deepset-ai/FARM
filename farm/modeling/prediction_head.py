@@ -1399,7 +1399,7 @@ class QuestionAnsweringHead(PredictionHead):
                 if qa_answer.score > seen_score:
                     seen[(qa_answer.offset_answer_start, qa_answer.offset_answer_end)] = qa_answer
         return list(seen.values())
-    
+
 
     @staticmethod
     def get_no_answer_score(preds):
