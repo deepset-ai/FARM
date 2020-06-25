@@ -1248,6 +1248,7 @@ class QuestionAnsweringHead(PredictionHead):
             n_samples = full_preds[0].n_passages_in_doc
 
             curr_doc_pred = QAPred(id=pred_id,
+
                                    prediction=full_preds,
                                    context=document_text,
                                    question=question,
@@ -1256,6 +1257,7 @@ class QuestionAnsweringHead(PredictionHead):
                                    aggregation_level="document",
                                    no_answer_gap=no_ans_gap,
                                    n_passages=n_samples)
+
             ret.append(curr_doc_pred)
         return ret
 
