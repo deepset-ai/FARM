@@ -128,11 +128,14 @@ class QACandidate:
             self.offset_answer_support_end = self.offset_answer_end
 
     def to_doc_level(self, start, end):
+        """ Populate the start and end indices with document level indices. Changes aggregation level to 'document'"""
         self.offset_answer_start = start
         self.offset_answer_end = end
         self.aggregation_level = "document"
 
     def add_answer(self, string):
+        """ Set the answer string. This method will check that the answer given is valid given the start
+        and end indices that are stored in the object. """
         if string == "":
             self.answer = "no_answer"
             assert self.offset_answer_end == -1
@@ -147,8 +150,9 @@ class QACandidate:
 
 
 class QAPred(Pred):
-    """Question Answering predictions for a passage or a document. The self.prediction attribute is populated by a
-    list of QACandidate objects.
+    """ A set of QA predictions for a passage or a document. The candidates are stored in QAPred.prediction which is a
+    list of QACandidate objects. Also contains all attributes needed to convert the object into json format and also
+    to create a context window for a UI
     """
 
     def __init__(self,
@@ -164,6 +168,19 @@ class QAPred(Pred):
                  ground_truth_answer: str = None,
                  answer_types: List[str] = [],
                  ):
+        """
+        :param id: The id of the passage or document
+        :param prediction: A list of QACandidate objects for the given question and document
+        :param context: The text passage from which the answer can be extracted
+        :param question: The question being posed
+        :param token_offsets: A list of ints indicating the start char index of each token
+        :param context_window_size: The number of chars on each side of the answer span that should be included in the context window
+        :param aggregation_level: States whether this candidate and its indices are on a passage level (pre aggregation) or on a document level (post aggregation)
+        :param no_answer_gap: How much the QuestionAnsweringHead.no_ans_boost needs to change to turn a no_answer to a positive answer
+        :param n_passages: Number of passages in the context document
+        :param ground_truth_answer: Ground truth answers
+        :param answer_types: List of answer_types supported by this task e.g. ["span", "yes_no", "no_answer"]
+        """
         super().__init__(id, prediction, context)
         self.question = question
         self.token_offsets = token_offsets
@@ -175,6 +192,12 @@ class QAPred(Pred):
         self.n_passages = n_passages
 
     def to_json(self, squad=False):
+        """
+        Converts the information stored in the object into a json format.
+
+        :param squad: If True, no_answers are represented by the empty string instead of "no_answer"
+        :return:
+        """
         answers = self.answers_to_json(self.id, squad)
         ret = {
             "task": "qa",
@@ -191,6 +214,13 @@ class QAPred(Pred):
         return ret
 
     def answers_to_json(self, id, squad=False):
+        """
+        Convert all answers into a json format
+
+        :param id: ID of the question document pair
+        :param squad: If True, no_answers are represented by the empty string instead of "no_answer"
+        :return:
+        """
         ret = []
 
         # iterate over the top_n predictions of the one document
@@ -199,8 +229,7 @@ class QAPred(Pred):
 
             _, ans_start_ch, ans_end_ch = qa_candidate.span_to_string(self.token_offsets, self.context)
             context_string, context_start_ch, context_end_ch = self.create_context(ans_start_ch, ans_end_ch, self.context)
-            if squad:
-                if string == "no_answer":
+            if squad and string == "no_answer":
                     string = ""
             curr = {"score": qa_candidate.score,
                     "probability": None,
@@ -216,6 +245,16 @@ class QAPred(Pred):
 
 
     def create_context(self, ans_start_ch, ans_end_ch, clear_text):
+        """
+        Extract from the clear_text a window that contains the answer and some amount of text on either
+        side of the answer. Useful for cases where the answer and its surrounding context needs to be
+        displayed in a UI.
+
+        :param ans_start_ch: Start character index of the answer
+        :param ans_end_ch: End character index of the answer
+        :param clear_text: The text from which the answer is extracted
+        :return:
+        """
         if ans_start_ch == 0 and ans_end_ch == 0:
             return "", 0, 0
         else:
