@@ -185,7 +185,7 @@ class QAPred(Pred):
         :param context: The text passage from which the answer can be extracted
         :param question: The question being posed
         :param token_offsets: A list of ints indicating the start char index of each token
-        :param context_window_size: The number of chars on each side of the answer span that should be included in the context window
+        :param context_window_size: The number of chars in the text window around the answer
         :param aggregation_level: States whether this candidate and its indices are on a passage level (pre aggregation) or on a document level (post aggregation)
         :param no_answer_gap: How much the QuestionAnsweringHead.no_ans_boost needs to change to turn a no_answer to a positive answer
         :param n_passages: Number of passages in the context document
