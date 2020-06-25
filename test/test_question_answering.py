@@ -86,7 +86,6 @@ def test_qa(caplog=None):
                  "context": "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created.",
                 }]
 
-
     result1 = inferencer.inference_from_dicts(dicts=qa_format_1)
     result2 = inferencer.inference_from_dicts(dicts=qa_format_2)
     assert result1 == result2
