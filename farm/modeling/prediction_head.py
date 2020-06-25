@@ -1239,24 +1239,14 @@ class QuestionAnsweringHead(PredictionHead):
             document_text = try_get(doc_names, basket.raw)
             question = try_get(question_names, basket.raw)
 
-            # Iterate over each prediction on the one document
-            full_preds = []
-            for qa_candidate in pred_d:
-                pred_str, _, _ = qa_candidate.span_to_string(token_offsets, document_text)
-                qa_candidate.add_answer(pred_str)
-                full_preds.append(qa_candidate)
-            n_samples = full_preds[0].n_passages_in_doc
-
             curr_doc_pred = QAPred(id=pred_id,
-
-                                   prediction=full_preds,
+                                   prediction=pred_d,
                                    context=document_text,
                                    question=question,
                                    token_offsets=token_offsets,
                                    context_window_size=self.context_window_size,
                                    aggregation_level="document",
-                                   no_answer_gap=no_ans_gap,
-                                   n_passages=n_samples)
+                                   no_answer_gap=no_ans_gap)
 
             ret.append(curr_doc_pred)
         return ret
