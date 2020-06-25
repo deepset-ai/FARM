@@ -84,9 +84,6 @@ class QACandidate:
 
     def set_context_window(self, context_window_size, clear_text):
         window_str, start_ch, end_ch = self.create_context_window(context_window_size, clear_text)
-        self.add_window(window_str, start_ch, end_ch)
-
-    def add_window(self, window_str, start_ch, end_ch):
         self.context_window = window_str
         self.offset_context_window_start = start_ch
         self.offset_context_window_end = end_ch
@@ -94,6 +91,22 @@ class QACandidate:
     def set_answer_string(self, token_offsets, document_text):
         pred_str, _, _ = self.span_to_string(token_offsets, document_text)
         self.add_answer(pred_str)
+
+    def add_answer(self, string):
+        """ Set the answer string. This method will check that the answer given is valid given the start
+        and end indices that are stored in the object. """
+        if string == "":
+            self.answer = "no_answer"
+            if self.offset_answer_start != -1 or self.offset_answer_end != -1:
+                logger.error(f"Something went wrong in tokenization. We have start and end offsets: "
+                             f"{self.offset_answer_start, self.offset_answer_end} with an empty answer. "
+                             f"\nContext: {self.context_window}")
+        else:
+            self.answer = string
+            if self.offset_answer_start == -1 or self.offset_answer_end == -1:
+                logger.error(f"Something went wrong in tokenization. We have start and end offsets: "
+                             f"{self.offset_answer_start, self.offset_answer_end} with answer: {string}. "
+                             f"\nContext: {self.context_window}")
 
     def create_context_window(self, context_window_size, clear_text):
         """
@@ -190,22 +203,6 @@ class QACandidate:
         self.offset_answer_start = start
         self.offset_answer_end = end
         self.aggregation_level = "document"
-
-    def add_answer(self, string):
-        """ Set the answer string. This method will check that the answer given is valid given the start
-        and end indices that are stored in the object. """
-        if string == "":
-            self.answer = "no_answer"
-            if self.offset_answer_start != -1 or self.offset_answer_end != -1:
-                logger.error(f"Something went wrong in tokenization. We have start and end offsets: "
-                             f"{self.offset_answer_start, self.offset_answer_end} with an empty answer. "
-                             f"\nContext: {self.context_window}")
-        else:
-            self.answer = string
-            if self.offset_answer_start == -1 or self.offset_answer_end == -1:
-                logger.error(f"Something went wrong in tokenization. We have start and end offsets: "
-                             f"{self.offset_answer_start, self.offset_answer_end} with answer: {string}. "
-                             f"\nContext: {self.context_window}")
 
     def to_list(self):
         return [self.answer, self.offset_answer_start, self.offset_answer_end, self.score, self.passage_id]
