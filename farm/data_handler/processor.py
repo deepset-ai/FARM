@@ -1148,7 +1148,7 @@ class SquadProcessor(Processor):
         nested_dicts = read_squad_file(filename=file)
         dicts = [y for x in nested_dicts for y in x["paragraphs"]]
         for d in dicts:
-            assert valid_answer(d)
+            check_valid_answer(d)
         return dicts
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
@@ -1681,7 +1681,7 @@ def is_impossible_to_answer_type(qas):
     return new_qas
 
   
-def valid_answer(dictionary):
+def check_valid_answer(dictionary):
     context = dictionary["context"]
     for qa in dictionary["qas"]:
         for answer in qa["answers"]:
@@ -1691,5 +1691,4 @@ def valid_answer(dictionary):
             if context[start: end] != answer["text"]:
                 raise Exception(f"The answer extracted by start character index does not match the answer string: "
                                  f"\t {context[start: end]} vs {answer['text']}")
-    return True
 
