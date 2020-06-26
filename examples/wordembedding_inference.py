@@ -41,14 +41,16 @@ def embedding_extraction():
         lm_output_types=["per_sequence"],
         device=device)
 
-
     # Create Inferencer for embedding extraction
+    # Warning! If you use multiprocessing and open a pool by passing
+    # `None` or an integer greater zero to `num_processes` please make
+    # sure to close the pool again by calling `close_multiprocessing_pool`.
+    # The garbage collector will not do this for you!
     inferencer = Inferencer(
         model=model,
         processor=processor,
-        task_type="embeddings"
-    )
-
+        task_type="embeddings",
+        num_processes=0)
 
     # Extract vectors
     basic_texts = [

@@ -17,7 +17,13 @@ def convert_from_transformers():
 
     # CASE 2: INFERENCER
     # Load Inferencer from transformers, incl. model & tokenizer (-> just get predictions)
-    nlp = Inferencer.load("deepset/bert-large-uncased-whole-word-masking-squad2", task_type="question_answering")
+    # Warning! If you use multiprocessing and open a pool by passing
+    # `None` or an integer greater zero to `num_processes` please make
+    # sure to close the pool again by calling `close_multiprocessing_pool`.
+    # The garbage collector will not do this for you!
+    nlp = Inferencer.load("deepset/bert-large-uncased-whole-word-masking-squad2",
+                          task_type="question_answering",
+                          num_processes=0)
 
     # run predictions
     QA_input = [{"questions": ["Why is model conversion important?"],

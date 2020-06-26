@@ -18,11 +18,17 @@ def convert_from_transformers():
     # # Load model from transformers model hub (-> continue training / compare models / ...)
     model = AdaptiveModel.convert_from_transformers(transformers_input_name, device="cpu", task_type="text_classification")
     # # ... continue as in the other examples e.g. to fine-tune this QA model on your own data
-    #
+
     # # CASE 2: INFERENCER
     # # Load Inferencer from transformers, incl. model & tokenizer (-> just get predictions)
-    nlp = Inferencer.load(transformers_input_name, task_type="text_classification")
-    #
+    # Warning! If you use multiprocessing and open a pool by passing
+    # `None` or an integer greater zero to `num_processes` please make
+    # sure to close the pool again by calling `close_multiprocessing_pool`.
+    # The garbage collector will not do this for you!
+    nlp = Inferencer.load(transformers_input_name,
+                          task_type="text_classification",
+                          num_processes=0)
+
     # # run predictions
     result = nlp.inference_from_dicts(dicts=[{"text": "Was ein scheiß Nazi!"}], rest_api_schema=True)
     pprint.pprint(result)

@@ -109,7 +109,13 @@ def doc_classification_multilabel():
         {"text": "You fucking bastards"},
         {"text": "What a lovely world"},
     ]
-    model = Inferencer.load(save_dir)
+
+    # Warning! If you use multiprocessing and open a pool by passing
+    # `None` or an integer greater zero to `num_processes` please make
+    # sure to close the pool again by calling `close_multiprocessing_pool`.
+    # The garbage collector will not do this for you!
+    model = Inferencer.load(save_dir, num_processes=0)
+
     result = model.inference_from_dicts(dicts=basic_texts)
     print(result)
 

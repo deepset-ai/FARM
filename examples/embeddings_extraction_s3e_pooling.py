@@ -16,15 +16,15 @@ logger = logging.getLogger(__name__)
     Example for generating sentence embeddings via the S3E pooling approach as described by Wang et al in the paper
     "Efficient Sentence Embedding via Semantic Subspace Analysis"
     (https://arxiv.org/abs/2002.09620)
-    
-    You can use classical models like fasttext, glove or word2vec and apply S3E on top. 
-    This can be a powerful benchmark for plain transformer-based embeddings.   
+
+    You can use classical models like fasttext, glove or word2vec and apply S3E on top.
+    This can be a powerful benchmark for plain transformer-based embeddings.
 
     First, we fit the required stats on a custom corpus. This includes the derivation of token_weights depending on
     token occurences in the corpus, creation of the semantic clusters via k-means and a couple of
     pre-/post-processing steps to normalize the embeddings.
-    
-    Second, we feed the resulting objects into our Inferencer to extract the actual sentence embeddings for our sentences. 
+
+    Second, we feed the resulting objects into our Inferencer to extract the actual sentence embeddings for our sentences.
 """
 
 def fit(language_model, corpus_path, save_dir, do_lower_case, batch_size=4, use_gpu=False):
@@ -61,9 +61,19 @@ def fit(language_model, corpus_path, save_dir, do_lower_case, batch_size=4, use_
         pickle.dump(s3e_stats, f)
 
     # Load model, tokenizer and processor directly into Inferencer
-    inferencer = Inferencer(model=model, processor=processor, task_type="embeddings", gpu=use_gpu,
-                       batch_size=batch_size, extraction_strategy="s3e", extraction_layer=-1,
-                       s3e_stats=s3e_stats)
+    # Warning! If you use multiprocessing and open a pool by passing
+    # `None` or an integer greater zero to `num_processes` please make
+    # sure to close the pool again by calling `close_multiprocessing_pool`.
+    # The garbage collector will not do this for you!
+    inferencer = Inferencer(model=model,
+                            processor=processor,
+                            task_type="embeddings",
+                            gpu=use_gpu,
+                            batch_size=batch_size,
+                            extraction_strategy="s3e",
+                            extraction_layer=-1,
+                            s3e_stats=s3e_stats,
+                            num_processes=0)
 
     # Input
     basic_texts = [
@@ -81,9 +91,18 @@ def extract_embeddings(load_dir, use_gpu, batch_size):
         s3e_stats = pickle.load(f)
 
     # Init inferencer
-    inferencer = Inferencer.load(model_name_or_path=load_dir, task_type="embeddings", gpu=use_gpu,
-                       batch_size=batch_size, extraction_strategy="s3e", extraction_layer=-1,
-                       s3e_stats=s3e_stats)
+    # Warning! If you use multiprocessing and open a pool by passing
+    # `None` or an integer greater zero to `num_processes` please make
+    # sure to close the pool again by calling `close_multiprocessing_pool`.
+    # The garbage collector will not do this for you!
+    inferencer = Inferencer.load(model_name_or_path=load_dir,
+                                 task_type="embeddings",
+                                 gpu=use_gpu,
+                                 batch_size=batch_size,
+                                 extraction_strategy="s3e",
+                                 extraction_layer=-1,
+                                 s3e_stats=s3e_stats,
+                                 num_processes=0)
 
     # Input
     basic_texts = [
@@ -99,7 +118,7 @@ def extract_embeddings(load_dir, use_gpu, batch_size):
 if __name__ == "__main__":
     lang_model = "glove-english-uncased-6B"
     do_lower_case = True
-    
+
     # You can download this from:
     # "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/lm_finetune_nips.tar.gz"
     corpus_path = Path("../data/lm_finetune_nips/train.txt")
