@@ -84,9 +84,12 @@ def test_evaluation():
 
     # # 2. Test FARM predictions with outside eval script
     starttime = time()
-    model = Inferencer(model=model, processor=processor, task_type="question_answering", batch_size=40*4, gpu=device.type=="cuda")
-    filename = data_dir / evaluation_filename
-    result = model.inference_from_file(file=filename, return_json=False, multiprocessing_chunksize=80)
+    try:
+        model = Inferencer(model=model, processor=processor, task_type="question_answering", batch_size=40*4, gpu=device.type=="cuda")
+        filename = data_dir / evaluation_filename
+        result = model.inference_from_file(file=filename, return_json=False, multiprocessing_chunksize=80)
+    finally:
+        model.close_multiprocessing_pool()
     results_squad = [x.to_squad_eval() for x in result]
 
     elapsed = time() - starttime
