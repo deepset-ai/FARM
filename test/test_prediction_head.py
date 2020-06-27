@@ -10,7 +10,8 @@ from farm.modeling.tokenization import Tokenizer
 from farm.utils import set_all_seeds, initialize_device_settings
 
 
-def test_adaptive_model_save_load(tmp_path, caplog=None):
+def test_prediction_head_load_save_class_weights(tmp_path, caplog=None):
+    """This is a regression test for #428 and #422."""
     if caplog:
         caplog.set_level(logging.CRITICAL)
 
