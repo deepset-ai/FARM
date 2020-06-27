@@ -1,5 +1,7 @@
 import logging
+import numpy as np
 from pathlib import Path
+import pytest
 
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import TextClassificationProcessor
@@ -57,3 +59,10 @@ def test_prediction_head_load_save_class_weights(tmp_path, caplog=None):
     model.save(tmp_path)
     model_loaded = AdaptiveModel.load(tmp_path, device='cpu')
     assert model_loaded is not None
+
+def test_TextClassificationHead_class_weights_dimensions():
+    with pytest.raises(ValueError):
+        class_wights = np.asarray([[0.4, 0.6], [0.8, 0.2]])
+        TextClassificationHead(
+            num_labels=2,
+            class_weights=class_wights)

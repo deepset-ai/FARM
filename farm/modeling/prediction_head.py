@@ -280,6 +280,11 @@ class TextClassificationHead(PredictionHead):
         self.ph_output_type = "per_sequence"
         self.model_type = "text_classification"
         self.task_name = task_name #used for connecting with the right output of the processor
+
+        if type(class_weights) is np.ndarray and class_weights.ndim != 1:
+            raise ValueError("When you pass `class_weights` as `np.ndarray` it must have 1 dimension! "
+                             "You provided {} dimensions.".format(class_weights.ndim))
+
         self.class_weights = class_weights
 
         if class_weights is not None:
