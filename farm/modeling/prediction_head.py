@@ -91,6 +91,8 @@ class PredictionHead(nn.Module):
         """
         config = {}
         for key, value in self.__dict__.items():
+            if type(value) is np.ndarray:
+                value = value.tolist()
             if is_json(value) and key[0] != "_":
                 config[key] = value
         config["name"] = self.__class__.__name__
