@@ -1,17 +1,12 @@
-import itertools
 import json
 import logging
 import os
 import numpy as np
-import pandas as pd
-from scipy.special import expit, softmax
-import tqdm
 from pathlib import Path
-import torch
 from transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN
 from transformers.modeling_auto import AutoModelForQuestionAnswering, AutoModelForTokenClassification, AutoModelForSequenceClassification
-from transformers.configuration_auto import AutoConfig
 
+import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
 
