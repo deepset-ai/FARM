@@ -91,6 +91,8 @@ def initialize_optimizer(model,
     :param schedule_opts: Dict to customize the learning rate schedule.
                           Choose any Schedule from Pytorch or Huggingface's Transformers by supplying the class name
                           and the parameters needed by the constructor.
+                          If the dict does not contain ``num_training_steps`` it will be set by
+                          calculating it from ``n_batches``, ``grad_acc_steps`` and ``n_epochs``.
                           Examples:
                           1) Linear Warmup (Default):
                           {"name": "LinearWarmup",
@@ -120,13 +122,11 @@ def initialize_optimizer(model,
                           'Please install Apex if you want to make use of automatic mixed precision. '
                           'https://github.com/NVIDIA/apex')
 
-    num_train_optimization_steps = int(n_batches / grad_acc_steps) * n_epochs
+    if (schedule_opts is not None) and (not isinstance(schedule_opts, dict)):
+        raise TypeError('Parameter schedule_opts must be None or '
+                        'an instance of dict but was {}!'.format(type(schedule_opts)))
 
-    # Log params
-    MlLogger.log_params({
-         "use_amp": use_amp,
-         "num_train_optimization_steps": num_train_optimization_steps,
-        })
+    num_train_optimization_steps = int(n_batches / grad_acc_steps) * n_epochs
 
     # Use some defaults to simplify life of inexperienced users
     if optimizer_opts is None:
@@ -141,7 +141,14 @@ def initialize_optimizer(model,
 
         # schedule_opts = {"name": "OneCycleLR", "max_lr":learning_rate, "pct_start": 0.1,
         #                  "total_steps": num_train_optimization_steps }
-    schedule_opts["num_training_steps"] = num_train_optimization_steps
+    elif "num_training_steps" not in schedule_opts:
+        schedule_opts["num_training_steps"] = num_train_optimization_steps
+
+    # Log params
+    MlLogger.log_params({
+         "use_amp": use_amp,
+         "num_train_optimization_steps": schedule_opts["num_training_steps"],
+        })
 
     # Get optimizer from pytorch, transformers or apex
     optimizer = _get_optim(model, optimizer_opts)
