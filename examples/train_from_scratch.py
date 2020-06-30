@@ -5,7 +5,7 @@ from pathlib import Path
 from farm.modeling.tokenization import Tokenizer
 from farm.data_handler.data_silo import StreamingDataSilo, DataSilo
 from farm.data_handler.processor import BertStyleLMProcessor
-from farm.data_handler.utils import randomize_and_split_file
+from farm.data_handler.utils import split_file
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import LanguageModel
 from farm.modeling.optimization import initialize_optimizer
@@ -53,7 +53,7 @@ def train_from_scratch():
 
     # Option B) (recommended when using StreamingDataSilo):
     # split and shuffle that file to have random order within and across epochs
-    randomize_and_split_file(data_dir / "train.txt", output_dir=Path("data/split_files"), docs_per_file=1000)
+    split_file(data_dir / "train.txt", output_dir=Path("data/split_files"), docs_per_file=1000)
     train_filename = Path("data/split_files")
 
     dev_filename = "dev.txt"
