@@ -348,6 +348,7 @@ class Processor(ABC):
             random_sample = random.choice(random_basket.samples)
             logger.info(random_sample)
 
+
     def _log_params(self):
         params = {
             "processor": self.__class__.__name__,
@@ -1035,7 +1036,20 @@ class BertStyleLMProcessor(Processor):
 # QA Processors ####
 #########################################
 
-class SquadProcessor(Processor):
+class QAProcessor(Processor):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.initialize_special_tokens_count()
+
+    def initialize_special_tokens_count(self):
+        vec = self.tokenizer.build_inputs_with_special_tokens(token_ids_0=["a"],
+                                                              token_ids_1=["b"])
+        self.sp_toks_start = vec.index("a")
+        self.sp_toks_mid = vec.index("b") - self.sp_toks_start - 1
+        self.sp_toks_end = len(vec) - vec.index("b") - 1
+
+
+class SquadProcessor(QAProcessor):
     """ Used to handle the SQuAD dataset"""
 
     def __init__(
@@ -1164,10 +1178,12 @@ class SquadProcessor(Processor):
         # TODO, make this function return one set of features per sample
         features = sample_to_features_qa(sample=sample,
                                          tokenizer=self.tokenizer,
-                                         max_seq_len=self.max_seq_len)
+                                         max_seq_len=self.max_seq_len,
+                                         sp_toks_start=self.sp_toks_start,
+                                         sp_toks_mid=self.sp_toks_end)
         return features
 
-class NaturalQuestionsProcessor(Processor):
+class NaturalQuestionsProcessor(QAProcessor):
     """ Used to handle the Natural Question QA dataset"""
 
     def __init__(
@@ -1253,7 +1269,6 @@ class NaturalQuestionsProcessor(Processor):
         # Todo rename metric from squad to maybe QA spans or something like that
         self.add_task("question_answering", "squad", ["start_token", "end_token"])
         self.add_task("text_classification", "f1_macro", self.answer_type_list, label_name="answer_type")
-
 
     def file_to_dicts(self, file: str) -> [dict]:
         dicts = read_jsonl(file, proxies=self.proxies)
@@ -1457,6 +1472,8 @@ class NaturalQuestionsProcessor(Processor):
         features = sample_to_features_qa(sample=sample,
                                          tokenizer=self.tokenizer,
                                          max_seq_len=self.max_seq_len,
+                                         sp_toks_start=self.sp_toks_start,
+                                         sp_toks_mid=self.sp_toks_mid,
                                          answer_type_list=self.answer_type_list)
         return features
 

@@ -307,7 +307,8 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
     return [feature_dict]
 
 
-def sample_to_features_qa(sample, tokenizer, max_seq_len, answer_type_list=None, max_answers=6):
+def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks_mid,
+                          answer_type_list=None, max_answers=6):
     """ Prepares data for processing by the model. Supports cases where there are
     multiple answers for the one question/document pair. max_answers is by default set to 6 since
     that is the most number of answers in the squad2.0 dev set."""
@@ -329,9 +330,10 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, answer_type_list=None,
     labels, answer_types = generate_labels(answers,
                                            passage_len_t,
                                            question_len_t,
-                                           tokenizer,
-                                           answer_type_list=answer_type_list,
-                                           max_answers=max_answers)
+                                           max_answers,
+                                           sp_toks_start,
+                                           sp_toks_mid,
+                                           answer_type_list)
 
     # Generate a start of word vector for the full sequence (i.e. question + answer + special tokens).
     # This will allow us to perform evaluation during training without clear text.
@@ -398,7 +400,8 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, answer_type_list=None,
     return [feature_dict]
 
 
-def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answers, answer_type_list=None):
+def generate_labels(answers, passage_len_t, question_len_t, max_answers,
+                    sp_toks_start, sp_toks_mid, answer_type_list=None):
     """
     Creates QA label for each answer in answers. The labels are the index of the start and end token
     relative to the passage. They are contained in an array of size (max_answers, 2).
@@ -409,8 +412,13 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
     (in most models, this is the [CLS] token). Note that in our implementation NQ has 4 labels
     ["no_answer", "yes", "no", "span"] and this is what answer_type_list should look like"""
 
+    # Note here that label_idxs get passed to the QuestionAnsweringHead and answer_types get passed to the text
+    # classification head. label_idxs may contain multiple start, end labels since SQuAD dev and test sets
+    # can have multiple annotations. By contrast, Natural Questions only has one annotation per sample hence
+    # why answer_types is only of length 1
     label_idxs = np.full((max_answers, 2), fill_value=-1)
-    answer_types = np.full((1), fill_value=-1)
+    answer_types = np.asarray([-1])
+    answer_str = ""
 
     # If there are no answers
     if len(answers) == 0:
@@ -418,64 +426,24 @@ def generate_labels(answers, passage_len_t, question_len_t, tokenizer, max_answe
         answer_types[:] = 0
         return label_idxs, answer_types
 
+    # Iterate over the answers for the one sample
     for i, answer in enumerate(answers):
         start_idx = answer["start_t"]
         end_idx = answer["end_t"]
 
-        # We are going to operate on one-hot label vectors which will later be converted back to label indices.
-        # This is to take advantage of tokenizer.encode_plus() which applies model dependent special token conventions.
-        # The two label vectors (start and end) are composed of sections that correspond to the question and
-        # passage tokens. These are initialized here. The section corresponding to the question
-        # will always be composed of 0s.
-        start_vec_question = [0] * question_len_t
-        end_vec_question = [0] * question_len_t
-        start_vec_passage = [0] * passage_len_t
-        end_vec_passage = [0] * passage_len_t
-
-        # If the answer is in the current passage, populate the label vector with 1s for start and end
+        # Check that the start and end are contained within this passage
         if answer_in_passage(start_idx, end_idx, passage_len_t):
-            start_vec_passage[start_idx] = 1
-            end_vec_passage[end_idx] = 1
+            label_idxs[i][0] = sp_toks_start + question_len_t + sp_toks_mid + start_idx
+            label_idxs[i][1] = sp_toks_start + question_len_t + sp_toks_mid + end_idx
+            answer_str = answer["answer_type"]
+        # If the start or end of the span answer is outside the passage, treat passage as no_answer
+        else:
+            label_idxs[i][0] = 0
+            label_idxs[i][1] = 0
+            answer_str = "no_answer"
 
-        # Combine the sections of the label vectors. The length of each of these will be:
-        # question_len_t + passage_len_t + n_special_tokens
-        start_vec = combine_vecs(start_vec_question,
-                                    start_vec_passage,
-                                    tokenizer,
-                                    spec_tok_val=0)
-        end_vec = combine_vecs(end_vec_question,
-                                  end_vec_passage,
-                                  tokenizer,
-                                  spec_tok_val=0)
-
-        start_label_present = 1 in start_vec
-        end_label_present = 1 in end_vec
-
-        # This is triggered if the answer is not in the passage or the question warrants a no_answer
-        # In both cases, the token at idx=0 (in BERT, this is the [CLS] token) is given both the start and end label
-        if start_label_present is False and end_label_present is False:
-            start_vec[0] = 1
-            end_vec[0] = 1
-            answer_type = "no_answer"
-        elif start_label_present is False or end_label_present is False:
-            raise Exception("The label vectors are lacking either a start or end label")
-
-        # Ensure label vectors are one-hot
-        assert sum(start_vec) == 1
-        assert sum(end_vec) == 1
-
-        start_idx = start_vec.index(1)
-        end_idx = end_vec.index(1)
-
-        label_idxs[i, 0] = start_idx
-        label_idxs[i, 1] = end_idx
-
-    # Only Natural Questions trains a classification head on answer_type, SQuAD only has the QA head. answer_type_list
-    # will be None for SQuAD but something like ["no_answer", "span", "yes", "no"] for Natural Questions
     if answer_type_list:
-        answer_types[0] = answer_type_list.index(answers[0]["answer_type"])
-
-    assert np.max(label_idxs) > -1
+        answer_types[0] = answer_type_list.index(answer_str)
 
     return label_idxs, answer_types
 
