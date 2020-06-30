@@ -311,7 +311,24 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
                           answer_type_list=None, max_answers=6):
     """ Prepares data for processing by the model. Supports cases where there are
     multiple answers for the one question/document pair. max_answers is by default set to 6 since
-    that is the most number of answers in the squad2.0 dev set."""
+    that is the most number of answers in the squad2.0 dev set.
+
+    :param sample: A Sample object that contains one question / passage pair
+    :type sample: Sample
+    :param tokenizer: A Tokenizer object
+    :type tokenizer: Tokenizer
+    :param max_seq_len: The maximum sequence length
+    :type max_seq_len: int
+    :param sp_toks_start: The number of special tokens that come before the question tokens
+    :type sp_toks_start: int
+    :param sp_toks_mid: The number of special tokens that come between the question and passage tokens
+    :type sp_toks_mid: int
+    :param answer_type_list: A list of all the answer types that can be expected e.g. ["no_answer", "span", "yes", "no"] for Natural Questions
+    :type answer_type_list: List[str]
+    :param max_answers: The maximum number of answer annotations for a sample (In SQuAD, this is 6 hence the default)
+    :type max_answers: int
+    :return: dict (keys: [input_ids, padding_mask, segment_ids, answer_type_ids, passage_start_t, start_of_word, labels, id, seq_2_start_2])
+    """
 
     # Initialize some basic variables
     question_tokens = sample.tokenized["question_tokens"]
@@ -403,13 +420,13 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
 def generate_labels(answers, passage_len_t, question_len_t, max_answers,
                     sp_toks_start, sp_toks_mid, answer_type_list=None):
     """
-    Creates QA label for each answer in answers. The labels are the index of the start and end token
+    Creates QA label vector for each answer in answers. The labels are the index of the start and end token
     relative to the passage. They are contained in an array of size (max_answers, 2).
-    -1 used to fill array since there the number of answers is often less than max_answers.
+    -1 is used to fill array since there the number of answers is often less than max_answers.
     The index values take in to consideration the question tokens, and also special tokens such as [CLS].
     When the answer is not fully contained in the passage, or the question
     is impossible to answer, the start_idx and end_idx are 0 i.e. start and end are on the very first token
-    (in most models, this is the [CLS] token). Note that in our implementation NQ has 4 labels
+    (in most models, this is the [CLS] token). Note that in our implementation NQ has 4 answer types
     ["no_answer", "yes", "no", "span"] and this is what answer_type_list should look like"""
 
     # Note here that label_idxs get passed to the QuestionAnsweringHead and answer_types get passed to the text
