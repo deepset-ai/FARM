@@ -1706,9 +1706,12 @@ def is_impossible_to_answer_type(qas):
 def check_valid_answer(sample):
     passage_text = sample.clear_text["passage_text"]
     for answer in sample.clear_text["answers"]:
-        len_answer = len(answer["text"])
+        len_passage = len(passage_text)
         start = answer["start_c"]
-        end = answer["end_c"] + len_answer
-        if passage_text[start: end] != answer["text"]:
+        end = answer["end_c"]
+        # Cases where the answer is not within the current passage will be turned into no answers by the featurization fn
+        if start < 0 or end > len_passage:
+            continue
+        if passage_text[start: end + 1] != answer["text"]:
             raise Exception
 
