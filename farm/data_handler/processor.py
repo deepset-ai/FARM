@@ -1474,6 +1474,7 @@ class NaturalQuestionsProcessor(QAProcessor):
         return start_c, end_c
 
     def _sample_to_features(self, sample: Sample) -> dict:
+        check_valid_answer(sample)
         features = sample_to_features_qa(sample=sample,
                                          tokenizer=self.tokenizer,
                                          max_seq_len=self.max_seq_len,
