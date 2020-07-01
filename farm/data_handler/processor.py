@@ -1037,6 +1037,12 @@ class BertStyleLMProcessor(Processor):
 #########################################
 
 class QAProcessor(Processor):
+    """
+    This is class inherits from Processor and is the parent to SquadProcessor and NaturalQuestionsProcessor.
+    Its main role is to extend the __init__() so that the number of starting, intermediate and end special tokens
+    are calculated from the tokenizer and store as attributes. These are used by the child processors in their
+    sample_to_features() methods
+    """
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.initialize_special_tokens_count()
