@@ -70,7 +70,6 @@ def sample_to_features_text(
     input_ids = pad(input_ids, max_seq_len, tokenizer.pad_token_id, pad_on_left=pad_on_left)
     padding_mask = pad(padding_mask, max_seq_len, 0, pad_on_left=pad_on_left)
 
-
     assert len(input_ids) == max_seq_len
     assert len(padding_mask) == max_seq_len
     assert len(segment_ids) == max_seq_len
@@ -401,10 +400,9 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
     if tokenizer.__class__.__name__ in ["XLMRobertaTokenizer", "RobertaTokenizer"]:
         segment_ids = np.zeros_like(segment_ids)
 
-    # Todo: explain how only the first of labels will be used in train, and the full array will be used in eval
-    # TODO Offset, start of word and spec_tok_mask are not actually needed by model.forward() but are needed for model.formatted_preds()
-    # TODO passage_start_t is index of passage's first token  relative to document
-    # I don't think we actually need offsets anymore
+    # The first of the labels will be used in train, and the full array will be used in eval.
+    # start of word and spec_tok_mask are not actually needed by model.forward() but are needed for model.formatted_preds()
+    # passage_start_t is index of passage's first token relative to document
     feature_dict = {"input_ids": input_ids,
                     "padding_mask": padding_mask,
                     "segment_ids": segment_ids,

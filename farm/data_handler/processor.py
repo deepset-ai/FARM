@@ -1171,7 +1171,6 @@ class SquadProcessor(QAProcessor):
         return dicts
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
-        check_valid_answer(dictionary)
         n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
         samples = create_samples_qa(dictionary=dictionary,
                                        max_query_len=self.max_query_length,
@@ -1181,7 +1180,7 @@ class SquadProcessor(QAProcessor):
         return samples
 
     def _sample_to_features(self, sample) -> dict:
-        # TODO, make this function return one set of features per sample
+        check_valid_answer(sample)
         features = sample_to_features_qa(sample=sample,
                                          tokenizer=self.tokenizer,
                                          max_seq_len=self.max_seq_len,
@@ -1704,13 +1703,12 @@ def is_impossible_to_answer_type(qas):
     return new_qas
 
   
-def check_valid_answer(dictionary):
-    context = dictionary["context"]
-    for qa in dictionary["qas"]:
-        for answer in qa["answers"]:
-            len_answer = len(answer["text"])
-            start = answer["answer_start"]
-            end = answer["answer_start"] + len_answer
-            if context[start: end] != answer["text"]:
-                raise Exception
+def check_valid_answer(sample):
+    passage_text = sample.clear_text["passage_text"]
+    for answer in sample.clear_text["answers"]:
+        len_answer = len(answer["text"])
+        start = answer["start_c"]
+        end = answer["end_c"] + len_answer
+        if passage_text[start: end] != answer["text"]:
+            raise Exception
 
