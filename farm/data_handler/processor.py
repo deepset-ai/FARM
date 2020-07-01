@@ -40,6 +40,7 @@ from farm.data_handler.utils import (
     get_sequence_pair,
     join_sentences
 )
+
 from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
 from farm.utils import MLFlowLogger as MlLogger
 from farm.utils import try_get
@@ -1167,11 +1168,10 @@ class SquadProcessor(QAProcessor):
     def file_to_dicts(self, file: str) -> [dict]:
         nested_dicts = read_squad_file(filename=file)
         dicts = [y for x in nested_dicts for y in x["paragraphs"]]
-        for d in dicts:
-            check_valid_answer(d)
         return dicts
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
+        check_valid_answer(dictionary)
         n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
         samples = create_samples_qa(dictionary=dictionary,
                                        max_query_len=self.max_query_length,
@@ -1712,6 +1712,5 @@ def check_valid_answer(dictionary):
             start = answer["answer_start"]
             end = answer["answer_start"] + len_answer
             if context[start: end] != answer["text"]:
-                raise Exception(f"The answer extracted by start character index does not match the answer string: "
-                                 f"\t {context[start: end]} vs {answer['text']}")
+                raise Exception
 
