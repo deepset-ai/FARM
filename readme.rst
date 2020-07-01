@@ -8,6 +8,10 @@
 
 (**F**\ ramework for **A**\ dapting **R**\ epresentation **M**\ odels)
 
+.. image:: https://img.shields.io/badge/docs-latest-success.svg
+    :target: https://farm.deepset.ai/
+    :alt: Docs
+
 .. image:: https://dev.azure.com/deepset/FARM/_apis/build/status/deepset-ai.FARM?branchName=master
 	:target: https://dev.azure.com/deepset/FARM/_build
 	:alt: Build
