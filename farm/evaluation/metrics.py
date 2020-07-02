@@ -142,9 +142,9 @@ def squad_EM(preds, labels):
     n_docs = len(preds)
     n_correct = 0
     for doc_idx in range(n_docs):
-        span = preds[doc_idx][0][0]
-        pred_start = span.offset_answer_start
-        pred_end = span.offset_answer_end
+        qa_candidate = preds[doc_idx][0][0]
+        pred_start = qa_candidate.offset_answer_start
+        pred_end = qa_candidate.offset_answer_end
         curr_labels = labels[doc_idx]
         if (pred_start, pred_end) in curr_labels:
             n_correct += 1
