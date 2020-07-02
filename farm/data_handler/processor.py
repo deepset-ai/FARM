@@ -525,6 +525,156 @@ class TextClassificationProcessor(Processor):
         )
         return features
 
+
+#########################################
+# Processors for Multi Head Text Classification ####
+#########################################
+class MultiHeadTextClassificationProcessor(Processor):
+    """
+    Used to handle the text classification datasets that come in tabular format (CSV, TSV, etc.)
+    """
+    def __init__(
+        self,
+        tokenizer,
+        max_seq_len,
+        data_dir,
+        task_names,
+        label_lists=None,
+        metric=None,
+        train_filename="train.tsv",
+        dev_filename=None,
+        test_filename="test.tsv",
+        dev_split=0.1,
+        delimiter="\t",
+        quote_char="'",
+        skiprows=None,
+        label_column_names="label",
+        multilabel=False,
+        header=0,
+        proxies=None,
+        max_samples=None,
+        text_column_name="text",
+    ):
+        """
+        :param tokenizer: Used to split a sentence (str) into tokens.
+        :param max_seq_len: Samples are truncated after this many tokens.
+        :type max_seq_len: int
+        :param data_dir: The directory in which the train and dev files can be found.
+                         If not available the dataset will be loaded automaticaly
+                         if the last directory has the same name as a predefined dataset.
+                         These predefined datasets are defined as the keys in the dict at
+                         `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
+        :type data_dir: str
+        :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
+        :type label_list: list
+        :param metric: name of metric that shall be used for evaluation, e.g. "acc" or "f1_macro".
+                 Alternatively you can also supply a custom function, that takes preds and labels as args and returns a numerical value.
+                 For using multiple metrics supply them as a list, e.g ["acc", my_custom_metric_fn].
+        :type metric: str, function, or list
+        :param train_filename: The name of the file containing training data.
+        :type train_filename: str
+        :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
+                             will be a slice of the train set.
+        :type dev_filename: str or None
+        :param test_filename: None
+        :type test_filename: str
+        :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
+        :type dev_split: float
+        :param delimiter: Separator used in the input tsv / csv file
+        :type delimiter: str
+        :param quote_char: Character used for quoting strings in the input tsv/ csv file
+        :type quote_char: str
+        :param skiprows: number of rows to skip in the tsvs (e.g. for multirow headers)
+        :type skiprows: int
+        :param label_column_name: name of the column in the input csv/tsv that shall be used as training labels
+        :type label_column_name: str
+        :param multilabel: set to True for multilabel classification
+        :type multilabel: bool
+        :param header: which line to use as a header in the input csv/tsv
+        :type  header: int
+        :param proxies: proxy configuration to allow downloads of remote datasets.
+                        Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
+        :type proxies: dict
+        :param text_column_name: name of the column in the input csv/tsv that shall be used as training text
+        :type text_column_name: str
+        """
+
+        # Custom processor attributes
+        self.delimiter = delimiter
+        self.quote_char = quote_char
+        self.skiprows = skiprows
+        self.header = header
+        self.max_samples = max_samples
+
+        super(MultiHeadTextClassificationProcessor, self).__init__(
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            train_filename=train_filename,
+            dev_filename=dev_filename,
+            test_filename=test_filename,
+            dev_split=dev_split,
+            data_dir=data_dir,
+            tasks={},
+            proxies=proxies,
+
+        )
+        if metric and label_lists:
+            if multilabel:
+                task_type = "multilabel_classification"
+            else:
+                task_type = "classification"
+            for task_name, label_list, label_column_name in zip(task_names, label_lists, label_column_names):
+                self.add_task(name=task_name,
+                              metric=metric,
+                              label_list=label_list,
+                              label_column_name=label_column_name,
+                              text_column_name=text_column_name,
+                              task_type=task_type)
+        else:
+            logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
+                        "using the default task or add a custom task later via processor.add_task()")
+
+    def file_to_dicts(self, file: str) -> [dict]:
+        column_mapping = {}
+        for task in self.tasks.values():
+            column_mapping[task["label_column_name"]] = task["label_name"]
+            column_mapping[task["text_column_name"]] = "text"
+        dicts = read_tsv(
+            filename=file,
+            delimiter=self.delimiter,
+            skiprows=self.skiprows,
+            quotechar=self.quote_char,
+            rename_columns=column_mapping,
+            header=self.header,
+            proxies=self.proxies,
+            max_samples=self.max_samples
+            )
+
+        return dicts
+
+    def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
+        # this tokenization also stores offsets and a start_of_word mask
+        text = dictionary["text"]
+        tokenized = tokenize_with_metadata(text, self.tokenizer)
+        if len(tokenized["tokens"]) == 0:
+            logger.warning(f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text}")
+            return []
+        # truncate tokens, offsets and start_of_word to max_seq_len that can be handled by the model
+        for seq_name in tokenized.keys():
+            tokenized[seq_name], _, _ = truncate_sequences(seq_a=tokenized[seq_name], seq_b=None, tokenizer=self.tokenizer,
+                                                max_seq_len=self.max_seq_len)
+        return [Sample(id=None, clear_text=dictionary, tokenized=tokenized)]
+
+    def _sample_to_features(self, sample) -> dict:
+        features = sample_to_features_text(
+            sample=sample,
+            tasks=self.tasks,
+            max_seq_len=self.max_seq_len,
+            tokenizer=self.tokenizer,
+        )
+        return features
+
+
 class TextPairClassificationProcessor(TextClassificationProcessor):
     """
     Used to handle text pair classification datasets (e.g. Answer Selection or Natural Inference) that come in
