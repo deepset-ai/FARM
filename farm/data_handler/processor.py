@@ -1713,7 +1713,7 @@ def check_valid_answer(sample):
         start = answer["start_c"]
         end = answer["end_c"]
         # Cases where the answer is not within the current passage will be turned into no answers by the featurization fn
-        if start < 0 or end > len_passage:
+        if start < 0 or end >= len_passage:
             continue
         answer_indices = passage_text[start: end + 1]
         answer_text = answer["text"]
