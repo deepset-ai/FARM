@@ -401,7 +401,6 @@ class TextClassificationProcessor(Processor):
         max_samples=None,
         text_column_name="text",
         task_names=None,
-        **kwargs
     ):
         """
         :param tokenizer: Used to split a sentence (str) into tokens.
@@ -449,11 +448,7 @@ class TextClassificationProcessor(Processor):
                            If you want to use multiple prediction heads provide a ``list`` of task
                            names. One name per prediction head.
         :type task_names: None or list of str
-        :param kwargs: placeholder for passing generic parameters
-        :type kwargs: object
         """
-        #TODO If an arg is misspelt, e.g. metrics, it will be swallowed silently by kwargs
-
         # Custom processor attributes
         self.delimiter = delimiter
         self.quote_char = quote_char
