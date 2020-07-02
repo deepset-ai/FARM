@@ -38,7 +38,9 @@ from farm.data_handler.utils import (
     split_with_metadata,
     convert_qa_input_dict,
     get_sequence_pair,
-    join_sentences
+    join_sentences,
+    SampleError
+
 )
 
 from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
@@ -1185,7 +1187,7 @@ class SquadProcessor(QAProcessor):
                                          tokenizer=self.tokenizer,
                                          max_seq_len=self.max_seq_len,
                                          sp_toks_start=self.sp_toks_start,
-                                         sp_toks_mid=self.sp_toks_end)
+                                         sp_toks_mid=self.sp_toks_mid)
         return features
 
 class NaturalQuestionsProcessor(QAProcessor):
@@ -1713,6 +1715,8 @@ def check_valid_answer(sample):
         # Cases where the answer is not within the current passage will be turned into no answers by the featurization fn
         if start < 0 or end > len_passage:
             continue
-        if passage_text[start: end + 1] != answer["text"]:
-            raise Exception
+        answer_indices = passage_text[start: end + 1]
+        answer_text = answer["text"]
+        if answer_indices != answer_text:
+            raise SampleError(f"""Answer using start/end indices is '{answer_indices}' while gold label text is '{answer_text}'""")
 
