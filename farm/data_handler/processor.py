@@ -38,9 +38,7 @@ from farm.data_handler.utils import (
     split_with_metadata,
     convert_qa_input_dict,
     get_sequence_pair,
-    join_sentences,
-    SampleError
-
+    join_sentences
 )
 
 from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
