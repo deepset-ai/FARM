@@ -378,7 +378,14 @@ class Processor(ABC):
 #########################################
 class TextClassificationProcessor(Processor):
     """
-    Used to handle the text classification datasets that come in tabular format (CSV, TSV, etc.)
+    Used to handle the text classification datasets that come in tabular format (CSV, TSV, etc.).
+
+    When you do not set ``task_names`` this ``Processor`` can be used with a single prediction head.
+    When you want to supply multiple prediction heads you have to specify a list of task names
+    with the ``task_names`` parameter. In this case ``label_list`` must be a list of list of label
+    names. Also you have to provide a list of label column names with ``label_column_name``.
+    All three lists must have the same length and must match to the number of prediction heads
+    you provide.
     """
     def __init__(
         self,
@@ -482,7 +489,21 @@ class TextClassificationProcessor(Processor):
                               text_column_name=text_column_name,
                               task_type=task_type)
             else:  # multiple prediction heads
-                for task_name, inner_label_list, inner_label_column_name in zip(task_names, label_list, label_column_name):
+                if type(task_names) is not list:
+                    raise TypeError("'task_names' must be a 'list' or 'None' but was {}!".format(type(task_names)))
+                if type(label_list) is not list:
+                    raise TypeError("'label_list' must be a 'list' of 'list' but was {}!".format(type(label_list)))
+                if type(label_list[0]) is not list:
+                    raise TypeError("'label_list' must be a 'list' of 'list' but "
+                                    "the inner type was {}!".format(type(label_list[0])))
+                if type(label_column_name) is not list:
+                    raise TypeError("'label_column_name' must be a 'list' but was {}!".format(type(label_column_name)))
+                if not (len(task_names) == len(label_list) == len(label_column_name)):
+                    raise AttributeError("The lists 'task_names', 'label_list' and 'label_column_name' "
+                                         "must all have the same length!")
+                for task_name, inner_label_list, inner_label_column_name in zip(task_names,
+                                                                                label_list,
+                                                                                label_column_name):
                     self.add_task(name=task_name,
                                   metric=metric,
                                   label_list=inner_label_list,
