@@ -1716,5 +1716,5 @@ def check_valid_answer(sample):
         answer_indices = passage_text[start: end + 1]
         answer_text = answer["text"]
         if answer_indices != answer_text:
-            raise SampleError(f"""Answer using start/end indices is '{answer_indices}' while gold label text is '{answer_text}'""")
+            raise ValueError(f"""Answer using start/end indices is '{answer_indices}' while gold label text is '{answer_text}'""")
 
