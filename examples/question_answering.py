@@ -7,7 +7,7 @@ from pathlib import Path
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import SquadProcessor
 from farm.data_handler.utils import write_squad_predictions
-from farm.infer import Inferencer
+from farm.infer import QAInferencer
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import LanguageModel
 from farm.modeling.optimization import initialize_optimizer
@@ -110,7 +110,7 @@ def question_answering():
                 "context":  "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
             }]
 
-    model = Inferencer.load(save_dir, batch_size=40, gpu=True)
+    model = QAInferencer.load(save_dir, batch_size=40, gpu=True)
     result = model.inference_from_dicts(dicts=QA_input)[0]
 
     pprint.pprint(result)
