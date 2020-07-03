@@ -301,14 +301,6 @@ Checkout `haystack <https://github.com/deepset-ai/haystack/>`__ for more details
 **8. My GPU runs out of memory. How can I train with decent batch sizes?**
 Use gradient accumulation! It combines multiple batches before applying backprop. In FARM, just set the param :code:`grad_acc_steps` in :code:`initialize_optimizer()` and :code:`Trainer()` to the number of batches you want to combine (i.e. :code:`grad_acc_steps=2` and :code:`batch_size=16` results in an effective batch size of 32).
 
-Upcoming features
-###################
-- Full AWS SageMaker support (incl. Spot instances)
-- Support for more Question Answering styles and datasets
-- Additional visualizations and statistics to explore and debug your model
-- Enabling large scale deployment for production
-- Simpler benchmark models (fasttext, word2vec ...)
-
 
 Acknowledgements
 ###################
