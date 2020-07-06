@@ -12,6 +12,7 @@ from typing import Generator, List, Union
 from farm.data_handler.dataloader import NamedDataLoader
 from farm.data_handler.processor import Processor, InferenceProcessor, SquadProcessor, NERProcessor, TextClassificationProcessor
 from farm.data_handler.utils import grouper
+from farm.data_handler.inputs import QAInput
 from farm.modeling.tokenization import Tokenizer
 from farm.modeling.adaptive_model import AdaptiveModel, BaseAdaptiveModel, ONNXAdaptiveModel
 from farm.modeling.optimization import optimize_model
@@ -640,6 +641,10 @@ class QAInferencer(Inferencer):
                             streaming=False,
                             return_json=True) -> Union[List[QAPred], Generator[QAPred, None, None]]:
         return Inferencer.inference_from_file(self, file, return_json=return_json, multiprocessing_chunksize=None, streaming=False)
+
+    def inference_from_objects(self, objects: List[QAInput]):
+        dicts = [o.to_dict for o in objects]
+        return self.inference_from_dicts(dicts)
 
 
 class FasttextInferencer:
