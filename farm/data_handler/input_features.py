@@ -70,10 +70,6 @@ def sample_to_features_text(
     input_ids = pad(input_ids, max_seq_len, tokenizer.pad_token_id, pad_on_left=pad_on_left)
     padding_mask = pad(padding_mask, max_seq_len, 0, pad_on_left=pad_on_left)
 
-    assert len(input_ids) == max_seq_len
-    assert len(padding_mask) == max_seq_len
-    assert len(segment_ids) == max_seq_len
-
     feat_dict = {
         "input_ids": input_ids,
         "padding_mask": padding_mask,

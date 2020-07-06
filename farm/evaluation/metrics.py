@@ -45,7 +45,8 @@ def simple_accuracy(preds, labels):
     if type(preds) == type(labels) == list:
         preds = np.array(list(flatten_list(preds)))
         labels = np.array(list(flatten_list(labels)))
-    assert type(preds) == type(labels) == np.ndarray
+    if type(preds) != np.ndarray or type(labels) != np.ndarray:
+        logger.error("preds and labels should be of type np.ndarray")
     correct = preds == labels
     return {"acc": correct.mean()}
 
@@ -70,7 +71,8 @@ def pearson_and_spearman(preds, labels):
     }
 
 def compute_metrics(metric, preds, labels):
-    assert len(preds) == len(labels)
+    if len(preds) != len(labels):
+        logger.error("Length of preds does not match length of labels")
     if metric == "mcc":
         return {"mcc": matthews_corrcoef(labels, preds)}
     elif metric == "acc":

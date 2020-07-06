@@ -1,8 +1,10 @@
 from math import ceil
+import logging
 
 from torch.utils.data import DataLoader, Dataset, Sampler
 import torch
 
+logger = logging.getLogger(__name__)
 
 class NamedDataLoader(DataLoader):
     """
@@ -40,11 +42,10 @@ class NamedDataLoader(DataLoader):
             if type(batch[0]) == list:
                 batch = batch[0]
 
-            assert len(batch[0]) == len(
-                _tensor_names
-            ), "Dataset contains {} tensors while there are {} tensor names supplied: {}".format(
-                len(batch[0]), len(_tensor_names), _tensor_names
-            )
+            if len(batch[0]) != len(_tensor_names):
+                error_str = "Dataset contains {} tensors while there are {} tensor names supplied: {}".format(len(batch[0]), len(_tensor_names), _tensor_names)
+                logger.error(error_str)
+
             lists_temp = [[] for _ in range(len(_tensor_names))]
             ret = dict(zip(_tensor_names, lists_temp))
 

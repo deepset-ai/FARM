@@ -316,7 +316,6 @@ def _words_to_tokens(words, word_offsets, tokenizer):
             else:
                 start_of_word.append(False)
 
-    assert len(tokens) == len(token_offsets) == len(start_of_word)
     return tokens, token_offsets, start_of_word
 
 

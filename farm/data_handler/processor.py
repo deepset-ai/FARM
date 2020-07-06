@@ -1447,16 +1447,17 @@ class NaturalQuestionsProcessor(QAProcessor):
         if not short_answers:
             return "", -1
         short_answer_idxs = []
-        # TODO write comment explaining this
+        # Collect indices of all short answers and pick smallest and largest as start and end of new single span
         for short_answer in short_answers:
             short_answer_idxs.append(short_answer["start_token"])
             short_answer_idxs.append(short_answer["end_token"])
         answer_start_t = min(short_answer_idxs)
         answer_end_t = max(short_answer_idxs)
         answer_start_c, answer_end_c = self._convert_tok_to_ch(answer_start_t, answer_end_t, tok_to_ch, doc_text)
-        answer_text = doc_text[answer_start_c: answer_end_c]
-        assert answer_text == " ".join(doc_text.split()[answer_start_t: answer_end_t])
-        return answer_text, answer_start_c
+        answer_text_ch = doc_text[answer_start_c: answer_end_c]
+        answer_text_tok = " ".join(doc_text.split()[answer_start_t: answer_end_t])
+        assert answer_text_ch == answer_text_tok
+        return answer_text_ch, answer_start_c
 
     @staticmethod
     def _convert_tok_to_ch(start_t, end_t, tok_to_ch, doc_text):

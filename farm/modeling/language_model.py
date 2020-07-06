@@ -173,7 +173,8 @@ class LanguageModel(nn.Module):
             language_model.model.resize_token_embeddings(vocab_size)
             # verify
             model_emb_size = language_model.model.resize_token_embeddings(new_num_tokens=None).num_embeddings
-            assert vocab_size == model_emb_size
+            if vocab_size != model_emb_size:
+                logger.error("vocab_size does not equal model_embed_size")
 
         return language_model
 

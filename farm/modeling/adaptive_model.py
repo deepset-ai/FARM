@@ -185,13 +185,13 @@ class BaseAdaptiveModel:
         model_files.sort()
         config_files.sort()
 
-        if strict:
+        if strict and (len(model_files) != len(config_files)):
             error_str = (
                 f"There is a mismatch in number of model files ({len(model_files)}) and config files ({len(config_files)})."
                 "This might be because the Language Model Prediction Head "
                 "does not currently support saving and loading"
             )
-            assert len(model_files) == len(config_files), error_str
+            logger.warning(error_str)
         logger.info(f"Found files for loading {len(model_files)} prediction heads")
 
         return model_files, config_files
@@ -343,10 +343,11 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         all_losses = []
         for head, logits_for_one_head in zip(self.prediction_heads, logits):
             # check if PredictionHead connected to Processor
-            assert hasattr(head, "label_tensor_name"), \
-                (f"Label_tensor_names are missing inside the {head.task_name} Prediction Head. Did you connect the model"
-                " with the processor through either 'model.connect_heads_with_processor(processor.tasks)'"
-                " or by passing the processor to the Adaptive Model?")
+            if not hasattr(head, "label_tensor_name"):
+                error_str = f"Label_tensor_names are missing inside the {head.task_name} Prediction Head. Did you connect the model"\
+                            " with the processor through either 'model.connect_heads_with_processor(processor.tasks)'"\
+                            " or by passing the processor to the Adaptive Model?"
+                logger.error(error_str)
             all_losses.append(head.logits_to_loss(logits=logits_for_one_head, **kwargs))
         return all_losses
 
@@ -473,10 +474,11 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
 
         model_vocab_len = self.language_model.model.resize_token_embeddings(new_num_tokens=None).num_embeddings
 
-        msg = f"Vocab size of tokenizer {vocab_size} doesn't match with model {model_vocab_len}. " \
-              "If you added a custom vocabulary to the tokenizer, " \
-              "make sure to supply 'n_added_tokens' to LanguageModel.load() and BertStyleLM.load()"
-        assert vocab_size == model_vocab_len, msg
+        if vocab_size != model_vocab_len:
+            msg = f"Vocab size of tokenizer {vocab_size} doesn't match with model {model_vocab_len}. " \
+                  "If you added a custom vocabulary to the tokenizer, " \
+                  "make sure to supply 'n_added_tokens' to LanguageModel.load() and BertStyleLM.load()"
+            logger.error(msg)
 
         for head in self.prediction_heads:
             if head.model_type == "language_modelling":

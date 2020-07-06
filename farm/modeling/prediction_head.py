@@ -374,7 +374,13 @@ class TextClassificationHead(PredictionHead):
         is needed since at inference, the order of operations is very different depending on whether we are performing
         aggregation or not (compare Inferencer._get_predictions() vs Inferencer._get_predictions_and_aggregate())"""
 
-        assert (logits is not None) or (preds is not None)
+        logit_input = logits is not None
+        preds_input = preds is not None
+
+        if logit_input and preds_input:
+            logger.warning("Both logits and preds have been passed as input to the TextClassificationHead")
+        if not logit_input and not preds_input:
+            logger.warning("Neither logits nor preds have been passed as input to the TextClassificationHead")
 
         # When this method is used along side a QAHead at inference (e.g. Natural Questions), preds is the input and
         # there is currently no good way of generating probs
@@ -384,7 +390,6 @@ class TextClassificationHead(PredictionHead):
         else:
             probs = [None] * len(preds)
 
-        # TODO this block has to do with the difference in Basket and Sample structure between SQuAD and NQ
         try:
             contexts = [sample.clear_text["text"] for sample in samples]
         # This case covers Natural Questions where the sample is in a QA style
@@ -394,8 +399,6 @@ class TextClassificationHead(PredictionHead):
         contexts_b = [sample.clear_text["text_b"] for sample in samples if "text_b" in  sample.clear_text]
         if len(contexts_b) != 0:
             contexts = ["|".join([a, b]) for a,b in zip(contexts, contexts_b)]
-
-        assert len(preds) == len(probs) == len(contexts)
 
         res = {"task": "text_classification", "predictions": []}
         for pred, prob, context in zip(preds, probs, contexts):
@@ -954,7 +957,6 @@ class QuestionAnsweringHead(PredictionHead):
             logger.warning(f"Some unused parameters are passed to the QuestionAnsweringHead. "
                            f"Might not be a problem. Params: {json.dumps(kwargs)}")
         self.layer_dims = layer_dims
-        assert self.layer_dims[-1] == 2
         self.feed_forward = FeedForwardBlock(self.layer_dims)
         logger.info(f"Prediction head initialized with size {self.layer_dims}")
         self.num_labels = self.layer_dims[-1]
@@ -1200,12 +1202,19 @@ class QuestionAnsweringHead(PredictionHead):
         (see Inferencer._get_predictions_and_aggregate()).
         """
 
+        # Log cases where this method receives the wrong kind of input
+        logit_input = logits is not None
+        preds_input = preds is not None
+
+        if logit_input:
+            logger.warning("QuestionAnsweringHead.formatted_preds() received logit input when it only expects pred input")
+        if not preds_input:
+            logger.warning("QuestionAnsweringHead.formatted_preds() did not receive the preds input it expects")
+
         # Unpack some useful variables
         # passage_start_t is the token index of the passage relative to the document (usually a multiple of doc_stride)
         # seq_2_start_t is the token index of the first token in passage relative to the input sequence (i.e. number of
         # special tokens and question tokens that come before the passage tokens)
-        assert logits is None, "Logits are not None, something is passed wrongly into formatted_preds() in infer.py"
-        assert preds is not None, "No preds passed to formatted_preds()"
         samples = [s for b in baskets for s in b.samples]
         ids = [s.id for s in samples]
         passage_start_t = [s.features[0]["passage_start_t"] for s in samples]
@@ -1216,8 +1225,6 @@ class QuestionAnsweringHead(PredictionHead):
         # i.e. that there are no incomplete documents. The output of this step
         # are prediction spans
         preds_d = self.aggregate_preds(preds, passage_start_t, ids, seq_2_start_t)
-
-        assert len(preds_d) == len(baskets)
 
         # Separate top_preds list from the no_ans_gap float.
         top_preds, no_ans_gaps = zip(*preds_d)
@@ -1454,7 +1461,7 @@ class QuestionAnsweringHead(PredictionHead):
     def pred_to_doc_idxs(pred, passage_start_t):
         """ Converts the passage level predictions to document level predictions. Note that on the doc level we
         don't have special tokens or question tokens. This means that a no answer
-        cannot be prepresented by a (0,0) qa_answer but will instead be represented by (-1, -1)"""
+        cannot be represented by a (0,0) qa_answer but will instead be represented by (-1, -1)"""
         new_pred = []
         for qa_answer in pred:
             start = qa_answer.offset_answer_start
@@ -1463,12 +1470,10 @@ class QuestionAnsweringHead(PredictionHead):
                 start = -1
             else:
                 start += passage_start_t
-                assert start >= 0
             if end == 0:
                 end = -1
             else:
                 end += passage_start_t
-                assert start >= 0
             qa_answer.to_doc_level(start, end)
             new_pred.append(qa_answer)
         return new_pred
@@ -1503,7 +1508,6 @@ class QuestionAnsweringHead(PredictionHead):
 
         # This fn is used to align QA output of len=n_docs and Classification output of len=n_passages
         def chunk(iterable, lengths):
-            assert sum(lengths) == len(iterable)
             cumsum = list(np.cumsum(lengths))
             cumsum = [0] + cumsum
             spans = [(cumsum[i], cumsum[i+1]) for i in range(len(cumsum) - 1)]
