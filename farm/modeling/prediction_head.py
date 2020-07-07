@@ -1246,8 +1246,15 @@ class QuestionAnsweringHead(PredictionHead):
             document_text = try_get(doc_names, basket.raw)
             question = try_get(question_names, basket.raw)
 
+            # Iterate over each prediction on the one document
+            full_preds = []
+            for qa_candidate in pred_d:
+                pred_str, _, _ = qa_candidate.span_to_string(token_offsets, document_text)
+                qa_candidate.add_answer(pred_str)
+                full_preds.append(qa_candidate)
+
             curr_doc_pred = QAPred(id=pred_id,
-                                   prediction=pred_d,
+                                   prediction=full_preds,
                                    context=document_text,
                                    question=question,
                                    token_offsets=token_offsets,
