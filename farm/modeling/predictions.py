@@ -5,8 +5,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
-
 class Pred(ABC):
     """
     Abstract base class for predictions of every task
@@ -70,9 +68,9 @@ class QACandidate:
         self.offset_answer_support_end = None
 
         # self.context is the document or passage where the answer is found
-        self.context = None
-        self.offset_context_start = None
-        self.offset_context_end = None
+        self.context_window = None
+        self.offset_context_window_start = None
+        self.offset_context_window_end = None
 
         # Offset unit is either "token" or "char"
         # Aggregation level is either "doc" or "passage"
@@ -81,6 +79,67 @@ class QACandidate:
 
         self.n_passages_in_doc = n_passages_in_doc
         self.passage_id = passage_id
+
+    def set_context_window(self, context_window_size, clear_text):
+        window_str, start_ch, end_ch = self.create_context_window(context_window_size, clear_text)
+        self.context_window = window_str
+        self.offset_context_window_start = start_ch
+        self.offset_context_window_end = end_ch
+
+    def set_answer_string(self, token_offsets, document_text):
+        pred_str, self.offset_answer_start, self.offset_answer_end = self.span_to_string(token_offsets, document_text)
+        self.offset_unit = "char"
+        self.add_answer(pred_str)
+
+    def add_answer(self, string):
+        """ Set the answer string. This method will check that the answer given is valid given the start
+        and end indices that are stored in the object. """
+        if string == "":
+            self.answer = "no_answer"
+            if self.offset_answer_start != 0 or self.offset_answer_end != 0:
+                logger.error(f"Something went wrong with answer stssart and end offsets: \n"
+                             f"{self.offset_answer_start}, {self.offset_answer_end} with a no_answer. ")
+        else:
+            self.answer = string
+            if self.offset_answer_start <= 0 or self.offset_answer_end <= 1:
+                logger.error(f"Something went wrong with answer start and end offsets: \n"
+                             f"{self.offset_answer_start}, {self.offset_answer_end} with a span answer. ")
+
+    def create_context_window(self, context_window_size, clear_text):
+        """
+        Extract from the clear_text a window that contains the answer and (usually) some amount of text on either
+        side of the answer. Useful for cases where the answer and its surrounding context needs to be
+        displayed in a UI. If the self.context_window_size is smaller than the extracted answer, it will be
+        enlarged so that it can contain the answer
+
+        :param context_window_size: The size of the context window to be generated. Note that the window size may be increased if the answer is longer.
+        :param clear_text: The text from which the answer is extracted
+        :return:
+        """
+        if self.offset_answer_start == 0 and self.offset_answer_end == 0:
+            return "", 0, 0
+        else:
+            # If the extracted answer is longer than the context_window_size,
+            # we will increase the context_window_size
+            len_ans = self.offset_answer_end - self.offset_answer_start
+            context_window_size = max(context_window_size, len_ans + 1)
+
+            len_text = len(clear_text)
+            midpoint = int(len_ans / 2) + self.offset_answer_start
+            half_window = int(context_window_size / 2)
+            window_start_ch = midpoint - half_window
+            window_end_ch = midpoint + half_window
+
+            # if we have part of the context window overlapping the start or end of the passage,
+            # we'll trim it and use the additional chars on the other side of the answer
+            overhang_start = max(0, -window_start_ch)
+            overhang_end = max(0, window_end_ch - len_text)
+            window_start_ch -= overhang_end
+            window_start_ch = max(0, window_start_ch)
+            window_end_ch += overhang_start
+            window_end_ch = min(len_text, window_end_ch)
+        window_str = clear_text[window_start_ch: window_end_ch]
+        return window_str, window_start_ch, window_end_ch
 
     def span_to_string(self, token_offsets: List[int], clear_text: str):
         """
@@ -141,22 +200,6 @@ class QACandidate:
         self.offset_answer_end = end
         self.aggregation_level = "document"
 
-    def add_answer(self, string):
-        """ Set the answer string. This method will check that the answer given is valid given the start
-        and end indices that are stored in the object. """
-        if string == "":
-            self.answer = "no_answer"
-            if self.offset_answer_start != -1 or self.offset_answer_end != -1:
-                logger.error(f"Something went wrong in tokenization. We have start and end offsets: "
-                             f"{self.offset_answer_start, self.offset_answer_end} with an empty answer. "
-                             f"\nContext: {self.context}")
-        else:
-            self.answer = string
-            if self.offset_answer_start == -1 or self.offset_answer_end == -1:
-                logger.error(f"Something went wrong in tokenization. We have start and end offsets: "
-                             f"{self.offset_answer_start, self.offset_answer_end} with answer: {string}. "
-                             f"\nContext: {self.context}")
-
     def to_list(self):
         return [self.answer, self.offset_answer_start, self.offset_answer_end, self.score, self.passage_id]
 
@@ -176,7 +219,6 @@ class QAPred(Pred):
                  context_window_size: int,
                  aggregation_level: str,
                  no_answer_gap: float,
-                 n_passages: int,
                  ground_truth_answer: str = None,
                  answer_types: List[str] = []):
         """
@@ -188,7 +230,6 @@ class QAPred(Pred):
         :param context_window_size: The number of chars in the text window around the answer
         :param aggregation_level: States whether this candidate and its indices are on a passage level (pre aggregation) or on a document level (post aggregation)
         :param no_answer_gap: How much the QuestionAnsweringHead.no_ans_boost needs to change to turn a no_answer to a positive answer
-        :param n_passages: Number of passages in the context document
         :param ground_truth_answer: Ground truth answers
         :param answer_types: List of answer_types supported by this task e.g. ["span", "yes_no", "no_answer"]
         """
@@ -200,7 +241,10 @@ class QAPred(Pred):
         self.answer_types = answer_types
         self.ground_truth_answer = ground_truth_answer
         self.no_answer_gap = no_answer_gap
-        self.n_passages = n_passages
+        self.n_passages = self.prediction[0].n_passages_in_doc
+        for qa_candidate in self.prediction:
+            qa_candidate.set_answer_string(token_offsets, self.context)
+            qa_candidate.set_context_window(self.context_window_size, self.context)
 
     def to_json(self, squad=False):
         """
@@ -225,7 +269,7 @@ class QAPred(Pred):
         }
         return ret
 
-    def answers_to_json(self, id, squad=False):
+    def answers_to_json(self, ext_id, squad=False):
         """
         Convert all answers into a json format
 
@@ -238,54 +282,21 @@ class QAPred(Pred):
 
         # iterate over the top_n predictions of the one document
         for qa_candidate in self.prediction:
-            string = qa_candidate.answer
-
-            _, ans_start_ch, ans_end_ch = qa_candidate.span_to_string(self.token_offsets, self.context)
-            context_string, context_start_ch, context_end_ch = self.create_context(ans_start_ch, ans_end_ch, self.context)
-            if squad and string == "no_answer":
-                    string = ""
+            if squad and qa_candidate.answer == "no_answer":
+                    answer_string = ""
+            else:
+                answer_string = qa_candidate.answer
             curr = {"score": qa_candidate.score,
                     "probability": None,
-                    "answer": string,
-                    "offset_answer_start": ans_start_ch,
-                    "offset_answer_end": ans_end_ch,
-                    "context": context_string,
-                    "offset_context_start": context_start_ch,
-                    "offset_context_end": context_end_ch,
-                    "document_id": id}
+                    "answer": answer_string,
+                    "offset_answer_start": qa_candidate.offset_answer_start,
+                    "offset_answer_end": qa_candidate.offset_answer_end,
+                    "context": qa_candidate.context_window,
+                    "offset_context_start": qa_candidate.offset_context_window_start,
+                    "offset_context_end": qa_candidate.offset_context_window_end,
+                    "document_id": ext_id}
             ret.append(curr)
         return ret
-
-
-    def create_context(self, ans_start_ch, ans_end_ch, clear_text):
-        """
-        Extract from the clear_text a window that contains the answer and some amount of text on either
-        side of the answer. Useful for cases where the answer and its surrounding context needs to be
-        displayed in a UI.
-
-        :param ans_start_ch: Start character index of the answer
-        :param ans_end_ch: End character index of the answer
-        :param clear_text: The text from which the answer is extracted
-        :return:
-        """
-        if ans_start_ch == 0 and ans_end_ch == 0:
-            return "", 0, 0
-        else:
-            len_text = len(clear_text)
-            midpoint = int((ans_end_ch - ans_start_ch) / 2) + ans_start_ch
-            half_window = int(self.context_window_size / 2)
-            context_start_ch = midpoint - half_window
-            context_end_ch = midpoint + half_window
-            # if we have part of the context window overlapping start or end of the passage,
-            # we'll trim it and use the additional chars on the other side of the answer
-            overhang_start = max(0, -context_start_ch)
-            overhang_end = max(0, context_end_ch - len_text)
-            context_start_ch -= overhang_end
-            context_start_ch = max(0, context_start_ch)
-            context_end_ch += overhang_start
-            context_end_ch = min(len_text, context_end_ch)
-        context_string = clear_text[context_start_ch: context_end_ch]
-        return context_string, context_start_ch, context_end_ch
 
     def to_squad_eval(self):
         return self.to_json(squad=True)
