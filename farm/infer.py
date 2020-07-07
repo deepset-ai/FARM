@@ -643,7 +643,7 @@ class QAInferencer(Inferencer):
         return Inferencer.inference_from_file(self, file, return_json=return_json, multiprocessing_chunksize=None, streaming=False)
 
     def inference_from_objects(self, objects: List[QAInput]):
-        dicts = [o.to_dict for o in objects]
+        dicts = [o.to_dict() for o in objects]
         return self.inference_from_dicts(dicts)
 
 
