@@ -87,7 +87,8 @@ class QACandidate:
         self.offset_context_window_end = end_ch
 
     def set_answer_string(self, token_offsets, document_text):
-        pred_str, _, _ = self.span_to_string(token_offsets, document_text)
+        pred_str, self.offset_answer_start, self.offset_answer_end = self.span_to_string(token_offsets, document_text)
+        self.offset_unit = "char"
         self.add_answer(pred_str)
 
     def add_answer(self, string):
@@ -95,16 +96,14 @@ class QACandidate:
         and end indices that are stored in the object. """
         if string == "":
             self.answer = "no_answer"
-            if self.offset_answer_start != -1 or self.offset_answer_end != -1:
-                logger.error(f"Something went wrong in tokenization. We have start and end offsets: "
-                             f"{self.offset_answer_start, self.offset_answer_end} with an empty answer. "
-                             f"\nContext: {self.context_window}")
+            if self.offset_answer_start != 0 or self.offset_answer_end != 0:
+                logger.error(f"Something went wrong with answer start and end offsets: \n"
+                             f"{self.offset_answer_start}, {self.offset_answer_end} with a no_answer. ")
         else:
             self.answer = string
-            if self.offset_answer_start == -1 or self.offset_answer_end == -1:
-                logger.error(f"Something went wrong in tokenization. We have start and end offsets: "
-                             f"{self.offset_answer_start, self.offset_answer_end} with answer: {string}. "
-                             f"\nContext: {self.context_window}")
+            if self.offset_answer_start <= 0 or self.offset_answer_end <= 0:
+                logger.error(f"Something went wrong with answer start and end offsets: \n"
+                             f"{self.offset_answer_start}, {self.offset_answer_end} with a span answer. ")
 
     def create_context_window(self, context_window_size, clear_text):
         """
@@ -113,8 +112,7 @@ class QACandidate:
         displayed in a UI. If the self.context_window_size is smaller than the extracted answer, it will be
         enlarged so that it can contain the answer
 
-        :param ans_start_ch: Start character index of the answer
-        :param ans_end_ch: End character index of the answer
+        :param context_window_size: The size of the context window to be generated. Note that the window size may be increased if the answer is longer.
         :param clear_text: The text from which the answer is extracted
         :return:
         """
@@ -221,7 +219,6 @@ class QAPred(Pred):
                  context_window_size: int,
                  aggregation_level: str,
                  no_answer_gap: float,
-                 n_passages: int,
                  ground_truth_answer: str = None,
                  answer_types: List[str] = []):
         """
@@ -233,7 +230,6 @@ class QAPred(Pred):
         :param context_window_size: The number of chars in the text window around the answer
         :param aggregation_level: States whether this candidate and its indices are on a passage level (pre aggregation) or on a document level (post aggregation)
         :param no_answer_gap: How much the QuestionAnsweringHead.no_ans_boost needs to change to turn a no_answer to a positive answer
-        :param n_passages: Number of passages in the context document
         :param ground_truth_answer: Ground truth answers
         :param answer_types: List of answer_types supported by this task e.g. ["span", "yes_no", "no_answer"]
         """
@@ -245,12 +241,10 @@ class QAPred(Pred):
         self.answer_types = answer_types
         self.ground_truth_answer = ground_truth_answer
         self.no_answer_gap = no_answer_gap
-        self.n_passages = n_passages
+        self.n_passages = self.prediction[0].n_passages_in_doc
         for qa_candidate in self.prediction:
             qa_candidate.set_answer_string(token_offsets, self.context)
             qa_candidate.set_context_window(self.context_window_size, self.context)
-
-
 
     def to_json(self, squad=False):
         """
