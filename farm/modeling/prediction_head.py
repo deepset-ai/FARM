@@ -4,11 +4,11 @@ import os
 import numpy as np
 
 from pathlib import Path
-import torch
 from transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN
 from transformers.modeling_auto import AutoModelForQuestionAnswering, AutoModelForTokenClassification, AutoModelForSequenceClassification
 from typing import List
 
+import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
 
@@ -88,6 +88,8 @@ class PredictionHead(nn.Module):
         """
         config = {}
         for key, value in self.__dict__.items():
+            if type(value) is np.ndarray:
+                value = value.tolist()
             if is_json(value) and key[0] != "_":
                 config[key] = value
         config["name"] = self.__class__.__name__
@@ -275,6 +277,11 @@ class TextClassificationHead(PredictionHead):
         self.ph_output_type = "per_sequence"
         self.model_type = "text_classification"
         self.task_name = task_name #used for connecting with the right output of the processor
+
+        if type(class_weights) is np.ndarray and class_weights.ndim != 1:
+            raise ValueError("When you pass `class_weights` as `np.ndarray` it must have 1 dimension! "
+                             "You provided {} dimensions.".format(class_weights.ndim))
+
         self.class_weights = class_weights
 
         if class_weights is not None:
@@ -1239,15 +1246,23 @@ class QuestionAnsweringHead(PredictionHead):
             document_text = try_get(doc_names, basket.raw)
             question = try_get(question_names, basket.raw)
 
+            # Iterate over each prediction on the one document
+            full_preds = []
+            for qa_candidate in pred_d:
+                pred_str, _, _ = qa_candidate.span_to_string(token_offsets, document_text)
+                qa_candidate.add_answer(pred_str)
+                full_preds.append(qa_candidate)
+            n_samples = full_preds[0].n_passages_in_doc
+
             curr_doc_pred = QAPred(id=pred_id,
-                                   prediction=pred_d,
+                                   prediction=full_preds,
                                    context=document_text,
                                    question=question,
                                    token_offsets=token_offsets,
                                    context_window_size=self.context_window_size,
                                    aggregation_level="document",
-                                   no_answer_gap=no_ans_gap)
-
+                                   no_answer_gap=no_ans_gap,
+                                   n_passages=n_samples)
             ret.append(curr_doc_pred)
         return ret
 

@@ -5,8 +5,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
-
 class Pred(ABC):
     """
     Abstract base class for predictions of every task
@@ -223,6 +221,7 @@ class QAPred(Pred):
                  context_window_size: int,
                  aggregation_level: str,
                  no_answer_gap: float,
+                 n_passages: int,
                  ground_truth_answer: str = None,
                  answer_types: List[str] = []):
         """
@@ -234,6 +233,7 @@ class QAPred(Pred):
         :param context_window_size: The number of chars in the text window around the answer
         :param aggregation_level: States whether this candidate and its indices are on a passage level (pre aggregation) or on a document level (post aggregation)
         :param no_answer_gap: How much the QuestionAnsweringHead.no_ans_boost needs to change to turn a no_answer to a positive answer
+        :param n_passages: Number of passages in the context document
         :param ground_truth_answer: Ground truth answers
         :param answer_types: List of answer_types supported by this task e.g. ["span", "yes_no", "no_answer"]
         """
@@ -245,10 +245,11 @@ class QAPred(Pred):
         self.answer_types = answer_types
         self.ground_truth_answer = ground_truth_answer
         self.no_answer_gap = no_answer_gap
-        self.n_passages = self.prediction[0].n_passages_in_doc
+        self.n_passages = n_passages
         for qa_candidate in self.prediction:
             qa_candidate.set_answer_string(token_offsets, self.context)
             qa_candidate.set_context_window(self.context_window_size, self.context)
+
 
 
     def to_json(self, squad=False):

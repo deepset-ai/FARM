@@ -10,7 +10,7 @@ from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import LanguageModel
 from farm.modeling.optimization import initialize_optimizer
 from farm.modeling.prediction_head import BertLMHead, NextSentenceHead
-from farm.data_handler.utils import randomize_and_split_file
+from farm.data_handler.utils import split_file
 from farm.train import Trainer
 from farm.utils import set_all_seeds, StdoutLogger, initialize_device_settings
 import argparse
@@ -64,7 +64,7 @@ def train_from_scratch(args):
 
     # Split and shuffle training data
     if args["local_rank"] in [-1, 0]:
-        randomize_and_split_file(data_dir / args["train_file"], output_dir=data_dir / "split_files")
+        split_file(data_dir / args["train_file"], output_dir=data_dir / "split_files")
     # let other processes wait for splitted files from rank 0
     torch.distributed.barrier()
 

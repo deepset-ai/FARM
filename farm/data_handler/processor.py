@@ -40,6 +40,7 @@ from farm.data_handler.utils import (
     get_sequence_pair,
     join_sentences
 )
+
 from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
 from farm.utils import MLFlowLogger as MlLogger
 from farm.utils import try_get
@@ -347,6 +348,7 @@ class Processor(ABC):
             random_basket = random.choice(self.baskets)
             random_sample = random.choice(random_basket.samples)
             logger.info(random_sample)
+
 
     def _log_params(self):
         params = {
@@ -1035,7 +1037,26 @@ class BertStyleLMProcessor(Processor):
 # QA Processors ####
 #########################################
 
-class SquadProcessor(Processor):
+class QAProcessor(Processor):
+    """
+    This is class inherits from Processor and is the parent to SquadProcessor and NaturalQuestionsProcessor.
+    Its main role is to extend the __init__() so that the number of starting, intermediate and end special tokens
+    are calculated from the tokenizer and store as attributes. These are used by the child processors in their
+    sample_to_features() methods
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.initialize_special_tokens_count()
+
+    def initialize_special_tokens_count(self):
+        vec = self.tokenizer.build_inputs_with_special_tokens(token_ids_0=["a"],
+                                                              token_ids_1=["b"])
+        self.sp_toks_start = vec.index("a")
+        self.sp_toks_mid = vec.index("b") - self.sp_toks_start - 1
+        self.sp_toks_end = len(vec) - vec.index("b") - 1
+
+
+class SquadProcessor(QAProcessor):
     """ Used to handle the SQuAD dataset"""
 
     def __init__(
@@ -1161,13 +1182,15 @@ class SquadProcessor(Processor):
         return samples
 
     def _sample_to_features(self, sample) -> dict:
-        # TODO, make this function return one set of features per sample
+        check_valid_answer(sample)
         features = sample_to_features_qa(sample=sample,
                                          tokenizer=self.tokenizer,
-                                         max_seq_len=self.max_seq_len)
+                                         max_seq_len=self.max_seq_len,
+                                         sp_toks_start=self.sp_toks_start,
+                                         sp_toks_mid=self.sp_toks_mid)
         return features
 
-class NaturalQuestionsProcessor(Processor):
+class NaturalQuestionsProcessor(QAProcessor):
     """ Used to handle the Natural Question QA dataset"""
 
     def __init__(
@@ -1254,7 +1277,6 @@ class NaturalQuestionsProcessor(Processor):
         self.add_task("question_answering", "squad", ["start_token", "end_token"])
         self.add_task("text_classification", "f1_macro", self.answer_type_list, label_name="answer_type")
 
-
     def file_to_dicts(self, file: str) -> [dict]:
         dicts = read_jsonl(file, proxies=self.proxies)
         return dicts
@@ -1272,7 +1294,7 @@ class NaturalQuestionsProcessor(Processor):
         """
         # Turns a NQ dictionaries into a SQuAD style dictionaries
         if not self.inference:
-            dictionary = self.prepare_dict(dictionary=dictionary)
+            dictionary = self._prepare_dict(dictionary=dictionary)
 
         dictionary_tokenized = apply_tokenization(dictionary, self.tokenizer)[0]
         n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
@@ -1284,16 +1306,16 @@ class NaturalQuestionsProcessor(Processor):
         # Downsample the number of samples with an no_answer label. This fn will always return at least one sample
         # so that we don't end up with a basket with 0 samples
         if not self.inference:
-            samples = self.downsample(samples, self.keep_no_answer)
+            samples = self._downsample(samples, self.keep_no_answer)
         return samples
 
-    def downsample(self, samples, keep_prob):
+    def _downsample(self, samples, keep_prob):
         # Downsamples samples with a no_answer label (since there is an overrepresentation of these in NQ)
         # This method will always return at least one sample. This is done so that we don't end up with SampleBaskets
         # with 0 samples
         ret = []
         for s in samples:
-            if self.check_no_answer_sample(s):
+            if self._check_no_answer_sample(s):
                 if random_float() > 1 - keep_prob:
                     ret.append(s)
             else:
@@ -1302,7 +1324,7 @@ class NaturalQuestionsProcessor(Processor):
             ret = [random.choice(samples)]
         return ret
 
-    def downsample_unprocessed(self, dictionary):
+    def _downsample_unprocessed(self, dictionary):
         doc_text = dictionary["document_text"]
         doc_tokens = doc_text.split(" ")
         annotations = dictionary.get("annotations",[])
@@ -1310,7 +1332,7 @@ class NaturalQuestionsProcessor(Processor):
         if len(annotations) == 1:
             annotation = annotations[0]
             # There seem to be cases where there is no answer but an annotation is given as a (-1, -1) long answer
-            if self.check_no_answer(annotation):
+            if self._check_no_answer(annotation):
                 dictionary["document_text"] = " ".join(doc_tokens[:self.max_seq_len+randint(1,self.downsample_context_size)])
             else:
                 # finding earliest start and latest end labels
@@ -1343,28 +1365,28 @@ class NaturalQuestionsProcessor(Processor):
         return dictionary
 
 
-    def prepare_dict(self, dictionary):
+    def _prepare_dict(self, dictionary):
         """ Casts a Natural Questions dictionary that is loaded from a jsonl file into SQuAD format so that
         the same featurization functions can be called for both tasks. Each annotation can be one of four answer types,
         ["yes", "no", "span", "no_answer"]"""
 
         if self.downsample_context_size is not None:
-            dictionary = self.downsample_unprocessed(dictionary)
+            dictionary = self._downsample_unprocessed(dictionary)
 
         converted_answers = []
         doc_text = dictionary["document_text"]
         _, tok_to_ch = split_with_metadata(doc_text)
         for annotation in dictionary["annotations"]:
             # There seem to be cases where there is no answer but an annotation is given as a (-1, -1) long answer
-            if self.check_no_answer(annotation):
+            if self._check_no_answer(annotation):
                 continue
-            sa_text, sa_start_c = self.unify_short_answers(annotation["short_answers"], doc_text, tok_to_ch)
-            la_text, la_start_c = self.retrieve_long_answer(annotation["long_answer"]["start_token"],
-                                                            annotation["long_answer"]["end_token"],
-                                                            tok_to_ch,
-                                                            doc_text)
+            sa_text, sa_start_c = self._unify_short_answers(annotation["short_answers"], doc_text, tok_to_ch)
+            la_text, la_start_c = self._retrieve_long_answer(annotation["long_answer"]["start_token"],
+                                                             annotation["long_answer"]["end_token"],
+                                                             tok_to_ch,
+                                                             doc_text)
             # Picks the span to be considered as annotation by choosing between short answer, long answer and no_answer
-            text, start_c = self.choose_span(sa_text, sa_start_c, la_text, la_start_c)
+            text, start_c = self._choose_span(sa_text, sa_start_c, la_text, la_start_c)
             converted_answers.append({"text": text,
                                       "answer_start": start_c})
         if len(converted_answers) == 0:
@@ -1382,7 +1404,7 @@ class NaturalQuestionsProcessor(Processor):
         return converted
 
     @staticmethod
-    def check_no_answer(annotation):
+    def _check_no_answer(annotation):
         if annotation["long_answer"]["start_token"] > -1 or annotation["long_answer"]["end_token"] > -1:
             return False
         for sa in annotation["short_answers"]:
@@ -1392,7 +1414,7 @@ class NaturalQuestionsProcessor(Processor):
             return True
 
     @staticmethod
-    def check_no_answer_sample(sample):
+    def _check_no_answer_sample(sample):
         sample_tok = sample.tokenized
         if len(sample_tok["answers"]) == 0:
             return True
@@ -1406,14 +1428,14 @@ class NaturalQuestionsProcessor(Processor):
         else:
             return False
 
-    def retrieve_long_answer(self, start_t, end_t, tok_to_ch, doc_text):
+    def _retrieve_long_answer(self, start_t, end_t, tok_to_ch, doc_text):
         """ Retrieves the string long answer and also its starting character index"""
-        start_c, end_c = self.convert_tok_to_ch(start_t, end_t, tok_to_ch, doc_text)
+        start_c, end_c = self._convert_tok_to_ch(start_t, end_t, tok_to_ch, doc_text)
         text = doc_text[start_c: end_c]
         return text, start_c
 
     @staticmethod
-    def choose_span(sa_text, sa_start_c, la_text, la_start_c):
+    def _choose_span(sa_text, sa_start_c, la_text, la_start_c):
         if sa_text:
             return sa_text, sa_start_c
         elif la_text:
@@ -1421,7 +1443,7 @@ class NaturalQuestionsProcessor(Processor):
         else:
             return "", -1
 
-    def unify_short_answers(self, short_answers, doc_text, tok_to_ch):
+    def _unify_short_answers(self, short_answers, doc_text, tok_to_ch):
         """ In cases where an NQ sample has multiple disjoint short answers, this fn generates the single shortest
         span that contains all the answers"""
         if not short_answers:
@@ -1433,13 +1455,13 @@ class NaturalQuestionsProcessor(Processor):
             short_answer_idxs.append(short_answer["end_token"])
         answer_start_t = min(short_answer_idxs)
         answer_end_t = max(short_answer_idxs)
-        answer_start_c, answer_end_c = self.convert_tok_to_ch(answer_start_t, answer_end_t, tok_to_ch, doc_text)
+        answer_start_c, answer_end_c = self._convert_tok_to_ch(answer_start_t, answer_end_t, tok_to_ch, doc_text)
         answer_text = doc_text[answer_start_c: answer_end_c]
         assert answer_text == " ".join(doc_text.split()[answer_start_t: answer_end_t])
         return answer_text, answer_start_c
 
     @staticmethod
-    def convert_tok_to_ch(start_t, end_t, tok_to_ch, doc_text):
+    def _convert_tok_to_ch(start_t, end_t, tok_to_ch, doc_text):
         n_tokens = len(tok_to_ch)
         if start_t == -1 and end_t == -1:
             return -1, -1
@@ -1454,9 +1476,12 @@ class NaturalQuestionsProcessor(Processor):
         return start_c, end_c
 
     def _sample_to_features(self, sample: Sample) -> dict:
+        check_valid_answer(sample)
         features = sample_to_features_qa(sample=sample,
                                          tokenizer=self.tokenizer,
                                          max_seq_len=self.max_seq_len,
+                                         sp_toks_start=self.sp_toks_start,
+                                         sp_toks_mid=self.sp_toks_mid,
                                          answer_type_list=self.answer_type_list)
         return features
 
@@ -1681,14 +1706,17 @@ def is_impossible_to_answer_type(qas):
     return new_qas
 
   
-def check_valid_answer(dictionary):
-    context = dictionary["context"]
-    for qa in dictionary["qas"]:
-        for answer in qa["answers"]:
-            len_answer = len(answer["text"])
-            start = answer["answer_start"]
-            end = answer["answer_start"] + len_answer
-            if context[start: end] != answer["text"]:
-                raise Exception(f"The answer extracted by start character index does not match the answer string: "
-                                 f"\t {context[start: end]} vs {answer['text']}")
+def check_valid_answer(sample):
+    passage_text = sample.clear_text["passage_text"]
+    for answer in sample.clear_text["answers"]:
+        len_passage = len(passage_text)
+        start = answer["start_c"]
+        end = answer["end_c"]
+        # Cases where the answer is not within the current passage will be turned into no answers by the featurization fn
+        if start < 0 or end >= len_passage:
+            continue
+        answer_indices = passage_text[start: end + 1]
+        answer_text = answer["text"]
+        if answer_indices != answer_text:
+            raise ValueError(f"""Answer using start/end indices is '{answer_indices}' while gold label text is '{answer_text}'""")
 

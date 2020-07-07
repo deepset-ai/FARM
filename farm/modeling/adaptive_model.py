@@ -664,7 +664,7 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
                     {
                         "question": "In what country is Normandy located?",
                         "id": "56ddde6b9a695914005b9628",
-                        "answers": [{"text": "France", "answer_start": 159}],
+                        "answers": [],
                         "is_impossible": False,
                     }
                 ],

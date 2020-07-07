@@ -249,7 +249,6 @@ class Trainer:
         evalnr = 0
         loss = 0
         resume_from_step = self.from_step
-        set_all_seeds(seed=39)
 
         if self.local_rank in [0, -1]:
             logger.info(f"\n {GROWING_TREE}")
@@ -274,7 +273,6 @@ class Trainer:
                     else:
                         continue
 
-                set_all_seeds(seed=39)
                 progress_bar.set_description(f"Train epoch {epoch}/{self.epochs-1} (Cur. train loss: {loss:.4f})")
 
                 # Only for distributed training: we need to ensure that all ranks still have a batch left for training
