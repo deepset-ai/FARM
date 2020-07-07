@@ -95,7 +95,6 @@ def test_qa_onnx_inference(caplog=None):
     if caplog:
         caplog.set_level(logging.CRITICAL)
 
-
     QA_input = [
         {
             "questions": ["Who counted the game among the best ever made?"],

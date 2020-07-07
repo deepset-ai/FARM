@@ -1168,8 +1168,6 @@ class SquadProcessor(QAProcessor):
     def file_to_dicts(self, file: str) -> [dict]:
         nested_dicts = read_squad_file(filename=file)
         dicts = [y for x in nested_dicts for y in x["paragraphs"]]
-        for d in dicts:
-            check_valid_answer(d)
         return dicts
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
