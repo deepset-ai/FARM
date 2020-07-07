@@ -67,6 +67,9 @@ def test_inference_objs(bert_base_squad2, caplog=None):
     no_answer_gap = result.no_answer_gap
     assert isclose(no_answer_gap, no_answer_gap_gold, rel_tol=0.0001)
 
+    # TODO Test ID passing
+    # TODO Check all fields are there
+
 
 @pytest.mark.parametrize("num_processes", [None], scope="session")
 def test_qa_onnx_inference(adaptive_model_qa, caplog=None):
