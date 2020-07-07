@@ -97,11 +97,11 @@ class QACandidate:
         if string == "":
             self.answer = "no_answer"
             if self.offset_answer_start != 0 or self.offset_answer_end != 0:
-                logger.error(f"Something went wrong with answer start and end offsets: \n"
+                logger.error(f"Something went wrong with answer stssart and end offsets: \n"
                              f"{self.offset_answer_start}, {self.offset_answer_end} with a no_answer. ")
         else:
             self.answer = string
-            if self.offset_answer_start <= 0 or self.offset_answer_end <= 0:
+            if self.offset_answer_start <= 0 or self.offset_answer_end <= 1:
                 logger.error(f"Something went wrong with answer start and end offsets: \n"
                              f"{self.offset_answer_start}, {self.offset_answer_end} with a span answer. ")
 
@@ -269,7 +269,7 @@ class QAPred(Pred):
         }
         return ret
 
-    def answers_to_json(self, id, squad=False):
+    def answers_to_json(self, ext_id, squad=False):
         """
         Convert all answers into a json format
 
@@ -282,17 +282,19 @@ class QAPred(Pred):
 
         # iterate over the top_n predictions of the one document
         for qa_candidate in self.prediction:
-            if squad and string == "no_answer":
-                    string = ""
+            if squad and qa_candidate.answer == "no_answer":
+                    answer_string = ""
+            else:
+                answer_string = qa_candidate.answer
             curr = {"score": qa_candidate.score,
                     "probability": None,
-                    "answer": qa_candidate.answer,
+                    "answer": answer_string,
                     "offset_answer_start": qa_candidate.offset_answer_start,
                     "offset_answer_end": qa_candidate.offset_answer_end,
                     "context": qa_candidate.context_window,
                     "offset_context_start": qa_candidate.offset_context_window_start,
                     "offset_context_end": qa_candidate.offset_context_window_end,
-                    "document_id": id}
+                    "document_id": ext_id}
             ret.append(curr)
         return ret
 
