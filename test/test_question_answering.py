@@ -10,20 +10,20 @@ from farm.infer import Inferencer, QAInferencer
 from farm.data_handler.inputs import QAInput, Question
 
 
-def test_training(distil_bert_squad, caplog=None):
+def test_training(distilbert_squad, caplog=None):
     if caplog:
         caplog.set_level(logging.CRITICAL)
 
-    model, processor = distil_bert_squad
+    model, processor = distilbert_squad
     assert type(model) == AdaptiveModel
     assert type(processor) == SquadProcessor
 
 
-def test_save_load(distil_bert_squad, caplog=None):
+def test_save_load(distilbert_squad, caplog=None):
     if caplog:
         caplog.set_level(logging.CRITICAL)
 
-    model, processor = distil_bert_squad
+    model, processor = distilbert_squad
 
     save_dir = Path("testsave/qa")
     model.save(save_dir)
@@ -116,7 +116,7 @@ def test_qa_pred_attributes(span_inference_result, caplog=None):
     attributes_gold = ['aggregation_level', 'answer_types', 'context', 'context_window_size', 'ground_truth_answer',
                        'id', 'n_passages', 'no_answer_gap', 'prediction', 'question', 'to_json',
                        'to_squad_eval', 'token_offsets']
-    
+
     for ag in attributes_gold:
         assert ag in dir(qa_pred)
 

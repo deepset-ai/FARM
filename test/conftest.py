@@ -70,7 +70,7 @@ def bert_base_squad2():
 
 
 @pytest.fixture()
-def distil_bert_squad():
+def distilbert_squad():
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=False)
     batch_size = 2
