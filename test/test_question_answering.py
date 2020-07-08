@@ -146,14 +146,17 @@ def test_qa_onnx_inference(adaptive_model_qa, caplog=None):
     if caplog:
         caplog.set_level(logging.CRITICAL)
 
+
     QA_input = [
         {
             "questions": ["Who counted the game among the best ever made?"],
             "text": "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
         }]
+    base_LM_model = "deepset/bert-base-cased-squad2"
 
     # Pytorch
-    inferencer = adaptive_model_qa
+    inferencer = Inferencer.load(base_LM_model, batch_size=2, gpu=False, task_type="question_answering",
+                                 num_processes=0)
     result = inferencer.inference_from_dicts(dicts=QA_input)[0]
 
     # ONNX
