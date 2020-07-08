@@ -17,16 +17,14 @@ def embeddings_extraction():
     ]
 
     # Load model, tokenizer and processor directly into Inferencer
-    # Warning! If you use multiprocessing and open a pool by passing
-    # `None` or an integer greater zero to `num_processes` please make
-    # sure to close the pool again by calling `close_multiprocessing_pool`.
-    # The garbage collector will not do this for you!
     model = Inferencer.load(lang_model, task_type="embeddings", gpu=use_gpu, batch_size=batch_size,
                             extraction_strategy="reduce_mean", extraction_layer=-2, num_processes=0)
 
     # Get embeddings for input text (you can vary the strategy and layer)
     result = model.inference_from_dicts(dicts=basic_texts)
     print(result)
+    model.close_multiprocessing_pool()
+
 
 if __name__ == "__main__":
     embeddings_extraction()

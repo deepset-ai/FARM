@@ -97,7 +97,7 @@ def doc_classifcation():
         device=device)
 
     # 7. Let it grow
-    trainer.train()
+    # trainer.train()
 
     # 8. Hooray! You have a model. Store it:
     save_dir = Path("saved_models/bert-german-doc-tutorial")
@@ -109,15 +109,10 @@ def doc_classifcation():
         {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei"},
         {"text": "Martin Müller spielt Handball in Berlin"},
     ]
-
-    # Warning! If you use multiprocessing and open a pool by passing
-    # `None` or an integer greater zero to `num_processes` please make
-    # sure to close the pool again by calling `close_multiprocessing_pool`.
-    # The garbage collector will not do this for you!
-    model = Inferencer.load(save_dir, num_processes=0)
-
+    model = Inferencer.load(save_dir)
     result = model.inference_from_dicts(dicts=basic_texts)
     print(result)
+    model.close_multiprocessing_pool()
 
 
 if __name__ == "__main__":

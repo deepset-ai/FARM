@@ -17,12 +17,7 @@ def onnx_runtime_example():
     model = AdaptiveModel.convert_from_transformers(model_name_or_path, device=device, task_type="question_answering")
     model.convert_to_onnx(onnx_model_export_path)
 
-    # Warning! If you use multiprocessing and open a pool by passing
-    # `None` or an integer greater zero to `num_processes` please make
-    # sure to close the pool again by calling `close_multiprocessing_pool`.
-    # The garbage collector will not do this for you!
-    inferencer = Inferencer.load(model_name_or_path=onnx_model_export_path,
-                                 num_processes=0)
+    inferencer = Inferencer.load(model_name_or_path=onnx_model_export_path)
 
     qa_input = [
         {
@@ -38,6 +33,7 @@ def onnx_runtime_example():
 
     results = inferencer.inference_from_dicts(qa_input)
     print(results)
+    inferencer.close_multiprocessing_pool()
 
 
 if __name__ == "__main__":

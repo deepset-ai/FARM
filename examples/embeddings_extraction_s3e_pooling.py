@@ -16,15 +16,15 @@ logger = logging.getLogger(__name__)
     Example for generating sentence embeddings via the S3E pooling approach as described by Wang et al in the paper
     "Efficient Sentence Embedding via Semantic Subspace Analysis"
     (https://arxiv.org/abs/2002.09620)
-
-    You can use classical models like fasttext, glove or word2vec and apply S3E on top.
-    This can be a powerful benchmark for plain transformer-based embeddings.
+    
+    You can use classical models like fasttext, glove or word2vec and apply S3E on top. 
+    This can be a powerful benchmark for plain transformer-based embeddings.   
 
     First, we fit the required stats on a custom corpus. This includes the derivation of token_weights depending on
     token occurences in the corpus, creation of the semantic clusters via k-means and a couple of
     pre-/post-processing steps to normalize the embeddings.
-
-    Second, we feed the resulting objects into our Inferencer to extract the actual sentence embeddings for our sentences.
+    
+    Second, we feed the resulting objects into our Inferencer to extract the actual sentence embeddings for our sentences. 
 """
 
 def fit(language_model, corpus_path, save_dir, do_lower_case, batch_size=4, use_gpu=False):
@@ -61,19 +61,9 @@ def fit(language_model, corpus_path, save_dir, do_lower_case, batch_size=4, use_
         pickle.dump(s3e_stats, f)
 
     # Load model, tokenizer and processor directly into Inferencer
-    # Warning! If you use multiprocessing and open a pool by passing
-    # `None` or an integer greater zero to `num_processes` please make
-    # sure to close the pool again by calling `close_multiprocessing_pool`.
-    # The garbage collector will not do this for you!
-    inferencer = Inferencer(model=model,
-                            processor=processor,
-                            task_type="embeddings",
-                            gpu=use_gpu,
-                            batch_size=batch_size,
-                            extraction_strategy="s3e",
-                            extraction_layer=-1,
-                            s3e_stats=s3e_stats,
-                            num_processes=0)
+    inferencer = Inferencer(model=model, processor=processor, task_type="embeddings", gpu=use_gpu,
+                       batch_size=batch_size, extraction_strategy="s3e", extraction_layer=-1,
+                       s3e_stats=s3e_stats)
 
     # Input
     basic_texts = [
@@ -84,6 +74,7 @@ def fit(language_model, corpus_path, save_dir, do_lower_case, batch_size=4, use_
     # Get embeddings for input text (you can vary the strategy and layer)
     result = inferencer.inference_from_dicts(dicts=basic_texts)
     print(result)
+    inferencer.close_multiprocessing_pool()
 
 
 def extract_embeddings(load_dir, use_gpu, batch_size):
@@ -91,18 +82,9 @@ def extract_embeddings(load_dir, use_gpu, batch_size):
         s3e_stats = pickle.load(f)
 
     # Init inferencer
-    # Warning! If you use multiprocessing and open a pool by passing
-    # `None` or an integer greater zero to `num_processes` please make
-    # sure to close the pool again by calling `close_multiprocessing_pool`.
-    # The garbage collector will not do this for you!
-    inferencer = Inferencer.load(model_name_or_path=load_dir,
-                                 task_type="embeddings",
-                                 gpu=use_gpu,
-                                 batch_size=batch_size,
-                                 extraction_strategy="s3e",
-                                 extraction_layer=-1,
-                                 s3e_stats=s3e_stats,
-                                 num_processes=0)
+    inferencer = Inferencer.load(model_name_or_path=load_dir, task_type="embeddings", gpu=use_gpu,
+                       batch_size=batch_size, extraction_strategy="s3e", extraction_layer=-1,
+                       s3e_stats=s3e_stats)
 
     # Input
     basic_texts = [
@@ -113,6 +95,7 @@ def extract_embeddings(load_dir, use_gpu, batch_size):
     # Get embeddings for input text
     result = inferencer.inference_from_dicts(dicts=basic_texts)
     print(result)
+    inferencer.close_multiprocessing_pool()
 
 
 if __name__ == "__main__":

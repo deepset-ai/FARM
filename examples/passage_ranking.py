@@ -126,16 +126,7 @@ def text_pair_classification():
 
     # 9. Load it & harvest your fruits (Inference)
     #    Add your own text adapted to the dataset you provide
-    # Warning! If you use multiprocessing and open a pool by passing
-    # `None` or an integer greater zero to `num_processes` please make
-    # sure to close the pool again by calling `close_multiprocessing_pool`.
-    # The garbage collector will not do this for you!
-    model = Inferencer.load(save_dir,
-                            gpu=True,
-                            max_seq_len=128,
-                            batch_size=128,
-                            num_processes=0)
-
+    model = Inferencer.load(save_dir, gpu=True, max_seq_len=128, batch_size=128)
     result = model.inference_from_file(data_dir / dev_filename)
 
     write_msmarco_results(result, save_dir / predictions_raw_filename)
@@ -144,6 +135,8 @@ def text_pair_classification():
                        dev_file=data_dir / dev_filename,
                        qrels_file=data_dir / qrels_filename,
                        output_file=save_dir / predictions_filename)
+
+    model.close_multiprocessing_pool()
 
 
 if __name__ == "__main__":

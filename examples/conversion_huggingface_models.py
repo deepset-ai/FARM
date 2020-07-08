@@ -17,19 +17,14 @@ def convert_from_transformers():
 
     # CASE 2: INFERENCER
     # Load Inferencer from transformers, incl. model & tokenizer (-> just get predictions)
-    # Warning! If you use multiprocessing and open a pool by passing
-    # `None` or an integer greater zero to `num_processes` please make
-    # sure to close the pool again by calling `close_multiprocessing_pool`.
-    # The garbage collector will not do this for you!
-    nlp = Inferencer.load("deepset/bert-large-uncased-whole-word-masking-squad2",
-                          task_type="question_answering",
-                          num_processes=0)
+    nlp = Inferencer.load("deepset/bert-large-uncased-whole-word-masking-squad2", task_type="question_answering")
 
     # run predictions
     QA_input = [{"questions": ["Why is model conversion important?"],
                  "text": "The option to convert models between FARM and transformers gives freedom to the user and let people easily switch between frameworks."}]
     result = nlp.inference_from_dicts(dicts=QA_input, rest_api_schema=True)
     pprint.pprint(result)
+    nlp.close_multiprocessing_pool()
 
     # save it
     farm_model_dir = Path("../saved_models/bert-english-qa-large")
