@@ -254,7 +254,7 @@ class QAPred(Pred):
         :return:
         """
 
-        answers = self._answers_to_json(squad)
+        answers = self._answers_to_json(self.id, squad)
         ret = {
             "task": "qa",
             "predictions": [
@@ -267,6 +267,9 @@ class QAPred(Pred):
                 }
             ],
         }
+        if squad:
+            del ret["predictions"][0]["id"]
+            ret["predictions"][0]["question_id"] = self.id
         return ret
 
     def _answers_to_json(self, ext_id, squad=False):
