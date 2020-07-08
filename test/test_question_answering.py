@@ -141,11 +141,9 @@ def test_id(span_inference_result, no_answer_inference_result):
     assert no_answer_inference_result.id == "best_id_ever"
 
 
-@pytest.mark.parametrize("num_processes", [None], scope="session")
-def test_qa_onnx_inference(adaptive_model_qa, caplog=None):
+def test_qa_onnx_inference(caplog=None):
     if caplog:
         caplog.set_level(logging.CRITICAL)
-
 
     QA_input = [
         {
