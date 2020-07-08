@@ -136,8 +136,9 @@ def test_qa_candidate_attributes(span_inference_result, caplog=None):
         assert ag in dir(qa_candidate)
 
 
-def test_id(span_inference_result):
+def test_id(span_inference_result, no_answer_inference_result):
     assert span_inference_result.id == "best_id_ever"
+    assert no_answer_inference_result.id == "best_id_ever"
 
 
 @pytest.mark.parametrize("num_processes", [None], scope="session")
