@@ -25,11 +25,11 @@ def test_save_load(distilbert_squad, caplog=None):
 
     model, processor = distilbert_squad
 
-    save_dir = Path("testsave/qa")
+    save_dir = Path("testsave/qa_squad")
     model.save(save_dir)
     processor.save(save_dir)
 
-    inferencer = QAInferencer.load(save_dir, batch_size=2, gpu=False, num_processes=0)
+    inferencer = QAInferencer.load(save_dir, batch_size=2, gpu=False, num_processes=0, task_type="question_answering")
     assert inferencer is not None
 
 

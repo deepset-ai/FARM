@@ -86,7 +86,7 @@ def test_inference(distilbert_nq, caplog=None):
         caplog.set_level(logging.CRITICAL)
     model, processor = distilbert_nq
 
-    save_dir = Path("testsave/qa")
+    save_dir = Path("testsave/qa_nq")
     model.save(save_dir)
     processor.save(save_dir)
 
