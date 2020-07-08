@@ -366,7 +366,7 @@ class Processor(ABC):
     @staticmethod
     def _id_from_dict(d):
         ext_id = try_get(ID_NAMES, d)
-        if not ext_id:
+        if not ext_id and "qas" in d:
             ext_id = try_get(ID_NAMES, d["qas"][0])
         return ext_id
 

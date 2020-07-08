@@ -1261,11 +1261,15 @@ class QuestionAnsweringHead(PredictionHead):
     @staticmethod
     def get_question(question_names, raw_dict):
         # For NQ style dicts
+        qa_name = None
         if "qas" in raw_dict:
-            if type(raw_dict["qas"][0]) == dict:
-                return raw_dict["qas"][0]["question"]
-        else:
-            return try_get(question_names, raw_dict)
+            qa_name = "qas"
+        elif "question" in raw_dict:
+            qa_name = "question"
+        if qa_name:
+            if type(raw_dict[qa_name][0]) == dict:
+                return raw_dict[qa_name][0]["question"]
+        return try_get(question_names, raw_dict)
 
     def has_no_answer_idxs(self, sample_top_n):
         for start, end, score in sample_top_n:
