@@ -23,7 +23,7 @@ def test_conversion_adaptive_model(caplog):
 
 def test_conversion_inferencer(caplog):
     if caplog:
-        caplog.set_level(logging.CRITICAL)
+        caplog.set_level(logging.WARNING)
     # input
     question = "Why is model conversion important?"
     text = "The option to convert models between FARM and transformers gives freedom to the user and let people easily switch between frameworks."

@@ -433,7 +433,7 @@ class Bert(LanguageModel):
             token_type_ids=segment_ids,
             attention_mask=padding_mask,
         )
-        if self.model.encoder.output_hidden_states == True:
+        if self.model.encoder.config.output_hidden_states == True:
             sequence_output, pooled_output, all_hidden_states = output_tuple[0], output_tuple[1], output_tuple[2]
             return sequence_output, pooled_output, all_hidden_states
         else:
@@ -441,10 +441,10 @@ class Bert(LanguageModel):
             return sequence_output, pooled_output
 
     def enable_hidden_states_output(self):
-        self.model.encoder.output_hidden_states = True
+        self.model.encoder.config.output_hidden_states = True
 
     def disable_hidden_states_output(self):
-        self.model.encoder.output_hidden_states = False
+        self.model.encoder.config.output_hidden_states = False
 
 
 class Albert(LanguageModel):
@@ -519,7 +519,7 @@ class Albert(LanguageModel):
             token_type_ids=segment_ids,
             attention_mask=padding_mask,
         )
-        if self.model.encoder.output_hidden_states == True:
+        if self.model.encoder.config.output_hidden_states == True:
             sequence_output, pooled_output, all_hidden_states = output_tuple[0], output_tuple[1], output_tuple[2]
             return sequence_output, pooled_output, all_hidden_states
         else:
@@ -527,10 +527,10 @@ class Albert(LanguageModel):
             return sequence_output, pooled_output
 
     def enable_hidden_states_output(self):
-        self.model.encoder.output_hidden_states = True
+        self.model.encoder.config.output_hidden_states = True
 
     def disable_hidden_states_output(self):
-        self.model.encoder.output_hidden_states = False
+        self.model.encoder.config.output_hidden_states = False
 
 
 class Roberta(LanguageModel):
@@ -606,7 +606,7 @@ class Roberta(LanguageModel):
             token_type_ids=segment_ids,
             attention_mask=padding_mask,
         )
-        if self.model.encoder.output_hidden_states == True:
+        if self.model.encoder.config.output_hidden_states == True:
             sequence_output, pooled_output, all_hidden_states = output_tuple[0], output_tuple[1], output_tuple[2]
             return sequence_output, pooled_output, all_hidden_states
         else:
@@ -614,10 +614,10 @@ class Roberta(LanguageModel):
             return sequence_output, pooled_output
 
     def enable_hidden_states_output(self):
-        self.model.encoder.output_hidden_states = True
+        self.model.encoder.config.output_hidden_states = True
 
     def disable_hidden_states_output(self):
-        self.model.encoder.output_hidden_states = False
+        self.model.encoder.config.output_hidden_states = False
 
 
 class XLMRoberta(LanguageModel):
@@ -693,7 +693,7 @@ class XLMRoberta(LanguageModel):
             token_type_ids=segment_ids,
             attention_mask=padding_mask,
         )
-        if self.model.encoder.output_hidden_states == True:
+        if self.model.encoder.config.output_hidden_states == True:
             sequence_output, pooled_output, all_hidden_states = output_tuple[0], output_tuple[1], output_tuple[2]
             return sequence_output, pooled_output, all_hidden_states
         else:
@@ -701,10 +701,10 @@ class XLMRoberta(LanguageModel):
             return sequence_output, pooled_output
 
     def enable_hidden_states_output(self):
-        self.model.encoder.output_hidden_states = True
+        self.model.encoder.config.output_hidden_states = True
 
     def disable_hidden_states_output(self):
-        self.model.encoder.output_hidden_states = False
+        self.model.encoder.config.output_hidden_states = False
 
 
 class DistilBert(LanguageModel):
