@@ -58,7 +58,7 @@ def adaptive_model_qa(use_gpu, num_processes):
     # check if all workers (sub processes) are closed
     current_process = psutil.Process()
     children = current_process.children()
-    # assert len(children) == 0
+    assert len(children) == 0
 
 
 @pytest.fixture()
@@ -66,7 +66,8 @@ def bert_base_squad2():
     model = QAInferencer.load(
             "deepset/bert-base-cased-squad2",
             task_type="question_answering",
-            batch_size=16)
+            batch_size=16,
+            num_processes=0)
     return model
 
 
@@ -96,7 +97,7 @@ def distilbert_squad():
         metric="squad"
     )
 
-    data_silo = DataSilo(processor=processor, batch_size=batch_size, max_processes=1)
+    data_silo = DataSgit statusilo(processor=processor, batch_size=batch_size, max_processes=1)
     language_model = LanguageModel.load(base_LM_model)
     prediction_head = QuestionAnsweringHead()
     model = AdaptiveModel(
