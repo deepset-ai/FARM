@@ -96,7 +96,7 @@ class Tokenizer:
         elif tokenizer_class == "XLMRobertaTokenizer":
             ret = XLMRobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "RobertaTokenizer":
-            ret = RobertaTokenizer.from_pretrained(pretrained_model_name_or_path, add_prefix_space=True, **kwargs)
+            ret = RobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "DistilBertTokenizer":
             ret = DistilBertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "BertTokenizer":
@@ -292,8 +292,10 @@ def _words_to_tokens(words, word_offsets, tokenizer):
         elif len(tokens) == 0:
             tokens_word = tokenizer.tokenize(w)
         else:
-            tokens_word = tokenizer.tokenize(w)
-
+            if type(tokenizer) == RobertaTokenizer:
+                tokens_word = tokenizer.tokenize(w, add_prefix_space=True)
+            else:
+                tokens_word = tokenizer.tokenize(w)
         # Sometimes the tokenizer returns no tokens
         if len(tokens_word) == 0:
             continue
