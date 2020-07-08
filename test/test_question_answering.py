@@ -113,9 +113,10 @@ def test_qa_pred_attributes(span_inference_result, caplog=None):
         caplog.set_level(logging.CRITICAL)
 
     qa_pred = span_inference_result
-    attributes_gold = ['aggregation_level', 'answer_types', 'answers_to_json', 'context', 'context_window_size',
-                       'create_context', 'ground_truth_answer', 'id', 'n_passages', 'no_answer_gap', 'prediction',
-                       'question', 'to_json', 'to_squad_eval', 'token_offsets']
+    attributes_gold = ['aggregation_level', 'answer_types', 'context', 'context_window_size', 'ground_truth_answer',
+                       'id', 'n_passages', 'no_answer_gap', 'prediction', 'question', 'to_json',
+                       'to_squad_eval', 'token_offsets']
+    
     for ag in attributes_gold:
         assert ag in dir(qa_pred)
 
@@ -125,11 +126,12 @@ def test_qa_candidate_attributes(span_inference_result, caplog=None):
         caplog.set_level(logging.CRITICAL)
 
     qa_candidate = span_inference_result.prediction[0]
-    attributes_gold = ['add_answer', 'add_cls', 'aggregation_level', 'answer', 'answer_support', 'answer_type',
-                       'context', 'n_passages_in_doc', 'offset_answer_end', 'offset_answer_start',
-                       'offset_answer_support_end', 'offset_answer_support_start', 'offset_context_end',
-                       'offset_context_start', 'offset_unit', 'passage_id', 'probability', 'score', 'span_to_string',
+    attributes_gold = ['add_cls', 'aggregation_level', 'answer', 'answer_support', 'answer_type', 'context_window',
+                       'n_passages_in_doc', 'offset_answer_end', 'offset_answer_start', 'offset_answer_support_end',
+                       'offset_answer_support_start', 'offset_context_window_end', 'offset_context_window_start',
+                       'offset_unit', 'passage_id', 'probability', 'score', 'set_answer_string', 'set_context_window',
                        'to_doc_level', 'to_list']
+
     for ag in attributes_gold:
         assert ag in dir(qa_candidate)
 
