@@ -1244,7 +1244,7 @@ class QuestionAnsweringHead(PredictionHead):
             doc_names = ["document_text", "context", "text"]
 
             document_text = try_get(doc_names, basket.raw)
-            question = try_get(question_names, basket.raw)
+            question = self.get_question(question_names, basket.raw)
 
             # Iterate over each prediction on the one document
             full_preds = []
@@ -1255,7 +1255,6 @@ class QuestionAnsweringHead(PredictionHead):
             n_samples = full_preds[0].n_passages_in_doc
 
             curr_doc_pred = QAPred(id=pred_id,
-
                                    prediction=full_preds,
                                    context=document_text,
                                    question=question,
@@ -1267,6 +1266,15 @@ class QuestionAnsweringHead(PredictionHead):
 
             ret.append(curr_doc_pred)
         return ret
+
+    @staticmethod
+    def get_question(question_names, raw_dict):
+        # For NQ style dicts
+        if "qas" in raw_dict:
+            if type(raw_dict["qas"][0]) == dict:
+                return raw_dict["qas"][0]["question"]
+        else:
+            return try_get(question_names, raw_dict)
 
     def has_no_answer_idxs(self, sample_top_n):
         for start, end, score in sample_top_n:

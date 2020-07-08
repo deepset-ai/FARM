@@ -45,7 +45,7 @@ from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, trunca
 from farm.utils import MLFlowLogger as MlLogger
 from farm.utils import try_get
 
-ID_NAMES = ["example_id", "external_id", "doc_id"]
+ID_NAMES = ["example_id", "external_id", "doc_id", "id"]
 
 
 logger = logging.getLogger(__name__)
@@ -362,6 +362,13 @@ class Processor(ABC):
             value = getattr(self, name)
             params.update({name: str(value)})
         MlLogger.log_params(params)
+
+    @staticmethod
+    def _id_from_dict(d):
+        ext_id = try_get(ID_NAMES, d)
+        if not ext_id:
+            ext_id = try_get(ID_NAMES, d["qas"][0])
+        return ext_id
 
 
 #########################################

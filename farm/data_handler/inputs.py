@@ -2,29 +2,28 @@ from typing import List, Union
 
 
 class Question:
-    def __init__(self, text: str, id: str=None):
+    def __init__(self, text: str, uid: str=None):
         self.text = text
-        self.id = id
+        self.uid = uid
 
     def to_dict(self):
-        ret = {}
+        ret = {"question": self.text,
+               "id": self.uid,
+               "answers": []}
         return ret
 
 
 class QAInput:
-    def __init__(self, doc_text: str, questions: Union[List[Question], Question], doc_id: str=None):
+    def __init__(self, doc_text: str, questions: Union[List[Question], Question]):
         self.doc_text = doc_text
         if type(questions) == Question:
             self.questions = [questions]
         else:
             self.questions = questions
-        self.doc_id = doc_id
 
     def to_dict(self):
-        questions = [q.text for q in self.questions]
+        questions = [q.to_dict() for q in self.questions]
         ret = {"qas": questions,
                "context": self.doc_text}
-        if self.doc_id:
-            ret["doc_id"] = self.doc_id
         return ret
 
