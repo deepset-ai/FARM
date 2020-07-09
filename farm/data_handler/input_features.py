@@ -45,7 +45,6 @@ def sample_to_features_text(
         tokens_a,
         tokens_b,
         add_special_tokens=True,
-        max_length=max_seq_len,
         truncation_strategy='do_not_truncate',
         return_token_type_ids=True
     )
@@ -140,7 +139,6 @@ def samples_to_features_ner(
     inputs = tokenizer.encode_plus(text=tokens,
                                    text_pair=None,
                                    add_special_tokens=True,
-                                   max_length=max_seq_len,
                                    truncation_strategy='do_not_truncate', # We've already truncated our tokens before
                                    return_special_tokens_mask=True,
                                    return_token_type_ids=True
@@ -255,7 +253,6 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
     inputs = tokenizer.encode_plus(text=tokens_a,
                                    text_pair=tokens_b,
                                    add_special_tokens=True,
-                                   max_length=max_seq_len,
                                    truncation_strategy='do_not_truncate',
                                    # We've already truncated our tokens before
                                    return_special_tokens_mask=True,
@@ -364,7 +361,6 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
     encoded = tokenizer.encode_plus(text=sample.tokenized["question_tokens"],
                                     text_pair=sample.tokenized["passage_tokens"],
                                     add_special_tokens=True,
-                                    max_length=None,
                                     truncation_strategy='only_second',
                                     return_token_type_ids=True,
                                     return_tensors=None)
