@@ -292,11 +292,10 @@ def _words_to_tokens(words, word_offsets, tokenizer):
         elif len(tokens) == 0:
             tokens_word = tokenizer.tokenize(w)
         else:
-            try:
+            if type(tokenizer) == RobertaTokenizer:
                 tokens_word = tokenizer.tokenize(w, add_prefix_space=True)
-            except TypeError:
+            else:
                 tokens_word = tokenizer.tokenize(w)
-
         # Sometimes the tokenizer returns no tokens
         if len(tokens_word) == 0:
             continue
