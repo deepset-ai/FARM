@@ -181,7 +181,7 @@ class QACandidate:
         final_text = clear_text[start_ch: end_ch].strip()
         end_ch = start_ch + len(final_text)
 
-        return clear_text[start_ch: end_ch].strip(), start_ch, end_ch
+        return final_text, start_ch, end_ch
 
     def add_cls(self, predicted_class: str):
         """
