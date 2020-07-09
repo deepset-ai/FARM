@@ -101,9 +101,13 @@ class QACandidate:
                              f"{self.offset_answer_start}, {self.offset_answer_end} with a no_answer. ")
         else:
             self.answer = string
-            if self.offset_answer_start <= 0 or self.offset_answer_end <= 1:
-                logger.error(f"Something went wrong with answer start and end offsets: \n"
-                             f"{self.offset_answer_start}, {self.offset_answer_end} with a span answer. ")
+            if self.offset_answer_end - self.offset_answer_start <= 0:
+                logger.error(f"End offset comes before start offset: \n"
+                             f"({self.offset_answer_start}, {self.offset_answer_end}) with a span answer. ")
+            elif self.offset_answer_end <= 0:
+                logger.error(f"Invalid end offset: \n"
+                             f"({self.offset_answer_start}, {self.offset_answer_end}) with a span answer. ")
+
 
     def _create_context_window(self, context_window_size, clear_text):
         """
