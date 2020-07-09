@@ -177,7 +177,11 @@ class QACandidate:
             end_ch = len(clear_text)
         else:
             end_ch = token_offsets[end_t]
-        return clear_text[start_ch: end_ch].strip(), start_ch, end_ch
+
+        final_text = clear_text[start_ch: end_ch].strip()
+        end_ch = start_ch + len(final_text)
+
+        return final_text, start_ch, end_ch
 
     def add_cls(self, predicted_class: str):
         """
