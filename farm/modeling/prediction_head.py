@@ -1244,7 +1244,7 @@ class QuestionAnsweringHead(PredictionHead):
             doc_names = ["document_text", "context", "text"]
 
             document_text = try_get(doc_names, basket.raw)
-            question = try_get(question_names, basket.raw)
+            question = self.get_question(question_names, basket.raw)
 
             curr_doc_pred = QAPred(id=pred_id,
                                    prediction=pred_d,
@@ -1257,6 +1257,19 @@ class QuestionAnsweringHead(PredictionHead):
 
             ret.append(curr_doc_pred)
         return ret
+
+    @staticmethod
+    def get_question(question_names, raw_dict):
+        # For NQ style dicts
+        qa_name = None
+        if "qas" in raw_dict:
+            qa_name = "qas"
+        elif "question" in raw_dict:
+            qa_name = "question"
+        if qa_name:
+            if type(raw_dict[qa_name][0]) == dict:
+                return raw_dict[qa_name][0]["question"]
+        return try_get(question_names, raw_dict)
 
     def has_no_answer_idxs(self, sample_top_n):
         for start, end, score in sample_top_n:
