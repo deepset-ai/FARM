@@ -81,17 +81,17 @@ class QACandidate:
         self.passage_id = passage_id
 
     def set_context_window(self, context_window_size, clear_text):
-        window_str, start_ch, end_ch = self.create_context_window(context_window_size, clear_text)
+        window_str, start_ch, end_ch = self._create_context_window(context_window_size, clear_text)
         self.context_window = window_str
         self.offset_context_window_start = start_ch
         self.offset_context_window_end = end_ch
 
     def set_answer_string(self, token_offsets, document_text):
-        pred_str, self.offset_answer_start, self.offset_answer_end = self.span_to_string(token_offsets, document_text)
+        pred_str, self.offset_answer_start, self.offset_answer_end = self._span_to_string(token_offsets, document_text)
         self.offset_unit = "char"
-        self.add_answer(pred_str)
+        self._add_answer(pred_str)
 
-    def add_answer(self, string):
+    def _add_answer(self, string):
         """ Set the answer string. This method will check that the answer given is valid given the start
         and end indices that are stored in the object. """
         if string == "":
@@ -105,7 +105,7 @@ class QACandidate:
                 logger.error(f"Something went wrong with answer start and end offsets: \n"
                              f"{self.offset_answer_start}, {self.offset_answer_end} with a span answer. ")
 
-    def create_context_window(self, context_window_size, clear_text):
+    def _create_context_window(self, context_window_size, clear_text):
         """
         Extract from the clear_text a window that contains the answer and (usually) some amount of text on either
         side of the answer. Useful for cases where the answer and its surrounding context needs to be
@@ -141,7 +141,7 @@ class QACandidate:
         window_str = clear_text[window_start_ch: window_end_ch]
         return window_str, window_start_ch, window_end_ch
 
-    def span_to_string(self, token_offsets: List[int], clear_text: str):
+    def _span_to_string(self, token_offsets: List[int], clear_text: str):
         """
         Generates a string answer span using self.offset_answer_start and self.offset_answer_end. If the candidate
         is a no answer, an empty string is returned
@@ -254,22 +254,25 @@ class QAPred(Pred):
         :return:
         """
 
-        answers = self.answers_to_json(self.id, squad)
+        answers = self._answers_to_json(self.id, squad)
         ret = {
             "task": "qa",
             "predictions": [
                 {
                     "question": self.question,
-                    "question_id": self.id,
+                    "id": self.id,
                     "ground_truth": self.ground_truth_answer,
                     "answers": answers,
                     "no_ans_gap": self.no_answer_gap, # Add no_ans_gap to current no_ans_boost for switching top prediction
                 }
             ],
         }
+        if squad:
+            del ret["predictions"][0]["id"]
+            ret["predictions"][0]["question_id"] = self.id
         return ret
 
-    def answers_to_json(self, ext_id, squad=False):
+    def _answers_to_json(self, ext_id, squad=False):
         """
         Convert all answers into a json format
 

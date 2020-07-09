@@ -834,14 +834,13 @@ def convert_qa_input_dict(infer_dict):
         # converts dicts from inference mode to data structure used in FARM
         questions = infer_dict["questions"]
         text = infer_dict["text"]
-        document_id = infer_dict.get("document_id", None)
+        uid = infer_dict.get("id", None)
         qas = [{"question": q,
-                "id": None,
+                "id": uid,
                 "answers": [],
                 "answer_type": None} for i, q in enumerate(questions)]
         converted = {"qas": qas,
-                     "context": text,
-                     "document_id":document_id}
+                     "context": text}
         return converted
     except KeyError:
         raise Exception("Input does not have the expected format")

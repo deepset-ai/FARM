@@ -45,6 +45,8 @@ from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, trunca
 from farm.utils import MLFlowLogger as MlLogger
 from farm.utils import try_get
 
+ID_NAMES = ["example_id", "external_id", "doc_id", "id"]
+
 
 logger = logging.getLogger(__name__)
 
@@ -363,18 +365,10 @@ class Processor(ABC):
 
     @staticmethod
     def _id_from_dict(d):
-        candidates = []
-        candidates.append(d.get("example_id", None))
-        candidates.append(d.get("external_id", None))
-        candidates = [x for x in candidates if x]
-        if len(candidates) == 0:
-            return None
-        elif len(candidates) == 1:
-            return candidates[0]
-        else:
-            raise Exception
-
-
+        ext_id = try_get(ID_NAMES, d)
+        if not ext_id and "qas" in d:
+            ext_id = try_get(ID_NAMES, d["qas"][0])
+        return ext_id
 
 
 #########################################
@@ -1159,7 +1153,7 @@ class SquadProcessor(QAProcessor):
         for index, document in zip(indices, dicts_tokenized):
             for q_idx, raw in enumerate(document):
                 # In case of Question Answering the external ID is used for document IDs
-                id_external = self._id_from_dict(raw)
+                id_external = try_get(ID_NAMES, raw)
                 id_internal = f"{index}-{q_idx}"
                 basket = SampleBasket(raw=raw, id_internal=id_internal, id_external=id_external)
                 baskets.append(basket)
@@ -1661,7 +1655,7 @@ def apply_tokenization(dictionary, tokenizer):
                 answers.append(a)
         # For inference where samples are read in as dicts without an id or answers
         except TypeError:
-            external_id = try_get(["example_id", "external_id"], dictionary)
+            external_id = try_get(ID_NAMES, dictionary)
             question_text = question
 
         question_tokenized = tokenize_with_metadata(question_text, tokenizer)
