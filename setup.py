@@ -59,7 +59,7 @@ setup(
     packages=find_packages(exclude=["*.tests", "*.tests.*", "tests.*", "tests"]),
     dependency_links=dependency_links,
     install_requires=parsed_requirements,
-    python_requires=">=3.5.0",
+    python_requires=">=3.6.0",
     extras_require={
         "fasttext": ["fasttext==0.9.1"],
         "onnx": ["onnxruntime"],
