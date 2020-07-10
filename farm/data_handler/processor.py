@@ -288,18 +288,18 @@ class Processor(ABC):
                 basket.samples = self._dict_to_samples(dictionary=basket.raw, all_dicts=all_dicts)
                 for num, sample in enumerate(basket.samples):
                      sample.id = f"{basket.id_internal}-{num}"
-            except:
+            except Exception as e:
                 logger.error(f"Could not create sample(s) from this dict: \n {basket.raw}")
-                raise
+                logger.error(f"Error message: {e}")
 
     def _featurize_samples(self):
         for basket in self.baskets:
             for sample in basket.samples:
                 try:
                     sample.features = self._sample_to_features(sample=sample)
-                except:
+                except Exception as e:
                     logger.error(f"Could not convert this sample to features: \n {sample}")
-                    raise
+                    logger.error(f"Error message: {e}")
 
     def _create_dataset(self, keep_baskets=False):
         features_flat = []
@@ -1146,7 +1146,7 @@ class SquadProcessor(QAProcessor):
 
     def _dicts_to_baskets(self, dicts, indices):
         # Perform tokenization on documents and questions resulting in an unnested list of doc-question pairs
-        dicts_tokenized = [apply_tokenization(d, self.tokenizer) for d in dicts]
+        dicts_tokenized = [_apply_tokenization(d, self.tokenizer) for d in dicts]
 
         baskets = []
 
@@ -1174,7 +1174,7 @@ class SquadProcessor(QAProcessor):
         return samples
 
     def _sample_to_features(self, sample) -> dict:
-        check_valid_answer(sample)
+        _check_valid_answer(sample)
         features = sample_to_features_qa(sample=sample,
                                          tokenizer=self.tokenizer,
                                          max_seq_len=self.max_seq_len,
@@ -1288,7 +1288,7 @@ class NaturalQuestionsProcessor(QAProcessor):
         if not self.inference:
             dictionary = self._prepare_dict(dictionary=dictionary)
 
-        dictionary_tokenized = apply_tokenization(dictionary, self.tokenizer)[0]
+        dictionary_tokenized = _apply_tokenization(dictionary, self.tokenizer)[0]
         n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
         samples = create_samples_qa(dictionary_tokenized,
                                     self.max_query_length,
@@ -1468,7 +1468,7 @@ class NaturalQuestionsProcessor(QAProcessor):
         return start_c, end_c
 
     def _sample_to_features(self, sample: Sample) -> dict:
-        check_valid_answer(sample)
+        _check_valid_answer(sample)
         features = sample_to_features_qa(sample=sample,
                                          tokenizer=self.tokenizer,
                                          max_seq_len=self.max_seq_len,
@@ -1629,10 +1629,10 @@ class RegressionProcessor(Processor):
         return features
 
 
-def apply_tokenization(dictionary, tokenizer):
+def _apply_tokenization(dictionary, tokenizer):
     raw_baskets = []
     dictionary = convert_qa_input_dict(dictionary)
-    dictionary["qas"] = is_impossible_to_answer_type(dictionary["qas"])
+    dictionary["qas"] = _is_impossible_to_answer_type(dictionary["qas"])
     document_text = dictionary["context"]
 
     document_tokenized = tokenize_with_metadata(document_text, tokenizer)
@@ -1684,7 +1684,7 @@ def apply_tokenization(dictionary, tokenizer):
     return raw_baskets
 
 
-def is_impossible_to_answer_type(qas):
+def _is_impossible_to_answer_type(qas):
     """ Converts questions from having an is_impossible field to having an answer_type field"""
     new_qas = []
     for q in qas:
@@ -1698,7 +1698,7 @@ def is_impossible_to_answer_type(qas):
     return new_qas
 
   
-def check_valid_answer(sample):
+def _check_valid_answer(sample):
     passage_text = sample.clear_text["passage_text"]
     for answer in sample.clear_text["answers"]:
         len_passage = len(passage_text)
