@@ -80,6 +80,9 @@ class QACandidate:
         self.n_passages_in_doc = n_passages_in_doc
         self.passage_id = passage_id
 
+        # This attribute is used by Haystack to store sample metadata
+        self.meta = None
+
     def set_context_window(self, context_window_size, clear_text):
         window_str, start_ch, end_ch = self._create_context_window(context_window_size, clear_text)
         self.context_window = window_str
