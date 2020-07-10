@@ -46,8 +46,8 @@ parsed_requirements = parse_requirements('requirements.txt')
 
 setup(
     name="farm",
-    version="0.4.5",
-    author="Malte Pietsch, Timo Moeller, Branden Chan, Tanay Soni, Huggingface Team Authors, Google AI Language Team Authors, Open AI team Authors",
+    version="0.4.6",
+    author="Malte Pietsch, Timo Moeller, Branden Chan, Tanay Soni",
     author_email="malte.pietsch@deepset.ai",
     description="Toolkit for finetuning and evaluating transformer based language models",
     long_description=open("readme.rst", "r", encoding="utf-8").read(),
