@@ -79,7 +79,7 @@ class QACandidate:
 
         self.n_passages_in_doc = n_passages_in_doc
         self.passage_id = passage_id
-
+        
         # This attribute is used by Haystack to store sample metadata
         self.meta = None
 
