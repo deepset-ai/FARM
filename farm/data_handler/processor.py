@@ -299,13 +299,25 @@ class Processor(ABC):
                     sample.features = self._sample_to_features(sample=sample)
                 except Exception as e:
                     logger.error(f"Could not convert this sample to features: \n {sample}")
+                    logger.error(f"Basket id: id_internal: {basket.id_internal}, id_external: {basket.id_external}")
                     logger.error(f"Error message: {e}")
 
     def _create_dataset(self, keep_baskets=False):
         features_flat = []
+        basket_to_remove = []
         for basket in self.baskets:
             for sample in basket.samples:
-                features_flat.extend(sample.features)
+                if sample.features is None:
+                    basket_to_remove.append(basket)
+                else:
+                    features_flat.extend(sample.features)
+        if len(basket_to_remove) > 0:
+            # if basket_to_remove is not empty remove the related baskets
+            logger.warning(f"Removing the following baskets because of errors in computing features:")
+            for basket in basket_to_remove:
+                logger.warning(f"Basket id: id_internal: {basket.id_internal}, id_external: {basket.id_external}")
+                self.baskets.remove(basket)
+
         if not keep_baskets:
             # free up some RAM, we don't need baskets from here on
             self.baskets = None
