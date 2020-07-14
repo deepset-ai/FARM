@@ -293,13 +293,22 @@ class Processor(ABC):
                 logger.error(f"Error message: {e}")
 
     def _featurize_samples(self):
+        basket_to_remove = list()
         for basket in self.baskets:
             for sample in basket.samples:
                 try:
                     sample.features = self._sample_to_features(sample=sample)
                 except Exception as e:
                     logger.error(f"Could not convert this sample to features: \n {sample}")
+                    logger.error(f"Basket id: id_internal: {basket.id_internal}, id_external: {basket.id_external}")
                     logger.error(f"Error message: {e}")
+                    basket_to_remove.append(basket)
+        # if basket_to_remove is not empty remove the related baskets
+        if len(basket_to_remove) > 0:
+            logger.warning(f"Removing the following baskets because of errors:")
+            for basket in basket_to_remove:
+                logger.warning(f"Basket id: id_internal: {basket.id_internal}, id_external: {basket.id_external}")
+                self.baskets.remove(basket)
 
     def _create_dataset(self, keep_baskets=False):
         features_flat = []
