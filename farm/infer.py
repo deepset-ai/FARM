@@ -627,6 +627,12 @@ class Inferencer:
 
 
 class QAInferencer(Inferencer):
+    def __init__(self, *args, **kwargs):
+        # Capture all input arguments, set "task_type" to "question_answering", initialize Inferencer class. The
+        # list slicing is to ensure that the "task_type" argument isn't passed in twice
+        args = args[:2]
+        kwargs["task_type"] = "question_answering"
+        super().__init__(*args, **kwargs)
 
     def inference_from_dicts(self,
                              dicts,
