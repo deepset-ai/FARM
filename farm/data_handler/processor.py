@@ -1591,12 +1591,13 @@ class RegressionProcessor(Processor):
 
         # collect all labels and compute scaling stats
         train_labels = []
-        for d in dicts:
-            train_labels.append(float(d[self.tasks["regression"]["label_name"]]))
-        scaler = StandardScaler()
-        scaler.fit(np.reshape(train_labels, (-1, 1)))
-        # add to label list in regression task
-        self.tasks["regression"]["label_list"] = [scaler.mean_.item(), scaler.scale_.item()]
+        if self.train_filename in str(file):
+            for d in dicts:
+                train_labels.append(float(d[self.tasks["regression"]["label_name"]]))
+            scaler = StandardScaler()
+            scaler.fit(np.reshape(train_labels, (-1, 1)))
+            # add to label list in regression task
+            self.tasks["regression"]["label_list"] = [scaler.mean_.item(), scaler.scale_.item()]
 
         return dicts
 
@@ -1613,10 +1614,11 @@ class RegressionProcessor(Processor):
                                                            tokenizer=self.tokenizer,
                                                            max_seq_len=self.max_seq_len)
         # Samples don't have labels during Inference mode
-        if "label" in dictionary:
-            label = float(dictionary["label"])
+        label_key = self.tasks["regression"]["label_name"]
+        if label_key in dictionary:
+            label = float(dictionary[label_key])
             scaled_label = (label - self.tasks["regression"]["label_list"][0]) / self.tasks["regression"]["label_list"][1]
-            dictionary["label"] = scaled_label
+            dictionary[label_key] = scaled_label
         return [Sample(id=None, clear_text=dictionary, tokenized=tokenized)]
 
     def _sample_to_features(self, sample) -> dict:
