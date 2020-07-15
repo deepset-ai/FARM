@@ -16,7 +16,8 @@ import logging
 
 
 def test_ner_amp(caplog):
-    caplog.set_level(logging.CRITICAL)
+    if caplog:
+        caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)
@@ -88,7 +89,7 @@ def test_ner_amp(caplog):
     basic_texts = [
         {"text": "1980 kam der Crown von Toyota"},
     ]
-    model = Inferencer.load(save_dir, gpu=True)
+    model = Inferencer.load(save_dir, num_processes=0)
     result = model.inference_from_dicts(dicts=basic_texts)
 
     assert result[0]["predictions"][0]["context"] == "Crown"
@@ -96,4 +97,4 @@ def test_ner_amp(caplog):
 
 
 if __name__ == "__main__":
-    test_ner_amp()
+    test_ner_amp(None)

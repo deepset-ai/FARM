@@ -11,7 +11,7 @@ class SampleBasket:
     is needed for tasks like question answering where the source text can generate multiple input - label
     pairs."""
 
-    def __init__(self, id: str, raw: dict, external_id=None, samples=None):
+    def __init__(self, id_internal: str, raw: dict, id_external=None, samples=None):
         """
         :param id: A unique identifying id. Used for identification within FARM.
         :type id: str
@@ -22,8 +22,8 @@ class SampleBasket:
         :param samples: An optional list of Samples used to populate the basket at initialization.
         :type samples: Sample
         """
-        self.id = id
-        self.external_id = external_id
+        self.id_internal = id_internal
+        self.id_external = id_external
         self.raw = raw
         self.samples = samples
 
@@ -91,27 +91,6 @@ class Sample(object):
         return s
 
 
-class Squad_cleartext:
-    def __init__(
-        self,
-        qas_id,
-        question_text,
-        doc_tokens,
-        orig_answer_text,
-        start_position,
-        end_position,
-        is_impossible,
-    ):
-
-        self.qas_id = qas_id
-        self.question_text = question_text
-        self.doc_tokens = doc_tokens
-        self.orig_answer_text = orig_answer_text
-        self.start_position = start_position
-        self.end_position = end_position
-        self.is_impossible = is_impossible
-
-
 def create_sample_one_label_one_text(raw_data, text_index, label_index, basket_id):
 
     # text = " ".join(raw_data[text_index:])
@@ -129,7 +108,41 @@ def create_sample_ner(split_text, label, basket_id):
     return [Sample(id=basket_id + "-0", clear_text={"text": text, "label": label})]
 
 
-def create_samples_squad(dictionary, max_query_len, max_seq_len, doc_stride, n_special_tokens):
+def process_answers(answers, doc_offsets, passage_start_c, passage_start_t):
+    """TODO Write Comment"""
+    answers_clear = []
+    answers_tokenized = []
+    for answer in answers:
+        # This section calculates start and end relative to document
+        answer_text = answer["text"]
+        answer_len_c = len(answer_text)
+        answer_start_c = answer["offset"]
+        answer_end_c = answer_start_c + answer_len_c - 1
+        answer_start_t = offset_to_token_idx(doc_offsets, answer_start_c)
+        answer_end_t = offset_to_token_idx(doc_offsets, answer_end_c)
+
+        # TODO: Perform check that answer can be recovered from document?
+
+        # This section converts start and end so that they are relative to the passage
+        # TODO: Is this actually necessary on character level?
+        answer_start_c -= passage_start_c
+        answer_end_c -= passage_start_c
+        answer_start_t -= passage_start_t
+        answer_end_t -= passage_start_t
+
+        curr_answer_clear = {"text": answer_text,
+                             "start_c": answer_start_c,
+                             "end_c": answer_end_c}
+        curr_answer_tokenized = {"start_t": answer_start_t,
+                                 "end_t": answer_end_t,
+                                 "answer_type": answer["answer_type"]}
+
+        answers_clear.append(curr_answer_clear)
+        answers_tokenized.append(curr_answer_tokenized)
+    return answers_clear, answers_tokenized
+
+
+def create_samples_qa(dictionary, max_query_len, max_seq_len, doc_stride, n_special_tokens):
     """
     This method will split question-document pairs from the SampleBasket into question-passage pairs which will
     each form one sample. The "t" and "c" in variables stand for token and character respectively.
@@ -175,7 +188,7 @@ def create_samples_squad(dictionary, max_query_len, max_seq_len, doc_stride, n_s
         passage_tokens = doc_tokens[passage_start_t: passage_end_t]
         passage_text = dictionary["document_text"][passage_start_c: passage_end_c]
 
-        # Deal with the potentially many answers (e.g. Squad dev set)
+        # Deal with the potentially many answers (e.g. Squad or NQ dev set)
         answers_clear, answers_tokenized = process_answers(dictionary["answers"],
                                                            doc_offsets,
                                                            passage_start_c,
@@ -184,8 +197,7 @@ def create_samples_squad(dictionary, max_query_len, max_seq_len, doc_stride, n_s
         clear_text = {"passage_text": passage_text,
                       "question_text": dictionary["question_text"],
                       "passage_id": passage_id,
-                      "answers": answers_clear,
-                      "is_impossible": dictionary["is_impossible"]}
+                      "answers": answers_clear}
         tokenized = {"passage_start_t": passage_start_t,
                      "passage_tokens": passage_tokens,
                      "passage_offsets": passage_offsets,
@@ -193,52 +205,13 @@ def create_samples_squad(dictionary, max_query_len, max_seq_len, doc_stride, n_s
                      "question_tokens": question_tokens,
                      "question_offsets": question_offsets,
                      "question_start_of_word": dictionary["question_start_of_word"][:max_query_len],
-                     "answers": answers_tokenized}
+                     "answers": answers_tokenized,
+                     "document_offsets": doc_offsets}   # So that to_doc_preds can access them
         samples.append(Sample(id=passage_id,
                               clear_text=clear_text,
                               tokenized=tokenized))
     return samples
 
-
-def process_answers(answers, doc_offsets, passage_start_c, passage_start_t):
-    """ This processes the potentially multiple answers (c.f. Squad dev set) and returns their start and end indices
-    relative to the passage (not the document)
-
-    :param answers:
-    :param doc_offsets:
-    :param passage_start_c:
-    :param passage_start_t:
-    :return:
-    """
-    answers_clear = []
-    answers_tokenized = []
-    for answer in answers:
-        # This section calculates start and end relative to document
-        answer_text = answer["text"]
-        answer_len_c = len(answer_text)
-        answer_start_c = answer["offset"]
-        answer_end_c = answer_start_c + answer_len_c - 1
-        answer_start_t = offset_to_token_idx(doc_offsets, answer_start_c)
-        answer_end_t = offset_to_token_idx(doc_offsets, answer_end_c)
-
-        # TODO: Perform check that answer can be recovered from document?
-
-        # This section converts start and end so that they are relative to the passage
-        # TODO: Is this actually necessary on character level?
-        answer_start_c -= passage_start_c
-        answer_end_c -= passage_start_c
-        answer_start_t -= passage_start_t
-        answer_end_t -= passage_start_t
-
-        curr_answer_clear = {"text": answer_text,
-                             "start_c": answer_start_c,
-                             "end_c": answer_end_c}
-        curr_answer_tokenized = {"start_t": answer_start_t,
-                                 "end_t": answer_end_t}
-
-        answers_clear.append(curr_answer_clear)
-        answers_tokenized.append(curr_answer_tokenized)
-    return answers_clear, answers_tokenized
 
 def chunk_into_passages(doc_offsets,
                         doc_stride,
@@ -284,10 +257,3 @@ def offset_to_token_idx(token_offsets, ch_idx):
     for i in range(n_tokens):
         if (i + 1 == n_tokens) or (token_offsets[i] <= ch_idx < token_offsets[i + 1]):
             return i
-
-
-def check_if_training(dictionary):
-    if "is_impossible" in dictionary:
-        return True
-    return False
-

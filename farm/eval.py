@@ -3,12 +3,9 @@ import torch
 import numbers
 import logging
 import numpy as np
-from seqeval.metrics import classification_report as token_classification_report
-from sklearn.metrics import classification_report
-from sklearn.metrics import r2_score
 from torch.utils.data import DataLoader
 
-from farm.evaluation.metrics import compute_metrics
+from farm.evaluation.metrics import compute_metrics, compute_report_metrics
 from farm.utils import to_numpy
 from farm.utils import MLFlowLogger as MlLogger
 from farm.modeling.adaptive_model import AdaptiveModel
@@ -92,10 +89,14 @@ class Evaluator:
                 preds_all[head_num] = mlb.fit_transform(preds_all[head_num])
                 label_all[head_num] = mlb.transform(label_all[head_num])
             if hasattr(head, 'aggregate_preds'):
+                # Needed to convert NQ ids from np arrays to strings
+                ids_all_str = [x.astype(str) for x in ids_all[head_num]]
+                ids_all_list = [list(x) for x in ids_all_str]
+                head_ids = ["-".join(x) for x in ids_all_list]
                 preds_all[head_num], label_all[head_num] = head.aggregate_preds(preds=preds_all[head_num],
-                                                                          labels=label_all[head_num],
-                                                                          passage_start_t=passage_start_t_all[head_num],
-                                                                          ids=ids_all[head_num])
+                                                                                labels=label_all[head_num],
+                                                                                passage_start_t=passage_start_t_all[head_num],
+                                                                                ids=head_ids)
 
             result = {"loss": loss_all[head_num] / len(self.data_loader.dataset),
                       "task_name": head.task_name}
@@ -106,38 +107,12 @@ class Evaluator:
 
             # Select type of report depending on prediction head output type
             if self.report:
-                if head.ph_output_type == "per_token":
-                    report_fn = token_classification_report
-                elif head.ph_output_type == "per_sequence":
-                    report_fn = classification_report
-                elif head.ph_output_type == "per_token_squad":
-                    report_fn = lambda *args, **kwargs: "not Implemented"
-                elif head.ph_output_type == "per_sequence_continuous":
-                    report_fn = r2_score
-                else:
-                    raise NotImplementedError
-
-                # CHANGE PARAMETERS, not all report_fn accept digits
-                if head.ph_output_type in ["per_sequence_continuous","per_token"]:
-                    result["report"] = report_fn(
-                        label_all[head_num], preds_all[head_num]
-                    )
-                else:
-                    # supply labels as all possible combination because if ground truth labels do not cover
-                    # all values in label_list (maybe dev set is small), the report will break
-                    if head.model_type == "multilabel_text_classification":
-                        # For multilabel classification, we don't eval with string labels here, but with multihot vectors.
-                        # Therefore we need to supply all possible label ids instead of label values.
-                        all_possible_labels = list(range(len(head.label_list)))
-                    else:
-                        all_possible_labels = head.label_list
-
-                    result["report"] = report_fn(
-                        label_all[head_num],
-                        preds_all[head_num],
-                        digits=4,
-                        labels=all_possible_labels,
-                        target_names=head.label_list)
+                try:
+                    result["report"] = compute_report_metrics(head, preds_all[head_num], label_all[head_num])
+                except:
+                    logger.error(f"Couldn't create eval report for head {head_num} with following preds and labels:"
+                                 f"\n Preds: {preds_all[head_num]} \n Labels: {label_all[head_num]}")
+                    result["report"] = "Error"
 
             if return_preds_and_labels:
                 result["preds"] = preds_all[head_num]

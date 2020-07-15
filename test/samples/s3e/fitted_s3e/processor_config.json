@@ -1,0 +1,1 @@
+{"baskets": [], "data_dir": null, "dev_filename": null, "dev_split": null, "max_seq_len": 128, "proxies": null, "tasks": {}, "test_filename": null, "train_filename": null, "tokenizer": "EmbeddingTokenizer", "processor": "InferenceProcessor"}

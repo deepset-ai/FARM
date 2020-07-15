@@ -85,7 +85,7 @@ def test_lm_finetuning(caplog):
         {"text": "Farmer's life is great."},
         {"text": "It's nothing for big city kids though."},
     ]
-    model = Inferencer.load(save_dir, task_type="embeddings")
+    model = Inferencer.load(save_dir, task_type="embeddings", num_processes=0)
     result = model.extract_vectors(dicts=basic_texts)
     assert result[0]["context"] == ['Farmer', "'", 's', 'life', 'is', 'great', '.']
     assert result[0]["vec"].shape == (768,)
@@ -163,7 +163,7 @@ def test_lm_finetuning_no_next_sentence(caplog):
         {"text": "Farmer's life is great."},
         {"text": "It's nothing for big city kids though."},
     ]
-    model = Inferencer.load(save_dir, task_type="embeddings")
+    model = Inferencer.load(save_dir, task_type="embeddings", num_processes=0)
     result = model.extract_vectors(dicts=basic_texts)
     assert result[0]["context"] == ['Farmer', "'", 's', 'life', 'is', 'great', '.']
     assert result[0]["vec"].shape == (768,)
@@ -243,7 +243,7 @@ def test_lm_finetuning_custom_vocab(caplog):
         {"text": "Farmer's life is great."},
         {"text": "It's nothing for big city kids though."},
     ]
-    model = Inferencer.load(save_dir, task_type="embeddings")
+    model = Inferencer.load(save_dir, task_type="embeddings", num_processes=0)
     result = model.extract_vectors(dicts=basic_texts)
     assert result[0]["context"] == ['Farmer', "'", 's', 'life', 'is', 'great', '.']
     assert result[0]["vec"].shape == (768,)

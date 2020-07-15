@@ -78,7 +78,8 @@ def doc_classification_crossvalidation():
     metric = 'mymetrics'
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
-    # Here we load GermEval 2018 Data.
+    # Here we load GermEval 2018 Data automaticaly if it is not available.
+    # GermEval 2018 only has train.tsv and test.tsv dataset - no dev.tsv
 
     # The processor wants to know the possible labels ...
     label_list = ["OTHER", "OFFENSE"]

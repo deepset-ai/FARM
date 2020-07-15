@@ -15,7 +15,8 @@ from farm.utils import set_all_seeds, initialize_device_settings
 
 
 def test_doc_classification(caplog):
-    caplog.set_level(logging.CRITICAL)
+    if caplog:
+        caplog.set_level(logging.CRITICAL)
 
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=False)
@@ -81,11 +82,10 @@ def test_doc_classification(caplog):
         {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei."}
     ]
 
-
-    inf = Inferencer.load(save_dir, batch_size=2)
+    inf = Inferencer.load(save_dir, batch_size=2, num_processes=0)
     result = inf.inference_from_dicts(dicts=basic_texts)
     assert isinstance(result[0]["predictions"][0]["probability"], np.float32)
 
 
 if __name__ == "__main__":
-    test_doc_classification()
+    test_doc_classification(None)

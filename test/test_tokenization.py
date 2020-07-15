@@ -87,7 +87,7 @@ def test_truncate_sequences(caplog):
             trunc_a, trunc_b, overflow = truncate_sequences(seq_a=seq_a,seq_b=seq_b,tokenizer=tokenizer,
                                                         max_seq_len=max_seq_len, truncation_strategy=strategy)
 
-            assert len(trunc_a) + len(trunc_b) + tokenizer.num_added_tokens(pair=True) == max_seq_len
+            assert len(trunc_a) + len(trunc_b) + tokenizer.num_special_tokens_to_add(pair=True) == max_seq_len
 
 
 def test_all_tokenizer_on_special_cases(caplog):

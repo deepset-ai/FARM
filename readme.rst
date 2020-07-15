@@ -8,6 +8,10 @@
 
 (**F**\ ramework for **A**\ dapting **R**\ epresentation **M**\ odels)
 
+.. image:: https://img.shields.io/badge/docs-latest-success.svg
+    :target: https://farm.deepset.ai/
+    :alt: Docs
+
 .. image:: https://dev.azure.com/deepset/FARM/_apis/build/status/deepset-ai.FARM?branchName=master
 	:target: https://dev.azure.com/deepset/FARM/_build
 	:alt: Build
@@ -65,29 +69,31 @@ Core features
 - **Checkpointing & Caching** to resume training and reduce costs with spot instances
 - Simple **deployment** and **visualization** to showcase your model
 
-+------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
-| Task                         |      BERT         |  RoBERTa          |  XLNet            |  ALBERT           |  DistilBERT       |  XLMRoBERTa       |
-+==============================+===================+===================+===================+===================+===================+===================+
-| Text classification          | x                 |  x                |  x                |  x                |  x                |  x                |
-+------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
-| NER                          | x                 |  x                |  x                |  x                |  x                |  x                |
-+------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
-| Question Answering           | x                 |  x                |  x                |  x                |  x                |  x                |
-+------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
-| Language Model Fine-tuning   | x                 |                   |                   |                   |                   |                   |
-+------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
-| Text Regression              | x                 |  x                |  x                |  x                |  x                |  x                |
-+------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
-| Multilabel Text classif.     | x                 |  x                |  x                |  x                |  x                |  x                |
-+------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
-| Extracting embeddings        | x                 |  x                |  x                |  x                |  x                |  x                |
-+------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
-| LM from scratch (beta)       | x                 |                   |                   |                   |                   |                   |
-+------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
-| Text Pair Classification     | x                 |  x                |  x                |  x                |  x                |  x                |
-+------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
-| Passage Ranking              | x                 |  x                |  x                |  x                |  x                |  x                |
-+------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
++------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
+| Task                         |      BERT         |  RoBERTa*         |  XLNet            |  ALBERT           |  DistilBERT       |  XLMRoBERTa       |  ELECTRA          |
++==============================+===================+===================+===================+===================+===================+===================+===================+
+| Text classification          | x                 |  x                |  x                |  x                |  x                |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
+| NER                          | x                 |  x                |  x                |  x                |  x                |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
+| Question Answering           | x                 |  x                |  x                |  x                |  x                |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
+| Language Model Fine-tuning   | x                 |                   |                   |                   |                   |                   |                   |
++------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
+| Text Regression              | x                 |  x                |  x                |  x                |  x                |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
+| Multilabel Text classif.     | x                 |  x                |  x                |  x                |  x                |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
+| Extracting embeddings        | x                 |  x                |  x                |  x                |  x                |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
+| LM from scratch (beta)       | x                 |                   |                   |                   |                   |                   |                   |
++------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
+| Text Pair Classification     | x                 |  x                |  x                |  x                |  x                |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
+| Passage Ranking              | x                 |  x                |  x                |  x                |  x                |  x                |  x                |
++------------------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+-------------------+
+
+\* including CamemBERT and UmBERTo
 
 ****NEW**** Interested in doing Question Answering at scale? Checkout `Haystack <https://github.com/deepset-ai/haystack>`_!
 
@@ -251,6 +257,11 @@ Much of the heavy lifting is then handled behind the scenes to make it fast & si
 
 .. image:: https://raw.githubusercontent.com/deepset-ai/FARM/master/docs/img/data_silo_no_bg_small.jpg
 
+Inference Time Benchmarks
+##########################
+
+FARM has a configurable `test suite <https://github.com/deepset-ai/FARM/blob/master/test/benchmarks/README.md>`__ for benchmarking inference times with combinations of inference engine(PyTorch, `ONNXRuntime <https://github.com/microsoft/onnxruntime>`__), batch size, document length, maximum sequence length, and other parameters. `Here <https://docs.google.com/spreadsheets/d/1ak9Cxj1zcNBDtjf7qn2j_ydKDDzpBgWiyJ7cO-7BPvA/edit?usp=sharing>`__ is a benchmark for Question Answering inference with the current FARM version.
+
 FAQ
 ####
 **1. What language model shall I use for non-english NLP?**
@@ -289,14 +300,6 @@ Checkout `haystack <https://github.com/deepset-ai/haystack/>`__ for more details
 
 **8. My GPU runs out of memory. How can I train with decent batch sizes?**
 Use gradient accumulation! It combines multiple batches before applying backprop. In FARM, just set the param :code:`grad_acc_steps` in :code:`initialize_optimizer()` and :code:`Trainer()` to the number of batches you want to combine (i.e. :code:`grad_acc_steps=2` and :code:`batch_size=16` results in an effective batch size of 32).
-
-Upcoming features
-###################
-- Full AWS SageMaker support (incl. Spot instances)
-- Support for more Question Answering styles and datasets
-- Additional visualizations and statistics to explore and debug your model
-- Enabling large scale deployment for production
-- Simpler benchmark models (fasttext, word2vec ...)
 
 
 Acknowledgements
