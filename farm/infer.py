@@ -630,7 +630,7 @@ class QAInferencer(Inferencer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         if self.task_type != "question_answering":
-            logger.warning("QAInferencer always has task_type='question_answer' even if another value is provided "
+            logger.warning("QAInferencer always has task_type='question_answering' even if another value is provided "
                            "to Inferencer.load() or QAInferencer()")
             self.task_type = "question_answering"
 
