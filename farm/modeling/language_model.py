@@ -148,8 +148,6 @@ class LanguageModel(nn.Module):
                     language_model_class = 'Electra'
                 elif "word2vec" in pretrained_model_name_or_path.lower() or "glove" in pretrained_model_name_or_path.lower():
                     language_model_class = 'WordEmbedding_LM'
-                elif "minilm" in pretrained_model_name_or_path.lower():
-                    language_model_class = "Bert"
 
             if language_model_class:
                 language_model = cls.subclasses[language_model_class].load(pretrained_model_name_or_path, **kwargs)

@@ -84,8 +84,6 @@ class Tokenizer:
                     "glove" in pretrained_model_name_or_path.lower() or \
                     "fasttext" in pretrained_model_name_or_path.lower():
                 tokenizer_class = "EmbeddingTokenizer"
-            elif "minilm" in pretrained_model_name_or_path.lower():
-                tokenizer_class = "BertTokenizer"
             else:
                 raise ValueError(f"Could not infer tokenizer_class from name '{pretrained_model_name_or_path}'. Set "
                                  f"arg `tokenizer_class` in Tokenizer.load() to one of: AlbertTokenizer, "
