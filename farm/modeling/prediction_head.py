@@ -1262,10 +1262,12 @@ class QuestionAnsweringHead(PredictionHead):
 
     @staticmethod
     def get_ground_truth(basket):
-        try:
-            return basket.raw["answers"]
-        except KeyError:
-            return basket.raw["annotations"]
+        if "answers" in basket.raw:
+            return basket.raw["answer"]
+        elif "annotations" in basket.raw:
+            return basket.raw["annoations"]
+        else:
+            return None
 
     @staticmethod
     def get_question(question_names, raw_dict):
