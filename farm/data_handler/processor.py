@@ -301,6 +301,7 @@ class Processor(ABC):
                     logger.error(f"Could not convert this sample to features: \n {sample}")
                     logger.error(f"Basket id: id_internal: {basket.id_internal}, id_external: {basket.id_external}")
                     logger.error(f"Error message: {e}")
+
     @staticmethod
     def _check_sample_features(basket):
         """Check if all samples in the basket has computed its features.
@@ -315,9 +316,7 @@ class Processor(ABC):
         for sample in basket.samples:
             if sample.features is None:
                 return False
-        else:
-            return True
-
+        return True
 
     def _create_dataset(self, keep_baskets=False):
         features_flat = []
