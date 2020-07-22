@@ -1245,6 +1245,7 @@ class QuestionAnsweringHead(PredictionHead):
 
             document_text = try_get(doc_names, basket.raw)
             question = self.get_question(question_names, basket.raw)
+            ground_truth = self.get_ground_truth(basket)
 
             curr_doc_pred = QAPred(id=pred_id,
                                    prediction=pred_d,
@@ -1253,10 +1254,18 @@ class QuestionAnsweringHead(PredictionHead):
                                    token_offsets=token_offsets,
                                    context_window_size=self.context_window_size,
                                    aggregation_level="document",
+                                   ground_truth_answer=ground_truth,
                                    no_answer_gap=no_ans_gap)
 
             ret.append(curr_doc_pred)
         return ret
+
+    @staticmethod
+    def get_ground_truth(basket):
+        try:
+            return basket.raw["answers"]
+        except KeyError:
+            return basket.raw["annotations"]
 
     @staticmethod
     def get_question(question_names, raw_dict):
