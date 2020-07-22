@@ -226,8 +226,6 @@ class RegressionHead(PredictionHead):
         preds = self.logits_to_preds(logits)
         contexts = [sample.clear_text["text"] for sample in samples]
 
-        assert len(preds) == len(contexts)
-
         res = {"task": "regression", "predictions": []}
         for pred, context in zip(preds, contexts):
             res["predictions"].append(
@@ -395,8 +393,6 @@ class TextClassificationHead(PredictionHead):
         if len(contexts_b) != 0:
             contexts = ["|".join([a, b]) for a,b in zip(contexts, contexts_b)]
 
-        assert len(preds) == len(probs) == len(contexts)
-
         res = {"task": "text_classification", "predictions": []}
         for pred, prob, context in zip(preds, probs, contexts):
             if not return_class_probs:
@@ -512,8 +508,6 @@ class MultiLabelTextClassificationHead(PredictionHead):
         preds = self.logits_to_preds(logits)
         probs = self.logits_to_probs(logits)
         contexts = [sample.clear_text["text"] for sample in samples]
-
-        assert len(preds) == len(probs) == len(contexts)
 
         res = {"task": "text_classification", "predictions": []}
         for pred, prob, context in zip(preds, probs, contexts):
@@ -696,8 +690,6 @@ class TokenClassificationHead(PredictionHead):
             word_spans.append(span)
             spans.append(word_spans)
 
-        assert len(preds) == len(probs) == len(spans)
-
         res = {"task": "ner", "predictions": []}
         for preds_seq, probs_seq, sample, spans_seq in zip(
             preds, probs, samples, spans
@@ -832,7 +824,6 @@ class BertLMHead(PredictionHead):
         lm_label_ids = kwargs.get(self.label_tensor_name).cpu().numpy()
         lm_preds_ids = logits.argmax(2).cpu().numpy()
         # apply mask to get rid of predictions for non-masked tokens
-        assert lm_preds_ids.shape == lm_label_ids.shape
         lm_preds_ids[lm_label_ids == -1] = -1
         lm_preds_ids = lm_preds_ids.tolist()
         preds = []
@@ -1204,8 +1195,9 @@ class QuestionAnsweringHead(PredictionHead):
         # passage_start_t is the token index of the passage relative to the document (usually a multiple of doc_stride)
         # seq_2_start_t is the token index of the first token in passage relative to the input sequence (i.e. number of
         # special tokens and question tokens that come before the passage tokens)
-        assert logits is None, "Logits are not None, something is passed wrongly into formatted_preds() in infer.py"
-        assert preds is not None, "No preds passed to formatted_preds()"
+        if logits or preds is not None:
+            logger.error("QuestionAnsweringHead.formatted_preds() expects preds as input and logits to be None \
+                            but was passed something different")
         samples = [s for b in baskets for s in b.samples]
         ids = [s.id for s in samples]
         passage_start_t = [s.features[0]["passage_start_t"] for s in samples]
@@ -1216,8 +1208,6 @@ class QuestionAnsweringHead(PredictionHead):
         # i.e. that there are no incomplete documents. The output of this step
         # are prediction spans
         preds_d = self.aggregate_preds(preds, passage_start_t, ids, seq_2_start_t)
-
-        assert len(preds_d) == len(baskets)
 
         # Separate top_preds list from the no_ans_gap float.
         top_preds, no_ans_gaps = zip(*preds_d)
@@ -1444,12 +1434,14 @@ class QuestionAnsweringHead(PredictionHead):
                 start = -1
             else:
                 start += passage_start_t
-                assert start >= 0
+                if start < 0:
+                    logger.error("Start token index < 0 (document level)")
             if end == 0:
                 end = -1
             else:
                 end += passage_start_t
-                assert start >= 0
+                if end < 0:
+                    logger.error("End token index < 0 (document level)")
             qa_answer.to_doc_level(start, end)
             new_pred.append(qa_answer)
         return new_pred
@@ -1484,7 +1476,8 @@ class QuestionAnsweringHead(PredictionHead):
 
         # This fn is used to align QA output of len=n_docs and Classification output of len=n_passages
         def chunk(iterable, lengths):
-            assert sum(lengths) == len(iterable)
+            if sum(lengths) != len(iterable):
+                logger.error("Sum of the lengths does not match the length of the iterable")
             cumsum = list(np.cumsum(lengths))
             cumsum = [0] + cumsum
             spans = [(cumsum[i], cumsum[i+1]) for i in range(len(cumsum) - 1)]
