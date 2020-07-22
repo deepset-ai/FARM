@@ -2,6 +2,7 @@ import logging
 import multiprocessing as mp
 import os
 from functools import partial
+import warnings
 
 import torch
 from torch.utils.data.sampler import SequentialSampler
@@ -356,7 +357,7 @@ class Inferencer:
         Runs down-stream inference on samples created from input dictionaries.
         The format of the input `dicts` depends on the task:
 
-        * QA (SQuAD style):    [{"qas": ["What is X?"], "context":  "Some context containing the answer"}]
+        * QA (SQuAD style):    [{"qas": ["What is X?"], "context":  "Some context containing the answer"}] (Deprecated)
         * QA (FARM style): [{"questions": ["What is X?"], "text":  "Some context containing the answer"}]
         * Classification / NER / embeddings: [{"text": "Some input text"}]
 
@@ -387,6 +388,9 @@ class Inferencer:
         """
 
         # whether to aggregate predictions across different samples (e.g. for QA on long texts)
+        if set(dicts[0].keys()) == {"qas", "context"}:
+            warnings.warn("QA Input dictionaries with [qas, context] as keys will be deprecated in the future")
+
         aggregate_preds = False
         if len(self.model.prediction_heads) > 0:
             aggregate_preds = hasattr(self.model.prediction_heads[0], "aggregate_preds")
