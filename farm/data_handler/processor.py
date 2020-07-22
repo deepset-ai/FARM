@@ -299,13 +299,43 @@ class Processor(ABC):
                     sample.features = self._sample_to_features(sample=sample)
                 except Exception as e:
                     logger.error(f"Could not convert this sample to features: \n {sample}")
+                    logger.error(f"Basket id: id_internal: {basket.id_internal}, id_external: {basket.id_external}")
                     logger.error(f"Error message: {e}")
+    @staticmethod
+    def _check_sample_features(basket):
+        """Check if all samples in the basket has computed its features.
+
+        Args:
+            basket: the basket containing the samples
+
+        Returns:
+            True if all the samples in the basket has computed its features, False otherwise
+
+        """
+        for sample in basket.samples:
+            if sample.features is None:
+                return False
+        else:
+            return True
+
 
     def _create_dataset(self, keep_baskets=False):
         features_flat = []
+        basket_to_remove = []
         for basket in self.baskets:
-            for sample in basket.samples:
-                features_flat.extend(sample.features)
+            if self._check_sample_features(basket):
+                for sample in basket.samples:
+                    features_flat.extend(sample.features)
+            else:
+                # remove the entire basket
+                basket_to_remove.append(basket)
+        if len(basket_to_remove) > 0:
+            # if basket_to_remove is not empty remove the related baskets
+            logger.warning(f"Removing the following baskets because of errors in computing features:")
+            for basket in basket_to_remove:
+                logger.warning(f"Basket id: id_internal: {basket.id_internal}, id_external: {basket.id_external}")
+                self.baskets.remove(basket)
+
         if not keep_baskets:
             # free up some RAM, we don't need baskets from here on
             self.baskets = None
@@ -1699,7 +1729,7 @@ def _is_impossible_to_answer_type(qas):
         new_qas.append(q)
     return new_qas
 
-  
+
 def _check_valid_answer(sample):
     passage_text = sample.clear_text["passage_text"]
     for answer in sample.clear_text["answers"]:
