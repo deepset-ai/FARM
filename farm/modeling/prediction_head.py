@@ -1263,9 +1263,9 @@ class QuestionAnsweringHead(PredictionHead):
     @staticmethod
     def get_ground_truth(basket):
         if "answers" in basket.raw:
-            return basket.raw["answer"]
+            return basket.raw["answers"]
         elif "annotations" in basket.raw:
-            return basket.raw["annoations"]
+            return basket.raw["annotations"]
         else:
             return None
 
