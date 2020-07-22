@@ -1314,8 +1314,8 @@ class NaturalQuestionsProcessor(QAProcessor):
         mapping from document to question. Input dictionaries can have either ["context", "qas"] (internal format) as
         keys or ["text", "questions"] (api format). Both are supported.
         """
-        # Turns a NQ dictionaries into a SQuAD style dictionaries
-        if not self.inference:
+        # Turns NQ dictionaries into a SQuAD style dictionaries
+        if self._is_nq_dict(dictionary):
             dictionary = self._prepare_dict(dictionary=dictionary)
 
         dictionary_tokenized = _apply_tokenization(dictionary, self.tokenizer)[0]
@@ -1330,6 +1330,12 @@ class NaturalQuestionsProcessor(QAProcessor):
         if not self.inference:
             samples = self._downsample(samples, self.keep_no_answer)
         return samples
+
+    @staticmethod
+    def _is_nq_dict(dictionary):
+        if set(dictionary.keys()) == {'document_text', 'long_answer_candidates', 'question_text', 'annotations', 'document_url', 'example_id'}:
+            return True
+        return False
 
     def _downsample(self, samples, keep_prob):
         # Downsamples samples with a no_answer label (since there is an overrepresentation of these in NQ)
