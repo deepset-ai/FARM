@@ -71,8 +71,7 @@ class Processor(ABC):
         dev_split,
         data_dir,
         tasks={},
-        proxies=None,
-        processor_verbose=True
+        proxies=None
     ):
         """
         :param tokenizer: Used to split a sentence (str) into tokens.
@@ -101,7 +100,6 @@ class Processor(ABC):
         """
 
         self.tokenizer = tokenizer
-        self.processor_verbose = processor_verbose
         self.max_seq_len = max_seq_len
         self.tasks = tasks
         self.proxies = proxies
@@ -1110,8 +1108,6 @@ class SquadProcessor(QAProcessor):
         self.doc_stride = doc_stride
         self.max_query_length = max_query_length
 
-        self.processor_verbose = verbose
-
         super(SquadProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
@@ -1121,8 +1117,7 @@ class SquadProcessor(QAProcessor):
             dev_split=dev_split,
             data_dir=data_dir,
             tasks={},
-            proxies=proxies,
-            processor_verbose=verbose
+            proxies=proxies
         )
 
         if metric and label_list:
@@ -1186,8 +1181,8 @@ class SquadProcessor(QAProcessor):
                                          tokenizer=self.tokenizer,
                                          max_seq_len=self.max_seq_len,
                                          sp_toks_start=self.sp_toks_start,
-                                         sp_toks_mid=self.sp_toks_mid,
-                                         verbose=self.processor_verbose)
+                                         sp_toks_mid=self.sp_toks_mid
+                                         )
         return features
 
 class NaturalQuestionsProcessor(QAProcessor):
