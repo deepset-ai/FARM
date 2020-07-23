@@ -97,7 +97,7 @@ def doc_classifcation():
         device=device)
 
     # 7. Let it grow
-    trainer.train()
+    # trainer.train()
 
     # 8. Hooray! You have a model. Store it:
     save_dir = Path("saved_models/bert-german-doc-tutorial")
@@ -112,6 +112,7 @@ def doc_classifcation():
     model = Inferencer.load(save_dir)
     result = model.inference_from_dicts(dicts=basic_texts)
     print(result)
+    model.close_multiprocessing_pool()
 
 
 if __name__ == "__main__":

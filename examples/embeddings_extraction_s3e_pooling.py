@@ -74,6 +74,7 @@ def fit(language_model, corpus_path, save_dir, do_lower_case, batch_size=4, use_
     # Get embeddings for input text (you can vary the strategy and layer)
     result = inferencer.inference_from_dicts(dicts=basic_texts)
     print(result)
+    inferencer.close_multiprocessing_pool()
 
 
 def extract_embeddings(load_dir, use_gpu, batch_size):
@@ -94,12 +95,13 @@ def extract_embeddings(load_dir, use_gpu, batch_size):
     # Get embeddings for input text
     result = inferencer.inference_from_dicts(dicts=basic_texts)
     print(result)
+    inferencer.close_multiprocessing_pool()
 
 
 if __name__ == "__main__":
     lang_model = "glove-english-uncased-6B"
     do_lower_case = True
-    
+
     # You can download this from:
     # "https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-downstream/lm_finetune_nips.tar.gz"
     corpus_path = Path("../data/lm_finetune_nips/train.txt")

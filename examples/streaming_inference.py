@@ -18,6 +18,8 @@ def streaming_inference_example():
     for prediction in results:  # results is a generator object that yields predictions
         print(prediction)
 
+    inferencer.close_multiprocessing_pool()
+
 
 def sample_dicts_generator():
     """

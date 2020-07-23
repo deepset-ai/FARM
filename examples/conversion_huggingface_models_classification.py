@@ -26,6 +26,7 @@ def convert_from_transformers():
     # # run predictions
     result = nlp.inference_from_dicts(dicts=[{"text": "Was ein scheiß Nazi!"}], rest_api_schema=True)
     pprint.pprint(result)
+    nlp.close_multiprocessing_pool()
 
     # save it
     nlp.save(farm_output_dir)
