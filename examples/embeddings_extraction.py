@@ -23,6 +23,8 @@ def embeddings_extraction():
     # Get embeddings for input text (you can vary the strategy and layer)
     result = model.inference_from_dicts(dicts=basic_texts)
     print(result)
+    model.close_multiprocessing_pool()
+
 
 if __name__ == "__main__":
     embeddings_extraction()

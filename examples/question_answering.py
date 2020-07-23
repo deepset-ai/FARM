@@ -114,6 +114,7 @@ def question_answering():
     result = model.inference_from_dicts(dicts=QA_input)[0]
 
     pprint.pprint(result)
+    model.close_multiprocessing_pool()
 
     # 10. Do Inference on whole SQuAD Dataset & write the predictions file to disk
     filename = os.path.join(processor.data_dir,processor.dev_filename)

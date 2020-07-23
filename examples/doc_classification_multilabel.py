@@ -112,6 +112,7 @@ def doc_classification_multilabel():
     model = Inferencer.load(save_dir)
     result = model.inference_from_dicts(dicts=basic_texts)
     print(result)
+    model.close_multiprocessing_pool()
 
 
 if __name__ == "__main__":

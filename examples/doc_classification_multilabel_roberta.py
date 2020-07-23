@@ -114,6 +114,7 @@ def doc_classification_multilabel_roberta():
     model = Inferencer.load(save_dir)
     result = model.run_inference(dicts=basic_texts)
     print(result)
+    model.close_multiprocessing_pool()
 
 
 if __name__ == "__main__":

@@ -136,6 +136,8 @@ def text_pair_classification():
                        qrels_file=data_dir / qrels_filename,
                        output_file=save_dir / predictions_filename)
 
+    model.close_multiprocessing_pool()
+
 
 if __name__ == "__main__":
     text_pair_classification()

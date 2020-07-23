@@ -103,6 +103,8 @@ def ner():
     result = model.inference_from_dicts(dicts=basic_texts)
     print(result)
 
+    model.close_multiprocessing_pool()
+
 
 if __name__ == "__main__":
     ner()

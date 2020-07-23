@@ -17,8 +17,12 @@ def onnx_adaptive_model_qa(use_gpu, num_processes, model_name_or_path="deepset/b
         )
         model.convert_to_onnx(onnx_model_path)
 
-    model = Inferencer.load(
-        onnx_model_path, task_type="question_answering", batch_size=1, num_processes=num_processes, gpu=use_gpu
-    )
+    try:
+        model = Inferencer.load(
+            onnx_model_path, task_type="question_answering", batch_size=1, num_processes=num_processes, gpu=use_gpu
+        )
+        yield model
+    finally:
+        if num_processes != 0:
+            model.close_multiprocessing_pool()
 
-    return model

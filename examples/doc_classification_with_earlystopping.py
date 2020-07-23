@@ -149,6 +149,7 @@ def doc_classification_with_earlystopping():
     model = Inferencer.load(save_dir)
     result = model.inference_from_dicts(dicts=basic_texts)
     print(result)
+    model.close_multiprocessing_pool()
 
     # Load from saved best model
     print("LOADING INFERENCER FROM BEST MODEL DURING TRAINING")
@@ -156,6 +157,7 @@ def doc_classification_with_earlystopping():
     result = model.inference_from_dicts(dicts=basic_texts)
     print("APPLICATION ON BEST MODEL")
     print(result)
+    model.close_multiprocessing_pool()
 
 
 if __name__ == "__main__":

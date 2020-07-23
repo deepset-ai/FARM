@@ -88,6 +88,7 @@ def test_evaluation():
     filename = data_dir / evaluation_filename
     result = model.inference_from_file(file=filename, return_json=False, multiprocessing_chunksize=80)
     results_squad = [x.to_squad_eval() for x in result]
+    model.close_multiprocessing_pool()
 
     elapsed = time() - starttime
 
