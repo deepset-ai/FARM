@@ -361,7 +361,7 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
     encoded = tokenizer.encode_plus(text=sample.tokenized["question_tokens"],
                                     text_pair=sample.tokenized["passage_tokens"],
                                     add_special_tokens=True,
-                                    truncation_strategy='only_second',
+                                    truncation_strategy='do_not_truncate',
                                     return_token_type_ids=True,
                                     return_tensors=None)
     input_ids = encoded["input_ids"]
