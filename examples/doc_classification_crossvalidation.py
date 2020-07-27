@@ -2,6 +2,7 @@
 import logging
 import json
 from pathlib import Path
+import torch
 
 from farm.data_handler.data_silo import DataSilo, DataSiloForCrossVal
 from farm.data_handler.processor import TextClassificationProcessor
@@ -189,6 +190,10 @@ def doc_classification_crossvalidation():
         if f1_offense > bestf1_offense:
             bestf1_offense = f1_offense
             bestfold = num_fold
+
+        # emtpy cache to avoid memory leak and cuda OOM across multiple folds
+        model.cpu()
+        torch.cuda.empty_cache()
 
     # Save the per-fold results to json for a separate, more detailed analysis
     with open("doc_classification_xval.results.json", "wt") as fp:
