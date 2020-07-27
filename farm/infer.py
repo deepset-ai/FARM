@@ -518,10 +518,6 @@ class Inferencer:
         :param baskets: For each item in the dataset, we need additional information to create formatted preds.
                         Baskets contain all relevant infos for that.
                         Example: QA - input string to convert the predicted answer from indices back to string space
-        :param rest_api_schema: Whether input dicts use the format that complies with the FARM REST API.
-                                Currently only used for QA to switch from squad to a more useful format in production.
-                                While input is almost the same, output contains additional meta data(offset, context..)
-        :type rest_api_schema: bool
         :return: list of predictions
         """
         samples = [s for b in baskets for s in b.samples]
