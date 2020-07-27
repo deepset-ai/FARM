@@ -389,7 +389,8 @@ class Inferencer:
 
         # whether to aggregate predictions across different samples (e.g. for QA on long texts)
         if set(dicts[0].keys()) == {"qas", "context"}:
-            warnings.warn("QA Input dictionaries with [qas, context] as keys will be deprecated in the future")
+            warnings.warn("QA Input dictionaries with [qas, context] as keys will be deprecated in the future",
+                          DeprecationWarning)
 
         aggregate_preds = False
         if len(self.model.prediction_heads) > 0:
