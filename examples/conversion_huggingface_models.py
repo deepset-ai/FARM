@@ -24,6 +24,7 @@ def convert_from_transformers():
                  "text": "The option to convert models between FARM and transformers gives freedom to the user and let people easily switch between frameworks."}]
     result = nlp.inference_from_dicts(dicts=QA_input, rest_api_schema=True)
     pprint.pprint(result)
+    nlp.close_multiprocessing_pool()
 
     # save it
     farm_model_dir = Path("../saved_models/bert-english-qa-large")

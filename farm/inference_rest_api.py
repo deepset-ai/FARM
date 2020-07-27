@@ -27,6 +27,7 @@ for model_dir in MODELS_DIRS:
 
 INFERENCERS = {}
 for idx, model_dir in enumerate(model_paths):
+    # refer to examples/inferencer_multiprocessing.py for using multiprocessing in the Inferencers.
     INFERENCERS[idx + 1] = Inferencer.load(str(model_dir), num_processes=0)
 
 app = Flask(__name__)

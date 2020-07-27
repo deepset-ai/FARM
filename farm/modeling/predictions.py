@@ -158,7 +158,8 @@ class QACandidate:
         :return: The string answer span, followed by the start and end character indices
         """
 
-        assert self.offset_unit == "token"
+        if self.offset_unit != "token":
+            logger.error(f"QACandidate needs to have self.offset_unit=token before calling _span_to_string() (id = {self.id})")
 
         start_t = self.offset_answer_start
         end_t = self.offset_answer_end

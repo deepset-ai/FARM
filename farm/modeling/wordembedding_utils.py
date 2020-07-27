@@ -605,10 +605,13 @@ def fit_s3e_on_corpus(processor, model, corpus, n_clusters=10,
         sentences = [{"text": s} for s in corpus.split("\n") if len(s.strip()) > 0]
 
         # Get embeddings
-        inferencer = Inferencer(model=model, processor=processor, task_type="embeddings", gpu=use_gpu,
-                                batch_size=batch_size, extraction_strategy="s3e", extraction_layer=-1,
-                                s3e_stats=s3e_stats)
-        result = inferencer.inference_from_dicts(dicts=sentences)
+        try:
+            inferencer = Inferencer(model=model, processor=processor, task_type="embeddings", gpu=use_gpu,
+                                    batch_size=batch_size, extraction_strategy="s3e", extraction_layer=-1,
+                                    s3e_stats=s3e_stats)
+            result = inferencer.inference_from_dicts(dicts=sentences)
+        finally:
+            inferencer.close_multiprocessing_pool()
         sentence_embeddings = [s["vec"] for s in result]
         sentence_embeddings = np.vstack(sentence_embeddings)
 

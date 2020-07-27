@@ -33,6 +33,7 @@ def onnx_runtime_example():
 
     results = inferencer.inference_from_dicts(qa_input)
     print(results)
+    inferencer.close_multiprocessing_pool()
 
 
 if __name__ == "__main__":
