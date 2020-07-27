@@ -1195,7 +1195,7 @@ class QuestionAnsweringHead(PredictionHead):
         # passage_start_t is the token index of the passage relative to the document (usually a multiple of doc_stride)
         # seq_2_start_t is the token index of the first token in passage relative to the input sequence (i.e. number of
         # special tokens and question tokens that come before the passage tokens)
-        if logits or preds is not None:
+        if logits or preds is None:
             logger.error("QuestionAnsweringHead.formatted_preds() expects preds as input and logits to be None \
                             but was passed something different")
         samples = [s for b in baskets for s in b.samples]
