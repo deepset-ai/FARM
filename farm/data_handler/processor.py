@@ -75,7 +75,6 @@ class Processor(ABC):
     ):
         """
         :param tokenizer: Used to split a sentence (str) into tokens.
-        :param processor_verbose: log all warnings verbosely
         :param max_seq_len: Samples are truncated after this many tokens.
         :type max_seq_len: int
         :param train_filename: The name of the file containing training data.
@@ -1068,7 +1067,6 @@ class SquadProcessor(QAProcessor):
         doc_stride=128,
         max_query_length=64,
         proxies=None,
-        verbose=True,
         **kwargs
     ):
         """
@@ -1181,8 +1179,7 @@ class SquadProcessor(QAProcessor):
                                          tokenizer=self.tokenizer,
                                          max_seq_len=self.max_seq_len,
                                          sp_toks_start=self.sp_toks_start,
-                                         sp_toks_mid=self.sp_toks_mid
-                                         )
+                                         sp_toks_mid=self.sp_toks_mid)
         return features
 
 class NaturalQuestionsProcessor(QAProcessor):
