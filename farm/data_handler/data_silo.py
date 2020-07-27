@@ -801,8 +801,11 @@ class DataSiloForCrossVal:
         :param n_neg_answers_per_question: number of negative answers per question to include for training
         :type n_neg_answers_per_question: int
         """
-        assert datasilo.tensor_names[4] == "id", f"Expected tensor 'id' at index 4, found {datasilo.tensor_names[4]}"
-        assert datasilo.tensor_names[7] == "labels", f"Expected tensor 'labels' at index 7, found {datasilo.tensor_names[7]}"
+        assert "id" in datasilo.tensor_names, f"Expected tensor 'id' in tensor names, found {datasilo.tensor_names}"
+        assert "labels" in datasilo.tensor_names, f"Expected tensor 'labels' in tensor names, found {datasilo.tensor_names}"
+
+        id_index = datasilo.tensor_names.index("id")
+        label_index = datasilo.tensor_names.index("labels")
 
         sets_to_concat = []
         for setname in sets:
@@ -811,12 +814,17 @@ class DataSiloForCrossVal:
         all_data = ConcatDataset(sets_to_concat)
 
         documents = []
-        keyfunc = lambda x: x[4][0]
+        keyfunc = lambda x: x[id_index][0]
         all_data = sorted(all_data.datasets, key=keyfunc)
         for key, document in groupby(all_data, key=keyfunc):
             documents.append(list(document))
 
-        xval_split = cls._split_for_qa(documents, n_splits, shuffle, random_state)
+        xval_split = cls._split_for_qa(documents = documents,
+                                       id_index=id_index,
+                                       n_splits=n_splits,
+                                       shuffle=shuffle,
+                                       random_state=random_state,
+                                       )
         silos = []
 
         for train_set, test_set in xval_split:
@@ -835,14 +843,14 @@ class DataSiloForCrossVal:
 
             train_samples = []
             for doc in actual_train_set:
-                keyfunc = lambda x: x[4][1]
+                keyfunc = lambda x: x[id_index][1]
                 doc = sorted(doc, key=keyfunc)
                 for key, question in groupby(doc, key=keyfunc):
                     # add all available answrs to train set
                     sample_list = list(question)
                     neg_answer_idx = []
                     for index, sample in enumerate(sample_list):
-                        if sample[7][0][0] or sample[7][0][1]:
+                        if sample[label_index][0][0] or sample[label_index][0][1]:
                             train_samples.append(sample)
                         else:
                             neg_answer_idx.append(index)
@@ -904,8 +912,8 @@ class DataSiloForCrossVal:
         return silos
 
     @staticmethod
-    def _split_for_qa(documents, n_splits=5, shuffle=True, random_state=None):
-        keyfunc = lambda x: x[4][1]
+    def _split_for_qa(documents, id_index, n_splits=5, shuffle=True, random_state=None):
+        keyfunc = lambda x: x[id_index][1]
         if shuffle:
             random.shuffle(documents, random_state)
 
