@@ -61,7 +61,7 @@ class DataSilo:
             values are rather large that might cause memory issues.
         :type max_multiprocessing_chunksize: int
         :param max_processes: the maximum number of processes to spawn in the multiprocessing.Pool used in DataSilo.
-                              It can be set to 1 to disable the use of multiprocessing ot make debugging easier.
+                              It can be set to 1 to disable the use of multiprocessing or make debugging easier.
         :type max_processes: int
         :param caching: save the processed datasets on disk to save time/compute if the same train data is used to run
                         multiple experiments. Each cache has a checksum based on the train_filename of the Processor

@@ -87,9 +87,10 @@ class Inferencer:
         :param s3e_stats: Stats of a fitted S3E model as returned by `fit_s3e_on_corpus()`
                           (only needed for task_type="embeddings" and extraction_strategy = "s3e")
         :type s3e_stats: dict
-        :param num_processes: the number of processes for `multiprocessing.Pool`. Set to value of 0 to disable
-                              multiprocessing. Set to None to let Inferencer use all CPU cores minus one. If you want to
-                              debug the Language Model, you might need to disable multiprocessing!
+        :param num_processes: the number of processes for `multiprocessing.Pool`.
+                              Set to value of 1 (or 0) to disable multiprocessing.
+                              Set to None to let Inferencer use all CPU cores minus one.
+                              If you want to debug the Language Model, you might need to disable multiprocessing!
                               **Warning!** If you use multiprocessing you have to close the
                               `multiprocessing.Pool` again! To do so call
                               :func:`~farm.infer.Inferencer.close_multiprocessing_pool` after you are
@@ -277,9 +278,10 @@ class Inferencer:
         """
         Initialize a multiprocessing.Pool for instances of Inferencer.
 
-        :param num_processes: the number of processes for `multiprocessing.Pool`. Set to value of 0 to disable
-                              multiprocessing. Set to None to let Inferencer use all CPU cores minus one. If you want to
-                              debug the Language Model, you might need to disable multiprocessing!
+        :param num_processes: the number of processes for `multiprocessing.Pool`.
+                              Set to value of 1 (or 0) to disable multiprocessing.
+                              Set to None to let Inferencer use all CPU cores minus one.
+                              If you want to debug the Language Model, you might need to disable multiprocessing!
                               **Warning!** If you use multiprocessing you have to close the
                               `multiprocessing.Pool` again! To do so call
                               :func:`~farm.infer.Inferencer.close_multiprocessing_pool` after you are
@@ -288,7 +290,7 @@ class Inferencer:
         :return:
         """
         self.process_pool = None
-        if num_processes == 0:  # disable multiprocessing
+        if num_processes == 0 or num_processes == 1:  # disable multiprocessing
             self.process_pool = None
         else:
             if num_processes is None:  # use all CPU cores
