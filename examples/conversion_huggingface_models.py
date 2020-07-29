@@ -22,7 +22,7 @@ def convert_from_transformers():
     # run predictions
     QA_input = [{"questions": ["Why is model conversion important?"],
                  "text": "The option to convert models between FARM and transformers gives freedom to the user and let people easily switch between frameworks."}]
-    result = nlp.inference_from_dicts(dicts=QA_input, rest_api_schema=True)
+    result = nlp.inference_from_dicts(dicts=QA_input)
     pprint.pprint(result)
     nlp.close_multiprocessing_pool()
 

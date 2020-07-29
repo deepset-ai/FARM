@@ -2,6 +2,7 @@ import logging
 import multiprocessing as mp
 import os
 from functools import partial
+import warnings
 
 import torch
 from torch.utils.data.sampler import SequentialSampler
@@ -86,9 +87,10 @@ class Inferencer:
         :param s3e_stats: Stats of a fitted S3E model as returned by `fit_s3e_on_corpus()`
                           (only needed for task_type="embeddings" and extraction_strategy = "s3e")
         :type s3e_stats: dict
-        :param num_processes: the number of processes for `multiprocessing.Pool`. Set to value of 0 to disable
-                              multiprocessing. Set to None to let Inferencer use all CPU cores minus one. If you want to
-                              debug the Language Model, you might need to disable multiprocessing!
+        :param num_processes: the number of processes for `multiprocessing.Pool`.
+                              Set to value of 1 (or 0) to disable multiprocessing.
+                              Set to None to let Inferencer use all CPU cores minus one.
+                              If you want to debug the Language Model, you might need to disable multiprocessing!
                               **Warning!** If you use multiprocessing you have to close the
                               `multiprocessing.Pool` again! To do so call
                               :func:`~farm.infer.Inferencer.close_multiprocessing_pool` after you are
@@ -276,9 +278,10 @@ class Inferencer:
         """
         Initialize a multiprocessing.Pool for instances of Inferencer.
 
-        :param num_processes: the number of processes for `multiprocessing.Pool`. Set to value of 0 to disable
-                              multiprocessing. Set to None to let Inferencer use all CPU cores minus one. If you want to
-                              debug the Language Model, you might need to disable multiprocessing!
+        :param num_processes: the number of processes for `multiprocessing.Pool`.
+                              Set to value of 1 (or 0) to disable multiprocessing.
+                              Set to None to let Inferencer use all CPU cores minus one.
+                              If you want to debug the Language Model, you might need to disable multiprocessing!
                               **Warning!** If you use multiprocessing you have to close the
                               `multiprocessing.Pool` again! To do so call
                               :func:`~farm.infer.Inferencer.close_multiprocessing_pool` after you are
@@ -287,7 +290,7 @@ class Inferencer:
         :return:
         """
         self.process_pool = None
-        if num_processes == 0:  # disable multiprocessing
+        if num_processes == 0 or num_processes == 1:  # disable multiprocessing
             self.process_pool = None
         else:
             if num_processes is None:  # use all CPU cores
@@ -356,7 +359,7 @@ class Inferencer:
         Runs down-stream inference on samples created from input dictionaries.
         The format of the input `dicts` depends on the task:
 
-        * QA (SQuAD style):    [{"qas": ["What is X?"], "context":  "Some context containing the answer"}]
+        * QA (SQuAD style):    [{"qas": ["What is X?"], "context":  "Some context containing the answer"}] (Deprecated)
         * QA (FARM style): [{"questions": ["What is X?"], "text":  "Some context containing the answer"}]
         * Classification / NER / embeddings: [{"text": "Some input text"}]
 
@@ -387,6 +390,10 @@ class Inferencer:
         """
 
         # whether to aggregate predictions across different samples (e.g. for QA on long texts)
+        if set(dicts[0].keys()) == {"qas", "context"}:
+            warnings.warn("QA Input dictionaries with [qas, context] as keys will be deprecated in the future",
+                          DeprecationWarning)
+
         aggregate_preds = False
         if len(self.model.prediction_heads) > 0:
             aggregate_preds = hasattr(self.model.prediction_heads[0], "aggregate_preds")
@@ -518,10 +525,6 @@ class Inferencer:
         :param baskets: For each item in the dataset, we need additional information to create formatted preds.
                         Baskets contain all relevant infos for that.
                         Example: QA - input string to convert the predicted answer from indices back to string space
-        :param rest_api_schema: Whether input dicts use the format that complies with the FARM REST API.
-                                Currently only used for QA to switch from squad to a more useful format in production.
-                                While input is almost the same, output contains additional meta data(offset, context..)
-        :type rest_api_schema: bool
         :return: list of predictions
         """
         samples = [s for b in baskets for s in b.samples]
@@ -559,10 +562,6 @@ class Inferencer:
         :param baskets: For each item in the dataset, we need additional information to create formatted preds.
                         Baskets contain all relevant infos for that.
                         Example: QA - input string to convert the predicted answer from indices back to string space
-        :param rest_api_schema: Whether input dicts use the format that complies with the FARM REST API.
-                                Currently only used for QA to switch from squad to a more useful format in production.
-                                While input is almost the same, output contains additional meta data(offset, context..)
-        :type rest_api_schema: bool
         :return: list of predictions
         """
 

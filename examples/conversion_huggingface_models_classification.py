@@ -24,7 +24,7 @@ def convert_from_transformers():
     nlp = Inferencer.load(transformers_input_name, task_type="text_classification")
     #
     # # run predictions
-    result = nlp.inference_from_dicts(dicts=[{"text": "Was ein scheiß Nazi!"}], rest_api_schema=True)
+    result = nlp.inference_from_dicts(dicts=[{"text": "Was ein scheiß Nazi!"}])
     pprint.pprint(result)
     nlp.close_multiprocessing_pool()
 
