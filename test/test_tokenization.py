@@ -1,6 +1,8 @@
 import logging
 from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
 from transformers import BertTokenizer, BertTokenizerFast, RobertaTokenizer, XLNetTokenizer
+from transformers import ElectraTokenizerFast
+
 import re
 
 
@@ -254,6 +256,14 @@ def test_fast_bert_tokenizer_strip_accents(caplog):
     assert type(tokenizer) is BertTokenizerFast
     assert tokenizer._tokenizer._parameters['strip_accents'] is False
     assert tokenizer._tokenizer._parameters['lowercase']
+
+
+def test_fast_electra_tokenizer(caplog):
+    caplog.set_level(logging.CRITICAL)
+
+    tokenizer = Tokenizer.load("dbmdz/electra-base-german-europeana-cased-discriminator",
+                               use_fast=True)
+    assert type(tokenizer) is ElectraTokenizerFast
 
 
 if __name__ == "__main__":
