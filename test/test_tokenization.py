@@ -1,6 +1,6 @@
 import logging
 from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
-from transformers import BertTokenizer, RobertaTokenizer, XLNetTokenizer
+from transformers import BertTokenizer, BertTokenizerFast, RobertaTokenizer, XLNetTokenizer
 import re
 
 
@@ -236,6 +236,13 @@ def test_fast_bert_custom_vocab(caplog):
     assert tokenized_meta["tokens"] == tokenized
     assert tokenized_meta["offsets"] == [0, 5, 10, 15, 31, 36, 37, 40, 41, 42, 44, 48, 50, 58, 59, 64, 65, 69, 70, 72]
     assert tokenized_meta["start_of_word"] == [True, True, True, True, True, True, False, False, False, False, True, True, True, False, False, False, False, False, False, False]
+
+
+def test_fast_bert_tokenizer(caplog):
+    caplog.set_level(logging.CRITICAL)
+
+    tokenizer = Tokenizer.load("bert-base-german-cased", use_fast=True)
+    assert type(tokenizer) is BertTokenizerFast
 
 
 if __name__ == "__main__":
