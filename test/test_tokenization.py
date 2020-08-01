@@ -245,5 +245,16 @@ def test_fast_bert_tokenizer(caplog):
     assert type(tokenizer) is BertTokenizerFast
 
 
+def test_fast_bert_tokenizer_strip_accents(caplog):
+    caplog.set_level(logging.CRITICAL)
+
+    tokenizer = Tokenizer.load("dbmdz/bert-base-german-uncased",
+                               use_fast=True,
+                               strip_accents=False)
+    assert type(tokenizer) is BertTokenizerFast
+    assert tokenizer._tokenizer._parameters['strip_accents'] is False
+    assert tokenizer._tokenizer._parameters['lowercase']
+
+
 if __name__ == "__main__":
     test_all_tokenizer_on_special_cases()
