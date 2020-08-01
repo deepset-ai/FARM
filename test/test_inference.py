@@ -1,5 +1,7 @@
 import pytest
 import numpy as np
+import transformers
+
 from farm.infer import Inferencer
 
 
@@ -94,6 +96,13 @@ def test_embeddings_extraction(num_processes):
     result = model.inference_from_dicts(dicts=basic_texts)
     assert result[0]["context"] == ['Schar', '##tau', 'sagte', 'dem', 'Tages', '##spiegel', ',', 'dass', 'Fischer', 'ein', 'Id', '##iot', 'ist']
     assert np.isclose(result[0]["vec"][0], 1.50174605e-02)
+
+
+def test_inferencer_with_fast_bert_tokenizer():
+    model = Inferencer.load("bert-base-german-cased", task_type='text_classification', use_fast=True)
+    tokenizer = model.processor.tokenizer
+    assert type(tokenizer) is transformers.tokenization_bert.BertTokenizerFast
+
 
 if __name__ == "__main__":
     test_embeddings_extraction()
