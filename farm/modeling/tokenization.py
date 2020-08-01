@@ -24,10 +24,10 @@ from pathlib import Path
 
 import numpy as np
 from transformers.tokenization_albert import AlbertTokenizer
-from transformers.tokenization_bert import BertTokenizer, load_vocab
-from transformers.tokenization_distilbert import DistilBertTokenizer
-from transformers.tokenization_electra import ElectraTokenizer
-from transformers.tokenization_roberta import RobertaTokenizer
+from transformers.tokenization_bert import BertTokenizer, BertTokenizerFast, load_vocab
+from transformers.tokenization_distilbert import DistilBertTokenizer, DistilBertTokenizerFast
+from transformers.tokenization_electra import ElectraTokenizer, ElectraTokenizerFast
+from transformers.tokenization_roberta import RobertaTokenizer, RobertaTokenizerFast
 from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_xlm_roberta import XLMRobertaTokenizer
 from transformers.tokenization_xlnet import XLNetTokenizer
@@ -48,7 +48,7 @@ class Tokenizer:
     """
 
     @classmethod
-    def load(cls, pretrained_model_name_or_path, tokenizer_class=None, **kwargs):
+    def load(cls, pretrained_model_name_or_path, tokenizer_class=None, use_fast=False, **kwargs):
         """
         Enables loading of different Tokenizer classes with a uniform interface. Either infer the class from
         `pretrained_model_name_or_path` or define it manually via `tokenizer_class`.
@@ -57,6 +57,9 @@ class Tokenizer:
         :type pretrained_model_name_or_path: str
         :param tokenizer_class: (Optional) Name of the tokenizer class to load (e.g. `BertTokenizer`)
         :type tokenizer_class: str
+        :param use_fast: (Optional, False by default) Indicate if FARM should try to load the fast version of the tokenizer (True) or
+            use the Python one (False).
+        :type use_fast: bool
         :param kwargs:
         :return: Tokenizer
         """
@@ -98,15 +101,27 @@ class Tokenizer:
         elif tokenizer_class == "XLMRobertaTokenizer":
             ret = XLMRobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "RobertaTokenizer":
-            ret = RobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            if use_fast:
+                ret = RobertaTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            else:
+                ret = RobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "DistilBertTokenizer":
-            ret = DistilBertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            if use_fast:
+                ret = DistilBertTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            else:
+                ret = DistilBertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "BertTokenizer":
-            ret = BertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            if use_fast:
+                ret = BertTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            else:
+                ret = BertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "XLNetTokenizer":
             ret = XLNetTokenizer.from_pretrained(pretrained_model_name_or_path, keep_accents=True, **kwargs)
         elif tokenizer_class == "ElectraTokenizer":
-            ret = ElectraTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            if use_fast:
+                ret = ElectraTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            else:
+                ret = ElectraTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "EmbeddingTokenizer":
             ret = EmbeddingTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "CamembertTokenizer":

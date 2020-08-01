@@ -147,8 +147,10 @@ class Inferencer:
         extraction_strategy=None,
         s3e_stats=None,
         num_processes=None,
-        disable_tqdm=False
-
+        disable_tqdm=False,
+        tokenizer_class=None,
+        use_fast=False,
+        tokenizer_args=None,
     ):
         """
         Load an Inferencer incl. all relevant components (model, tokenizer, processor ...) either by
@@ -191,9 +193,18 @@ class Inferencer:
         :type num_processes: int
         :param disable_tqdm: Whether to disable tqdm logging (can get very verbose in multiprocessing)
         :type disable_tqdm: bool
+        :param tokenizer_class: (Optional) Name of the tokenizer class to load (e.g. `BertTokenizer`)
+        :type tokenizer_class: str
+        :param use_fast: (Optional, False by default) Indicate if FARM should try to load the fast version of the tokenizer (True) or
+            use the Python one (False).
+        :param tokenizer_args: (Optional) Will be passed to the Tokenizer ``__init__`` method.
+        :type tokenizer_args: dict
+        :type use_fast: bool
         :return: An instance of the Inferencer.
 
         """
+        if tokenizer_args is None:
+            tokenizer_args = {}
 
         device, n_gpu = initialize_device_settings(use_cuda=gpu, local_rank=-1, use_amp=None)
         name = os.path.basename(model_name_or_path)
@@ -221,7 +232,11 @@ class Inferencer:
 
             model = AdaptiveModel.convert_from_transformers(model_name_or_path, device, task_type)
             config = AutoConfig.from_pretrained(model_name_or_path)
-            tokenizer = Tokenizer.load(model_name_or_path)
+            tokenizer = Tokenizer.load(model_name_or_path,
+                                       tokenizer_class=tokenizer_class,
+                                       use_fast=use_fast,
+                                       **tokenizer_args,
+                                       )
 
             # TODO infer task_type automatically from config (if possible)
             if task_type == "question_answering":
