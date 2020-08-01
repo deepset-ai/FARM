@@ -99,7 +99,8 @@ def test_embeddings_extraction(num_processes):
 
 
 def test_inferencer_with_fast_bert_tokenizer():
-    model = Inferencer.load("bert-base-german-cased", task_type='text_classification', use_fast=True)
+    model = Inferencer.load("bert-base-german-cased", task_type='text_classification',
+                            use_fast=True, num_processes=0)
     tokenizer = model.processor.tokenizer
     assert type(tokenizer) is transformers.tokenization_bert.BertTokenizerFast
 
