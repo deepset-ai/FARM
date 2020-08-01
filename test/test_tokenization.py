@@ -90,6 +90,45 @@ def test_truncate_sequences(caplog):
             assert len(trunc_a) + len(trunc_b) + tokenizer.num_special_tokens_to_add(pair=True) == max_seq_len
 
 
+def test_fast_tokenizer(caplog):
+    fast_tokenizer = Tokenizer.load("bert-base-cased", lower_case=False, use_fast=True)
+    tokenizer = Tokenizer.load("bert-base-cased", lower_case=False, use_fast=False)
+
+    texts = [
+        "This is a sentence",
+        "Der entscheidende Pass",
+        "This      is a sentence with multiple spaces",
+        "力加勝北区ᴵᴺᵀᵃছজটডণত",
+        "Thiso text is included tolod makelio sure Unicodeel is handled properly:",
+        "This is a sentence...",
+        "Let's see all on this text and. !23# neverseenwordspossible",
+        """This is a sentence.
+        With linebreak""",
+        """Sentence with multiple
+
+
+        newlines
+        """,
+        "and another one\n\n\nwithout space",
+        "This is a sentence	with tab",
+        "This is a sentence			with multiple tabs",
+    ]
+    for text in texts:
+
+            # plain tokenize function
+            tokenized = tokenizer.tokenize(text)
+            fast_tokenized = fast_tokenizer.tokenize(text)
+
+            assert tokenized == fast_tokenized
+
+            # our tokenizer with metadata on "whitespace tokenized words"
+            tokenized_meta = tokenize_with_metadata(text=text, tokenizer=tokenizer)
+            fast_tokenized_meta = tokenize_with_metadata(text=text, tokenizer=fast_tokenizer)
+
+            # verify that tokenization on full sequence is the same as the one on "whitespace tokenized words"
+            assert tokenized_meta == fast_tokenized_meta, f"Failed using {tokenizer.__class__.__name__}"
+
+
 def test_all_tokenizer_on_special_cases(caplog):
     caplog.set_level(logging.CRITICAL)
 
@@ -155,6 +194,32 @@ def test_bert_custom_vocab(caplog):
     tokenizer = Tokenizer.load(
         pretrained_model_name_or_path=lang_model,
         do_lower_case=False
+        )
+
+    #deprecated: tokenizer.add_custom_vocab("samples/tokenizer/custom_vocab.txt")
+    tokenizer.add_tokens(new_tokens=["neverseentokens"])
+
+    basic_text = "Some Text with neverseentokens plus !215?#. and a combined-token_with/chars"
+
+    # original tokenizer from transformer repo
+    tokenized = tokenizer.tokenize(basic_text)
+    assert tokenized == ['Some', 'Text', 'with', 'neverseentokens', 'plus', '!', '215', '?', '#', '.', 'and', 'a', 'combined', '-', 'token', '_', 'with', '/', 'ch', '##ars']
+
+    # ours with metadata
+    tokenized_meta = tokenize_with_metadata(text=basic_text, tokenizer=tokenizer)
+    assert tokenized_meta["tokens"] == tokenized
+    assert tokenized_meta["offsets"] == [0, 5, 10, 15, 31, 36, 37, 40, 41, 42, 44, 48, 50, 58, 59, 64, 65, 69, 70, 72]
+    assert tokenized_meta["start_of_word"] == [True, True, True, True, True, True, False, False, False, False, True, True, True, False, False, False, False, False, False, False]
+
+
+def test_fast_bert_custom_vocab(caplog):
+    caplog.set_level(logging.CRITICAL)
+
+    lang_model = "bert-base-cased"
+
+    tokenizer = Tokenizer.load(
+        pretrained_model_name_or_path=lang_model,
+        do_lower_case=False, use_fast=True
         )
 
     #deprecated: tokenizer.add_custom_vocab("samples/tokenizer/custom_vocab.txt")
