@@ -1,9 +1,10 @@
 import logging
-from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
-from transformers import BertTokenizer, BertTokenizerFast, RobertaTokenizer, XLNetTokenizer
-from transformers import ElectraTokenizerFast
-
+import pytest
 import re
+from transformers import BertTokenizer, BertTokenizerFast, RobertaTokenizer, XLNetTokenizer
+from transformers import ElectraTokenizerFast, RobertaTokenizerFast
+
+from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
 
 
 def test_basic_loading(caplog):
@@ -240,11 +241,16 @@ def test_fast_bert_custom_vocab(caplog):
     assert tokenized_meta["start_of_word"] == [True, True, True, True, True, True, False, False, False, False, True, True, True, False, False, False, False, False, False, False]
 
 
-def test_fast_bert_tokenizer(caplog):
+@pytest.mark.parametrize("model_name, tokenizer_type", [
+                         ("bert-base-german-cased", BertTokenizerFast),
+                         ("google/electra-small-discriminator", ElectraTokenizerFast),
+                         ("distilroberta-base", RobertaTokenizerFast),
+                         ])
+def test_fast_tokenizer_type(caplog, model_name, tokenizer_type):
     caplog.set_level(logging.CRITICAL)
 
-    tokenizer = Tokenizer.load("bert-base-german-cased", use_fast=True)
-    assert type(tokenizer) is BertTokenizerFast
+    tokenizer = Tokenizer.load(model_name, use_fast=True)
+    assert type(tokenizer) is tokenizer_type
 
 
 def test_fast_bert_tokenizer_strip_accents(caplog):
