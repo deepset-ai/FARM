@@ -309,7 +309,7 @@ def _words_to_tokens(words, word_offsets, tokenizer):
         elif len(tokens) == 0:
             tokens_word = tokenizer.tokenize(w)
         else:
-            if type(tokenizer) == RobertaTokenizer:
+            if (type(tokenizer) == RobertaTokenizer) or (type(tokenizer) == RobertaTokenizerFast):
                 tokens_word = tokenizer.tokenize(w, add_prefix_space=True)
             else:
                 tokens_word = tokenizer.tokenize(w)
