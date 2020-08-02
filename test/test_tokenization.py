@@ -7,6 +7,27 @@ from transformers import ElectraTokenizerFast, RobertaTokenizerFast
 from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
 
 
+TEXTS = [
+    "This is a sentence",
+    "Der entscheidende Pass",
+    "This      is a sentence with multiple spaces",
+    "力加勝北区ᴵᴺᵀᵃছজটডণত",
+    "Thiso text is included tolod makelio sure Unicodeel is handled properly:",
+    "This is a sentence...",
+    "Let's see all on this text and. !23# neverseenwordspossible",
+    """This is a sentence.
+    With linebreak""",
+    """Sentence with multiple
+
+
+    newlines
+    """,
+    "and another one\n\n\nwithout space",
+    "This is a sentence	with tab",
+    "This is a sentence			with multiple tabs",
+]
+
+
 def test_basic_loading(caplog):
     caplog.set_level(logging.CRITICAL)
     tokenizer = Tokenizer.load(
@@ -97,37 +118,23 @@ def test_truncate_sequences(caplog):
                          "google/electra-small-discriminator",
                          "distilroberta-base",
                          ])
-def test_fast_tokenizer(caplog, model_name):
+def test_fast_tokenizer_with_examples(caplog, model_name):
     fast_tokenizer = Tokenizer.load(model_name, lower_case=False, use_fast=True)
     tokenizer = Tokenizer.load(model_name, lower_case=False, use_fast=False)
 
-    texts = [
-        "This is a sentence",
-        "Der entscheidende Pass",
-        "This      is a sentence with multiple spaces",
-        "力加勝北区ᴵᴺᵀᵃছজটডণত",
-        "Thiso text is included tolod makelio sure Unicodeel is handled properly:",
-        "This is a sentence...",
-        "Let's see all on this text and. !23# neverseenwordspossible",
-        """This is a sentence.
-        With linebreak""",
-        """Sentence with multiple
-
-
-        newlines
-        """,
-        "and another one\n\n\nwithout space",
-        "This is a sentence	with tab",
-        "This is a sentence			with multiple tabs",
-    ]
-    for text in texts:
-
+    for text in TEXTS:
             # plain tokenize function
             tokenized = tokenizer.tokenize(text)
             fast_tokenized = fast_tokenizer.tokenize(text)
 
             assert tokenized == fast_tokenized
 
+
+def test_fast_tokenizer_with_metadata_with_examples_(caplog, model_name):
+    fast_tokenizer = Tokenizer.load(model_name, lower_case=False, use_fast=True)
+    tokenizer = Tokenizer.load(model_name, lower_case=False, use_fast=False)
+
+    for text in TEXTS:
             # our tokenizer with metadata on "whitespace tokenized words"
             tokenized_meta = tokenize_with_metadata(text=text, tokenizer=tokenizer)
             fast_tokenized_meta = tokenize_with_metadata(text=text, tokenizer=fast_tokenizer)
