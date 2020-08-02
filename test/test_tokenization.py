@@ -93,9 +93,13 @@ def test_truncate_sequences(caplog):
             assert len(trunc_a) + len(trunc_b) + tokenizer.num_special_tokens_to_add(pair=True) == max_seq_len
 
 
-def test_fast_tokenizer(caplog):
-    fast_tokenizer = Tokenizer.load("bert-base-cased", lower_case=False, use_fast=True)
-    tokenizer = Tokenizer.load("bert-base-cased", lower_case=False, use_fast=False)
+@pytest.mark.parametrize("model_name", ["bert-base-german-cased",
+                         "google/electra-small-discriminator",
+                         "distilroberta-base",
+                         ])
+def test_fast_tokenizer(caplog, model_name):
+    fast_tokenizer = Tokenizer.load(model_name, lower_case=False, use_fast=True)
+    tokenizer = Tokenizer.load(model_name, lower_case=False, use_fast=False)
 
     texts = [
         "This is a sentence",
