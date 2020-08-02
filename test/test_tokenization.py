@@ -130,7 +130,11 @@ def test_fast_tokenizer_with_examples(caplog, model_name):
             assert tokenized == fast_tokenized
 
 
-def test_fast_tokenizer_with_metadata_with_examples_(caplog, model_name):
+@pytest.mark.parametrize("model_name", ["bert-base-german-cased",
+                         "google/electra-small-discriminator",
+                         "distilroberta-base",
+                         ])
+def test_fast_tokenizer_with_metadata_with_examples(caplog, model_name):
     fast_tokenizer = Tokenizer.load(model_name, lower_case=False, use_fast=True)
     tokenizer = Tokenizer.load(model_name, lower_case=False, use_fast=False)
 
