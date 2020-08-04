@@ -8,6 +8,8 @@ import collections
 from dotmap import DotMap
 import numpy as np
 
+from transformers.tokenization_utils_base import TruncationStrategy
+
 from farm.data_handler.samples import Sample
 from farm.data_handler.utils import (
     expand_labels,
@@ -45,8 +47,10 @@ def sample_to_features_text(
         tokens_a,
         tokens_b,
         add_special_tokens=True,
-        truncation_strategy='do_not_truncate',
-        return_token_type_ids=True
+        truncation_strategy=TruncationStrategy.DO_NOT_TRUNCATE,
+        return_token_type_ids=True,
+        max_length=max_seq_len,
+        is_pretokenized=True,
     )
 
     input_ids, segment_ids = inputs["input_ids"], inputs["token_type_ids"]
