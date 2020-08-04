@@ -97,28 +97,29 @@ class Tokenizer:
                                  f"XLNetTokenizer.")
             logger.info(f"Loading tokenizer of type '{tokenizer_class}'")
         # return appropriate tokenizer object
+        ret = None
         if tokenizer_class == "AlbertTokenizer":
             ret = AlbertTokenizer.from_pretrained(pretrained_model_name_or_path, keep_accents=True,  **kwargs)
         elif tokenizer_class == "XLMRobertaTokenizer":
             ret = XLMRobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
-        elif tokenizer_class == "RobertaTokenizer":
+        elif "RobertaTokenizer" in tokenizer_class:  # because it also might be fast tokekenizer we use "in"
             if use_fast:
                 raise ValueError('RobertaTokenizerFast is not supportet!')
             else:
                 ret = RobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
-        elif tokenizer_class == "DistilBertTokenizer":
+        elif "DistilBertTokenizer" in tokenizer_class:  # because it also might be fast tokekenizer we use "in"
             if use_fast:
                 ret = DistilBertTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
                 ret = DistilBertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
-        elif tokenizer_class == "BertTokenizer":
+        elif "BertTokenizer" in tokenizer_class:  # because it also might be fast tokekenizer we use "in"
             if use_fast:
                 ret = BertTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
                 ret = BertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "XLNetTokenizer":
             ret = XLNetTokenizer.from_pretrained(pretrained_model_name_or_path, keep_accents=True, **kwargs)
-        elif tokenizer_class == "ElectraTokenizer":
+        elif "ElectraTokenizer" in tokenizer_class:  # because it also might be fast tokekenizer we use "in"
             if use_fast:
                 ret = ElectraTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:

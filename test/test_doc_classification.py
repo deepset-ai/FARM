@@ -87,7 +87,7 @@ def test_doc_classification(data_dir_path, text_column_name, use_fast, caplog=No
 
     trainer.train()
 
-    save_dir = Path("testsave/doc_class")
+    save_dir = Path("testsave/doc_class_bert")
     model.save(save_dir)
     processor.save(save_dir)
 
