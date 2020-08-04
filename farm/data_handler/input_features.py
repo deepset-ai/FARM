@@ -45,7 +45,7 @@ def sample_to_features_text(
         tokens_a,
         tokens_b,
         add_special_tokens=True,
-        truncation=False,  # truncation_strategy is depricated
+        truncation=False,  # truncation_strategy is deprecated
         return_token_type_ids=True,
         max_length=max_seq_len,
         is_pretokenized=True,
