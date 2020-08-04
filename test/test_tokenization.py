@@ -2,7 +2,7 @@ import logging
 import pytest
 import re
 from transformers import BertTokenizer, BertTokenizerFast, RobertaTokenizer, XLNetTokenizer
-from transformers import ElectraTokenizerFast, RobertaTokenizerFast
+from transformers import ElectraTokenizerFast
 
 from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
 
@@ -116,7 +116,6 @@ def test_truncate_sequences(caplog):
 
 @pytest.mark.parametrize("model_name", ["bert-base-german-cased",
                          "google/electra-small-discriminator",
-                         "distilroberta-base",
                          ])
 def test_fast_tokenizer_with_examples(caplog, model_name):
     fast_tokenizer = Tokenizer.load(model_name, lower_case=False, use_fast=True)
@@ -132,7 +131,6 @@ def test_fast_tokenizer_with_examples(caplog, model_name):
 
 @pytest.mark.parametrize("model_name", ["bert-base-german-cased",
                          "google/electra-small-discriminator",
-                         "distilroberta-base",
                          ])
 def test_fast_tokenizer_with_metadata_with_examples(caplog, model_name):
     fast_tokenizer = Tokenizer.load(model_name, lower_case=False, use_fast=True)
@@ -259,7 +257,6 @@ def test_fast_bert_custom_vocab(caplog):
 @pytest.mark.parametrize("model_name, tokenizer_type", [
                          ("bert-base-german-cased", BertTokenizerFast),
                          ("google/electra-small-discriminator", ElectraTokenizerFast),
-                         ("distilroberta-base", RobertaTokenizerFast),
                          ])
 def test_fast_tokenizer_type(caplog, model_name, tokenizer_type):
     caplog.set_level(logging.CRITICAL)

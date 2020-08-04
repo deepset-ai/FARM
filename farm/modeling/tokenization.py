@@ -27,7 +27,7 @@ from transformers.tokenization_albert import AlbertTokenizer
 from transformers.tokenization_bert import BertTokenizer, BertTokenizerFast, load_vocab
 from transformers.tokenization_distilbert import DistilBertTokenizer, DistilBertTokenizerFast
 from transformers.tokenization_electra import ElectraTokenizer, ElectraTokenizerFast
-from transformers.tokenization_roberta import RobertaTokenizer, RobertaTokenizerFast
+from transformers.tokenization_roberta import RobertaTokenizer
 from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_xlm_roberta import XLMRobertaTokenizer
 from transformers.tokenization_xlnet import XLNetTokenizer
@@ -59,6 +59,7 @@ class Tokenizer:
         :type tokenizer_class: str
         :param use_fast: (Optional, False by default) Indicate if FARM should try to load the fast version of the tokenizer (True) or
             use the Python one (False).
+            TODO: Say which models support fast tokenizers.
         :type use_fast: bool
         :param kwargs:
         :return: Tokenizer
@@ -102,7 +103,7 @@ class Tokenizer:
             ret = XLMRobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "RobertaTokenizer":
             if use_fast:
-                ret = RobertaTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
+                raise ValueError('RobertaTokenizerFast is not supportet!')
             else:
                 ret = RobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "DistilBertTokenizer":
@@ -309,7 +310,7 @@ def _words_to_tokens(words, word_offsets, tokenizer):
         elif len(tokens) == 0:
             tokens_word = tokenizer.tokenize(w)
         else:
-            if (type(tokenizer) == RobertaTokenizer) or (type(tokenizer) == RobertaTokenizerFast):
+            if type(tokenizer) == RobertaTokenizer:
                 tokens_word = tokenizer.tokenize(w, add_prefix_space=True)
             else:
                 tokens_word = tokenizer.tokenize(w)
