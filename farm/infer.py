@@ -198,6 +198,8 @@ class Inferencer:
         :param use_fast: (Optional, False by default) Indicate if FARM should try to load the fast version of the tokenizer (True) or
             use the Python one (False).
         :param tokenizer_args: (Optional) Will be passed to the Tokenizer ``__init__`` method.
+            See https://huggingface.co/transformers/main_classes/tokenizer.html and detailed tokenizer documentation
+            on `Hugging Face Transformers <https://huggingface.co/transformers/>`_.
         :type tokenizer_args: dict
         :type use_fast: bool
         :return: An instance of the Inferencer.
