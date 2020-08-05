@@ -95,7 +95,8 @@ def test_embeddings_extraction(num_processes):
     # Get embeddings for input text (you can vary the strategy and layer)
     result = model.inference_from_dicts(dicts=basic_texts)
     assert result[0]["context"] == ['Schar', '##tau', 'sagte', 'dem', 'Tages', '##spiegel', ',', 'dass', 'Fischer', 'ein', 'Id', '##iot', 'ist']
-    assert np.isclose(result[0]["vec"][0], 1.50174605e-02)
+    assert result[0]["vec"].shape == (768,)
+    assert np.isclose(result[0]["vec"][0], -0.032460204579613426)
 
 
 def test_inferencer_with_fast_bert_tokenizer():
