@@ -1,4 +1,5 @@
 from pathlib import Path
+import pytest
 
 import numpy as np
 
@@ -16,7 +17,8 @@ from farm.utils import set_all_seeds, initialize_device_settings
 import logging
 
 
-def test_ner(caplog):
+@pytest.mark.parametrize("use_fast", [False, True])
+def test_ner(caplog, use_fast):
     if caplog:
         caplog.set_level(logging.CRITICAL)
 
@@ -28,7 +30,8 @@ def test_ner(caplog):
     lang_model = "distilbert-base-german-cased"
 
     tokenizer = Tokenizer.load(
-        pretrained_model_name_or_path=lang_model, do_lower_case=False
+        pretrained_model_name_or_path=lang_model, do_lower_case=False,
+        use_fast=use_fast,
     )
 
     ner_labels = ["[PAD]", "X", "O", "B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-OTH",
