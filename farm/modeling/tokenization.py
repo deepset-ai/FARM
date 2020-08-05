@@ -59,7 +59,7 @@ class Tokenizer:
         :type tokenizer_class: str
         :param use_fast: (Optional, False by default) Indicate if FARM should try to load the fast version of the tokenizer (True) or
             use the Python one (False).
-            TODO: Say which models support fast tokenizers.
+            Only DistilBERT, BERT and Electra fast tokenizers are supported.
         :type use_fast: bool
         :param kwargs:
         :return: Tokenizer
