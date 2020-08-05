@@ -75,7 +75,8 @@ def test_qa_format_and_results(adaptive_model_qa, streaming, multiprocessing_chu
 
 
 @pytest.mark.parametrize("num_processes", [0], scope="session")
-def test_embeddings_extraction(num_processes):
+@pytest.mark.parametrize("use_fast", [False, True])
+def test_embeddings_extraction(num_processes, use_fast):
     # Input
     basic_texts = [
         {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot ist"},
@@ -90,6 +91,7 @@ def test_embeddings_extraction(num_processes):
         batch_size=5,
         extraction_strategy="reduce_mean",
         extraction_layer=-2,
+        use_fast=use_fast,
         num_processes=num_processes)
 
     # Get embeddings for input text (you can vary the strategy and layer)
