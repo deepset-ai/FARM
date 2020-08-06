@@ -141,9 +141,10 @@ def samples_to_features_ner(
     inputs = tokenizer.encode_plus(text=tokens,
                                    text_pair=None,
                                    add_special_tokens=True,
-                                   truncation_strategy='do_not_truncate', # We've already truncated our tokens before
+                                   truncation=False,
                                    return_special_tokens_mask=True,
-                                   return_token_type_ids=True
+                                   return_token_type_ids=True,
+                                   is_pretokenized=True
                                    )
 
     input_ids, segment_ids, special_tokens_mask = inputs["input_ids"], inputs["token_type_ids"], inputs["special_tokens_mask"]

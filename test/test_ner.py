@@ -101,4 +101,4 @@ def test_ner(caplog, use_fast):
 
 
 if __name__ == "__main__":
-    test_ner(None)
+    test_ner(None, True)
