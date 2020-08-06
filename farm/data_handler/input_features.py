@@ -41,6 +41,12 @@ def sample_to_features_text(
     tokens_a = sample.tokenized["tokens"]
     tokens_b = sample.tokenized.get("tokens_b", None)
 
+    # is_pretokenized seems to be broken upstream for slow tokenizers, while fast tokenizers rely on it
+    # temp fix until fixed upstream (see https://github.com/huggingface/transformers/issues/6046)
+    if tokenizer.is_fast:
+        is_pretokenized = True
+    else:
+        is_pretokenized = False
     inputs = tokenizer.encode_plus(
         tokens_a,
         tokens_b,
@@ -48,7 +54,7 @@ def sample_to_features_text(
         truncation=False,  # truncation_strategy is deprecated
         return_token_type_ids=True,
         max_length=max_seq_len,
-        is_pretokenized=True,
+        is_pretokenized=is_pretokenized,
     )
 
     input_ids, segment_ids = inputs["input_ids"], inputs["token_type_ids"]
@@ -138,13 +144,20 @@ def samples_to_features_ner(
     """
 
     tokens = sample.tokenized["tokens"]
+
+    # is_pretokenized seems to be broken upstream for slow tokenizers, while fast tokenizers rely on it
+    # temp fix until fixed upstream (see https://github.com/huggingface/transformers/issues/6046)
+    if tokenizer.is_fast:
+        is_pretokenized = True
+    else:
+        is_pretokenized = False
     inputs = tokenizer.encode_plus(text=tokens,
                                    text_pair=None,
                                    add_special_tokens=True,
                                    truncation=False,
                                    return_special_tokens_mask=True,
                                    return_token_type_ids=True,
-                                   is_pretokenized=True
+                                   is_pretokenized=is_pretokenized
                                    )
 
     input_ids, segment_ids, special_tokens_mask = inputs["input_ids"], inputs["token_type_ids"], inputs["special_tokens_mask"]
