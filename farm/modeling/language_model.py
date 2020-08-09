@@ -132,7 +132,7 @@ class LanguageModel(nn.Module):
                 pretrained_model_name_or_path = str(pretrained_model_name_or_path)
                 if "xlm" in pretrained_model_name_or_path and "roberta" in pretrained_model_name_or_path:
                     language_model_class = 'XLMRoberta'
-                elif 'roberta' in pretrained_model_name_or_path:
+                elif 'roberta' in pretrained_model_name_or_path or 'codebert' in pretrained_model_name_or_path.lower():
                     language_model_class = 'Roberta'
                 elif 'camembert' in pretrained_model_name_or_path or 'umberto' in pretrained_model_name_or_path:
                     language_model_class = "Camembert"

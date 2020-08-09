@@ -68,7 +68,7 @@ class Tokenizer:
                 tokenizer_class = "AlbertTokenizer"
             elif "xlm-roberta" in pretrained_model_name_or_path.lower():
                 tokenizer_class = "XLMRobertaTokenizer"
-            elif "roberta" in pretrained_model_name_or_path.lower():
+            elif "roberta" in pretrained_model_name_or_path.lower() or 'codebert' in pretrained_model_name_or_path.lower():
                 tokenizer_class = "RobertaTokenizer"
             elif "camembert" in pretrained_model_name_or_path.lower() or "umberto" in pretrained_model_name_or_path:
                 tokenizer_class = "CamembertTokenizer"
