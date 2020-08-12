@@ -271,6 +271,22 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
             ph.resize_input(self.lm_output_dims)
             ph.to(self.device)
 
+    def bypass_ph(self):
+        """Replaces methods in the prediction heads with dummy functions. Used for benchmarking where we want to
+        isolate the lm run time from ph run time."""
+        def fake_forward(x):
+            """Slices lm vector outputs of shape (batch_size, max_seq_len, dims) --> (batch_size, max_seq_len, 2)"""
+            return x.narrow(2, 0, 2)
+        def fake_logits_to_preds(logits, **kwargs):
+            batch_size = logits.shape[0]
+            return [None, None] * batch_size
+        def fake_formatted_preds(**kwargs):
+            return None
+        for ph in self.prediction_heads:
+            ph.forward = fake_forward
+            ph.logits_to_preds = fake_logits_to_preds
+            ph.formatted_preds = fake_formatted_preds
+
     def save(self, save_dir):
         """
         Saves the language model and prediction heads. This will generate a config file
