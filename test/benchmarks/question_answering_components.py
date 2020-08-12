@@ -79,7 +79,7 @@ for q in qs[:2]:
         inferencer_real_ph.inference_from_dicts(dicts)
         full_timing = inferencer_real_ph.timing
 
-        ave_preproc, lm_time, ph_time, total = analyse_timing(full_timing, full_timing)
+        ave_preproc, lm_time, ph_time, total = analyse_timing(lm_only_timing, full_timing)
         result = {"model name": modelname,
                   "question": q,
                   "preproc": ave_preproc,
