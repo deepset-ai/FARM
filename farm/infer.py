@@ -102,7 +102,13 @@ class Inferencer:
         :return: An instance of the Inferencer.
 
         """
-        self.timing = {"init": time.perf_counter()}
+        self.init_event = torch.cuda.Event(enable_timing=True)
+        self.dataset_single_proc_event = torch.cuda.Event(enable_timing=True)
+        self.formatted_preds_event = torch.cuda.Event(enable_timing=True)
+
+        self.init_event.record()
+        torch.cuda.synchronize()
+        self.timing = {"init": self.init_event}
 
         # Init device and distributed settings
         device, n_gpu = initialize_device_settings(use_cuda=gpu, local_rank=-1, use_amp=None)
@@ -453,7 +459,10 @@ class Inferencer:
         dataset, tensor_names, baskets = self.processor.dataset_from_dicts(
             dicts, indices=[i for i in range(len(dicts))], return_baskets=True
         )
-        self.timing["dataset_single_proc"] = time.perf_counter()
+
+        self.dataset_single_proc_event.record()
+        torch.cuda.synchronize()
+        self.timing["dataset_single_proc"] = self.dataset_single_proc_event
 
         # TODO change format of formatted_preds in QA (list of dicts)
         if aggregate_preds:
@@ -595,8 +604,6 @@ class Inferencer:
                 preds = self.model.logits_to_preds(logits, **batch)
                 unaggregated_preds_all.append(preds)
 
-        self.timing["forward"] = time.perf_counter()
-
         # In some use cases we want to aggregate the individual predictions.
         # This is mostly useful, if the input text is longer than the max_seq_len that the model can process.
         # In QA we can use this to get answers from long input texts by first getting predictions for smaller passages
@@ -609,7 +616,10 @@ class Inferencer:
         preds_all = self.model.formatted_preds(logits=logits, # For QA we collected preds per batch and do not want to pass logits
                                                preds=unaggregated_preds_all,
                                                baskets=baskets)
-        self.timing["formatted_preds"] = time.perf_counter()
+        if self.benchmark:
+            self.formatted_preds_event.record()
+            torch.cuda.synchronize()
+            self.timing["formatted_preds"] = self.formatted_preds_event
         return preds_all
 
     def extract_vectors(self, dicts, extraction_strategy="cls_token", extraction_layer=-1):

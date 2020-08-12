@@ -28,16 +28,16 @@ def prepare_dict(sample_file, q):
     return dicts
 
 def analyse_timing(lm_only, full):
-    lm_only_preproc = lm_only["dataset_single_proc"] - lm_only["init"]
-    full_preproc = full["dataset_single_proc"] - full["init"]
+    lm_only_preproc = lm_only["init"].elapsed_time(lm_only["dataset_single_proc"])
+    full_preproc = full["init"].elapsed_time(full["dataset_single_proc"])
     ave_preproc = (lm_only_preproc + full_preproc) / 2
-    lm_time = lm_only["formatted_preds"] - lm_only["dataset_single_proc"]
+    lm_time = lm_only["dataset_single_proc"].elapsed_time(lm_only["formatted_preds"])
 
-    init_to_forward_lm = lm_only["forward"] - lm_only["init"]
-    init_to_formatted_full = full["formatted_preds"] - full["init"]
-    ph_time = init_to_formatted_full - init_to_forward_lm
+    init_to_formatted_lm = lm_only["init"].elapsed_time(lm_only["formatted_preds"])
+    init_to_formatted_full = full["init"].elapsed_time(full["formatted_preds"])
+    ph_time = init_to_formatted_full - init_to_formatted_lm
 
-    total = full["formatted_preds"] - full["init"]
+    total = full["init"].elapsed_time(full["formatted_preds"])
     return ave_preproc, lm_time, ph_time, total
 
 """
