@@ -1,6 +1,7 @@
 from farm.infer import Inferencer
 from farm.data_handler.processor import SquadProcessor, Processor
 from pprint import pprint
+import pandas as pd
 
 # Variables
 
@@ -15,10 +16,8 @@ doc_stride = 128
 gpu = True
 task_type = "question_answering"
 sample_file = "question_answering_sample.txt"
-qs = ["When were the first traces of Human life found in France?",
-      "How many pretrained models are available in Transformers?",
-      "What does Transformers provide?",
-      "Transformers provides interoperability between which frameworks?"]
+questions_file = "question_answering_questions.txt"
+qs = [l for l in open(questions_file)]
 
 def prepare_dict(sample_file, q):
     with open(sample_file) as f:
@@ -55,8 +54,9 @@ init            dataset         forward         formatted
 results = []
 for q in qs[:2]:
     for modelname in modelnames:
-        dicts = prepare_dict(sample_file, q)
+        dicts = prepare_dict(sample_file, q[:-1])
 
+        # Run once with dummy prediction heads
         inferencer_dummy_ph = Inferencer.load(modelname,
                                      batch_size=batch_size,
                                      gpu=gpu,
@@ -64,10 +64,12 @@ for q in qs[:2]:
                                      max_seq_len=max_seq_len,
                                      num_processes=num_processes,
                                      doc_stride=doc_stride,
-                                     benchmark_lm=True)
+                                     dummy_ph=True,
+                                     timing_checkpoints=True)
         inferencer_dummy_ph.inference_from_dicts(dicts)
         lm_only_timing = inferencer_dummy_ph.timing
 
+        # Run once with real prediction heads
         inferencer_real_ph = Inferencer.load(modelname,
                                      batch_size=batch_size,
                                      gpu=gpu,
@@ -75,19 +77,31 @@ for q in qs[:2]:
                                      max_seq_len=max_seq_len,
                                      num_processes=num_processes,
                                      doc_stride=doc_stride,
-                                     benchmark_lm=False)
+                                     dummy_ph=False,
+                                     timing_checkpoints=True)
         inferencer_real_ph.inference_from_dicts(dicts)
         full_timing = inferencer_real_ph.timing
 
         ave_preproc, lm_time, ph_time, total = analyse_timing(lm_only_timing, full_timing)
         result = {"model name": modelname,
-                  "question": q,
+                  "question": q[:-1],
                   "preproc": ave_preproc,
                   "language model": lm_time,
                   "prediction head": ph_time,
-                  "total": total}
+                  "total": total,
+                  "batch_size": batch_size,
+                  "document_size": document_size,
+                  "num_processes": num_processes,
+                  "max_seq_len": max_seq_len,
+                  "doc_stride": doc_stride,
+                  "gpu": gpu,
+                  "sample_file": sample_file,
+                  }
         results.append(result)
 
 for result in results:
     pprint(result)
     print()
+
+df = pd.DataFrame.from_records(results)
+df.to_csv("component_test.csv")
