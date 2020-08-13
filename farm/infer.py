@@ -113,16 +113,11 @@ class Inferencer:
         """
         # For benchmarking
         self.timing_checkpoints = timing_checkpoints
-        self.dummy_ph = dummy_ph
-
-        self.init_event = torch.cuda.Event(enable_timing=True)
-        self.dataset_single_proc_event = torch.cuda.Event(enable_timing=True)
-        self.formatted_preds_event = torch.cuda.Event(enable_timing=True)
+        if dummy_ph:
+            model.bypass_ph()
 
         if self.timing_checkpoints:
-            self.init_event.record()
-            torch.cuda.synchronize()
-            self.timing = {"init": self.init_event}
+            self.init_benchmarking()
 
         # Init device and distributed settings
         device, n_gpu = initialize_device_settings(use_cuda=gpu, local_rank=-1, use_amp=None)
@@ -291,8 +286,6 @@ class Inferencer:
 
         if not isinstance(model,ONNXAdaptiveModel):
             model, _ = optimize_model(model=model, device=device, local_rank=-1, optimizer=None)
-        if dummy_ph:
-            model.bypass_ph()
         return cls(
             model,
             processor,
@@ -309,6 +302,16 @@ class Inferencer:
             timing_checkpoints=timing_checkpoints,
             dummy_ph=dummy_ph
         )
+
+    def init_benchmarking(self):
+
+        self.init_event = torch.cuda.Event(enable_timing=True)
+        self.dataset_single_proc_event = torch.cuda.Event(enable_timing=True)
+        self.formatted_preds_event = torch.cuda.Event(enable_timing=True)
+
+        self.init_event.record()
+        torch.cuda.synchronize()
+        self.timing = {"init": self.init_event}
 
     def _set_multiprocessing_pool(self, num_processes):
         """

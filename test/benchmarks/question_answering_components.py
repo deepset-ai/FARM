@@ -5,7 +5,7 @@ import pandas as pd
 
 # Variables
 
-modelnames = ["deepset/bert-base-cased-squad2", "deepset/minilm-uncased-squad2"]
+modelnames = ["deepset/bert-base-cased-squad2", "deepset/minilm-uncased-squad2", "deepset/roberta-base-squad2", "deepset/bert-large-uncased-whole-word-masking-squad2", "deepset/xlm-roberta-large-squad2"]
 
 batch_size = 32
 document_size = 100000
