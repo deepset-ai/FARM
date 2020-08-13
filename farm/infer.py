@@ -19,7 +19,7 @@ from farm.modeling.tokenization import Tokenizer
 from farm.modeling.adaptive_model import AdaptiveModel, BaseAdaptiveModel, ONNXAdaptiveModel
 from farm.modeling.optimization import optimize_model
 from farm.utils import initialize_device_settings
-from farm.utils import set_all_seeds, calc_chunksize, log_ascii_workers
+from farm.utils import set_all_seeds, calc_chunksize, log_ascii_workers, Benchmarker
 from farm.modeling.predictions import QAPred
 
 logger = logging.getLogger(__name__)
@@ -60,7 +60,7 @@ class Inferencer:
         s3e_stats=None,
         num_processes=None,
         disable_tqdm=False,
-        timing_checkpoints=False,
+        benchmarking=False,
         dummy_ph=False
     ):
         """
@@ -104,20 +104,21 @@ class Inferencer:
         :param dummy_ph: If True, methods of the prediction head will be replaced
                      with a dummy method. This is used to isolate lm run time from ph run time.
         :type dummy_ph: bool
-        :param timing_checkpoints: If True, certain parts of the code will be timed for benchmarking. Should be kept
-                                   False if not benchmarking since these timing checkpoints require synchronization
-                                   of the asynchronous Pytorch operations and may slow down the model.
-        :type timing_checkpoints: bool
+        :param benchmarking: If True, a benchmarking object will be initialised within the class and
+                             certain parts of the code will be timed for benchmarking. Should be kept
+                             False if not benchmarking since these timing checkpoints require synchronization
+                             of the asynchronous Pytorch operations and may slow down the model.
+        :type benchmarking: bool
         :return: An instance of the Inferencer.
 
         """
         # For benchmarking
-        self.timing_checkpoints = timing_checkpoints
         if dummy_ph:
             model.bypass_ph()
 
-        if self.timing_checkpoints:
-            self.init_benchmarking()
+        self.benchmarking = benchmarking
+        if self.benchmarking:
+            self.benchmarker = Benchmarker()
 
         # Init device and distributed settings
         device, n_gpu = initialize_device_settings(use_cuda=gpu, local_rank=-1, use_amp=None)
@@ -167,7 +168,7 @@ class Inferencer:
         num_processes=None,
         disable_tqdm=False,
         dummy_ph=False,
-        timing_checkpoints=False,
+        benchmarking=False,
 
     ):
         """
@@ -214,10 +215,11 @@ class Inferencer:
         :param dummy_ph: If True, methods of the prediction head will be replaced
                              with a dummy method. This is used to isolate lm run time from ph run time.
         :type dummy_ph: bool
-        :param timing_checkpoints: If True, certain parts of the code will be timed for benchmarking. Should be kept
-                                   False if not benchmarking since these timing checkpoints require synchronization
-                                   of the asynchronous Pytorch operations and may slow down the model.
-        :type timing_checkpoints: bool
+        :param benchmarking: If True, a benchmarking object will be initialised within the class and
+                             certain parts of the code will be timed for benchmarking. Should be kept
+                             False if not benchmarking since these timing checkpoints require synchronization
+                             of the asynchronous Pytorch operations and may slow down the model.
+        :type benchmarking: bool
         :return: An instance of the Inferencer.
 
         """
@@ -299,19 +301,9 @@ class Inferencer:
             s3e_stats=s3e_stats,
             num_processes=num_processes,
             disable_tqdm=disable_tqdm,
-            timing_checkpoints=timing_checkpoints,
+            benchmarking=benchmarking,
             dummy_ph=dummy_ph
         )
-
-    def init_benchmarking(self):
-
-        self.init_event = torch.cuda.Event(enable_timing=True)
-        self.dataset_single_proc_event = torch.cuda.Event(enable_timing=True)
-        self.formatted_preds_event = torch.cuda.Event(enable_timing=True)
-
-        self.init_event.record()
-        torch.cuda.synchronize()
-        self.timing = {"init": self.init_event}
 
     def _set_multiprocessing_pool(self, num_processes):
         """
@@ -485,9 +477,8 @@ class Inferencer:
             dicts, indices=[i for i in range(len(dicts))], return_baskets=True
         )
 
-        self.dataset_single_proc_event.record()
-        torch.cuda.synchronize()
-        self.timing["dataset_single_proc"] = self.dataset_single_proc_event
+        if self.benchmarking:
+            self.benchmarker.record("dataset_single_proc")
 
         # TODO change format of formatted_preds in QA (list of dicts)
         if aggregate_preds:
@@ -641,10 +632,8 @@ class Inferencer:
         preds_all = self.model.formatted_preds(logits=logits, # For QA we collected preds per batch and do not want to pass logits
                                                preds=unaggregated_preds_all,
                                                baskets=baskets)
-        if self.timing_checkpoints:
-            self.formatted_preds_event.record()
-            torch.cuda.synchronize()
-            self.timing["formatted_preds"] = self.formatted_preds_event
+        if self.benchmarking:
+            self.benchmarker.record("formatted_preds")
         return preds_all
 
     def extract_vectors(self, dicts, extraction_strategy="cls_token", extraction_layer=-1):

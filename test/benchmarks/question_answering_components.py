@@ -26,17 +26,15 @@ def prepare_dict(sample_file, q):
     dicts = [{"qas": [q], "context": text}]
     return dicts
 
-def analyse_timing(lm_only, full):
-    lm_only_preproc = lm_only["init"].elapsed_time(lm_only["dataset_single_proc"])
-    full_preproc = full["init"].elapsed_time(full["dataset_single_proc"])
-    ave_preproc = (lm_only_preproc + full_preproc) / 2
-    lm_time = lm_only["dataset_single_proc"].elapsed_time(lm_only["formatted_preds"])
+def analyse_timing(preproc_lm_only, model_lm_only, preproc_full, model_full):
+    ave_preproc = (preproc_lm_only + preproc_full) / 2
+    lm_time = preproc_lm_only + model_lm_only
 
-    init_to_formatted_lm = lm_only["init"].elapsed_time(lm_only["formatted_preds"])
-    init_to_formatted_full = full["init"].elapsed_time(full["formatted_preds"])
+    init_to_formatted_lm = preproc_lm_only + model_lm_only
+    init_to_formatted_full = preproc_full + model_full
     ph_time = init_to_formatted_full - init_to_formatted_lm
 
-    total = full["init"].elapsed_time(full["formatted_preds"])
+    total = init_to_formatted_full
     return ave_preproc, lm_time, ph_time, total
 
 """
@@ -65,9 +63,9 @@ for q in qs[:2]:
                                      num_processes=num_processes,
                                      doc_stride=doc_stride,
                                      dummy_ph=True,
-                                     timing_checkpoints=True)
+                                     benchmarking=True)
         inferencer_dummy_ph.inference_from_dicts(dicts)
-        lm_only_timing = inferencer_dummy_ph.timing
+        preproc_lm_only, model_lm_only = inferencer_dummy_ph.benchmarker.summary()
 
         # Run once with real prediction heads
         inferencer_real_ph = Inferencer.load(modelname,
@@ -78,11 +76,11 @@ for q in qs[:2]:
                                      num_processes=num_processes,
                                      doc_stride=doc_stride,
                                      dummy_ph=False,
-                                     timing_checkpoints=True)
+                                     benchmarking=True)
         inferencer_real_ph.inference_from_dicts(dicts)
-        full_timing = inferencer_real_ph.timing
+        preproc_full, model_full = inferencer_real_ph.benchmarker.summary()
 
-        ave_preproc, lm_time, ph_time, total = analyse_timing(lm_only_timing, full_timing)
+        ave_preproc, lm_time, ph_time, total = analyse_timing(preproc_lm_only, model_lm_only, preproc_full, model_full)
         result = {"model name": modelname,
                   "question": q[:-1],
                   "preproc": ave_preproc,
