@@ -439,7 +439,13 @@ class Benchmarker:
     """ This is used to measure the time it takes for an inference model to perform preprocessing and then the model
     processing. After initializing the object, the record() method needs to be called at the timing checkpoints.
     When finished, Benchmarker.summary() will return the recorded times for the preprocessing stage and model
-    processing stage."""
+    processing stage.
+
+    init            dataset         forward (depr)   formatted
+      |     proc       |     ph         |       ph      |
+      |                |     lm         |               |
+      
+    """
     def __init__(self):
         self.timing = {}
         self.cuda = torch.cuda.is_available()

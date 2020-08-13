@@ -1,3 +1,11 @@
+"""
+This benchmarks the time taken by preprocessing / language modelling / prediction head processing.
+This is done by running the Inferencer twice: once with ph enabled and once with ph disabled.
+The Inferencer contains a Benchmarker object which measures the time taken by preprocessing and model processing.
+"""
+
+
+
 from farm.infer import Inferencer
 from farm.data_handler.processor import SquadProcessor, Processor
 from pprint import pprint
@@ -36,18 +44,6 @@ def analyse_timing(preproc_lm_only, model_lm_only, preproc_full, model_full):
 
     total = init_to_formatted_full
     return ave_preproc, lm_time, ph_time, total
-
-"""
-Various timing check points are set up in the Inferencer (see diagram below).
-It can be run with a real ph or with a dummy ph.
-
-To measure time of lm, we need to run up to forward without ph
-To measure time of ph, full pipeline time - lm time
-
-init            dataset         forward         formatted
-  |     proc       |     ph         |       ph      |
-  |                |     lm         |               |
-"""
 
 results = []
 for q in qs[:2]:
