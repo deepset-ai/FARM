@@ -5,9 +5,12 @@ The Inferencer contains a Benchmarker object which measures the time taken by pr
 """
 
 from farm.infer import Inferencer
-from pprint import pprint
+from pprint import pformat
 import pandas as pd
 from tqdm import tqdm
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 task_type = "question_answering"
@@ -19,7 +22,7 @@ params = {
     "modelname": ["deepset/bert-base-cased-squad2", "deepset/minilm-uncased-squad2", "deepset/roberta-base-squad2", "deepset/bert-large-uncased-whole-word-masking-squad2", "deepset/xlm-roberta-large-squad2"],
     "batch_size": [16, 32, 64],
     "document_size": [10_000, 100_000, 1000_000],
-    "max_seq_len": [384, 512, 1024],
+    "max_seq_len": [384, 512],
     "doc_stride": [128],
     "gpu": [True],
     "question": [l[:-1] for l in open(questions_file)][:2]
@@ -32,9 +35,7 @@ def benchmark(params, output="results_component_test.csv"):
     for d in tqdm(ds):
         result = benchmark_single(**d)
         results.append(result)
-    for result in results:
-        pprint(result)
-        print()
+        logger.info("\n\n" + pformat(result) + "\n")
     df = pd.DataFrame.from_records(results)
     df.to_csv(output)
 
@@ -85,6 +86,8 @@ def benchmark_single(batch_size, gpu, max_seq_len, doc_stride, document_size, qu
                   "sample_file": sample_file,
                   "error": ""
                   }
+        del inferencer_dummy_ph
+        del inferencer_real_ph
     except Exception as e:
         result = {"model name": modelname,
                   "question": question,
@@ -134,13 +137,15 @@ def prepare_dict(sample_file, q, document_size):
 
 def analyse_timing(preproc_lm_only, model_lm_only, preproc_full, model_full):
     ave_preproc = (preproc_lm_only + preproc_full) / 2
-    lm_time = preproc_lm_only + model_lm_only
+    lm_time = model_lm_only
 
-    init_to_formatted_lm = preproc_lm_only + model_lm_only
-    init_to_formatted_full = preproc_full + model_full
-    ph_time = init_to_formatted_full - init_to_formatted_lm
+    # init_to_formatted_lm = preproc_lm_only + model_lm_only
+    # init_to_formatted_full = preproc_full + model_full
+    # ph_time = init_to_formatted_full - init_to_formatted_lm
 
-    total = init_to_formatted_full
+    ph_time = model_full - model_lm_only
+    total = preproc_full + model_full
+
     return ave_preproc, lm_time, ph_time, total
 
 if __name__ == "__main__":
