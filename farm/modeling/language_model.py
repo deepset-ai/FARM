@@ -34,6 +34,7 @@ from torch import nn
 
 logger = logging.getLogger(__name__)
 
+from transformers import AutoModel
 from transformers.modeling_bert import BertModel, BertConfig
 from transformers.modeling_roberta import RobertaModel, RobertaConfig
 from transformers.modeling_xlnet import XLNetModel, XLNetConfig
@@ -132,8 +133,13 @@ class LanguageModel(nn.Module):
                 pretrained_model_name_or_path = str(pretrained_model_name_or_path)
                 if "xlm" in pretrained_model_name_or_path and "roberta" in pretrained_model_name_or_path:
                     language_model_class = 'XLMRoberta'
-                elif 'roberta' in pretrained_model_name_or_path or 'codebert' in pretrained_model_name_or_path.lower():
+                elif 'roberta' in pretrained_model_name_or_path:
                     language_model_class = 'Roberta'
+                elif 'codebert' in pretrained_model_name_or_path.lower():
+                    if "mlm" in pretrained_model_name_or_path.lower():
+                        raise NotImplementedError("MLM part of codebert is currently not supported in FARM")
+                    else:
+                        language_model_class = 'Roberta'
                 elif 'camembert' in pretrained_model_name_or_path or 'umberto' in pretrained_model_name_or_path:
                     language_model_class = "Camembert"
                 elif 'albert' in pretrained_model_name_or_path:
@@ -154,7 +160,10 @@ class LanguageModel(nn.Module):
             if language_model_class:
                 language_model = cls.subclasses[language_model_class].load(pretrained_model_name_or_path, **kwargs)
             else:
-                language_model = None
+                try:
+                    language_model = AutoModel.from_pretrained(pretrained_model_name_or_path) 
+                except OSError:
+                    language_model = None
 
         if not language_model:
             raise Exception(

@@ -23,6 +23,7 @@ import re
 from pathlib import Path
 
 import numpy as np
+from transformers import AutoModel
 from transformers.tokenization_albert import AlbertTokenizer
 from transformers.tokenization_bert import BertTokenizer, load_vocab
 from transformers.tokenization_distilbert import DistilBertTokenizer
@@ -68,8 +69,13 @@ class Tokenizer:
                 tokenizer_class = "AlbertTokenizer"
             elif "xlm-roberta" in pretrained_model_name_or_path.lower():
                 tokenizer_class = "XLMRobertaTokenizer"
-            elif "roberta" in pretrained_model_name_or_path.lower() or 'codebert' in pretrained_model_name_or_path.lower():
+            elif "roberta" in pretrained_model_name_or_path.lower():
                 tokenizer_class = "RobertaTokenizer"
+            elif 'codebert' in pretrained_model_name_or_path.lower():
+                    if "mlm" in pretrained_model_name_or_path.lower():
+                        raise NotImplementedError("MLM part of codebert is currently not supported in FARM")
+                    else:
+                        tokenizer_class = "RobertaTokenizer"
             elif "camembert" in pretrained_model_name_or_path.lower() or "umberto" in pretrained_model_name_or_path:
                 tokenizer_class = "CamembertTokenizer"
             elif "distilbert" in pretrained_model_name_or_path.lower():
@@ -111,6 +117,11 @@ class Tokenizer:
             ret = EmbeddingTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "CamembertTokenizer":
             ret = CamembertTokenizer._from_pretrained(pretrained_model_name_or_path, **kwargs)
+        else:
+            try:
+                ret = AutoTokenizer.from_pretrained(pretrained_model_name_or_path)
+            except OSError:
+                ret = None
         if ret is None:
             raise Exception("Unable to load tokenizer")
         else:
