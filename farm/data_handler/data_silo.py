@@ -318,7 +318,7 @@ class DataSilo:
     def _initialize_data_loaders(self):
         """ Initializing train, dev and test data loaders for the already loaded datasets """
 
-        if self.processor.train_filename:
+        if self.data["train"] is not None:
             if self.distributed:
                 sampler_train = DistributedSampler(self.data["train"])
             else:
@@ -343,7 +343,7 @@ class DataSilo:
         else:
             data_loader_dev = None
 
-        if self.processor.test_filename:
+        if self.data["test"] is not None:
             data_loader_test = NamedDataLoader(
                 dataset=self.data["test"],
                 sampler=SequentialSampler(self.data["test"]),
