@@ -3,6 +3,7 @@ import multiprocessing as mp
 import os
 from functools import partial
 import warnings
+import time
 
 import torch
 from torch.utils.data.sampler import SequentialSampler
@@ -18,7 +19,7 @@ from farm.modeling.tokenization import Tokenizer
 from farm.modeling.adaptive_model import AdaptiveModel, BaseAdaptiveModel, ONNXAdaptiveModel
 from farm.modeling.optimization import optimize_model
 from farm.utils import initialize_device_settings
-from farm.utils import set_all_seeds, calc_chunksize, log_ascii_workers
+from farm.utils import set_all_seeds, calc_chunksize, log_ascii_workers, Benchmarker
 from farm.modeling.predictions import QAPred
 
 logger = logging.getLogger(__name__)
@@ -58,7 +59,9 @@ class Inferencer:
         extraction_layer=None,
         s3e_stats=None,
         num_processes=None,
-        disable_tqdm=False
+        disable_tqdm=False,
+        benchmarking=False,
+        dummy_ph=False
     ):
         """
         Initializes Inferencer from an AdaptiveModel and a Processor instance.
@@ -98,9 +101,25 @@ class Inferencer:
         :type num_processes: int
         :param disable_tqdm: Whether to disable tqdm logging (can get very verbose in multiprocessing)
         :type disable_tqdm: bool
+        :param dummy_ph: If True, methods of the prediction head will be replaced
+                     with a dummy method. This is used to isolate lm run time from ph run time.
+        :type dummy_ph: bool
+        :param benchmarking: If True, a benchmarking object will be initialised within the class and
+                             certain parts of the code will be timed for benchmarking. Should be kept
+                             False if not benchmarking since these timing checkpoints require synchronization
+                             of the asynchronous Pytorch operations and may slow down the model.
+        :type benchmarking: bool
         :return: An instance of the Inferencer.
 
         """
+        # For benchmarking
+        if dummy_ph:
+            model.bypass_ph()
+
+        self.benchmarking = benchmarking
+        if self.benchmarking:
+            self.benchmarker = Benchmarker()
+
         # Init device and distributed settings
         device, n_gpu = initialize_device_settings(use_cuda=gpu, local_rank=-1, use_amp=None)
 
@@ -147,7 +166,9 @@ class Inferencer:
         extraction_strategy=None,
         s3e_stats=None,
         num_processes=None,
-        disable_tqdm=False
+        disable_tqdm=False,
+        dummy_ph=False,
+        benchmarking=False,
 
     ):
         """
@@ -191,6 +212,14 @@ class Inferencer:
         :type num_processes: int
         :param disable_tqdm: Whether to disable tqdm logging (can get very verbose in multiprocessing)
         :type disable_tqdm: bool
+        :param dummy_ph: If True, methods of the prediction head will be replaced
+                             with a dummy method. This is used to isolate lm run time from ph run time.
+        :type dummy_ph: bool
+        :param benchmarking: If True, a benchmarking object will be initialised within the class and
+                             certain parts of the code will be timed for benchmarking. Should be kept
+                             False if not benchmarking since these timing checkpoints require synchronization
+                             of the asynchronous Pytorch operations and may slow down the model.
+        :type benchmarking: bool
         :return: An instance of the Inferencer.
 
         """
@@ -271,7 +300,9 @@ class Inferencer:
             extraction_layer=extraction_layer,
             s3e_stats=s3e_stats,
             num_processes=num_processes,
-            disable_tqdm=disable_tqdm
+            disable_tqdm=disable_tqdm,
+            benchmarking=benchmarking,
+            dummy_ph=dummy_ph
         )
 
     def _set_multiprocessing_pool(self, num_processes):
@@ -445,6 +476,10 @@ class Inferencer:
         dataset, tensor_names, baskets = self.processor.dataset_from_dicts(
             dicts, indices=[i for i in range(len(dicts))], return_baskets=True
         )
+
+        if self.benchmarking:
+            self.benchmarker.record("dataset_single_proc")
+
         # TODO change format of formatted_preds in QA (list of dicts)
         if aggregate_preds:
             preds_all = self._get_predictions_and_aggregate(dataset, tensor_names, baskets)
@@ -597,6 +632,8 @@ class Inferencer:
         preds_all = self.model.formatted_preds(logits=logits, # For QA we collected preds per batch and do not want to pass logits
                                                preds=unaggregated_preds_all,
                                                baskets=baskets)
+        if self.benchmarking:
+            self.benchmarker.record("formatted_preds")
         return preds_all
 
     def extract_vectors(self, dicts, extraction_strategy="cls_token", extraction_layer=-1):
