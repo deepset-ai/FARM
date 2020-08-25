@@ -188,6 +188,12 @@ def squad(preds, labels):
     return {"EM": em, "f1": f1, "top_n_accuracy": top_acc}
 
 def top_n_accuracy(preds, labels):
+    """
+    This method calculates the percentage of documents for which the model makes top n accurate predictions.
+    The definition of top n accurate a top n accurate prediction is as follows:
+    For any given question document pair, there can be multiple predictions from the model and multiple labels.
+    If any of those predictions overlap at all with any of the labels, those predictions are considered to be top n accurate.
+    """
     answer_in_top_n = []
     n_questions = len(preds)
     for i in range(n_questions):
@@ -203,6 +209,4 @@ def top_n_accuracy(preds, labels):
             answer_in_top_n.append(0)
 
     return np.mean(answer_in_top_n)
-
-
 
