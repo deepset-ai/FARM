@@ -96,16 +96,19 @@ def filename_to_url(filename, cache_dir=None):
     return url, etag
 
 
-def download_from_s3(s3_url: str, cache_dir: str = "~/.cache/torch/farm"):
+def download_from_s3(s3_url: str, cache_dir: str = None):
     """
     Download a "folder" from s3 to local. Skip already existing files. Useful for downloading all files of one model
 
     :param s3_url: Url of the "folder" in s3 (e.g. s3://mybucket/my_modelname)
-    :param cache_dir: local directory where the files shall be stored
+    :param cache_dir: Optional local directory where the files shall be stored.
+                      If not supplied, we'll use a subfolder in torch's cache dir (~/.cache/torch/farm)
     :return: local path of the folder
     """
 
     logger.info(f"Downloading from {s3_url}")
+    if cache_dir is None:
+        cache_dir = os.path.join(torch_cache_home, "farm")
     s3_resource = boto3.resource('s3')
     bucket_name, s3_path = split_s3_path(s3_url)
     bucket = s3_resource.Bucket(bucket_name)
