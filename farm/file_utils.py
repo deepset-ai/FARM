@@ -53,6 +53,7 @@ except (AttributeError, ImportError):
 logger = logging.getLogger(__name__)  # pylint: disable=invalid-name
 
 
+
 def url_to_filename(url, etag=None):
     """
     Convert `url` into a hashed filename in a repeatable way.
@@ -94,6 +95,36 @@ def filename_to_url(filename, cache_dir=None):
 
     return url, etag
 
+
+def download_from_s3(s3_url: str, cache_dir: str = "~/.cache/torch/farm"):
+    """
+    Download a "folder" from s3 to local. Skip already existing files. Useful for downloading all files of one model
+
+    :param s3_url: Url of the "folder" in s3 (e.g. s3://mybucket/my_modelname)
+    :param cache_dir: local directory where the files shall be stored
+    :return: local path of the folder
+    """
+
+    s3_resource = boto3.resource('s3')
+    bucket_name, s3_path = split_s3_path(s3_url)
+    bucket = s3_resource.Bucket(bucket_name)
+    objects = bucket.objects.filter(Prefix=s3_path)
+    logger.info(f"Downloading from {s3_url}")
+    for obj in objects:
+        path, filename = os.path.split(obj.key)
+        path = os.path.join(cache_dir, path)
+        # Create local folder
+        if not os.path.exists(path):
+            os.makedirs(path)
+        # Download file if not present locally
+        if filename:
+            filepath = os.path.join(path, filename)
+            if os.path.exists(filepath):
+                logger.info(f"Skipping {obj.key} (exists locally)")
+            else:
+                logger.info(f"Downloading {obj.key} to {filepath} (size: {obj.size/1000000} MB)")
+                bucket.download_file(obj.key, filepath)
+    return path
 
 def split_s3_path(url):
     """Split a full s3 path into the bucket name and path."""
