@@ -258,25 +258,41 @@ def tokenize_with_metadata(text, tokenizer):
     :rtype: dict
 
     """
+    # Fast Tokenizers return offsets, so we don't need to calculate them ourselves
+    if tokenizer.is_fast:
+        tokenized = tokenizer(text, return_offsets_mapping=True, return_special_tokens_mask=True)
+        tokens = []
+        offsets = []
+        start_of_word = []
+        previous_token_end = -1
+        for token_id, is_special_token, offset in zip(tokenized["input_ids"],
+                                                      tokenized["special_tokens_mask"],
+                                                      tokenized["offset_mapping"]):
+            if is_special_token == 0:
+                tokens.append(tokenizer.decode([token_id]))
+                offsets.append(offset[0])
+                start_of_word.append(True if offset[0] != previous_token_end else False)
+                previous_token_end = offset[1]
+        tokenized = {"tokens": tokens, "offsets": offsets, "start_of_word": start_of_word}
+    else:
+        # normalize all other whitespace characters to " "
+        # Note: using text.split() directly would destroy the offset,
+        # since \n\n\n would be treated similarly as a single \n
+        text = re.sub(r"\s", " ", text)
+        # split text into "words" (here: simple whitespace tokenizer).
+        words = text.split(" ")
+        word_offsets = []
+        cumulated = 0
+        for idx, word in enumerate(words):
+            word_offsets.append(cumulated)
+            cumulated += len(word) + 1  # 1 because we so far have whitespace tokenizer
 
-    # normalize all other whitespace characters to " "
-    # Note: using text.split() directly would destroy the offset,
-    # since \n\n\n would be treated similarly as a single \n
-    text = re.sub(r"\s", " ", text)
-    # split text into "words" (here: simple whitespace tokenizer).
-    words = text.split(" ")
-    word_offsets = []
-    cumulated = 0
-    for idx, word in enumerate(words):
-        word_offsets.append(cumulated)
-        cumulated += len(word) + 1  # 1 because we so far have whitespace tokenizer
+        # split "words" into "subword tokens"
+        tokens, offsets, start_of_word = _words_to_tokens(
+            words, word_offsets, tokenizer
+        )
 
-    # split "words"into "subword tokens"
-    tokens, offsets, start_of_word = _words_to_tokens(
-        words, word_offsets, tokenizer
-    )
-
-    tokenized = {"tokens": tokens, "offsets": offsets, "start_of_word": start_of_word}
+        tokenized = {"tokens": tokens, "offsets": offsets, "start_of_word": start_of_word}
     return tokenized
 
 
@@ -327,7 +343,11 @@ def _words_to_tokens(words, word_offsets, tokenizer):
             # Depending on the tokenizer type special chars are added to distinguish tokens with preceeding
             # whitespace (=> "start of a word"). We need to get rid of these to calculate the original length of the token
             orig_tok = re.sub(SPECIAL_TOKENIZER_CHARS, "", tok)
-            w_off += len(orig_tok)
+            # Don't use length of unk token for offset calculation
+            if orig_tok == tokenizer.special_tokens_map["unk_token"]:
+                w_off += 1
+            else:
+                w_off += len(orig_tok)
             if first_tok:
                 start_of_word.append(True)
                 first_tok = False

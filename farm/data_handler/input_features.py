@@ -36,26 +36,25 @@ def sample_to_features_text(
     :rtype: list
     """
 
-    #TODO It might be cleaner to adjust the data structure in sample.tokenized
-    # Verify if this current quickfix really works for pairs
-    tokens_a = sample.tokenized["tokens"]
-    tokens_b = sample.tokenized.get("tokens_b", None)
-
-    # is_pretokenized seems to be broken upstream for slow tokenizers, while fast tokenizers rely on it
-    # temp fix until fixed upstream (see https://github.com/huggingface/transformers/issues/6046)
     if tokenizer.is_fast:
-        is_pretokenized = True
+        text = sample.clear_text["text"]
+        # Here, we tokenize the sample for the second time...
+        inputs = tokenizer(text, return_token_type_ids=True, max_length=max_seq_len)
     else:
-        is_pretokenized = False
-    inputs = tokenizer.encode_plus(
-        tokens_a,
-        tokens_b,
-        add_special_tokens=True,
-        truncation=False,  # truncation_strategy is deprecated
-        return_token_type_ids=True,
-        max_length=max_seq_len,
-        is_pretokenized=is_pretokenized,
-    )
+        # TODO It might be cleaner to adjust the data structure in sample.tokenized
+        # Verify if this current quickfix really works for pairs
+        tokens_a = sample.tokenized["tokens"]
+        tokens_b = sample.tokenized.get("tokens_b", None)
+
+        inputs = tokenizer.encode_plus(
+            tokens_a,
+            tokens_b,
+            add_special_tokens=True,
+            truncation=False,  # truncation_strategy is deprecated
+            return_token_type_ids=True,
+            max_length=max_seq_len,
+            is_pretokenized=False,
+        )
 
     input_ids, segment_ids = inputs["input_ids"], inputs["token_type_ids"]
 

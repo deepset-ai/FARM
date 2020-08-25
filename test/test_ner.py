@@ -89,7 +89,7 @@ def test_ner(caplog, use_fast):
     basic_texts = [
         {"text": "Paris is a town in France."},
     ]
-    model = Inferencer.load(model_name_or_path="dbmdz/bert-base-cased-finetuned-conll03-english", num_processes=0, task_type="ner")
+    model = Inferencer.load(model_name_or_path="dbmdz/bert-base-cased-finetuned-conll03-english", num_processes=0, task_type="ner", use_fast=use_fast)
     # labels arent correctly inserted from transformers
     # They are converted to LABEL_1 ... LABEL_N
     # For the inference result to contain predictions we need them in IOB NER format
