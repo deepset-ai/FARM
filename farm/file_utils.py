@@ -105,11 +105,14 @@ def download_from_s3(s3_url: str, cache_dir: str = "~/.cache/torch/farm"):
     :return: local path of the folder
     """
 
+    logger.info(f"Downloading from {s3_url}")
     s3_resource = boto3.resource('s3')
     bucket_name, s3_path = split_s3_path(s3_url)
     bucket = s3_resource.Bucket(bucket_name)
     objects = bucket.objects.filter(Prefix=s3_path)
-    logger.info(f"Downloading from {s3_url}")
+    if not objects:
+        raise ValueError("Could not find s3_url: {s3_url}")
+
     for obj in objects:
         path, filename = os.path.split(obj.key)
         path = os.path.join(cache_dir, path)
