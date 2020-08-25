@@ -108,7 +108,7 @@ def download_from_s3(s3_url: str, cache_dir: str = None):
 
     logger.info(f"Downloading from {s3_url}")
     if cache_dir is None:
-        cache_dir = os.path.join(torch_cache_home, "farm")
+        cache_dir = default_cache_path
     s3_resource = boto3.resource('s3')
     bucket_name, s3_path = split_s3_path(s3_url)
     bucket = s3_resource.Bucket(bucket_name)
