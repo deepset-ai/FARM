@@ -1096,6 +1096,7 @@ class SquadProcessor(QAProcessor):
         doc_stride=128,
         max_query_length=64,
         proxies=None,
+        max_answers=6,
         **kwargs
     ):
         """
@@ -1134,6 +1135,7 @@ class SquadProcessor(QAProcessor):
 
         self.doc_stride = doc_stride
         self.max_query_length = max_query_length
+        self.max_answers = max_answers
 
         super(SquadProcessor, self).__init__(
             tokenizer=tokenizer,
@@ -1208,7 +1210,8 @@ class SquadProcessor(QAProcessor):
                                          tokenizer=self.tokenizer,
                                          max_seq_len=self.max_seq_len,
                                          sp_toks_start=self.sp_toks_start,
-                                         sp_toks_mid=self.sp_toks_mid)
+                                         sp_toks_mid=self.sp_toks_mid,
+                                         max_answers=self.max_answers)
         return features
 
 class NaturalQuestionsProcessor(QAProcessor):
@@ -1229,6 +1232,7 @@ class NaturalQuestionsProcessor(QAProcessor):
         keep_no_answer=0.02,
         downsample_context_size=None,
         inference=False,
+        max_answers=6,
         **kwargs):
         """
         Deals with all the preprocessing steps needed for Natural Questions. Follows Alberti 2019 et al. (https://arxiv.org/abs/1901.08634)
@@ -1281,6 +1285,7 @@ class NaturalQuestionsProcessor(QAProcessor):
         self.keep_no_answer = keep_no_answer
         self.downsample_context_size = downsample_context_size
         self.inference = inference
+        self.max_answers = max_answers
 
         super(NaturalQuestionsProcessor, self).__init__(
             tokenizer=tokenizer,
@@ -1509,7 +1514,8 @@ class NaturalQuestionsProcessor(QAProcessor):
                                          max_seq_len=self.max_seq_len,
                                          sp_toks_start=self.sp_toks_start,
                                          sp_toks_mid=self.sp_toks_mid,
-                                         answer_type_list=self.answer_type_list)
+                                         answer_type_list=self.answer_type_list,
+                                         max_answers=self.max_answers)
         return features
 
 
