@@ -97,7 +97,7 @@ def doc_classifcation():
         device=device)
 
     # 7. Let it grow
-    # trainer.train()
+    trainer.train()
 
     # 8. Hooray! You have a model. Store it:
     save_dir = Path("saved_models/bert-german-doc-tutorial")
