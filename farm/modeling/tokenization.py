@@ -23,7 +23,6 @@ import re
 from pathlib import Path
 
 import numpy as np
-from transformers import AutoModel
 from transformers.tokenization_albert import AlbertTokenizer
 from transformers.tokenization_bert import BertTokenizer, load_vocab
 from transformers.tokenization_distilbert import DistilBertTokenizer
@@ -117,11 +116,6 @@ class Tokenizer:
             ret = EmbeddingTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "CamembertTokenizer":
             ret = CamembertTokenizer._from_pretrained(pretrained_model_name_or_path, **kwargs)
-        else:
-            try:
-                ret = AutoTokenizer.from_pretrained(pretrained_model_name_or_path)
-            except OSError:
-                ret = None
         if ret is None:
             raise Exception("Unable to load tokenizer")
         else:
