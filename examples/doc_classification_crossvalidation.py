@@ -65,7 +65,7 @@ def doc_classification_crossvalidation():
         f1other = f1_score(y_true=labels, y_pred=preds, pos_label="OTHER")
         f1offense = f1_score(y_true=labels, y_pred=preds, pos_label="OFFENSE")
         f1macro = f1_score(y_true=labels, y_pred=preds, average="macro")
-        f1micro = f1_score(y_true=labels, y_pred=preds, average="macro")
+        f1micro = f1_score(y_true=labels, y_pred=preds, average="micro")
         mcc = matthews_corrcoef(labels, preds)
         return {
             "acc": acc,
