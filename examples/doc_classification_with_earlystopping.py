@@ -59,7 +59,7 @@ def doc_classification_with_earlystopping():
         f1other = f1_score(y_true=labels, y_pred=preds, pos_label="OTHER")
         f1offense = f1_score(y_true=labels, y_pred=preds, pos_label="OFFENSE")
         f1macro = f1_score(y_true=labels, y_pred=preds, average="macro")
-        f1micro = f1_score(y_true=labels, y_pred=preds, average="macro")
+        f1micro = f1_score(y_true=labels, y_pred=preds, average="micro")
         return {"acc": acc, "f1_other": f1other, "f1_offense": f1offense, "f1_macro": f1macro, "f1_micro": f1micro}
     register_metrics('mymetrics', mymetrics)
     metric = 'mymetrics'
