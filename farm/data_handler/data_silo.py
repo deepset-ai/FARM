@@ -915,7 +915,7 @@ class DataSiloForCrossVal:
             if train_dev_split_only:
                 ds_train = Subset(ds_all, train_idx)
                 ds_dev = Subset(ds_all, test_idx)
-                ds_test = None
+                ds_test = None  # will be set in DataSiloForCrossVal.__init__ if provided in datasilo
             else:
                 n_dev = int(dev_split * len(train_idx))
                 n_actual_train = len(train_idx) - n_dev
