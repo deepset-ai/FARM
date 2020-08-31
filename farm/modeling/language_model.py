@@ -134,6 +134,11 @@ class LanguageModel(nn.Module):
                     language_model_class = 'XLMRoberta'
                 elif 'roberta' in pretrained_model_name_or_path:
                     language_model_class = 'Roberta'
+                elif 'codebert' in pretrained_model_name_or_path.lower():
+                    if "mlm" in pretrained_model_name_or_path.lower():
+                        raise NotImplementedError("MLM part of codebert is currently not supported in FARM")
+                    else:
+                        language_model_class = 'Roberta'
                 elif 'camembert' in pretrained_model_name_or_path or 'umberto' in pretrained_model_name_or_path:
                     language_model_class = "Camembert"
                 elif 'albert' in pretrained_model_name_or_path:
