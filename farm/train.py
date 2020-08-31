@@ -208,7 +208,7 @@ class Trainer:
         self.log_loss_every = log_loss_every
         self.disable_tqdm = disable_tqdm
         self.max_grad_norm = max_grad_norm
-
+        self.test_result = None
 
         if use_amp and not AMP_AVAILABLE:
             raise ImportError(f'Got use_amp = {use_amp}, but cannot find apex. '
@@ -237,6 +237,9 @@ class Trainer:
 
         The training is visualized by a progress bar. It counts the epochs in a zero based manner.
         For example, when you specify ``epochs=20`` it starts to count from 0 to 19.
+
+        If trainer evaluates the model with a test set the result of the
+        evaluation is stored in ``test_result``.
         """
 
         # connect the prediction heads with the right output from processor
@@ -359,8 +362,8 @@ class Trainer:
                 evaluator_test = Evaluator(
                     data_loader=test_data_loader, tasks=self.data_silo.processor.tasks, device=self.device
                 )
-                result = evaluator_test.eval(self.model)
-                evaluator_test.log_results(result, "Test", self.global_step)
+                self.test_result = evaluator_test.eval(self.model)
+                evaluator_test.log_results(self.test_result, "Test", self.global_step)
         return self.model
 
     def backward_propagate(self, loss, step):
