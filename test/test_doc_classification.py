@@ -41,7 +41,7 @@ def test_doc_classification(data_dir_path, text_column_name, caplog=None):
                       label_list=["OTHER", "OFFENSE"],
                       metric="f1_macro",
                       dev_filename="test-sample.tsv",
-                      test_filename=None,
+                      test_filename="test-sample.tsv",
                       dev_split=0.0,
                       label_column_name="coarse_label")
 
@@ -98,3 +98,6 @@ def test_doc_classification(data_dir_path, text_column_name, caplog=None):
     assert isinstance(result[0]["predictions"][0]["probability"], np.float32)
     result2 = inf.inference_from_dicts(dicts=basic_texts, return_json=True)
     assert result == result2
+
+    # is the rest result stored?
+    assert trainer.test_result is not None
