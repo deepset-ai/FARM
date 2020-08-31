@@ -465,7 +465,7 @@ class DataSilo:
         :param task_name: name of the task as used in the processor
         :type task_name: str
         """
-        
+
         tensor_name = self.processor.tasks[task_name]["label_tensor_name"]
         label_list = self.processor.tasks[task_name]["label_list"]
         tensor_idx = list(self.tensor_names).index(tensor_name)
@@ -539,7 +539,7 @@ class StreamingDataSilo:
         Returns a new instance of dataloader for the given dataset.
 
         The dataloader lazily yields from Iterable DataSets. After a complete iteration
-        over the input data, the generators gets exhausted. So, for instance, in the 
+        over the input data, the generators gets exhausted. So, for instance, in the
         case of model training, a new train dataloader must be used for each train epoch.
 
         :param dataset_name: 'train', 'dev', or 'test' set.
@@ -716,7 +716,7 @@ class DataSiloForCrossVal:
     Calling DataSiloForCrossVal.make() creates a list of DataSiloForCrossVal instances - one for each fold.
     """
 
-    def __init__(self, origsilo, trainset, devset, testset):
+    def __init__(self, origsilo, trainset, devset, testset, train_dev_split_only=False):
         self.tensor_names = origsilo.tensor_names
         self.data = {"train": trainset, "dev": devset, "test": testset}
         self.processor = origsilo.processor
@@ -737,12 +737,19 @@ class DataSiloForCrossVal:
             batch_size=self.batch_size,
             tensor_names=self.tensor_names,
         )
-        self.data_loader_test = NamedDataLoader(
-            dataset=testset,
-            sampler=SequentialSampler(testset),
-            batch_size=self.batch_size,
-            tensor_names=self.tensor_names,
-        )
+
+        # if we only do cross validation between train and dev
+        # we want to keep the test set
+        if train_dev_split_only:
+            self.data_loader_test = origsilo.get_data_loader("test")
+        else:
+            self.data_loader_test = NamedDataLoader(
+                dataset=testset,
+                sampler=SequentialSampler(testset),
+                batch_size=self.batch_size,
+                tensor_names=self.tensor_names,
+            )
+
         self.loaders = {
             "train": self.data_loader_train,
             "dev": self.data_loader_dev,
@@ -754,7 +761,7 @@ class DataSiloForCrossVal:
 
     @classmethod
     def make(cls, datasilo, sets=["train", "dev", "test"], n_splits=5, shuffle=True, random_state=None,
-             stratified=True, n_neg_answers_per_question=1):
+             stratified=True, n_neg_answers_per_question=1, train_dev_split_only=False):
         """
         Create number of folds data-silo-like objects which can be used for training from the
         original data silo passed on.
@@ -773,12 +780,16 @@ class DataSiloForCrossVal:
         :type stratified: bool
         :param n_neg_answers_per_question: number of negative answers per question to include for training
         :type n_neg_answers_per_question: int
+        :param train_dev_split_only: If ``true`` do cross validation only between train and dev. Keep test set
+            if given. If ``false`` (default) split data to train and test and then use ``dev_split`` to split
+            the dev set from train.
+        :type train_dev_split_only: bool
         """
 
         if "question_answering" in datasilo.processor.tasks:
             return cls._make_question_answering(datasilo, sets, n_splits, shuffle, random_state, n_neg_answers_per_question)
         else:
-            return cls._make(datasilo, sets, n_splits, shuffle, random_state, stratified)
+            return cls._make(datasilo, sets, n_splits, shuffle, random_state, stratified, train_dev_split_only)
 
     @classmethod
     def _make_question_answering(cls, datasilo, sets=["train", "dev", "test"], n_splits=5, shuffle=True,
@@ -868,7 +879,7 @@ class DataSiloForCrossVal:
 
     @staticmethod
     def _make(datasilo, sets=["train", "dev", "test"], n_splits=5, shuffle=True,
-              random_state=None, stratified=True):
+              random_state=None, stratified=True, train_dev_split_only=False):
         """
         Create number of folds data-silo-like objects which can be used for training from the
         original data silo passed on.
@@ -879,6 +890,10 @@ class DataSiloForCrossVal:
         :param shuffle: shuffle each class' samples before splitting
         :param random_state: random state for shuffling
         :param stratified: if class stratification should be done
+        :param train_dev_split_only: If ``true`` do cross validation only between train and dev. Keep test set
+            if given. If ``false`` (default) split data to train and test and then use ``dev_split`` to split
+            the dev set from train.
+        :type train_dev_split_only: bool
         """
         setstoconcat = [datasilo.data[setname] for setname in sets]
         ds_all = ConcatDataset(setstoconcat)
@@ -897,18 +912,23 @@ class DataSiloForCrossVal:
         # divided into actual train and dev set
         silos = []
         for train_idx, test_idx in xval_split:
-            n_dev = int(dev_split * len(train_idx))
-            n_actual_train = len(train_idx) - n_dev
-            # TODO: this split into actual train and test set could/should also be stratified, for now
-            # we just do this by taking the first/last indices from the train set (which should be
-            # shuffled by default)
-            actual_train_idx = train_idx[:n_actual_train]
-            dev_idx = train_idx[n_actual_train:]
-            # create the actual datasets
-            ds_train = Subset(ds_all, actual_train_idx)
-            ds_dev = Subset(ds_all, dev_idx)
-            ds_test = Subset(ds_all, test_idx)
-            silos.append(DataSiloForCrossVal(datasilo, ds_train, ds_dev, ds_test))
+            if train_dev_split_only:
+                ds_train = Subset(ds_all, train_idx)
+                ds_dev = Subset(ds_all, test_idx)
+                ds_test = None
+            else:
+                n_dev = int(dev_split * len(train_idx))
+                n_actual_train = len(train_idx) - n_dev
+                # TODO: this split into actual train and test set could/should also be stratified, for now
+                # we just do this by taking the first/last indices from the train set (which should be
+                # shuffled by default)
+                actual_train_idx = train_idx[:n_actual_train]
+                dev_idx = train_idx[n_actual_train:]
+                # create the actual datasets
+                ds_train = Subset(ds_all, actual_train_idx)
+                ds_dev = Subset(ds_all, dev_idx)
+                ds_test = Subset(ds_all, test_idx)
+            silos.append(DataSiloForCrossVal(datasilo, ds_train, ds_dev, ds_test, train_dev_split_only))
         return silos
 
     @staticmethod
