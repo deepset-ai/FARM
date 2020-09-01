@@ -942,3 +942,56 @@ class DataSiloForCrossVal:
             current_train_set = np.hstack(np.delete(splits, idx, axis=0))
 
             yield current_train_set, current_test_set
+
+
+class DataSiloForNestedCrossVal(DataSiloForCrossVal):
+    """
+    Prepare data silos to do a nested cross validation.
+
+    The outer cross validation splits all data to test and rest.
+    The inner cross validation splits the rest data to train and dev.
+    """
+
+    def __init__(self, origsilo, trainset, devset, testset):
+        super().__init__(origsilo, trainset, devset, testset)
+
+    @classmethod
+    def _make_question_answering(cls, *args, **kwargs):
+        raise NotImplementedError()
+
+    @staticmethod
+    def _make(datasilo, sets=["train", "dev", "test"], n_splits=5, shuffle=True,
+              random_state=None, stratified=True):
+        setstoconcat = [datasilo.data[setname] for setname in sets]
+        ds_all = ConcatDataset(setstoconcat)
+        idxs = list(range(len(ds_all)))
+        dev_split = datasilo.processor.dev_split
+
+        silos = []
+
+        # outer cross validation where we split all data to test and rest
+        if stratified:
+            # get all the labels for stratification
+            ytensors = [t[3][0] for t in ds_all]
+            y = torch.stack(ytensors)
+            outer_cv = StratifiedKFold(n_splits=n_splits, shuffle=shuffle, random_state=random_state)
+            outer_split = outer_cv.split(idxs, y)
+        else:
+            outer_cv = KFold(n_splits=n_splits, shuffle=shuffle, random_state=random_state)
+            outer_split = outer_cv.split(idxs)
+        for idxs_rest, idxs_test in outer_split:
+
+            # inner cross validation where we split rest data into train and dev
+            if stratified:
+                y_rest = y[idxs_rest]
+                inner_cv = StratifiedKFold(n_splits=n_splits, shuffle=shuffle, random_state=random_state)
+                inner_split = inner_cv.split(idxs_rest, y_rest)
+            else:
+                inner_cv = KFold(n_splits=n_splits, shuffle=shuffle, random_state=random_state)
+                inner_split = inner_cv.split(idxs_rest)
+            for idxs_train, idxs_dev in inner_split:
+                ds_train = Subset(ds_all, idxs_train)
+                ds_dev = Subset(ds_all, idxs_dev)
+                ds_test = Subset(ds_all, idxs_test)
+                silos.append(DataSiloForCrossVal(datasilo, ds_train, ds_dev, ds_test))
+        return silos
