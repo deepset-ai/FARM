@@ -1,7 +1,7 @@
 import logging
 import pytest
 import re
-from transformers import BertTokenizer, BertTokenizerFast, RobertaTokenizer, XLNetTokenizer
+from transformers import BertTokenizer, BertTokenizerFast, RobertaTokenizer, XLNetTokenizer, RobertaTokenizerFast
 from transformers import ElectraTokenizerFast
 
 from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
@@ -282,6 +282,25 @@ def test_fast_electra_tokenizer(caplog):
     tokenizer = Tokenizer.load("dbmdz/electra-base-german-europeana-cased-discriminator",
                                use_fast=True)
     assert type(tokenizer) is ElectraTokenizerFast
+
+
+@pytest.mark.parametrize("model_name", ["bert-base-cased", "distilbert-base-uncased", "deepset/electra-base-squad2"])
+def test_detokenization_in_fast_tokenizers(model_name):
+    tokenizer = Tokenizer.load(
+        pretrained_model_name_or_path=model_name,
+        use_fast=True
+    )
+    for text in TEXTS:
+        tokens_with_metadata = tokenize_with_metadata(text, tokenizer)
+        tokens = tokens_with_metadata["tokens"]
+
+        detokenized = " ".join(tokens)
+        detokenized = re.sub(r"(^|\s+)(##)", "", detokenized)
+
+        detokenized_ids = tokenizer(detokenized, add_special_tokens=False)["input_ids"]
+        detokenized_tokens = [tokenizer.decode([tok_id]).strip() for tok_id in detokenized_ids]
+
+        assert tokens == detokenized_tokens
 
 
 if __name__ == "__main__":

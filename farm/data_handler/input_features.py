@@ -270,9 +270,9 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
         if tokenizer.is_fast:
             # Detokenize input as fast tokenizer can't handle tokenized input
             tokens_a = " ".join(tokens_a)
-            tokens_a = re.sub(r"^(##|Ġ|▁)", "", tokens_a)
+            tokens_a = re.sub(r"(^|\s)(##)", "", tokens_a)
             tokens_b = " ".join(tokens_b)
-            tokens_b = re.sub(r"^(##|Ġ|▁)", "", tokens_b)
+            tokens_b = re.sub(r"(^|\s)(##)", "", tokens_b)
 
         # convert lm labels to ids
         t1_label_ids = [-1 if tok == '' else tokenizer.convert_tokens_to_ids(tok) for tok in t1_label]
@@ -292,7 +292,7 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
         if tokenizer.is_fast:
             # Detokenize input as fast tokenizer can't handle tokenized input
             tokens_a = " ".join(tokens_a)
-            tokens_a = re.sub(r"^(##|Ġ|▁)", "", tokens_a)
+            tokens_a = re.sub(r"(^|\s)(##)", "", tokens_a)
 
         # convert lm labels to ids
         lm_label_ids = [-1 if tok == '' else tokenizer.convert_tokens_to_ids(tok) for tok in t1_label]
@@ -425,9 +425,9 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
     if tokenizer.is_fast:
         # Detokenize input as fast tokenizer can't handle tokenized input
         question_tokens = " ".join(question_tokens)
-        question_tokens = re.sub(r"^(##|Ġ|▁)", "", question_tokens)
+        question_tokens = re.sub(r"(^|\s)(##)", "", question_tokens)
         passage_tokens = " ".join(passage_tokens)
-        passage_tokens = re.sub(r"^(##|Ġ|▁)", "", passage_tokens)
+        passage_tokens = re.sub(r"(^|\s)(##)", "", passage_tokens)
 
         encoded = tokenizer(text=question_tokens,
                             text_pair=passage_tokens,
@@ -553,8 +553,12 @@ def combine_vecs(question_vec, passage_vec, tokenizer, spec_tok_val=-1):
     # Join question_label_vec and passage_label_vec and add slots for special tokens
     vec = tokenizer.build_inputs_with_special_tokens(token_ids_0=question_vec,
                                                      token_ids_1=passage_vec)
-    spec_toks_mask = tokenizer.get_special_tokens_mask(token_ids_0=question_vec,
-                                                       token_ids_1=passage_vec)
+    if tokenizer.is_fast:
+        spec_toks_mask = tokenizer.get_special_tokens_mask(token_ids_0=vec,
+                                                           already_has_special_tokens=True)
+    else:
+        spec_toks_mask = tokenizer.get_special_tokens_mask(token_ids_0=question_vec,
+                                                           token_ids_1=passage_vec)
 
     # If a value in vec corresponds to a special token, it will be replaced with spec_tok_val
     combined = [v if not special_token else spec_tok_val for v, special_token in zip(vec, spec_toks_mask)]

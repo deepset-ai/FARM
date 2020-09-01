@@ -99,12 +99,21 @@ class Tokenizer:
         # return appropriate tokenizer object
         ret = None
         if tokenizer_class == "AlbertTokenizer":
-            ret = AlbertTokenizer.from_pretrained(pretrained_model_name_or_path, keep_accents=True,  **kwargs)
+            if use_fast:
+                logger.error('AlbertTokenizerFast is not supported! Using AlbertTokenizer instead.')
+                ret = AlbertTokenizer.from_pretrained(pretrained_model_name_or_path, keep_accents=True, **kwargs)
+            else:
+                ret = AlbertTokenizer.from_pretrained(pretrained_model_name_or_path, keep_accents=True,  **kwargs)
         elif tokenizer_class == "XLMRobertaTokenizer":
-            ret = XLMRobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            if use_fast:
+                logger.error('XLMRobertaTokenizerFast is not supported! Using XLMRobertaTokenizer instead.')
+                ret = XLMRobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            else:
+                ret = XLMRobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif "RobertaTokenizer" in tokenizer_class:  # because it also might be fast tokekenizer we use "in"
             if use_fast:
-                raise ValueError('RobertaTokenizerFast is not supportet!')
+                logger.error('RobertaTokenizerFast is not supported! Using RobertaTokenizer instead.')
+                ret = RobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
                 ret = RobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif "DistilBertTokenizer" in tokenizer_class:  # because it also might be fast tokekenizer we use "in"
@@ -118,16 +127,28 @@ class Tokenizer:
             else:
                 ret = BertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "XLNetTokenizer":
-            ret = XLNetTokenizer.from_pretrained(pretrained_model_name_or_path, keep_accents=True, **kwargs)
+            if use_fast:
+                logger.error('XLNetTokenizerFast is not supported! Using XLNetTokenizer instead.')
+                ret = XLNetTokenizer.from_pretrained(pretrained_model_name_or_path, keep_accents=True, **kwargs)
+            else:
+                ret = XLNetTokenizer.from_pretrained(pretrained_model_name_or_path, keep_accents=True, **kwargs)
         elif "ElectraTokenizer" in tokenizer_class:  # because it also might be fast tokekenizer we use "in"
             if use_fast:
                 ret = ElectraTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
                 ret = ElectraTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "EmbeddingTokenizer":
-            ret = EmbeddingTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            if use_fast:
+                logger.error('EmbeddingTokenizerFast is not supported! Using EmbeddingTokenizer instead.')
+                ret = EmbeddingTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            else:
+                ret = EmbeddingTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "CamembertTokenizer":
-            ret = CamembertTokenizer._from_pretrained(pretrained_model_name_or_path, **kwargs)
+            if use_fast:
+                logger.error('CamembertTokenizerFast is not supported! Using CamembertTokenizer instead.')
+                ret = CamembertTokenizer._from_pretrained(pretrained_model_name_or_path, **kwargs)
+            else:
+                ret = CamembertTokenizer._from_pretrained(pretrained_model_name_or_path, **kwargs)
         if ret is None:
             raise Exception("Unable to load tokenizer")
         else:

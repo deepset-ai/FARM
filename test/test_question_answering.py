@@ -9,7 +9,7 @@ from farm.modeling.adaptive_model import AdaptiveModel
 from farm.infer import Inferencer, QAInferencer
 from farm.data_handler.inputs import QAInput, Question
 
-
+@pytest.mark.parametrize("distilbert_squad", [True, False], indirect=True)
 def test_training(distilbert_squad, caplog=None):
     if caplog:
         caplog.set_level(logging.CRITICAL)
@@ -19,6 +19,7 @@ def test_training(distilbert_squad, caplog=None):
     assert type(processor) == SquadProcessor
 
 
+@pytest.mark.parametrize("distilbert_squad", [True, False], indirect=True)
 def test_save_load(distilbert_squad, caplog=None):
     if caplog:
         caplog.set_level(logging.CRITICAL)
@@ -33,6 +34,7 @@ def test_save_load(distilbert_squad, caplog=None):
     assert inferencer is not None
 
 
+@pytest.mark.parametrize("bert_base_squad2", [True, False], indirect=True)
 def test_inference_dicts(bert_base_squad2):
     qa_format_1 = [
         {
@@ -49,6 +51,7 @@ def test_inference_dicts(bert_base_squad2):
 
 
 @pytest.fixture()
+@pytest.mark.parametrize("bert_base_squad2", [True, False], indirect=True)
 def span_inference_result(bert_base_squad2, caplog=None):
     if caplog:
         caplog.set_level(logging.CRITICAL)
@@ -59,6 +62,7 @@ def span_inference_result(bert_base_squad2, caplog=None):
 
 
 @pytest.fixture()
+@pytest.mark.parametrize("bert_base_squad2", [True, False], indirect=True)
 def no_answer_inference_result(bert_base_squad2, caplog=None):
     if caplog:
         caplog.set_level(logging.CRITICAL)
