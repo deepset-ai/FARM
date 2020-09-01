@@ -46,8 +46,10 @@ def sample_to_features_text(
                            return_special_tokens_mask=True)
 
         if (len(inputs["input_ids"]) - inputs["special_tokens_mask"].count(1)) != len(sample.tokenized["tokens"]):
-            logger.error("FastTokenizer produced different number of tokens in input_features.py and"
-                         "tokenize_with_metadata.py")
+            logger.error(f"FastTokenizer encoded sample {sample.clear_text['text']} to "
+                         f"{len(inputs['input_ids']) - inputs['special_tokens_mask'].count(1)} tokens, which differs "
+                         f"from number of tokens produced in tokenize_with_metadata.py")
+            logger.error("Further processing is likely to be wrong.")
     else:
         # TODO It might be cleaner to adjust the data structure in sample.tokenized
         # Verify if this current quickfix really works for pairs
@@ -163,8 +165,10 @@ def samples_to_features_ner(
                            return_special_tokens_mask=True)
 
         if (len(inputs["input_ids"]) - inputs["special_tokens_mask"].count(1)) != len(sample.tokenized["tokens"]):
-            logger.error("FastTokenizer produced different number of tokens in input_features.py and"
-                         "tokenize_with_metadata.py")
+            logger.error(f"FastTokenizer encoded sample {sample.clear_text['text']} to "
+                         f"{len(inputs['input_ids']) - inputs['special_tokens_mask'].count(1)} tokens, which differs "
+                         f"from number of tokens produced in tokenize_with_metadata.py")
+            logger.error("Further processing is likely to be wrong.")
     else:
         inputs = tokenizer.encode_plus(text=tokens,
                                        text_pair=None,
@@ -303,8 +307,10 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
         seq_b_len = len(sample.tokenized["text_b"]["tokens"]) if "text_b" in sample.tokenized else 0
         if (len(inputs["input_ids"]) - inputs["special_tokens_mask"].count(1)) != \
            (len(sample.tokenized["text_a"]["tokens"]) + seq_b_len):
-            logger.error("FastTokenizer produced different number of tokens in input_features.py and"
-                         "tokenize_with_metadata.py")
+            logger.error(f"FastTokenizer encoded sample {sample.clear_text['text']} to "
+                         f"{len(inputs['input_ids']) - inputs['special_tokens_mask'].count(1)} tokens, which differs "
+                         f"from number of tokens produced in tokenize_with_metadata.py")
+            logger.error("Further processing is likely to be wrong.")
     else:
         # encode string tokens to input_ids and add special tokens
         inputs = tokenizer.encode_plus(text=tokens_a,
@@ -431,8 +437,10 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
 
         if (len(encoded["input_ids"]) - encoded["special_tokens_mask"].count(1)) != \
            (len(sample.tokenized["question_tokens"]) + len(sample.tokenized["passage_tokens"])):
-            logger.error("FastTokenizer produced different number of tokens in input_features.py and"
-                         "tokenize_with_metadata.py")
+            logger.error(f"FastTokenizer encoded sample {sample.clear_text['text']} to "
+                         f"{len(encoded['input_ids']) - encoded['special_tokens_mask'].count(1)} tokens, which differs "
+                         f"from number of tokens produced in tokenize_with_metadata.py")
+            logger.error("Further processing is likely to be wrong.")
 
     else:
         encoded = tokenizer.encode_plus(text=sample.tokenized["question_tokens"],
