@@ -1,5 +1,7 @@
 import pytest
 import numpy as np
+import transformers
+
 from farm.infer import Inferencer
 
 
@@ -73,7 +75,8 @@ def test_qa_format_and_results(adaptive_model_qa, streaming, multiprocessing_chu
 
 
 @pytest.mark.parametrize("num_processes", [0], scope="session")
-def test_embeddings_extraction(num_processes):
+@pytest.mark.parametrize("use_fast", [False, True])
+def test_embeddings_extraction(num_processes, use_fast):
     # Input
     basic_texts = [
         {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot ist"},
@@ -88,12 +91,22 @@ def test_embeddings_extraction(num_processes):
         batch_size=5,
         extraction_strategy="reduce_mean",
         extraction_layer=-2,
+        use_fast=use_fast,
         num_processes=num_processes)
 
     # Get embeddings for input text (you can vary the strategy and layer)
     result = model.inference_from_dicts(dicts=basic_texts)
     assert result[0]["context"] == ['Schar', '##tau', 'sagte', 'dem', 'Tages', '##spiegel', ',', 'dass', 'Fischer', 'ein', 'Id', '##iot', 'ist']
-    assert np.isclose(result[0]["vec"][0], 1.50174605e-02)
+    assert result[0]["vec"].shape == (768,)
+    assert np.isclose(result[0]["vec"][0], 0.01501756374325071)
+
+
+def test_inferencer_with_fast_bert_tokenizer():
+    model = Inferencer.load("bert-base-german-cased", task_type='text_classification',
+                            use_fast=True, num_processes=0)
+    tokenizer = model.processor.tokenizer
+    assert type(tokenizer) is transformers.tokenization_bert.BertTokenizerFast
+
 
 if __name__ == "__main__":
     test_embeddings_extraction()

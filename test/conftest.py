@@ -61,18 +61,20 @@ def adaptive_model_qa(use_gpu, num_processes):
     assert len(children) == 0
 
 
-@pytest.fixture()
-def bert_base_squad2():
+@pytest.fixture(params=[True, False])
+def bert_base_squad2(request):
     model = QAInferencer.load(
             "deepset/bert-base-cased-squad2",
             task_type="question_answering",
             batch_size=16,
-            num_processes=0)
+            num_processes=0,
+            use_fast=request.param
+    )
     return model
 
 
-@pytest.fixture()
-def distilbert_squad():
+@pytest.fixture(params=[True, False])
+def distilbert_squad(request):
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=False)
     batch_size = 2
@@ -81,7 +83,9 @@ def distilbert_squad():
     base_LM_model = "distilbert-base-uncased"
 
     tokenizer = Tokenizer.load(
-        pretrained_model_name_or_path=base_LM_model, do_lower_case=True
+        pretrained_model_name_or_path=base_LM_model,
+        do_lower_case=True,
+        use_fast=request.param
     )
     label_list = ["start_token", "end_token"]
     processor = SquadProcessor(
