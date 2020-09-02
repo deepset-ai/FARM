@@ -24,9 +24,9 @@ from pathlib import Path
 
 import numpy as np
 from transformers.tokenization_albert import AlbertTokenizer
-from transformers.tokenization_bert import BertTokenizer, load_vocab
-from transformers.tokenization_distilbert import DistilBertTokenizer
-from transformers.tokenization_electra import ElectraTokenizer
+from transformers.tokenization_bert import BertTokenizer, BertTokenizerFast, load_vocab
+from transformers.tokenization_distilbert import DistilBertTokenizer, DistilBertTokenizerFast
+from transformers.tokenization_electra import ElectraTokenizer, ElectraTokenizerFast
 from transformers.tokenization_roberta import RobertaTokenizer
 from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_xlm_roberta import XLMRobertaTokenizer
@@ -48,7 +48,7 @@ class Tokenizer:
     """
 
     @classmethod
-    def load(cls, pretrained_model_name_or_path, tokenizer_class=None, **kwargs):
+    def load(cls, pretrained_model_name_or_path, tokenizer_class=None, use_fast=False, **kwargs):
         """
         Enables loading of different Tokenizer classes with a uniform interface. Either infer the class from
         `pretrained_model_name_or_path` or define it manually via `tokenizer_class`.
@@ -57,6 +57,10 @@ class Tokenizer:
         :type pretrained_model_name_or_path: str
         :param tokenizer_class: (Optional) Name of the tokenizer class to load (e.g. `BertTokenizer`)
         :type tokenizer_class: str
+        :param use_fast: (Optional, False by default) Indicate if FARM should try to load the fast version of the tokenizer (True) or
+            use the Python one (False).
+            Only DistilBERT, BERT and Electra fast tokenizers are supported.
+        :type use_fast: bool
         :param kwargs:
         :return: Tokenizer
         """
@@ -98,24 +102,58 @@ class Tokenizer:
                                  f"XLNetTokenizer.")
             logger.info(f"Loading tokenizer of type '{tokenizer_class}'")
         # return appropriate tokenizer object
+        ret = None
         if tokenizer_class == "AlbertTokenizer":
-            ret = AlbertTokenizer.from_pretrained(pretrained_model_name_or_path, keep_accents=True,  **kwargs)
+            if use_fast:
+                logger.error('AlbertTokenizerFast is not supported! Using AlbertTokenizer instead.')
+                ret = AlbertTokenizer.from_pretrained(pretrained_model_name_or_path, keep_accents=True, **kwargs)
+            else:
+                ret = AlbertTokenizer.from_pretrained(pretrained_model_name_or_path, keep_accents=True,  **kwargs)
         elif tokenizer_class == "XLMRobertaTokenizer":
-            ret = XLMRobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
-        elif tokenizer_class == "RobertaTokenizer":
-            ret = RobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
-        elif tokenizer_class == "DistilBertTokenizer":
-            ret = DistilBertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
-        elif tokenizer_class == "BertTokenizer":
-            ret = BertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            if use_fast:
+                logger.error('XLMRobertaTokenizerFast is not supported! Using XLMRobertaTokenizer instead.')
+                ret = XLMRobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            else:
+                ret = XLMRobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        elif "RobertaTokenizer" in tokenizer_class:  # because it also might be fast tokekenizer we use "in"
+            if use_fast:
+                logger.error('RobertaTokenizerFast is not supported! Using RobertaTokenizer instead.')
+                ret = RobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            else:
+                ret = RobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        elif "DistilBertTokenizer" in tokenizer_class:  # because it also might be fast tokekenizer we use "in"
+            if use_fast:
+                ret = DistilBertTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            else:
+                ret = DistilBertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        elif "BertTokenizer" in tokenizer_class:  # because it also might be fast tokekenizer we use "in"
+            if use_fast:
+                ret = BertTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            else:
+                ret = BertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "XLNetTokenizer":
-            ret = XLNetTokenizer.from_pretrained(pretrained_model_name_or_path, keep_accents=True, **kwargs)
-        elif tokenizer_class == "ElectraTokenizer":
-            ret = ElectraTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            if use_fast:
+                logger.error('XLNetTokenizerFast is not supported! Using XLNetTokenizer instead.')
+                ret = XLNetTokenizer.from_pretrained(pretrained_model_name_or_path, keep_accents=True, **kwargs)
+            else:
+                ret = XLNetTokenizer.from_pretrained(pretrained_model_name_or_path, keep_accents=True, **kwargs)
+        elif "ElectraTokenizer" in tokenizer_class:  # because it also might be fast tokekenizer we use "in"
+            if use_fast:
+                ret = ElectraTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            else:
+                ret = ElectraTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "EmbeddingTokenizer":
-            ret = EmbeddingTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            if use_fast:
+                logger.error('EmbeddingTokenizerFast is not supported! Using EmbeddingTokenizer instead.')
+                ret = EmbeddingTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            else:
+                ret = EmbeddingTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         elif tokenizer_class == "CamembertTokenizer":
-            ret = CamembertTokenizer._from_pretrained(pretrained_model_name_or_path, **kwargs)
+            if use_fast:
+                logger.error('CamembertTokenizerFast is not supported! Using CamembertTokenizer instead.')
+                ret = CamembertTokenizer._from_pretrained(pretrained_model_name_or_path, **kwargs)
+            else:
+                ret = CamembertTokenizer._from_pretrained(pretrained_model_name_or_path, **kwargs)
         if ret is None:
             raise Exception("Unable to load tokenizer")
         else:
@@ -246,25 +284,41 @@ def tokenize_with_metadata(text, tokenizer):
     :rtype: dict
 
     """
+    # Fast Tokenizers return offsets, so we don't need to calculate them ourselves
+    if tokenizer.is_fast:
+        tokenized = tokenizer(text, return_offsets_mapping=True, return_special_tokens_mask=True)
+        tokens = []
+        offsets = []
+        start_of_word = []
+        previous_token_end = -1
+        for token_id, is_special_token, offset in zip(tokenized["input_ids"],
+                                                      tokenized["special_tokens_mask"],
+                                                      tokenized["offset_mapping"]):
+            if is_special_token == 0:
+                tokens.append(tokenizer.decode([token_id]))
+                offsets.append(offset[0])
+                start_of_word.append(True if offset[0] != previous_token_end else False)
+                previous_token_end = offset[1]
+        tokenized = {"tokens": tokens, "offsets": offsets, "start_of_word": start_of_word}
+    else:
+        # normalize all other whitespace characters to " "
+        # Note: using text.split() directly would destroy the offset,
+        # since \n\n\n would be treated similarly as a single \n
+        text = re.sub(r"\s", " ", text)
+        # split text into "words" (here: simple whitespace tokenizer).
+        words = text.split(" ")
+        word_offsets = []
+        cumulated = 0
+        for idx, word in enumerate(words):
+            word_offsets.append(cumulated)
+            cumulated += len(word) + 1  # 1 because we so far have whitespace tokenizer
 
-    # normalize all other whitespace characters to " "
-    # Note: using text.split() directly would destroy the offset,
-    # since \n\n\n would be treated similarly as a single \n
-    text = re.sub(r"\s", " ", text)
-    # split text into "words" (here: simple whitespace tokenizer).
-    words = text.split(" ")
-    word_offsets = []
-    cumulated = 0
-    for idx, word in enumerate(words):
-        word_offsets.append(cumulated)
-        cumulated += len(word) + 1  # 1 because we so far have whitespace tokenizer
+        # split "words" into "subword tokens"
+        tokens, offsets, start_of_word = _words_to_tokens(
+            words, word_offsets, tokenizer
+        )
 
-    # split "words"into "subword tokens"
-    tokens, offsets, start_of_word = _words_to_tokens(
-        words, word_offsets, tokenizer
-    )
-
-    tokenized = {"tokens": tokens, "offsets": offsets, "start_of_word": start_of_word}
+        tokenized = {"tokens": tokens, "offsets": offsets, "start_of_word": start_of_word}
     return tokenized
 
 
@@ -315,7 +369,11 @@ def _words_to_tokens(words, word_offsets, tokenizer):
             # Depending on the tokenizer type special chars are added to distinguish tokens with preceeding
             # whitespace (=> "start of a word"). We need to get rid of these to calculate the original length of the token
             orig_tok = re.sub(SPECIAL_TOKENIZER_CHARS, "", tok)
-            w_off += len(orig_tok)
+            # Don't use length of unk token for offset calculation
+            if orig_tok == tokenizer.special_tokens_map["unk_token"]:
+                w_off += 1
+            else:
+                w_off += len(orig_tok)
             if first_tok:
                 start_of_word.append(True)
                 first_tok = False

@@ -4,6 +4,7 @@ Contains functions that turn readable clear text input into dictionaries of feat
 
 
 import logging
+import re
 import collections
 from dotmap import DotMap
 import numpy as np
@@ -36,18 +37,34 @@ def sample_to_features_text(
     :rtype: list
     """
 
-    #TODO It might be cleaner to adjust the data structure in sample.tokenized
-    # Verify if this current quickfix really works for pairs
-    tokens_a = sample.tokenized["tokens"]
-    tokens_b = sample.tokenized.get("tokens_b", None)
+    if tokenizer.is_fast:
+        text = sample.clear_text["text"]
+        # Here, we tokenize the sample for the second time to get all relevant ids
+        # This should change once we git rid of FARM's tokenize_with_metadata()
+        inputs = tokenizer(text,
+                           return_token_type_ids=True,
+                           max_length=max_seq_len,
+                           return_special_tokens_mask=True)
 
-    inputs = tokenizer.encode_plus(
-        tokens_a,
-        tokens_b,
-        add_special_tokens=True,
-        truncation_strategy='do_not_truncate',
-        return_token_type_ids=True
-    )
+        if (len(inputs["input_ids"]) - inputs["special_tokens_mask"].count(1)) != len(sample.tokenized["tokens"]):
+            logger.error(f"FastTokenizer encoded sample {sample.clear_text['text']} to "
+                         f"{len(inputs['input_ids']) - inputs['special_tokens_mask'].count(1)} tokens, which differs "
+                         f"from number of tokens produced in tokenize_with_metadata(). \n"
+                         f"Further processing is likely to be wrong.")
+    else:
+        # TODO It might be cleaner to adjust the data structure in sample.tokenized
+        tokens_a = sample.tokenized["tokens"]
+        tokens_b = sample.tokenized.get("tokens_b", None)
+
+        inputs = tokenizer.encode_plus(
+            tokens_a,
+            tokens_b,
+            add_special_tokens=True,
+            truncation=False,  # truncation_strategy is deprecated
+            return_token_type_ids=True,
+            max_length=max_seq_len,
+            is_pretokenized=False,
+        )
 
     input_ids, segment_ids = inputs["input_ids"], inputs["token_type_ids"]
 
@@ -136,13 +153,30 @@ def samples_to_features_ner(
     """
 
     tokens = sample.tokenized["tokens"]
-    inputs = tokenizer.encode_plus(text=tokens,
-                                   text_pair=None,
-                                   add_special_tokens=True,
-                                   truncation_strategy='do_not_truncate', # We've already truncated our tokens before
-                                   return_special_tokens_mask=True,
-                                   return_token_type_ids=True
-                                   )
+
+    if tokenizer.is_fast:
+        text = sample.clear_text["text"]
+        # Here, we tokenize the sample for the second time to get all relevant ids
+        # This should change once we git rid of FARM's tokenize_with_metadata()
+        inputs = tokenizer(text,
+                           return_token_type_ids=True,
+                           max_length=max_seq_len,
+                           return_special_tokens_mask=True)
+
+        if (len(inputs["input_ids"]) - inputs["special_tokens_mask"].count(1)) != len(sample.tokenized["tokens"]):
+            logger.error(f"FastTokenizer encoded sample {sample.clear_text['text']} to "
+                         f"{len(inputs['input_ids']) - inputs['special_tokens_mask'].count(1)} tokens, which differs "
+                         f"from number of tokens produced in tokenize_with_metadata().\n"
+                         f"Further processing is likely to be wrong!")
+    else:
+        inputs = tokenizer.encode_plus(text=tokens,
+                                       text_pair=None,
+                                       add_special_tokens=True,
+                                       truncation=False,
+                                       return_special_tokens_mask=True,
+                                       return_token_type_ids=True,
+                                       is_pretokenized=False
+                                       )
 
     input_ids, segment_ids, special_tokens_mask = inputs["input_ids"], inputs["token_type_ids"], inputs["special_tokens_mask"]
 
@@ -231,6 +265,14 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
 
         tokens_b, t2_label = mask_random_words(tokens_b, tokenizer.vocab,
                                                token_groups=sample.tokenized["text_b"]["start_of_word"])
+
+        if tokenizer.is_fast:
+            # Detokenize input as fast tokenizer can't handle tokenized input
+            tokens_a = " ".join(tokens_a)
+            tokens_a = re.sub(r"(^|\s)(##)", "", tokens_a)
+            tokens_b = " ".join(tokens_b)
+            tokens_b = re.sub(r"(^|\s)(##)", "", tokens_b)
+
         # convert lm labels to ids
         t1_label_ids = [-1 if tok == '' else tokenizer.convert_tokens_to_ids(tok) for tok in t1_label]
         t2_label_ids = [-1 if tok == '' else tokenizer.convert_tokens_to_ids(tok) for tok in t2_label]
@@ -246,18 +288,39 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
         tokens_b = None
         tokens_a, t1_label = mask_random_words(tokens_a, tokenizer.vocab,
                                                token_groups=sample.tokenized["text_a"]["start_of_word"])
+        if tokenizer.is_fast:
+            # Detokenize input as fast tokenizer can't handle tokenized input
+            tokens_a = " ".join(tokens_a)
+            tokens_a = re.sub(r"(^|\s)(##)", "", tokens_a)
+
         # convert lm labels to ids
         lm_label_ids = [-1 if tok == '' else tokenizer.convert_tokens_to_ids(tok) for tok in t1_label]
 
-    # encode string tokens to input_ids and add special tokens
-    inputs = tokenizer.encode_plus(text=tokens_a,
-                                   text_pair=tokens_b,
-                                   add_special_tokens=True,
-                                   truncation_strategy='do_not_truncate',
-                                   # We've already truncated our tokens before
-                                   return_special_tokens_mask=True,
-                                   return_token_type_ids=True
-                                   )
+    if tokenizer.is_fast:
+        inputs = tokenizer(text=tokens_a,
+                           text_pair=tokens_b,
+                           add_special_tokens=True,
+                           return_special_tokens_mask=True,
+                           return_token_type_ids=True)
+
+        seq_b_len = len(sample.tokenized["text_b"]["tokens"]) if "text_b" in sample.tokenized else 0
+        if (len(inputs["input_ids"]) - inputs["special_tokens_mask"].count(1)) != \
+           (len(sample.tokenized["text_a"]["tokens"]) + seq_b_len):
+            logger.error(f"FastTokenizer encoded sample {sample.clear_text['text']} to "
+                         f"{len(inputs['input_ids']) - inputs['special_tokens_mask'].count(1)} tokens, which differs "
+                         f"from number of tokens produced in tokenize_with_metadata(). \n"
+                         f"Further processing is likely to be wrong.")
+    else:
+        # encode string tokens to input_ids and add special tokens
+        inputs = tokenizer.encode_plus(text=tokens_a,
+                                       text_pair=tokens_b,
+                                       add_special_tokens=True,
+                                       truncation=False,
+                                       truncation_strategy='do_not_truncate',
+                                       # We've already truncated our tokens before
+                                       return_special_tokens_mask=True,
+                                       return_token_type_ids=True
+                                       )
 
     input_ids, segment_ids, special_tokens_mask = inputs["input_ids"], inputs["token_type_ids"], inputs[
         "special_tokens_mask"]
@@ -358,12 +421,35 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
     # (question_len_t + passage_len_t + n_special_tokens). This may be less than max_seq_len but will not be greater
     # than max_seq_len since truncation was already performed when the document was chunked into passages
     # (c.f. create_samples_squad() )
-    encoded = tokenizer.encode_plus(text=sample.tokenized["question_tokens"],
-                                    text_pair=sample.tokenized["passage_tokens"],
-                                    add_special_tokens=True,
-                                    truncation_strategy='do_not_truncate',
-                                    return_token_type_ids=True,
-                                    return_tensors=None)
+
+    if tokenizer.is_fast:
+        # Detokenize input as fast tokenizer can't handle tokenized input
+        question_tokens = " ".join(question_tokens)
+        question_tokens = re.sub(r"(^|\s)(##)", "", question_tokens)
+        passage_tokens = " ".join(passage_tokens)
+        passage_tokens = re.sub(r"(^|\s)(##)", "", passage_tokens)
+
+        encoded = tokenizer(text=question_tokens,
+                            text_pair=passage_tokens,
+                            add_special_tokens=True,
+                            return_special_tokens_mask=True,
+                            return_token_type_ids=True)
+
+        if (len(encoded["input_ids"]) - encoded["special_tokens_mask"].count(1)) != \
+           (len(sample.tokenized["question_tokens"]) + len(sample.tokenized["passage_tokens"])):
+            logger.error(f"FastTokenizer encoded sample {sample.clear_text['text']} to "
+                         f"{len(encoded['input_ids']) - encoded['special_tokens_mask'].count(1)} tokens, which differs "
+                         f"from number of tokens produced in tokenize_with_metadata(). \n"
+                         f"Further processing is likely to be wrong.")
+    else:
+        encoded = tokenizer.encode_plus(text=sample.tokenized["question_tokens"],
+                                        text_pair=sample.tokenized["passage_tokens"],
+                                        add_special_tokens=True,
+                                        truncation=False,
+                                        truncation_strategy='do_not_truncate',
+                                        return_token_type_ids=True,
+                                        return_tensors=None)
+
     input_ids = encoded["input_ids"]
     segment_ids = encoded["token_type_ids"]
 
@@ -467,8 +553,12 @@ def combine_vecs(question_vec, passage_vec, tokenizer, spec_tok_val=-1):
     # Join question_label_vec and passage_label_vec and add slots for special tokens
     vec = tokenizer.build_inputs_with_special_tokens(token_ids_0=question_vec,
                                                      token_ids_1=passage_vec)
-    spec_toks_mask = tokenizer.get_special_tokens_mask(token_ids_0=question_vec,
-                                                       token_ids_1=passage_vec)
+    if tokenizer.is_fast:
+        spec_toks_mask = tokenizer.get_special_tokens_mask(token_ids_0=vec,
+                                                           already_has_special_tokens=True)
+    else:
+        spec_toks_mask = tokenizer.get_special_tokens_mask(token_ids_0=question_vec,
+                                                           token_ids_1=passage_vec)
 
     # If a value in vec corresponds to a special token, it will be replaced with spec_tok_val
     combined = [v if not special_token else spec_tok_val for v, special_token in zip(vec, spec_toks_mask)]

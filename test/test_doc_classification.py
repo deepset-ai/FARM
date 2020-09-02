@@ -19,7 +19,8 @@ from farm.utils import set_all_seeds, initialize_device_settings
 @pytest.mark.parametrize("data_dir_path,text_column_name",
                          [("samples/doc_class", None),
                           ("samples/doc_class_other_text_column_name", "text_other")])
-def test_doc_classification(data_dir_path, text_column_name, caplog=None):
+@pytest.mark.parametrize("use_fast", [False, True])
+def test_doc_classification(data_dir_path, text_column_name, use_fast, caplog=None):
     if caplog:
         caplog.set_level(logging.CRITICAL)
 
@@ -32,7 +33,9 @@ def test_doc_classification(data_dir_path, text_column_name, caplog=None):
 
     tokenizer = Tokenizer.load(
         pretrained_model_name_or_path=lang_model,
-        do_lower_case=False)
+        do_lower_case=False,
+        use_fast=use_fast,
+        )
 
     tcp_params = dict(tokenizer=tokenizer,
                       max_seq_len=8,
@@ -84,7 +87,7 @@ def test_doc_classification(data_dir_path, text_column_name, caplog=None):
 
     trainer.train()
 
-    save_dir = Path("testsave/doc_class")
+    save_dir = Path("testsave/doc_class_bert")
     model.save(save_dir)
     processor.save(save_dir)
 

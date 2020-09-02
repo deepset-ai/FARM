@@ -231,7 +231,11 @@ class Processor(ABC):
         config = self.generate_config()
         # save tokenizer incl. attributes
         config["tokenizer"] = self.tokenizer.__class__.__name__
-        self.tokenizer.save_pretrained(save_dir)
+
+        # Because the fast tokenizers expect a str and not Path
+        # always convert Path to str here.
+        self.tokenizer.save_pretrained(str(save_dir))
+
         # save processor
         config["processor"] = self.__class__.__name__
         output_config_file = Path(save_dir) / "processor_config.json"

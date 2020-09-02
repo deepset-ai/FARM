@@ -1,4 +1,5 @@
 from pathlib import Path
+import pytest
 
 import numpy as np
 
@@ -16,7 +17,8 @@ from farm.utils import set_all_seeds, initialize_device_settings
 import logging
 
 
-def test_ner(caplog):
+@pytest.mark.parametrize("use_fast", [False, True])
+def test_ner(caplog, use_fast):
     if caplog:
         caplog.set_level(logging.CRITICAL)
 
@@ -28,7 +30,8 @@ def test_ner(caplog):
     lang_model = "distilbert-base-german-cased"
 
     tokenizer = Tokenizer.load(
-        pretrained_model_name_or_path=lang_model, do_lower_case=False
+        pretrained_model_name_or_path=lang_model, do_lower_case=False,
+        use_fast=use_fast,
     )
 
     ner_labels = ["[PAD]", "X", "O", "B-MISC", "I-MISC", "B-PER", "I-PER", "B-ORG", "I-ORG", "B-LOC", "I-LOC", "B-OTH",
@@ -86,7 +89,7 @@ def test_ner(caplog):
     basic_texts = [
         {"text": "Paris is a town in France."},
     ]
-    model = Inferencer.load(model_name_or_path="dbmdz/bert-base-cased-finetuned-conll03-english", num_processes=0, task_type="ner")
+    model = Inferencer.load(model_name_or_path="dbmdz/bert-base-cased-finetuned-conll03-english", num_processes=0, task_type="ner", use_fast=use_fast)
     # labels arent correctly inserted from transformers
     # They are converted to LABEL_1 ... LABEL_N
     # For the inference result to contain predictions we need them in IOB NER format
@@ -98,4 +101,4 @@ def test_ner(caplog):
 
 
 if __name__ == "__main__":
-    test_ner(None)
+    test_ner(None, True)

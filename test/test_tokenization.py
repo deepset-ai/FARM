@@ -1,7 +1,31 @@
 import logging
-from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
-from transformers import BertTokenizer, RobertaTokenizer, XLNetTokenizer
+import pytest
 import re
+from transformers import BertTokenizer, BertTokenizerFast, RobertaTokenizer, XLNetTokenizer, RobertaTokenizerFast
+from transformers import ElectraTokenizerFast
+
+from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
+
+
+TEXTS = [
+    "This is a sentence",
+    "Der entscheidende Pass",
+    "This      is a sentence with multiple spaces",
+    "力加勝北区ᴵᴺᵀᵃছজটডণত",
+    "Thiso text is included tolod makelio sure Unicodeel is handled properly:",
+    "This is a sentence...",
+    "Let's see all on this text and. !23# neverseenwordspossible",
+    """This is a sentence.
+    With linebreak""",
+    """Sentence with multiple
+
+
+    newlines
+    """,
+    "and another one\n\n\nwithout space",
+    "This is a sentence	with tab",
+    "This is a sentence			with multiple tabs",
+]
 
 
 def test_basic_loading(caplog):
@@ -90,6 +114,37 @@ def test_truncate_sequences(caplog):
             assert len(trunc_a) + len(trunc_b) + tokenizer.num_special_tokens_to_add(pair=True) == max_seq_len
 
 
+@pytest.mark.parametrize("model_name", ["bert-base-german-cased",
+                         "google/electra-small-discriminator",
+                         ])
+def test_fast_tokenizer_with_examples(caplog, model_name):
+    fast_tokenizer = Tokenizer.load(model_name, lower_case=False, use_fast=True)
+    tokenizer = Tokenizer.load(model_name, lower_case=False, use_fast=False)
+
+    for text in TEXTS:
+            # plain tokenize function
+            tokenized = tokenizer.tokenize(text)
+            fast_tokenized = fast_tokenizer.tokenize(text)
+
+            assert tokenized == fast_tokenized
+
+
+@pytest.mark.parametrize("model_name", ["bert-base-german-cased",
+                         "google/electra-small-discriminator",
+                         ])
+def test_fast_tokenizer_with_metadata_with_examples(caplog, model_name):
+    fast_tokenizer = Tokenizer.load(model_name, lower_case=False, use_fast=True)
+    tokenizer = Tokenizer.load(model_name, lower_case=False, use_fast=False)
+
+    for text in TEXTS:
+            # our tokenizer with metadata on "whitespace tokenized words"
+            tokenized_meta = tokenize_with_metadata(text=text, tokenizer=tokenizer)
+            fast_tokenized_meta = tokenize_with_metadata(text=text, tokenizer=fast_tokenizer)
+
+            # verify that tokenization on full sequence is the same as the one on "whitespace tokenized words"
+            assert tokenized_meta == fast_tokenized_meta, f"Failed using {tokenizer.__class__.__name__}"
+
+
 def test_all_tokenizer_on_special_cases(caplog):
     caplog.set_level(logging.CRITICAL)
 
@@ -171,6 +226,81 @@ def test_bert_custom_vocab(caplog):
     assert tokenized_meta["tokens"] == tokenized
     assert tokenized_meta["offsets"] == [0, 5, 10, 15, 31, 36, 37, 40, 41, 42, 44, 48, 50, 58, 59, 64, 65, 69, 70, 72]
     assert tokenized_meta["start_of_word"] == [True, True, True, True, True, True, False, False, False, False, True, True, True, False, False, False, False, False, False, False]
+
+
+def test_fast_bert_custom_vocab(caplog):
+    caplog.set_level(logging.CRITICAL)
+
+    lang_model = "bert-base-cased"
+
+    tokenizer = Tokenizer.load(
+        pretrained_model_name_or_path=lang_model,
+        do_lower_case=False, use_fast=True
+        )
+
+    #deprecated: tokenizer.add_custom_vocab("samples/tokenizer/custom_vocab.txt")
+    tokenizer.add_tokens(new_tokens=["neverseentokens"])
+
+    basic_text = "Some Text with neverseentokens plus !215?#. and a combined-token_with/chars"
+
+    # original tokenizer from transformer repo
+    tokenized = tokenizer.tokenize(basic_text)
+    assert tokenized == ['Some', 'Text', 'with', 'neverseentokens', 'plus', '!', '215', '?', '#', '.', 'and', 'a', 'combined', '-', 'token', '_', 'with', '/', 'ch', '##ars']
+
+    # ours with metadata
+    tokenized_meta = tokenize_with_metadata(text=basic_text, tokenizer=tokenizer)
+    assert tokenized_meta["tokens"] == tokenized
+    assert tokenized_meta["offsets"] == [0, 5, 10, 15, 31, 36, 37, 40, 41, 42, 44, 48, 50, 58, 59, 64, 65, 69, 70, 72]
+    assert tokenized_meta["start_of_word"] == [True, True, True, True, True, True, False, False, False, False, True, True, True, False, False, False, False, False, False, False]
+
+
+@pytest.mark.parametrize("model_name, tokenizer_type", [
+                         ("bert-base-german-cased", BertTokenizerFast),
+                         ("google/electra-small-discriminator", ElectraTokenizerFast),
+                         ])
+def test_fast_tokenizer_type(caplog, model_name, tokenizer_type):
+    caplog.set_level(logging.CRITICAL)
+
+    tokenizer = Tokenizer.load(model_name, use_fast=True)
+    assert type(tokenizer) is tokenizer_type
+
+
+def test_fast_bert_tokenizer_strip_accents(caplog):
+    caplog.set_level(logging.CRITICAL)
+
+    tokenizer = Tokenizer.load("dbmdz/bert-base-german-uncased",
+                               use_fast=True,
+                               strip_accents=False)
+    assert type(tokenizer) is BertTokenizerFast
+    assert tokenizer._tokenizer._parameters['strip_accents'] is False
+    assert tokenizer._tokenizer._parameters['lowercase']
+
+
+def test_fast_electra_tokenizer(caplog):
+    caplog.set_level(logging.CRITICAL)
+
+    tokenizer = Tokenizer.load("dbmdz/electra-base-german-europeana-cased-discriminator",
+                               use_fast=True)
+    assert type(tokenizer) is ElectraTokenizerFast
+
+
+@pytest.mark.parametrize("model_name", ["bert-base-cased", "distilbert-base-uncased", "deepset/electra-base-squad2"])
+def test_detokenization_in_fast_tokenizers(model_name):
+    tokenizer = Tokenizer.load(
+        pretrained_model_name_or_path=model_name,
+        use_fast=True
+    )
+    for text in TEXTS:
+        tokens_with_metadata = tokenize_with_metadata(text, tokenizer)
+        tokens = tokens_with_metadata["tokens"]
+
+        detokenized = " ".join(tokens)
+        detokenized = re.sub(r"(^|\s+)(##)", "", detokenized)
+
+        detokenized_ids = tokenizer(detokenized, add_special_tokens=False)["input_ids"]
+        detokenized_tokens = [tokenizer.decode([tok_id]).strip() for tok_id in detokenized_ids]
+
+        assert tokens == detokenized_tokens
 
 
 if __name__ == "__main__":
