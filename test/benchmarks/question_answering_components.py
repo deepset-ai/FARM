@@ -32,12 +32,32 @@ def benchmark(params, output="results_component_test.csv"):
     ds = generate_param_dicts(params)
     print(f"Running {len(ds)} benchmarks...")
     results = []
+    warmup_run()
     for d in tqdm(ds):
         result = benchmark_single(**d)
         results.append(result)
         logger.info("\n\n" + pformat(result) + "\n")
     df = pd.DataFrame.from_records(results)
     df.to_csv(output)
+
+
+def warmup_run():
+    """ This run warms up the gpu. We saw cases where the first run in the loop took longer or showed different
+    time profile characteristics. This warm up run is intended to reduce this kind of fluctation. """
+    question = [l[:-1] for l in open(questions_file)][0]
+    document_size = 100_000
+    input_dict = prepare_dict(sample_file, question, document_size)
+    # Run once with real prediction heads
+    inferencer = Inferencer.load("deepset/bert-base-cased-squad2",
+                                 batch_size=16,
+                                 gpu=True,
+                                 task_type=task_type,
+                                 max_seq_len=384,
+                                 num_processes=num_processes,
+                                 doc_stride=128,
+                                 dummy_ph=False,
+                                 benchmarking=True)
+    inferencer.inference_from_dicts(input_dict)
 
 
 def benchmark_single(batch_size, gpu, max_seq_len, doc_stride, document_size, question, modelname):
