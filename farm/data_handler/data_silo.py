@@ -950,6 +950,10 @@ class DataSiloForNestedCrossVal(DataSiloForCrossVal):
 
     The outer cross validation splits all data to test and rest.
     The inner cross validation splits the rest data to train and dev.
+
+    To use this class call ``DataSiloForNestedCrossVal.make()`` which
+    creates a list of DataSiloForCrossVal
+    instances - one for each fold (outer folds times inner folds).
     """
 
     def __init__(self, origsilo, trainset, devset, testset):
@@ -961,8 +965,14 @@ class DataSiloForNestedCrossVal(DataSiloForCrossVal):
              shuffle=True, random_state=None,
              stratified=True, n_neg_answers_per_question=1):
         """
-        Create number of folds data-silo-like objects which can be used for training from the
+        Create number of folds data-silo-like objects which can be used
+        to do a nested crossvalidation for training from the
         original data silo passed on.
+
+        The outer cross validation splits all data to test and rest.
+        The inner cross validation splits the rest data to train and dev.
+        The number of returned data silos is ``n_outer_splits`` times
+        ``n_inner_splits``.
 
         :param datasilo: the data silo that contains the original data
         :type datasilo: DataSilo
