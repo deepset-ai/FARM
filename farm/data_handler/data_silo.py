@@ -1009,7 +1009,6 @@ class DataSiloForNestedCrossVal(DataSiloForCrossVal):
         setstoconcat = [datasilo.data[setname] for setname in sets]
         ds_all = ConcatDataset(setstoconcat)
         idxs = list(range(len(ds_all)))
-        dev_split = datasilo.processor.dev_split
 
         silos = []
 
