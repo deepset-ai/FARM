@@ -52,3 +52,19 @@ def test_data_silo_for_nested_cross_val():
     assert data_loader_dev_indices_0.ndim == 1
     assert data_loader_dev_indices_1.ndim == 1
     assert not np.array_equal(data_loader_dev_indices_0, data_loader_dev_indices_1)
+
+    # extract and test train sets of silo 0 and 1
+    data_loader_train_indices_0 = silos[0].get_data_loader('train').dataset.indices
+    data_loader_train_indices_1 = silos[1].get_data_loader('train').dataset.indices
+    assert data_loader_train_indices_0.size > 0
+    assert data_loader_train_indices_1.size > 0
+    assert data_loader_train_indices_0.ndim == 1
+    assert data_loader_train_indices_1.ndim == 1
+
+    # size of dev + train + test must be same on all folds
+    assert (data_loader_train_indices_0.size + \
+           data_loader_dev_indices_0.size + \
+           data_loader_test_indices_0.size) == \
+           (data_loader_train_indices_1.size + \
+           data_loader_dev_indices_1.size + \
+           data_loader_test_indices_1.size)
