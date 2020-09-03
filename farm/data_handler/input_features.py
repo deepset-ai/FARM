@@ -503,6 +503,77 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
                     "seq_2_start_t": seq_2_start_t}
     return [feature_dict]
 
+def sample_to_features_dpr(
+    sample, max_seq_len, query_tokenizer, passage_tokenizer, embed_title=True, remove_sep_tok_from_untitled_passages=True
+):
+    """
+    Generates a dictionary of features for a given input sample that is to be consumed by a dense passage retrieval model.
+
+    :param sample: Sample object that contains human readable text and label fields from a single text classification data sample
+    :type sample: Sample
+    :param max_seq_len: Sequences are truncated after this many tokens
+    :type max_seq_len: int
+    :param query_tokenizer: A tokenizer object that can turn the query sentence into a list of tokens
+    :return: A list with one dictionary containing the keys "input_ids", "padding_mask" and "segment_ids". The values are lists containing those features.
+    :rtype: list
+    :param passage_tokenizer: A tokenizer object that can turn all context passages into a list of tokens
+    :return: A list with one dictionary containing the keys "input_ids", "padding_mask" and "segment_ids". The values are lists containing those features.
+    :rtype: list
+    :embed_title: whether to encode the context passage titles with the context passages
+    :type embed_title: bool
+    """
+
+    tokens_query = sample.tokenized["query_tokens"]
+    tokens_positive_ctx = sample.tokenized["positive_ctx_tokens"]
+    tokens_positive_ctx_title = sample.tokenized.get("positive_ctx_title_tokens", None)
+    tokens_hard_negative_ctx = sample.tokenized["hard_negative_ctx_tokens"]
+    tokens_hard_negative_ctx_title = sample.tokenized.get("hard_negative_ctx_titles_tokens", None)
+
+    query_inputs = query_tokenizer.encode_plus(
+        text=tokens_query["tokens"],
+        max_length=max_seq_len,
+        add_special_tokens=True,
+        truncation_strategy='do_not_truncate',
+        padding="max_length",
+        return_token_type_ids=True,
+        is_pretokenized=True
+    )
+
+    if embed_title:
+        # embed title with positive context passages + negative context passages
+        all_ctx = [tuple((tokens_positive_ctx_title["tokens"], tokens_positive_ctx["tokens"]))] +  \
+                  [tuple((title["tokens"], ctx["tokens"])) for title, ctx in zip(tokens_hard_negative_ctx_title, tokens_hard_negative_ctx)]
+    else:
+        all_ctx = [tokens_positive_ctx["tokens"]] + [ctx["tokens"] for ctx in tokens_hard_negative_ctx]
+
+    ctx_inputs = passage_tokenizer.batch_encode_plus(
+        all_ctx,
+        add_special_tokens=True,
+        truncation=True,
+        padding="max_length",
+        max_length=max_seq_len,
+        return_token_type_ids=True
+    )
+    query_input_ids, query_segment_ids, query_padding_mask = query_inputs["input_ids"], query_inputs["token_type_ids"], query_inputs["attention_mask"]
+    ctx_input_ids, ctx_segment_ids, ctx_padding_mask = ctx_inputs["input_ids"], ctx_inputs["token_type_ids"], ctx_inputs["attention_mask"]
+    assert len(query_input_ids) == max_seq_len
+    assert len(query_padding_mask) == max_seq_len
+    assert len(query_segment_ids) == max_seq_len
+    assert len(ctx_input_ids) == max_seq_len
+    assert len(ctx_padding_mask) == max_seq_len
+    assert len(ctx_segment_ids) == max_seq_len
+
+    feat_dict = {
+        "query_input_ids": query_input_ids,
+        "query_padding_mask": query_padding_mask,
+        "query_segment_ids": query_segment_ids,
+        "ctx_input_ids": ctx_input_ids,
+        "ctx_padding_mask": ctx_padding_mask,
+        "ctx_segment_ids": ctx_segment_ids,
+    }
+
+    return [feat_dict]
+
 
 def generate_labels(answers, passage_len_t, question_len_t, max_answers,
                     sp_toks_start, sp_toks_mid, answer_type_list=None):

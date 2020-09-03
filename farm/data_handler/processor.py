@@ -19,6 +19,7 @@ from farm.data_handler.input_features import (
     samples_to_features_bert_lm,
     sample_to_features_text,
     sample_to_features_qa,
+    sample_to_features_dpr
 )
 from farm.data_handler.samples import (
     Sample,
@@ -1677,6 +1678,168 @@ class RegressionProcessor(Processor):
             max_seq_len=self.max_seq_len,
             tokenizer=self.tokenizer
         )
+        return features
+
+class DPRProcessor(Processor):
+    """
+    Used to handle the text DPR datasets that come in json format
+    """
+    def __init__(
+        self,
+        query_tokenizer,
+        passage_tokenizer,
+        max_seq_len,
+        data_dir,
+        metric=None,
+        train_filename="train.json",
+        dev_filename=None,
+        test_filename="test.json",
+        dev_split=0.1,
+        proxies=None,
+        max_samples=None,
+        embed_title=True,
+        num_positives=1,
+        num_hard_negatives=1,
+        **kwargs
+    ):
+        """
+        :param passage_tokenizer: Used to split a passage (str) into tokens.
+        :param query_tokenizer: Used to split the question (str) into tokens
+        :param max_seq_len: Samples are truncated after this many tokens.
+        :type max_seq_len: int
+        :param data_dir: The directory in which the train and dev files can be found.
+                         If not available the dataset will be loaded automaticaly
+                         if the last directory has the same name as a predefined dataset.
+                         These predefined datasets are defined as the keys in the dict at
+                         `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
+        :type data_dir: str
+        :param metric: name of metric that shall be used for evaluation, e.g. "acc" or "f1_macro".
+                 Alternatively you can also supply a custom function, that takes preds and labels as args and returns a numerical value.
+                 For using multiple metrics supply them as a list, e.g ["acc", my_custom_metric_fn].
+        :type metric: str, function, or list
+        :param train_filename: The name of the file containing training data.
+        :type train_filename: str
+        :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
+                             will be a slice of the train set.
+        :type dev_filename: str or None
+        :param test_filename: None
+        :type test_filename: str
+        :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
+        :type dev_split: float
+        :param proxies: proxy configuration to allow downloads of remote datasets.
+                        Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
+        :type proxies: dict
+        :param embed_title: Whether to embed title in passages during tensorization (bool),
+        :param num_hard_negatives: maximum number to hard negative context passages in a sample
+        :param num_positives: maximum number to positive context passages in a sample
+        :param kwargs: placeholder for passing generic parameters
+        :type kwargs: object
+        """
+        #TODO If an arg is misspelt, e.g. metrics, it will be swallowed silently by kwargs
+
+        # Custom processor attributes
+        self.max_samples = max_samples
+        self.query_tokenizer = query_tokenizer
+        self.passage_tokenizer = passage_tokenizer
+        self.embed_title = embed_title
+        self.num_hard_negatives = num_hard_negatives
+        self.num_positives = num_positives
+
+        super(DPRProcessor, self).__init__(
+            tokenizer= query_tokenizer,
+            max_seq_len=max_seq_len,
+            train_filename=train_filename,
+            dev_filename=dev_filename,
+            test_filename=test_filename,
+            dev_split=dev_split,
+            data_dir=data_dir,
+            tasks={},
+            proxies=proxies,
+        )
+        if metric:
+            task_type = "dpr"
+            self.add_task(name="dpr",
+                          metric=metric,
+                          label_list=None,
+                          label_name=None,
+                          task_type=task_type)
+        else:
+            logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
+                        "using the default task or add a custom task later via processor.add_task()")
+
+    def file_to_dicts(self, file: str) -> [dict]:
+        # TO-DO: json should be in SQUAD format
+        dicts = json.load(open(file))
+        return dicts
+
+    def _normalize_question(self, question: str) -> str:
+        if question[-1] == '?':
+            question = question[:-1]
+        return question
+
+    def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
+        """
+        dictionary representing 1 sample to Sample for DPR
+        :param dictionary:  {"question": str,
+                            "positive_ctxs":  List[{'title': str, text': str, 'score': int, 'title_score': int, 'passage_id': int}],
+                            "hard_negative_ctxs": List[{'title': str, text': str, 'score': int, 'title_score': int, 'passage_id': int}]
+                            }
+        Returns:
+                sample: instance of Sample
+        """
+        # extract query, positive context passages and titles, hard-negative passages and titles
+        query = self._normalize_question(dictionary["question"])
+        positive_ctx_text = dictionary["positive_ctxs"][self.num_positives]["text"]
+        positive_ctx_title = dictionary["positive_ctxs"][self.num_positives].get("title", None)
+        hard_negative_ctx_texts = [passage["text"] for passage in dictionary["hard_negative_ctxs"][:self.num_hard_negatives]]
+        hard_negative_ctx_titles = [passage.get("title", None) for passage in dictionary["hard_negative_ctxs"][:self.num_hard_negatives]]
+
+        # all context passages and labels: 1 for positive context and 0 for hard-negative context
+        all_ctxs = [positive_ctx_text] + hard_negative_ctx_texts
+        ctx_label = [1]*self.num_positives + [0]*self.num_hard_negatives
+
+        # tokenize query and contexts
+        tokenized_query = tokenize_with_metadata(query, self.query_tokenizer)
+        tokenized_positive_ctx_text = tokenize_with_metadata(positive_ctx_text, self.passage_tokenizer)
+        tokenized_positive_ctx_title = tokenize_with_metadata(positive_ctx_title, self.passage_tokenizer)
+        tokenized_hard_negative_ctx_text = [tokenize_with_metadata(ctx, self.passage_tokenizer) for ctx in hard_negative_ctx_texts]
+        tokenized_hard_negative_ctx_titles = [tokenize_with_metadata(ctx, self.passage_tokenizer) for ctx in hard_negative_ctx_titles]
+
+        if len(tokenized_query["tokens"]) == 0 or tokenized_positive_ctx_text["tokens"] == 0 or len(tokenized_hard_negative_ctx_text["tokens"]) == 0:
+            logger.warning(f"The text could not be tokenized, likely because it contains a character that the tokenizer does not recognize")
+            return None
+
+        clear_text = {"query_text": query,
+                      "positive_ctx_text": positive_ctx_text,
+                      "positive_ctx_title": positive_ctx_title,
+                      "hard_negative_ctx_text": hard_negative_ctx_texts,
+                      "hard_negative_ctx_title": hard_negative_ctx_titles,
+                      "all_ctxs": all_ctxs,
+                      "label": ctx_label
+                     }
+
+        tokenized = {"positive_ctx_tokens": tokenized_positive_ctx_text,
+                     "positive_ctx_title_tokens": tokenized_positive_ctx_title,
+                     "hard_negative_ctx_tokens": tokenized_hard_negative_ctx_text,
+                     "hard_negative_ctx_titles_tokens": tokenized_hard_negative_ctx_titles,
+                     "query_tokens": tokenized_query,
+                     "label_tokens": ctx_label
+                     }
+
+        sample = Sample(id=None,
+                        clear_text=clear_text,
+                        tokenized=tokenized)
+        return sample
+
+    def _sample_to_features(self, sample) -> dict:
+        features = sample_to_features_dpr(
+            sample=sample,
+            max_seq_len=self.max_seq_len,
+            query_tokenizer=self.query_tokenizer,
+            passage_tokenizer=self.passage_tokenizer,
+            embed_title=self.embed_title,
+        )
+
         return features
 
 
