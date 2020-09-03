@@ -20,6 +20,7 @@ from farm.data_handler.input_features import (
     samples_to_features_bert_lm,
     sample_to_features_text,
     sample_to_features_qa,
+    sample_to_features_dpr
 )
 from farm.data_handler.samples import (
     Sample,
