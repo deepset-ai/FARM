@@ -20,6 +20,7 @@ from farm.data_handler.input_features import (
     samples_to_features_bert_lm,
     sample_to_features_text,
     sample_to_features_qa,
+    sample_to_features_dpr
 )
 from farm.data_handler.samples import (
     Sample,
@@ -1752,8 +1753,8 @@ class DPRProcessor(Processor):
         **kwargs
     ):
         """
-        :param tokenizer: Used to split a question (str) into tokens
         :param passage_tokenizer: Used to split a passage (str) into tokens.
+        :param query_tokenizer: Used to split the question (str) into tokens
         :param max_seq_len: Samples are truncated after this many tokens.
         :type max_seq_len: int
         :param data_dir: The directory in which the train and dev files can be found.
