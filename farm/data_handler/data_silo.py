@@ -1032,7 +1032,12 @@ class DataSiloForNestedCrossVal(DataSiloForCrossVal):
             else:
                 inner_cv = KFold(n_splits=n_inner_splits, shuffle=shuffle, random_state=random_state)
                 inner_split = inner_cv.split(idxs_rest)
-            for idxs_train, idxs_dev in inner_split:
+            for idxs_train_idxs, idxs_dev_idxs in inner_split:
+
+                # split idxs_rest with indexes from inner cross validation
+                idxs_train = idxs_rest[idxs_train_idxs]
+                idxs_dev = idxs_rest[idxs_dev_idxs]
+
                 ds_train = Subset(ds_all, idxs_train)
                 ds_dev = Subset(ds_all, idxs_dev)
                 ds_test = Subset(ds_all, idxs_test)
