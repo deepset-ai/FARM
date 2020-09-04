@@ -101,7 +101,7 @@ def download_from_s3(s3_url: str, cache_dir: str = None, access_key: str = None,
     """
     Download a "folder" from s3 to local. Skip already existing files. Useful for downloading all files of one model
     The default and recommended authentication follows boto3's trajectory of checking for ENV variables,
-     .aws/credentials etc. (see https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html).
+    .aws/credentials etc. (see https://boto3.amazonaws.com/v1/documentation/api/latest/guide/credentials.html).
     However, there's also the option to pass `access_key`, `secret_access_key` and `region_name` directly
     as this is needed in some enterprise enviroments with local s3 deployments.
 
