@@ -435,12 +435,16 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
                             return_special_tokens_mask=True,
                             return_token_type_ids=True)
 
-        if (len(encoded["input_ids"]) - encoded["special_tokens_mask"].count(1)) != \
-           (len(sample.tokenized["question_tokens"]) + len(sample.tokenized["passage_tokens"])):
-            logger.error(f"FastTokenizer encoded sample {sample.clear_text['text']} to "
-                         f"{len(encoded['input_ids']) - encoded['special_tokens_mask'].count(1)} tokens, which differs "
-                         f"from number of tokens produced in tokenize_with_metadata(). \n"
-                         f"Further processing is likely to be wrong.")
+        n_tokens_encoded = len(encoded["input_ids"]) - encoded["special_tokens_mask"].count(1)
+        n_tokens_with_metadata = len(sample.tokenized["question_tokens"]) + len(sample.tokenized["passage_tokens"])
+
+        if n_tokens_encoded != n_tokens_with_metadata:
+            tokens_encoded = tokenizer.convert_ids_to_tokens(encoded["input_ids"])
+            logger.error(f"FastTokenizer encoded sample to {n_tokens_encoded} tokens,"
+                         f" while the previous tokenize_with_metadata produced {n_tokens_with_metadata} tokens. \n"
+                         f"Further processing is likely to be wrong.\n"
+                         f"FastTokenizer: {tokens_encoded} \n"
+                         f"tokenize_with_metadata: {sample.tokenized['question_tokens'] + sample.tokenized['passage_tokens']}")
     else:
         encoded = tokenizer.encode_plus(text=sample.tokenized["question_tokens"],
                                         text_pair=sample.tokenized["passage_tokens"],

@@ -293,8 +293,8 @@ class Processor(ABC):
                 for num, sample in enumerate(basket.samples):
                      sample.id = f"{basket.id_internal}-{num}"
             except Exception as e:
+                logger.exception(e)
                 logger.error(f"Could not create sample(s) from this dict: \n {basket.raw}")
-                logger.error(f"Error message: {e}")
 
     def _featurize_samples(self):
         for basket in self.baskets:
@@ -302,7 +302,7 @@ class Processor(ABC):
                 try:
                     sample.features = self._sample_to_features(sample=sample)
                 except Exception as e:
-                    logger.error(f"Could not convert this sample to features: \n {sample}")
+                    logger.error(f"Could not convert sample to features: \n {sample}")
                     logger.error(f"Basket id: id_internal: {basket.id_internal}, id_external: {basket.id_external}")
                     logger.error(f"Error message: {e}")
 

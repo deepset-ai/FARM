@@ -2,6 +2,7 @@ from transformers.tokenization_bert import whitespace_tokenize
 from farm.visual.ascii.images import SAMPLE
 
 import logging
+from typing import List
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +171,8 @@ def create_samples_qa(dictionary, max_query_len, max_seq_len, doc_stride, n_spec
     passage_spans = chunk_into_passages(doc_offsets,
                                         doc_stride,
                                         passage_len_t,
-                                        doc_text)
+                                        doc_text,
+                                        doc_start_of_word)
     for passage_span in passage_spans:
         # Unpack each variable in the dictionary. The "_t" and "_c" indicate
         # whether the index is on the token or character level
@@ -213,27 +215,52 @@ def create_samples_qa(dictionary, max_query_len, max_seq_len, doc_stride, n_spec
     return samples
 
 
-def chunk_into_passages(doc_offsets,
-                        doc_stride,
-                        passage_len_t,
-                        doc_text):
-    """ Returns a list of dictionaries which each describe the start, end and id of a passage
-    that is formed when chunking a document using a sliding window approach. """
+def chunk_into_passages(doc_offsets: List[int],
+                        doc_stride: int,
+                        passage_len_t: int,
+                        doc_text: str,
+                        doc_start_of_word: List[int]):
+    """
+    Returns a list of dictionaries which each describe the start, end and id of a passage
+    that is formed when chunking a document using a sliding window approach.
+
+    :param doc_offsets: List with the character offsets for each token in this doc,
+                        i.e.  doc_offsets[0] contains the character offset of the first token in our document
+    :param doc_stride: How many tokens we move our sliding window forward in every step
+    :param passage_len_t: How large the window is (can be less if start or end of window is in the middle of a word)
+    :param doc_text: "Raw" text of our document
+    :param doc_start_of_word: List containing for every token the info if it is the start of a word
+    :return: List of dicts (one per passage). Each dict containing the start and end offsets in character and token space.
+    """
+
     passage_spans = []
     passage_id = 0
     doc_len_t = len(doc_offsets)
     while True:
+        # 1) Calc start token + character
         passage_start_t = passage_id * doc_stride
-        passage_end_t = passage_start_t + passage_len_t
+        # ensure we begin our passage with the start of a word (and not in the middle with a subwordtoken)
+        while not doc_start_of_word[passage_start_t] and (passage_start_t + 1 < doc_len_t):
+            # move to next token until we find start of word or reach end of doc
+            passage_start_t = passage_start_t + 1
+        if passage_start_t == doc_len_t - 1:
+            break
         passage_start_c = doc_offsets[passage_start_t]
 
+        # 2) Calc end token + character
+        # preliminary end token
+        passage_end_t = passage_start_t + passage_len_t
         # If passage_end_t points to the last token in the passage, define passage_end_c as the length of the document
         if passage_end_t >= doc_len_t - 1:
             passage_end_c = len(doc_text)
-
+            passage_end_t = doc_len_t - 1 # todo check if we then need to change indexing upstream to +1
         # Get document text up to the first token that is outside the passage. Strip of whitespace.
         # Use the length of this text as the passage_end_c
         else:
+            # ensure we end the passage at the end of a word (i.e next token is a new start of word)
+            while not doc_start_of_word[passage_end_t + 1]:
+                passage_end_t = passage_end_t - 1
+
             end_ch_idx = doc_offsets[passage_end_t + 1]
             raw_passage_text = doc_text[:end_ch_idx]
             passage_end_c = len(raw_passage_text.strip())
@@ -246,8 +273,9 @@ def chunk_into_passages(doc_offsets,
         passage_spans.append(passage_span)
         passage_id += 1
         # If the end idx is greater than or equal to the length of the passage
-        if passage_end_t >= doc_len_t:
+        if passage_end_t >= doc_len_t - 1:
             break
+
     return passage_spans
 
 

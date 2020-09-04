@@ -177,6 +177,59 @@ def test_qa_onnx_inference(caplog=None):
         else:
             assert onnx[1] == regular[1]
 
+def test_passage_split_within_word(bert_base_squad2):
+    qa_format_1 = [
+        {
+            "questions": ["Who counted the game among the best ever made?"],
+            "text": "Twilight Princess was released to universal critical acclaim and commercial success. "
+                    "It received perfect scores from major publications such as 1UP.com, Computer and Video Games,"
+                    " Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators "
+                    "GameRankings and Metacritic, Twilight Princess has average scores of 95% and "
+                    "95 for the Wii version and scores of 95% and 96 for the GameCube version. "
+                    "GameTrailers in their review called it one of the greatest games ever created."
+                    "Twilight Princess was released to universal critical acclaim and commercial success. "
+                    "It received perfect scores from major publications LongSpecialWordForTestCase, Computer and Video Games,"
+                    " Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators "
+                    "GameRankings and Metacritic, Twilight Princess has average scores of 95% and "
+                    "95 for the Wii version and scores of 95% and 96 for the GameCube version. "
+                    "GameTrailers in their review called it one of the greatest games ever created."
+                    "Twilight Princess was released to universal critical acclaim and commercial success. "
+                    "It received perfect scores from major publications such as 1UP.com, Computer and Video Games,"
+                    " Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators "
+        }]
+
+    result1 = bert_base_squad2.inference_from_dicts(dicts=qa_format_1)
+
+
+def test_chunk_passages():
+    from farm.data_handler.samples import chunk_into_passages
+
+    doc_offsets = [0, 5, 8, 10, 16, 21, 31, 33, 37, 39, 41, 44]
+    doc_stride = 5
+    passage_len_t = 10
+    doc_text = 'This is a small text including a Longspecialword'
+    doc_start_of_word = [1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0]
+    passage_spans = chunk_into_passages(doc_offsets,
+                                        doc_stride,
+                                        passage_len_t,
+                                        doc_text,
+                                        doc_start_of_word)
+
+    # first passage must start at start of doc
+    assert passage_spans[0]["passage_start_t"] == 0
+    assert passage_spans[0]["passage_start_c"] == 0
+    # last passage must end at end of doc
+    assert passage_spans[-1]["passage_end_t"] == len(doc_offsets) - 1
+    assert passage_spans[-1]["passage_end_c"] == len(doc_text)
+    # passage spans must overlap
+    prev_end_t = 1
+    prev_end_c = 1
+    for span in passage_spans:
+        assert span["passage_start_t"] < prev_end_t
+        assert span["passage_start_c"] < prev_end_c
+        prev_end_t = span["passage_end_t"]
+        prev_end_c = span["passage_end_c"]
+
 
 if(__name__=="__main__"):
     test_training()
