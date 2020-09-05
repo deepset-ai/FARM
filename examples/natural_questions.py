@@ -35,7 +35,7 @@ def question_answering():
     evaluate_every = 500
     lang_model = "deepset/roberta-base-squad2" # start with a model that can already extract answers
     do_lower_case = False # roberta is a cased model
-    train_filename = "train_medium.jsonl"
+    train_filename = "dev_medium.jsonl"
     dev_filename = "dev_medium.jsonl"
     keep_is_impossible = 0.15 # downsample negative examples after data conversion
     downsample_context_size = 300 # reduce length of wikipedia articles to relevant part around the answer
@@ -136,7 +136,7 @@ def question_answering():
 
     print(f"\nQuestion: Did GameTrailers rated Twilight Princess as one of the best games ever created?"
           f"\nAnswer from model: {result[0].prediction[0].answer}")
-    model.close_multiprcessing_pool()
+    model.close_multiprocessing_pool()
 
 if __name__ == "__main__":
     question_answering()
