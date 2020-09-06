@@ -352,8 +352,8 @@ class Trainer:
         if self.early_stopping and self.early_stopping.save_dir:
             logger.info("Restoring best model so far from {}".format(self.early_stopping.save_dir))
             lm_name = self.model.language_model.name
-            model = AdaptiveModel.load(self.early_stopping.save_dir, self.device, lm_name=lm_name)
-            model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
+            self.model = AdaptiveModel.load(self.early_stopping.save_dir, self.device, lm_name=lm_name)
+            self.model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
 
         # Eval on test set
         if self.evaluator_test:
