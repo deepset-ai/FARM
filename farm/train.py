@@ -240,6 +240,9 @@ class Trainer:
 
         If trainer evaluates the model with a test set the result of the
         evaluation is stored in ``test_result``.
+
+        :return: Returns the model after training. When you do ``early_stopping``
+            with a ``save_dir`` the best model loaded and returned.
         """
 
         # connect the prediction heads with the right output from processor
