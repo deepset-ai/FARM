@@ -20,7 +20,6 @@ from farm.data_handler.input_features import (
     samples_to_features_bert_lm,
     sample_to_features_text,
     sample_to_features_qa,
-    sample_to_features_dpr
 )
 from farm.data_handler.samples import (
     Sample,
@@ -1924,6 +1923,40 @@ class DPRProcessor(Processor):
         # all context passages and labels: 1 for positive context and 0 for hard-negative context
         ctx_label = [1]*(self.num_positives if self.num_positives < len(positive_context) else len(positive_context)) + \
                     [0]*(self.num_hard_negatives if self.num_hard_negatives < len(hard_negative_context) else len(hard_negative_context))
+
+        # featurize the query
+        query_inputs = self.query_tokenizer.encode_plus(
+            text=query,
+            max_length=self.max_seq_len,
+            add_special_tokens=True,
+            truncation_strategy='do_not_truncate',
+            padding="max_length",
+            return_token_type_ids=True,
+        )
+
+        # featurize context passages
+        if self.embed_title:
+            # embed title with positive context passages + negative context passages
+            all_ctx = [tuple((title, ctx)) for title, ctx in
+                       zip(positive_ctx_titles, positive_ctx_texts)] + \
+                      [tuple((title, ctx)) for title, ctx in
+                       zip(hard_negative_ctx_titles, hard_negative_ctx_texts)]
+        else:
+            all_ctx = positive_ctx_texts + hard_negative_ctx_texts
+
+        ctx_inputs = self.passage_tokenizer.batch_encode_plus(
+            all_ctx,
+            add_special_tokens=True,
+            truncation=True,
+            padding="max_length",
+            max_length=self.max_seq_len,
+            return_token_type_ids=True
+        )
+
+        query_input_ids, query_segment_ids, query_padding_mask = query_inputs["input_ids"], query_inputs[
+                                                            "token_type_ids"], query_inputs["attention_mask"]
+        ctx_input_ids, ctx_segment_ids, ctx_padding_mask = ctx_inputs["input_ids"], ctx_inputs["token_type_ids"], \
+                                                           ctx_inputs["attention_mask"]
 
         # featurize the query
         query_inputs = self.query_tokenizer.encode_plus(
