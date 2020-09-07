@@ -57,9 +57,18 @@ def run_experiment(args):
 
     set_all_seeds(args.general.seed)
 
+    # automatically estimate lowercase model based on the model name
+    if args.parameter.lower_case == 'auto':
+        if 'uncased' in args.parameter.model:
+            lower_case=True
+        else:
+            lower_case=False
+    else:
+        lower_case = args.parameter.lower_case
+
     # Prepare Data
     tokenizer = Tokenizer.load(
-        args.parameter.model, do_lower_case=args.parameter.lower_case
+        args.parameter.model, do_lower_case=lower_case
     )
 
     processor = Processor.load(

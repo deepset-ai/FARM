@@ -197,7 +197,17 @@ class Processor(ABC):
         if "lower_case" in config.keys():
             logger.warning("Loading tokenizer from deprecated FARM config. "
                            "If you used `custom_vocab` or `never_split_chars`, this won't work anymore.")
-            tokenizer = Tokenizer.load(load_dir, tokenizer_class=config["tokenizer"], do_lower_case=config["lower_case"])
+                           
+            # automatically estimate lowercase model based on the model name
+            if config["lower_case"] == 'auto':
+                if 'uncased' in config["model"]:
+                    lower_case=True
+                else:
+                    lower_case=False
+            else:
+                lower_case = config["lower_case"]
+
+            tokenizer = Tokenizer.load(load_dir, tokenizer_class=config["tokenizer"], do_lower_case=lower_case)
         else:
             tokenizer = Tokenizer.load(load_dir, tokenizer_class=config["tokenizer"])
 
