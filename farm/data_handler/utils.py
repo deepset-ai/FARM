@@ -183,6 +183,62 @@ def read_ner_file(filename, sep="\t", proxies=None):
         data.append({"text": " ".join(sentence), "ner_label": label})
     return data
 
+def read_dpr_json(file, proxies=None):
+    """
+    Reads a Dense Passage Retrieval (DPR) data file in json format and returns a list of dictionaries.
+
+    :param file: filename of DPR data in json format
+
+    Returns:
+        list of dictionaries: List[dict]
+        each dictionary: {
+                    "query": str -> query_text
+                    "passages": List[dictionaries] -> [{"text": document_text, "title": xxx, "label": "positive", "external_id": abb123},
+                                {"text": document_text, "title": xxx, "label": "hard_negative", "external_id": abb134},
+                                ...]
+                    }
+        example:
+                ["query": 'who sings does he love me with reba'
+                "passages" : [{'title': 'Does He Love You',
+                    'text': 'Does He Love You "Does He Love You" is a song written by Sandy Knox and Billy Stritch, and recorded as a duet by American country music artists Reba McEntire and Linda Davis. It was released in August 1993 as the first single from Reba\'s album "Greatest Hits Volume Two". It is one of country music\'s several songs about a love triangle. "Does He Love You" was written in 1982 by Billy Stritch. He recorded it with a trio in which he performed at the time, because he wanted a song that could be sung by the other two members',
+                    'label': 'positive',
+                    'external_id': '11828866'},
+                    {'title': 'When the Nightingale Sings',
+                    'text': "When the Nightingale Sings When The Nightingale Sings is a Middle English poem, author unknown, recorded in the British Library's Harley 2253 manuscript, verse 25. It is a love poem, extolling the beauty and lost love of an unknown maiden. When þe nyhtegale singes þe wodes waxen grene.<br> Lef ant gras ant blosme springes in aueryl y wene,<br> Ant love is to myn herte gon wiþ one spere so kene<br> Nyht ant day my blod hit drynkes myn herte deþ me tene. Ich have loved al þis er þat y may love namore,<br> Ich have siked moni syk lemmon for",
+                    'label': 'hard_negative',
+                    'external_id': '10891637'}]
+                ]
+
+    """
+    # get remote dataset if needed
+    if not (os.path.exists(file)):
+        logger.info(f" Couldn't find {file} locally. Trying to download ...")
+        _download_extract_downstream_data(file, proxies=proxies)
+    dicts = json.load(open(file))
+
+    # convert DPR dictionary to standard dictionary
+    query_json_keys = ["question", "questions", "query"]
+    positive_context_json_keys = ["positive_contexts", "positive_ctxs", "positive_context", "positive_ctx"]
+    hard_negative_json_keys = ["hard_negative_contexts", "hard_negative_ctxs", "hard_negative_context", "hard_negative_ctx"]
+    standard_dicts = []
+    for dict in dicts:
+        sample = {}
+        passages = []
+        for key, val in dict.items():
+            if key in query_json_keys:
+                sample["query"] = val
+            elif key in positive_context_json_keys+hard_negative_json_keys:
+                for passage in val:
+                    passages.append({
+                        "title": passage["title"],
+                        "text": passage["text"],
+                        "label": "positive" if key in positive_context_json_keys else "hard_negative",
+                        "external_id": passage["passage_id"]
+                        })
+        sample["passages"] = passages
+        standard_dicts.append(sample)
+    return standard_dicts
+
 def _convert_germeval14_labels(tags: List[str]):
     newtags = []
     for tag in tags:
