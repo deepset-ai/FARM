@@ -136,7 +136,7 @@ def question_answering():
 
     print(f"\nQuestion: Did GameTrailers rated Twilight Princess as one of the best games ever created?"
           f"\nAnswer from model: {result[0].prediction[0].answer}")
-    model.close_multiprcessing_pool()
+    model.close_multiprocessing_pool()
 
 if __name__ == "__main__":
     question_answering()
