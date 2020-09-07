@@ -1869,8 +1869,7 @@ class DPRProcessor(Processor):
         hard_negative_ctx_texts = [passage["text"] for passage in hard_negative_context]
 
         # all context passages and labels: 1 for positive context and 0 for hard-negative context
-        ctx_label = [1] * (self.num_positives if self.num_positives < len(positive_context) else len(positive_context)) + \
-                    [0] * (self.num_hard_negatives if self.num_hard_negatives < len(hard_negative_context) else len(hard_negative_context))
+        ctx_label = [1]*self.num_positives + [0]*self.num_hard_negatives
 
         # featurize the query
         query_inputs = self.query_tokenizer.encode_plus(
