@@ -43,6 +43,8 @@ def sample_to_features_text(
         # This should change once we git rid of FARM's tokenize_with_metadata()
         inputs = tokenizer(text,
                            return_token_type_ids=True,
+                           truncation=True,
+                           truncation_strategy="longest_first",
                            max_length=max_seq_len,
                            return_special_tokens_mask=True)
 
@@ -62,7 +64,6 @@ def sample_to_features_text(
             add_special_tokens=True,
             truncation=False,  # truncation_strategy is deprecated
             return_token_type_ids=True,
-            max_length=max_seq_len,
             is_pretokenized=False,
         )
 
@@ -160,6 +161,8 @@ def samples_to_features_ner(
         # This should change once we git rid of FARM's tokenize_with_metadata()
         inputs = tokenizer(text,
                            return_token_type_ids=True,
+                           truncation=True,
+                           truncation_strategy="longest_first",
                            max_length=max_seq_len,
                            return_special_tokens_mask=True)
 
