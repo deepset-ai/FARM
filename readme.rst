@@ -136,6 +136,8 @@ If problems occur, please do a git pull. The --editable flag will update changes
 From PyPi::
 
     pip install farm
+    
+Note: On windows you might need :code:`pip install farm -f https://download.pytorch.org/whl/torch_stable.html` to install PyTorch correctly
 
 Basic Usage
 ############
