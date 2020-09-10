@@ -3,10 +3,10 @@ import numpy as np
 
 from farm.modeling.tokenization import Tokenizer
 from farm.data_handler.processor import TextClassificationProcessor
-from farm.data_handler.data_silo import DataSilo, DataSiloForNestedCrossVal
+from farm.data_handler.data_silo import DataSilo, DataSiloForCrossVal
 
 
-def test_data_silo_for_nested_cross_val():
+def test_data_silo_for_cross_val_nested():
     lang_model = "bert-base-german-cased"
     n_outer_splits = 3
     n_inner_splits = 3
@@ -23,10 +23,10 @@ def test_data_silo_for_nested_cross_val():
 
     data_silo = DataSilo(processor=processor, batch_size=32)
 
-    silos = DataSiloForNestedCrossVal.make(
+    silos = DataSiloForCrossVal.make(
         data_silo,
         sets=['test', 'train'],
-        n_outer_splits=n_outer_splits,
+        n_splits=n_outer_splits,
         n_inner_splits=n_inner_splits,
         )
 

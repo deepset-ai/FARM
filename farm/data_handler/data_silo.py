@@ -754,7 +754,7 @@ class DataSiloForCrossVal:
 
     @classmethod
     def make(cls, datasilo, sets=["train", "dev", "test"], n_splits=5, shuffle=True, random_state=None,
-             stratified=True, n_neg_answers_per_question=1):
+             stratified=True, n_neg_answers_per_question=1, n_inner_splits=None):
         """
         Create number of folds data-silo-like objects which can be used for training from the
         original data silo passed on.
@@ -773,12 +773,34 @@ class DataSiloForCrossVal:
         :type stratified: bool
         :param n_neg_answers_per_question: number of negative answers per question to include for training
         :type n_neg_answers_per_question: int
+        :param n_inner_splits: Number of inner splits if a nested cross validation.
+            Default is ``None`` which means to do a normal (not nested) cross validation.
+            If at least 2 is given a nested cross validation is done. In that case the ``n_splits``
+            parameter is the number of outer splits.
+        :type n_inner_splits: int
         """
+        # check n_inner_splits param
+        if (n_inner_splits is not None) and (not n_inner_splits >= 2):
+            raise ValueError("'n_inner_splits' must be at least 2!")
 
-        if "question_answering" in datasilo.processor.tasks:
-            return cls._make_question_answering(datasilo, sets, n_splits, shuffle, random_state, n_neg_answers_per_question)
+        if "question_answering" in datasilo.processor.tasks and n_inner_splits is None:
+            return cls._make_question_answering(
+                datasilo, sets, n_splits, shuffle, random_state, n_neg_answers_per_question
+            )
+        elif "question_answering" in datasilo.processor.tasks and n_inner_splits is not None:
+            raise NotImplementedError()
+        elif n_inner_splits is None:
+            return cls._make(
+                datasilo, sets, n_splits, shuffle, random_state, stratified
+            )
+        elif n_inner_splits is not None:
+            return cls._make_nested(
+                datasilo, sets, n_splits, shuffle, random_state, stratified,
+                n_inner_splits
+            )
         else:
-            return cls._make(datasilo, sets, n_splits, shuffle, random_state, stratified)
+            raise RuntimeError("Cross validation can not be done under these conditions!")
+
 
     @classmethod
     def _make_question_answering(cls, datasilo, sets=["train", "dev", "test"], n_splits=5, shuffle=True,
@@ -943,69 +965,10 @@ class DataSiloForCrossVal:
 
             yield current_train_set, current_test_set
 
-
-class DataSiloForNestedCrossVal(DataSiloForCrossVal):
-    """
-    Prepare data silos to do a nested cross validation.
-
-    The outer cross validation splits all data to test and rest.
-    The inner cross validation splits the rest data to train and dev.
-
-    To use this class call ``DataSiloForNestedCrossVal.make()`` which
-    creates a list of DataSiloForCrossVal
-    instances - one for each fold (outer folds times inner folds).
-    """
-
-    def __init__(self, origsilo, trainset, devset, testset):
-        super().__init__(origsilo, trainset, devset, testset)
-
-    @classmethod
-    def make(cls, datasilo, sets=["train", "dev", "test"],
-             n_outer_splits=5, n_inner_splits=5,
-             shuffle=True, random_state=None,
-             stratified=True, n_neg_answers_per_question=1):
-        """
-        Create number of folds data-silo-like objects which can be used
-        to do a nested crossvalidation for training from the
-        original data silo passed on.
-
-        The outer cross validation splits all data to test and rest.
-        The inner cross validation splits the rest data to train and dev.
-        The number of returned data silos is ``n_outer_splits`` times
-        ``n_inner_splits``.
-
-        :param datasilo: the data silo that contains the original data
-        :type datasilo: DataSilo
-        :param sets: which sets to use to create the xval folds (strings)
-        :type sets: list
-        :param n_outer_splits: number of folds for outer cross validation
-        :type n_outer_splits: int
-        :param n_inner_splits: number of folds for inner cross validation
-        :type n_inner_splits: int
-        :param shuffle: shuffle each class' samples before splitting
-        :type shuffle: bool
-        :param random_state: random state for shuffling
-        :type random_state: int
-        :param stratified: if class stratification should be done
-        :type stratified: bool
-        :param n_neg_answers_per_question: number of negative answers per question to include for training
-        :type n_neg_answers_per_question: int
-        """
-
-        if "question_answering" in datasilo.processor.tasks:
-            return cls._make_question_answering(datasilo, sets, n_outer_splits, n_inner_splits, shuffle, random_state, n_neg_answers_per_question)
-        else:
-            return cls._make(datasilo, sets, n_outer_splits, n_inner_splits, shuffle, random_state, stratified)
-
-    @classmethod
-    def _make_question_answering(cls, *args, **kwargs):
-        raise NotImplementedError()
-
     @staticmethod
-    def _make(datasilo, sets=["train", "dev", "test"],
-              n_outer_splits=5, n_inner_splits=5,
-              shuffle=True,
-              random_state=None, stratified=True):
+    def _make_nested(datasilo, sets=["train", "dev", "test"],
+                     n_splits=5, shuffle=True, random_state=None,
+                     stratified=True, n_inner_splits=5):
         setstoconcat = [datasilo.data[setname] for setname in sets]
         ds_all = ConcatDataset(setstoconcat)
         idxs = list(range(len(ds_all)))
@@ -1017,10 +980,10 @@ class DataSiloForNestedCrossVal(DataSiloForCrossVal):
             # get all the labels for stratification
             ytensors = [t[3][0] for t in ds_all]
             y = torch.stack(ytensors)
-            outer_cv = StratifiedKFold(n_splits=n_outer_splits, shuffle=shuffle, random_state=random_state)
+            outer_cv = StratifiedKFold(n_splits=n_splits, shuffle=shuffle, random_state=random_state)
             outer_split = outer_cv.split(idxs, y)
         else:
-            outer_cv = KFold(n_splits=n_outer_splits, shuffle=shuffle, random_state=random_state)
+            outer_cv = KFold(n_splits=n_splits, shuffle=shuffle, random_state=random_state)
             outer_split = outer_cv.split(idxs)
         for idxs_rest, idxs_test in outer_split:
 
