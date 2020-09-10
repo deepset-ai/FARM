@@ -15,7 +15,7 @@ def test_data_silo_for_nested_cross_val():
 
     processor = TextClassificationProcessor(tokenizer=tokenizer,
                                             max_seq_len=64,
-                                            data_dir=Path("../data/germeval18"),
+                                            data_dir=Path("data/germeval18"),
                                             label_list=["OTHER", "OFFENSE"],
                                             metric="f1_macro",
                                             label_column_name="coarse_label"
