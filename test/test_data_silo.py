@@ -8,8 +8,8 @@ from farm.data_handler.data_silo import DataSilo, DataSiloForNestedCrossVal
 
 def test_data_silo_for_nested_cross_val():
     lang_model = "bert-base-german-cased"
-    n_outer_splits = 7
-    n_inner_splits = 11
+    n_outer_splits = 3
+    n_inner_splits = 3
 
     tokenizer = Tokenizer.load(pretrained_model_name_or_path=lang_model)
 
