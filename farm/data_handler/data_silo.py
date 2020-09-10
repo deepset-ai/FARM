@@ -711,8 +711,11 @@ class _StreamingDataSet(IterableDataset):
 
 class DataSiloForCrossVal:
     """
-    For performing cross validation, we really want to combine all the instances from all
-    the sets or just some of the sets, then create a different data silo instance for each fold.
+    Perform cross validation or nested cross validation.
+
+    For performing cross validation or nested cross validation, we really want to combine all the
+    instances from all the sets or just some of the sets, then create a different data silo
+    instance for each fold or nested fold.
     Calling DataSiloForCrossVal.make() creates a list of DataSiloForCrossVal instances - one for each fold.
     """
 
@@ -773,10 +776,16 @@ class DataSiloForCrossVal:
         :type stratified: bool
         :param n_neg_answers_per_question: number of negative answers per question to include for training
         :type n_neg_answers_per_question: int
-        :param n_inner_splits: Number of inner splits if a nested cross validation.
+        :param n_inner_splits: Number of inner splits of a nested cross validation.
             Default is ``None`` which means to do a normal (not nested) cross validation.
             If at least 2 is given a nested cross validation is done. In that case the ``n_splits``
             parameter is the number of outer splits.
+            The outer cross validation splits the data into a test set and a rest set.
+            The inner cross validation splits the rest data into a train set and a dev set.
+            The advantage of a nested cross validation is that it is doing the inner split
+            not just by random but in a more systematic way. When doing model evaluation
+            this also reduces the variance. This is because you train on more different
+            iterations with more different data constellations.
         :type n_inner_splits: int
         """
         # check n_inner_splits param
