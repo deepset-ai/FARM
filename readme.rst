@@ -137,6 +137,12 @@ From PyPi::
 
     pip install farm
 
+
+Windows OS:
+
+For installation on Windows, add :code:`-f https://download.pytorch.org/whl/torch_stable.html` to the pip install.
+
+
 Basic Usage
 ############
 1. Train a downstream model

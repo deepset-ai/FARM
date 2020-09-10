@@ -3,7 +3,7 @@ setuptools
 wheel
 # PyTorch
 --find-links=https://download.pytorch.org/whl/torch_stable.html
-torch==1.6.0
+torch>=1.5.1,<=1.6.0
 # progress bars in model download and training scripts
 tqdm
 # Accessing files from S3 directly.
