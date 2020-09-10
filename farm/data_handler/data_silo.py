@@ -993,7 +993,7 @@ class DataSiloForNestedCrossVal(DataSiloForCrossVal):
         """
 
         if "question_answering" in datasilo.processor.tasks:
-            return cls._make_question_answering(datasilo, sets, n_splits, shuffle, random_state, n_neg_answers_per_question)
+            return cls._make_question_answering(datasilo, sets, n_outer_splits, n_inner_splits, shuffle, random_state, n_neg_answers_per_question)
         else:
             return cls._make(datasilo, sets, n_outer_splits, n_inner_splits, shuffle, random_state, stratified)
 
