@@ -1763,6 +1763,59 @@ class DPRProcessor(Processor):
             logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
                         "using the default task or add a custom task later via processor.add_task()")
 
+    @classmethod
+    def load_from_dir(cls, load_dir):
+        """
+         Overwriting method from parent class to **always** load the DPRProcessor instead of the specific class stored in the config.
+
+        :param load_dir: str, directory that contains a 'processor_config.json'
+        :return: An instance of an DPRProcessor
+        """
+        # read config
+        processor_config_file = Path(load_dir) / "processor_config.json"
+        config = json.load(open(processor_config_file))
+        # init tokenizer
+        tokenizer = Tokenizer.load(load_dir, tokenizer_class=config["tokenizer"])
+        passage_tokenizer = Tokenizer.load(load_dir, tokenizer_class=config["passage_tokenizer"])
+
+        # we have to delete the tokenizer string from config, because we pass it as Object
+        del config["tokenizer"]
+        del config["passage_tokenizer"]
+
+        processor = cls.load(tokenizer=tokenizer, passage_tokenizer=passage_tokenizer, processor_name="DPRProcessor", **config)
+        for task_name, task in config["tasks"].items():
+            processor.add_task(name=task_name, metric=task["metric"], label_list=task["label_list"])
+
+        if processor is None:
+            raise Exception
+
+        return processor
+
+    def save(self, save_dir):
+        """
+        Saves the vocabulary to file and also creates a json file containing all the
+        information needed to load the same processor.
+
+        :param save_dir: Directory where the files are to be saved
+        :type save_dir: str
+        """
+        os.makedirs(save_dir, exist_ok=True)
+        config = self.generate_config()
+        # save tokenizer incl. attributes
+        config["tokenizer"] = self.tokenizer.__class__.__name__
+        config["passage_tokenizer"] = self.tokenizer.__class__.__name__
+
+        # Because the fast tokenizers expect a str and not Path
+        # always convert Path to str here.
+        self.tokenizer.save_pretrained(str(save_dir))
+        self.passage_tokenizer.save_pretrained(str(save_dir))
+
+        # save processor
+        config["processor"] = self.__class__.__name__
+        output_config_file = Path(save_dir) / "processor_config.json"
+        with open(output_config_file, "w") as file:
+            json.dump(config, file)
+
     def file_to_dicts(self, file: str) -> [dict]:
         """
         Converts a Dense Passage Retrieval (DPR) data file in json format to a list of dictionaries.
@@ -1816,7 +1869,8 @@ class DPRProcessor(Processor):
         hard_negative_ctx_texts = [passage["text"] for passage in hard_negative_context]
 
         # all context passages and labels: 1 for positive context and 0 for hard-negative context
-        ctx_label = [1]*self.num_positives + [0]*self.num_hard_negatives
+        ctx_label = [1]*(self.num_positives if self.num_positives < len(positive_context) else len(positive_context)) + \
+                    [0]*(self.num_hard_negatives if self.num_hard_negatives < len(hard_negative_context) else len(hard_negative_context))
 
         # featurize the query
         query_inputs = self.query_tokenizer.encode_plus(
