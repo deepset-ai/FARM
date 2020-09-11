@@ -1,0 +1,117 @@
+from farm.data_handler.processor import DPRProcessor
+from farm.modeling.tokenization import Tokenizer
+import pytest
+import torch
+
+query_input_ids = [torch.tensor([101, 2073, 2003, 3317, 2006, 1996, 2940, 2241, 2006, 102]),
+                   torch.tensor([101, 2043, 2106, 1996, 2548, 2155, 11092, 1996, 2171, 10064]),
+                   torch.tensor([101, 2054, 2003, 1037, 4937,  102,    0,    0,    0,    0])]
+query_attention_mask = [torch.tensor(range(10)).unsqueeze(-1), torch.tensor(range(11)).unsqueeze(-1), torch.tensor(range(6)).unsqueeze(-1)]
+passage_ids = {
+            'titled': [torch.tensor([[101, 3317, 2006, 1996, 2940,  102, 3317, 2006, 1996, 2940],
+                                     [101, 3317, 2940, 1010, 2047, 2148, 3575,  102, 8765, 2061],
+                                     [101, 3317, 2940, 1010, 27492, 102, 3419, 18874, 3385, 1010]]),
+                       torch.tensor([[101,  2160,  1997, 10064,   102,  2160,  1997, 10064,  1996,  2160],
+                                     [101, 26902,  1010, 11017,  1997, 10387,   102,  2384,  1010,  1998]]),
+                       torch.tensor([[101, 2516, 2007, 1000, 2569, 3494, 1000,  102, 2023, 2003]])
+                       ],
+
+            'untitled': [torch.tensor([[101, 3317, 2006, 1996, 2940, 1000, 3317, 2006, 1996, 2940],
+                                       [101, 8765, 2061, 2004, 2000, 5438, 1037, 8084, 10527, 5701],
+                                       [101, 3419, 18874, 3385, 1010, 3818, 1000, 1000, 2152, 2006]]),
+                         torch.tensor([[101, 2160, 1997, 10064, 1996, 2160, 1997, 10064, 2003, 1996],
+                                       [101, 2384, 1010, 1998, 2001, 2000, 2202, 2173, 1999, 1037]]),
+                         torch.tensor([[101, 2023, 2003, 1037, 1026, 7308, 1028, 6251,  1012, 8870]])
+                         ]}
+
+passage_attention = {
+        'titled': [[torch.tensor(range(140)).unsqueeze(-1), torch.tensor(range(130)).unsqueeze(-1), torch.tensor(range(127)).unsqueeze(-1)],
+                   [torch.tensor(range(132)).unsqueeze(-1),  torch.tensor(range(121)).unsqueeze(-1)],
+                   [torch.tensor(range(22)).unsqueeze(-1)]],
+'untitled': [[torch.tensor(range(135)).unsqueeze(-1), torch.tensor(range(123)).unsqueeze(-1), torch.tensor(range(122)).unsqueeze(-1)],
+             [torch.tensor(range(128)).unsqueeze(-1), torch.tensor(range(115)).unsqueeze(-1)],
+             [torch.tensor(range(15)).unsqueeze(-1)]]
+                    }
+labels = [[1,0,0], [1,0], [1]]
+
+@pytest.mark.parametrize("embed_title, passage_ids, passage_attns", [(True, passage_ids['titled'], passage_attention['titled']),  (False, passage_ids['untitled'], passage_attention['untitled'])])
+@pytest.mark.parametrize("use_fast", [True, False])
+@pytest.mark.parametrize("num_hard_negatives", [1,2])
+def test_dpr_processor(embed_title, passage_ids, passage_attns, use_fast, num_hard_negatives):
+    dict = [{
+             'query': 'where is castle on the hill based on',
+             'answers': ['Framlingham Castle'],
+             'passages': [{"text": 'Castle on the Hill "Castle on the Hill" is a song by English singer-songwriter Ed Sheeran. It was released as a digital download on 6 January 2017 as one of the double lead singles from his third studio album "÷" (2017), along with "Shape of You". "Castle on the Hill" was written and produced by Ed Sheeran and Benny Blanco. The song refers to Framlingham Castle in Sheeran\'s home town. Released on the same day as "Shape of You", "Castle on the Hill" reached number two in a number of countries, including the UK, Australia and Germany, while "Shape of',
+                           "title": 'Castle on the Hill',
+                           "label": "positive", "external_id": '19930582'},
+                          {"text": 'crops so as to feed a struggling infant colony. Governor King began Government Farm 3 there on 8 July 1801, referring to it as "Castle Hill" on 1 March 1802. The majority of the convicts who worked the prison farm were Irish Catholics, many having been transported for seditious activity in 1798. The most notorious incident being the Battle of Vinegar Hill where around 39 were slaughtered. They were branded "politicals" and exiled for life, never to return. The first free settler in Castle Hill, a Frenchman Baron Verincourt de Clambe, in unusual circumstances received a grant of 200 acres',
+                           "title": 'Castle Hill, New South Wales',
+                           "label": "hard_negative", "external_id": '1977568'},
+                          {
+                              "text": 'Tom Gleeson, proposed ""high on the peak of Castle Hill, overlooking the harbour"" would be a suitable location for the monument. Having arrived in Townsville, the monument was then placed in storage for a number of years. It was not until October 1947 that the Council discussed where to place the monument. A number of locations were considered: Castle Hill, the Botanic Gardens, in front of the Queens Hotel, the Anzac Memorial Park and the Railway Oval, but Castle Hill was ultimately the council\'s choice. In February 1948, the Queensland Government gave its approval to the council to place the',
+                              "title": 'Castle Hill, Townsville',
+                              "label": "hard_negative", "external_id": '3643705'},
+                          ]
+            },
+
+            {'query': 'when did the royal family adopt the name windsor',
+                       'answers': ['in 1917'],
+                       'passages': [{"text": 'House of Windsor The House of Windsor is the reigning royal house of the United Kingdom and the other Commonwealth realms. The dynasty is of German paternal descent and was originally a branch of the House of Saxe-Coburg and Gotha, itself derived from the House of Wettin, which succeeded the House of Hanover to the British monarchy following the death of Queen Victoria, wife of Albert, Prince Consort. The name was changed from "Saxe-Coburg and Gotha" to the English "Windsor" (from "Windsor Castle") in 1917 because of anti-German sentiment in the British Empire during World War I. There have been',
+                                    "title": 'House of Windsor',
+                                    "label": "positive", "external_id": '1478954'},
+                                    {"text": "2005, and was to take place in a civil ceremony at Windsor Castle, with a subsequent religious service of blessing at St George's Chapel. However, to conduct a civil marriage at Windsor Castle would oblige the venue to obtain a licence for civil marriages, which it did not have. A condition of such a licence is that the licensed venue must be available for a period of one year to anyone wishing to be married there, and as the royal family did not wish to make Windsor Castle available to the public for civil marriages, even just for one year,",
+                                    "title": 'Camilla, Duchess of Cornwall',
+                                    "label": "hard_negative", "external_id": '1399730'}]
+             },
+
+            {'query': 'what is a cat?',
+             'answers': ['animal', 'feline'],
+             'passages': [{
+                              "text":  'This is a <mask> sentence. Cats are good pets.',
+                              "title": 'title with "special characters" ',
+                              "label": "positive", "external_id": '0'},
+                          {
+                              "text": "2nd text => More text about cats is good",
+                              "title": '2nd title \n',
+                              "label": "positive", "external_id": '1'}]
+             }]
+
+    query_tok = "facebook/dpr-question_encoder-single-nq-base"
+    query_tokenizer = Tokenizer.load(query_tok, use_fast=use_fast)
+    passage_tok = "facebook/dpr-ctx_encoder-single-nq-base"
+    context_tokenizer = Tokenizer.load(passage_tok, use_fast=use_fast)
+    processor = DPRProcessor(tokenizer=query_tokenizer,
+                             passage_tokenizer=context_tokenizer,
+                             max_seq_len=256,
+                             data_dir="data/retriever",
+                             train_filename="nq-train.json",
+                             test_filename="nq-dev.json",
+                             embed_title=embed_title,
+                             num_hard_negatives=num_hard_negatives)
+
+    for i, d in enumerate(dict):
+        sample = processor._dict_to_samples(d)
+        feat = processor._sample_to_features(sample)
+        assert (torch.all(torch.eq(torch.tensor(feat[0]["query_input_ids"][:10]), query_input_ids[i])))
+        assert (len(torch.tensor(feat[0]["query_segment_ids"]).nonzero()) == 0)
+        assert (torch.all(torch.eq(torch.tensor(feat[0]["query_attention_mask"]).nonzero(), query_attention_mask[i])))
+
+        if embed_title:
+            assert (torch.all(torch.eq(torch.tensor(feat[0]["passage_input_ids"])[:num_hard_negatives+1, :10], passage_ids[i][:num_hard_negatives+1])))
+            for j in range(num_hard_negatives+1):
+                if j < len(passage_attns[i]):
+                    assert (torch.all(torch.eq(torch.tensor(feat[0]["passage_attention_mask"][j]).nonzero(), passage_attns[i][j])))
+            assert (torch.all(torch.eq(torch.tensor(feat[0]["label"]), torch.tensor(labels[i])[:num_hard_negatives+1])))
+            # TO-DO: official DPR uses segment_ids all 0
+            # assert (len(torch.tensor(feat[0]["passage_segment_ids"]).nonzero()) == 0)
+        else:
+            assert (torch.all(torch.eq(torch.tensor(feat[0]["passage_input_ids"])[:num_hard_negatives+1, :10], passage_ids[i][:num_hard_negatives+1])))
+            for j in range(num_hard_negatives+1):
+                if j < len(passage_attns[i]):
+                    assert (torch.all(torch.eq(torch.tensor(feat[0]["passage_attention_mask"][j]).nonzero(), passage_attns[i][j])))
+            assert (torch.all(torch.eq(torch.tensor(feat[0]["label"]), torch.tensor(labels[i])[:num_hard_negatives+1])))
+            # TO-DO: official DPR uses segment_ids all 0
+            # assert (len(torch.tensor(feat[0]["passage_segment_ids"]).nonzero()) == 0)
+
+
+
