@@ -32,6 +32,8 @@ from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_xlm_roberta import XLMRobertaTokenizer
 from transformers.tokenization_xlnet import XLNetTokenizer
 from transformers.tokenization_camembert import CamembertTokenizer
+from transformers import DPRContextEncoderTokenizer, DPRQuestionEncoderTokenizer
+from transformers import DPRContextEncoderTokenizerFast, DPRQuestionEncoderTokenizerFast
 
 from farm.modeling.wordembedding_utils import load_from_cache, EMBEDDING_VOCAB_FILES_MAP, run_split_on_punc
 
@@ -95,6 +97,10 @@ class Tokenizer:
                 tokenizer_class = "EmbeddingTokenizer"
             elif "minilm" in pretrained_model_name_or_path.lower():
                 tokenizer_class = "BertTokenizer"
+            elif "dpr-question_encoder" in pretrained_model_name_or_path.lower():
+                tokenizer_class = "DPRQuestionEncoderTokenizer"
+            elif "dpr-ctx_encoder" in pretrained_model_name_or_path.lower():
+                tokenizer_class = "DPRContextEncoderTokenizer"
             else:
                 raise ValueError(f"Could not infer tokenizer_class from name '{pretrained_model_name_or_path}'. Set "
                                  f"arg `tokenizer_class` in Tokenizer.load() to one of: AlbertTokenizer, "
@@ -154,6 +160,16 @@ class Tokenizer:
                 ret = CamembertTokenizer._from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
                 ret = CamembertTokenizer._from_pretrained(pretrained_model_name_or_path, **kwargs)
+        elif tokenizer_class == "DPRQuestionEncoderTokenizer":
+            if use_fast:
+                ret = DPRQuestionEncoderTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            else:
+                ret = DPRQuestionEncoderTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        elif tokenizer_class == "DPRContextEncoderTokenizer":
+            if use_fast:
+                ret = DPRContextEncoderTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            else:
+                ret = DPRContextEncoderTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         if ret is None:
             raise Exception("Unable to load tokenizer")
         else:
