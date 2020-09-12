@@ -772,7 +772,8 @@ class DataSiloForCrossVal:
         :type shuffle: bool
         :param random_state: random state for shuffling
         :type random_state: int
-        :param stratified: if class stratification should be done
+        :param stratified: If class stratification should be done.
+            It is never done with question answering.
         :type stratified: bool
         :param n_neg_answers_per_question: number of negative answers per question to include for training
         :type n_neg_answers_per_question: int
