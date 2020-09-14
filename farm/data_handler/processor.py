@@ -1137,6 +1137,10 @@ class SquadProcessor(QAProcessor):
         self.target = "classification"
         self.ph_output_type = "per_token_squad"
 
+        assert doc_stride < max_seq_len, "doc_stride is longer than max_seq_len. This means that there will be gaps " \
+                                         "as the passage windows slide, causing the model to skip over parts of the document. "\
+                                         "Please set a lower value for doc_stride (Suggestions: doc_stride=128, max_seq_len=384) "
+
         self.doc_stride = doc_stride
         self.max_query_length = max_query_length
         self.max_answers = max_answers

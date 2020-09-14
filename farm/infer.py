@@ -252,6 +252,9 @@ class Inferencer:
             # override processor attributes loaded from config file with inferencer params
             processor.max_seq_len = max_seq_len
             if hasattr(processor, "doc_stride"):
+                assert doc_stride < max_seq_len, "doc_stride is longer than max_seq_len. This means that there will be gaps " \
+                                                 "as the passage windows slide, causing the model to skip over parts of the document. "\
+                                                 "Please set a lower value for doc_stride (Suggestions: doc_stride=128, max_seq_len=384) "
                 processor.doc_stride = doc_stride
 
         # b) or from remote transformers model hub

@@ -219,6 +219,11 @@ def chunk_into_passages(doc_offsets,
                         doc_text):
     """ Returns a list of dictionaries which each describe the start, end and id of a passage
     that is formed when chunking a document using a sliding window approach. """
+
+    assert doc_stride < passage_len_t, "doc_stride is longer than passage_len_t. This means that there will be gaps " \
+                                       "as the passage windows slide, causing the model to skip over parts of the document. "\
+                                       "Please set a lower value for doc_stride (Suggestions: doc_stride=128, max_seq_len=384) "
+
     passage_spans = []
     passage_id = 0
     doc_len_t = len(doc_offsets)
