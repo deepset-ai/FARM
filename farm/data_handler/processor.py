@@ -1435,6 +1435,7 @@ class NaturalQuestionsProcessor(QAProcessor):
             answer_type = dictionary["annotations"][0]["yes_no_answer"].lower()
             if answer_type == "none":
                 answer_type = "span"
+        # TODO: answer_type should be in answers since in NQ, each annotator can give either a span, no_answer, yes or no
         converted = {"id": dictionary["example_id"],
                      "context": doc_text,
                      "qas": [{"question": dictionary["question_text"],
@@ -1693,13 +1694,17 @@ def _apply_tokenization(dictionary, tokenizer):
         answers = []
         # For training and dev with labelled examples
         try:
+            answer_type = None
+            if question["answer_type"] in ["yes", "no"]:
+                answer_type = question["answer_type"]
             external_id = question["id"]
             question_text = question["question"]
             for answer in question["answers"]:
-                if answer["text"] == "":
-                    answer_type = "no_answer"
-                else:
-                    answer_type = "span"
+                if not answer_type:
+                    if answer["text"] == "":
+                        answer_type = "no_answer"
+                    else:
+                        answer_type = "span"
                 a = {"text": answer["text"],
                      "offset": answer["answer_start"],
                      "answer_type": answer_type}
