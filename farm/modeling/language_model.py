@@ -1555,7 +1555,7 @@ class DPRContext(LanguageModel):
         :param segment_ids: The id of the segment. For example, in next sentence prediction, the tokens in the
            first sentence are marked with 0 and those in the second are marked with 1.
            It is a tensor of shape [batch_size, max_seq_len]
-        :type segment_ids: torch.Tensor
+        :type segment_ids: torch.Tenso
         :param padding_mask: A mask that assigns a 1 to valid input tokens and 0 to padding tokens
            of shape [batch_size, max_seq_len]
         :return: Embeddings for each token in the input sequence.
