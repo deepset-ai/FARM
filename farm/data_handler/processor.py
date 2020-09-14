@@ -1694,13 +1694,12 @@ def _apply_tokenization(dictionary, tokenizer):
         answers = []
         # For training and dev with labelled examples
         try:
-            answer_type = None
-            if question["answer_type"] in ["yes", "no"]:
-                answer_type = question["answer_type"]
             external_id = question["id"]
             question_text = question["question"]
             for answer in question["answers"]:
-                if not answer_type:
+                if 'answer_type' in answer.keys() and answer['answer_type'] in ['yes', 'no', 'span', 'no_answer']:
+                    answer_type = answer['answer_type']
+                else:
                     if answer["text"] == "":
                         answer_type = "no_answer"
                     else:
