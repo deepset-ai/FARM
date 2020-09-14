@@ -44,6 +44,7 @@ from transformers.modeling_electra import ElectraModel, ElectraConfig
 from transformers.modeling_camembert import CamembertModel, CamembertConfig
 from transformers.modeling_utils import SequenceSummary
 from transformers.tokenization_bert import load_vocab
+from transformers import DPRQuestionEncoder, DPRContextEncoder, DPRConfig
 
 from farm.modeling import wordembedding_utils
 from farm.modeling.wordembedding_utils import s3e_pooling
@@ -109,6 +110,8 @@ class LanguageModel(nn.Module):
         * google/electra-small-discriminator
         * google/electra-base-discriminator
         * google/electra-large-discriminator
+        * facebook/dpr-question_encoder-single-nq-base
+        * facebook/dpr-ctx_encoder-single-nq-base
 
         See all supported model variations here: https://huggingface.co/models
 
@@ -155,6 +158,10 @@ class LanguageModel(nn.Module):
                     language_model_class = 'WordEmbedding_LM'
                 elif "minilm" in pretrained_model_name_or_path.lower():
                     language_model_class = "Bert"
+                elif "dpr-question_encoder" in pretrained_model_name_or_path.lower():
+                    language_model_class = "DPRQuestion"
+                elif "dpr-ctx_encoder" in pretrained_model_name_or_path.lower():
+                    language_model_class = "DPRContext"
 
             if language_model_class:
                 language_model = cls.subclasses[language_model_class].load(pretrained_model_name_or_path, **kwargs)
@@ -1347,3 +1354,196 @@ class Camembert(Roberta):
             camembert.model = CamembertModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
             camembert.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
         return camembert
+
+
+class DPRQuestion(LanguageModel):
+    """
+    A BERT model that wraps HuggingFace's implementation
+    (https://github.com/huggingface/transformers) to fit the LanguageModel class.
+    Paper: https://arxiv.org/abs/1810.04805
+
+    """
+
+    def __init__(self):
+        super(DPRQuestion, self).__init__()
+        self.model = None
+        self.name = "dpr_question_encoder"
+
+    @classmethod
+    def from_scratch(cls, vocab_size, name="dpr_question_encoder", language="en"):
+        dpr_question_encoder = cls()
+        dpr_question_encoder.name = name
+        dpr_question_encoder.language = language
+        config = DPRConfig(vocab_size=vocab_size)
+        dpr_question_encoder.model = DPRQuestionEncoder(config)
+        return dpr_question_encoder
+
+    @classmethod
+    def load(cls, pretrained_model_name_or_path, language=None, **kwargs):
+        """
+        Load a pretrained model by supplying
+
+        * the name of a remote model on s3 ("bert-base-cased" ...)
+        * OR a local path of a model trained via transformers ("some_dir/huggingface_model")
+        * OR a local path of a model trained via FARM ("some_dir/farm_model")
+
+        :param pretrained_model_name_or_path: The path of the saved pretrained model or its name.
+        :type pretrained_model_name_or_path: str
+
+        """
+
+        dpr_question_encoder = cls()
+        if "farm_lm_name" in kwargs:
+            dpr_question_encoder.name = kwargs["farm_lm_name"]
+        else:
+            dpr_question_encoder.name = pretrained_model_name_or_path
+        # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
+        farm_lm_config = Path(pretrained_model_name_or_path) / "question_language_model_config.json"
+        if os.path.exists(farm_lm_config):
+            # FARM style
+            dpr_config = DPRConfig.from_pretrained(farm_lm_config)
+            farm_lm_model = Path(pretrained_model_name_or_path) / "question_language_model.bin"
+            dpr_question_encoder.model = DPRQuestionEncoder.from_pretrained(farm_lm_model, config=dpr_config, **kwargs)
+            dpr_question_encoder.language = dpr_question_encoder.model.config.language
+        else:
+            # Pytorch-transformer Style
+            dpr_question_encoder.model = DPRQuestionEncoder.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
+            dpr_question_encoder.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
+        return dpr_question_encoder
+
+    def forward(
+        self,
+        input_ids,
+        segment_ids,
+        padding_mask,
+        **kwargs,
+    ):
+        """
+        Perform the forward pass of the BERT model.
+
+        :param input_ids: The ids of each token in the input sequence. Is a tensor of shape [batch_size, max_seq_len]
+        :type input_ids: torch.Tensor
+        :param segment_ids: The id of the segment. For example, in next sentence prediction, the tokens in the
+           first sentence are marked with 0 and those in the second are marked with 1.
+           It is a tensor of shape [batch_size, max_seq_len]
+        :type segment_ids: torch.Tensor
+        :param padding_mask: A mask that assigns a 1 to valid input tokens and 0 to padding tokens
+           of shape [batch_size, max_seq_len]
+        :return: Embeddings for each token in the input sequence.
+
+        """
+        output_tuple = self.model(
+            input_ids,
+            token_type_ids=segment_ids,
+            attention_mask=padding_mask,
+        )
+        if self.model.question_encoder.config.output_hidden_states == True:
+            sequence_output, pooled_output, all_hidden_states = output_tuple[0], output_tuple[1], output_tuple[2]
+            return sequence_output, pooled_output, all_hidden_states
+        else:
+            sequence_output, pooled_output = output_tuple[0], output_tuple[1]
+            return sequence_output, pooled_output
+
+    def enable_hidden_states_output(self):
+        self.model.question_encoder.config.output_hidden_states = True
+
+    def disable_hidden_states_output(self):
+        self.model.question_encoder.config.output_hidden_states = False
+
+
+class DPRContext(LanguageModel):
+    """
+    A BERT model that wraps HuggingFace's implementation
+    (https://github.com/huggingface/transformers) to fit the LanguageModel class.
+    Paper: https://arxiv.org/abs/1810.04805
+
+    """
+
+    def __init__(self):
+        super(DPRContext, self).__init__()
+        self.model = None
+        self.name = "dpr_context_encoder"
+
+    @classmethod
+    def from_scratch(cls, vocab_size, name="dpr_context_encoder", language="en"):
+        dpr_context_encoder = cls()
+        dpr_context_encoder.name = name
+        dpr_context_encoder.language = language
+        config = DPRConfig(vocab_size=vocab_size)
+        dpr_context_encoder.model = DPRContextEncoder(config)
+        return dpr_context_encoder
+
+    @classmethod
+    def load(cls, pretrained_model_name_or_path, language=None, **kwargs):
+        """
+        Load a pretrained model by supplying
+
+        * the name of a remote model on s3 ("bert-base-cased" ...)
+        * OR a local path of a model trained via transformers ("some_dir/huggingface_model")
+        * OR a local path of a model trained via FARM ("some_dir/farm_model")
+
+        :param pretrained_model_name_or_path: The path of the saved pretrained model or its name.
+        :type pretrained_model_name_or_path: str
+
+        """
+
+        dpr_context_encoder = cls()
+        if "farm_lm_name" in kwargs:
+            dpr_context_encoder.name = kwargs["farm_lm_name"]
+        else:
+            dpr_context_encoder.name = pretrained_model_name_or_path
+        # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
+        farm_lm_config = Path(pretrained_model_name_or_path) / "context_language_model_config.json"
+        if os.path.exists(farm_lm_config):
+            # FARM style
+            dpr_config = DPRConfig.from_pretrained(farm_lm_config)
+            farm_lm_model = Path(pretrained_model_name_or_path) / "context_language_model.bin"
+            dpr_context_encoder.model = DPRQuestionEncoder.from_pretrained(farm_lm_model, config=dpr_config, **kwargs)
+            dpr_context_encoder.language = dpr_context_encoder.model.config.language
+        else:
+            # Pytorch-transformer Style
+            dpr_context_encoder.model = DPRContextEncoder.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
+            dpr_context_encoder.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
+        return dpr_context_encoder
+
+    def forward(
+        self,
+        input_ids,
+        segment_ids,
+        padding_mask,
+        **kwargs,
+    ):
+        """
+        Perform the forward pass of the BERT model.
+
+        :param input_ids: The ids of each token in the input sequence. Is a tensor of shape [batch_size, max_seq_len]
+        :type input_ids: torch.Tensor
+        :param segment_ids: The id of the segment. For example, in next sentence prediction, the tokens in the
+           first sentence are marked with 0 and those in the second are marked with 1.
+           It is a tensor of shape [batch_size, max_seq_len]
+        :type segment_ids: torch.Tensor
+        :param padding_mask: A mask that assigns a 1 to valid input tokens and 0 to padding tokens
+           of shape [batch_size, max_seq_len]
+        :return: Embeddings for each token in the input sequence.
+
+        """
+        output_tuple = self.model(
+            input_ids,
+            token_type_ids=segment_ids,
+            attention_mask=padding_mask,
+        )
+        if self.model.ctx_encoder.config.output_hidden_states == True:
+            sequence_output, pooled_output, all_hidden_states = output_tuple[0], output_tuple[1], output_tuple[2]
+            return sequence_output, pooled_output, all_hidden_states
+        else:
+            sequence_output, pooled_output = output_tuple[0], output_tuple[1]
+            return sequence_output, pooled_output
+
+    def enable_hidden_states_output(self):
+        self.model.ctx_encoder.config.output_hidden_states = True
+
+    def disable_hidden_states_output(self):
+        self.model.ctx_encoder.config.output_hidden_states = False
+
+
+question_model = LanguageModel.load("facebook/dpr-question_encoder-single-nq-base")
