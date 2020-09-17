@@ -1696,6 +1696,7 @@ class DPRProcessor(Processor):
         embed_title=True,
         num_positives=1,
         num_hard_negatives=1,
+        label_list=None,
         **kwargs
     ):
         """
@@ -1753,11 +1754,11 @@ class DPRProcessor(Processor):
             proxies=proxies,
         )
         if metric:
-            task_type = "dpr"
-            self.add_task(name="dpr",
-                          metric=metric,
-                          label_list=None,
-                          label_name=None,
+            task_type = "representation_learning"
+            self.add_task(name="embedding_learning",
+                          metric="nll",
+                          label_list=label_list,
+                          label_name="label",
                           task_type=task_type)
         else:
             logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
@@ -1869,8 +1870,8 @@ class DPRProcessor(Processor):
         hard_negative_ctx_texts = [passage["text"] for passage in hard_negative_context]
 
         # all context passages and labels: 1 for positive context and 0 for hard-negative context
-        ctx_label = [1]*(self.num_positives if self.num_positives < len(positive_context) else len(positive_context)) + \
-                    [0]*(self.num_hard_negatives if self.num_hard_negatives < len(hard_negative_context) else len(hard_negative_context))
+        ctx_label = [1]*self.num_positives + [0]*self.num_hard_negatives #(self.num_positives if self.num_positives < len(positive_context) else len(positive_context)) + \
+        # +(self.num_hard_negatives if self.num_hard_negatives < len(hard_negative_context) else len(hard_negative_context))
 
         # featurize the query
         query_inputs = self.query_tokenizer.encode_plus(
@@ -1891,6 +1892,9 @@ class DPRProcessor(Processor):
                        zip(hard_negative_ctx_titles, hard_negative_ctx_texts)]
         else:
             all_ctx = positive_ctx_texts + hard_negative_ctx_texts
+
+        # assign empty string tuples if hard_negative passages less than num_hard_negatives
+        all_ctx += [('', '')] * ((self.num_positives + self.num_hard_negatives)-len(all_ctx))
 
         ctx_inputs = self.passage_tokenizer.batch_encode_plus(
             all_ctx,
@@ -1922,20 +1926,20 @@ class DPRProcessor(Processor):
                      "passages_tokens": tokenized_passage
                      }
 
-        features = {"passage_input_ids": ctx_input_ids,
-                    "passage_segment_ids": ctx_segment_ids,
-                    "passage_attention_mask": ctx_padding_mask,
-                    "query_input_ids": query_input_ids,
+        features = {"query_input_ids": query_input_ids,
                     "query_segment_ids": query_segment_ids,
                     "query_attention_mask": query_padding_mask,
-                    "label": ctx_label
+                    "passage_input_ids": ctx_input_ids,
+                    "passage_segment_ids": ctx_segment_ids,
+                    "passage_attention_mask": ctx_padding_mask,
+                    "label_ids": ctx_label
                     }
 
         sample = Sample(id=None,
                         clear_text=clear_text,
                         tokenized=tokenized,
                         features=features)
-        return sample
+        return [sample]
 
     def _sample_to_features(self, sample) -> dict:
         return [sample.features]
