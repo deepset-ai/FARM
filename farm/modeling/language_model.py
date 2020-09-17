@@ -1413,9 +1413,9 @@ class DPRQuestion(LanguageModel):
 
     def forward(
         self,
-        input_ids,
-        segment_ids,
-        padding_mask,
+        query_input_ids,
+        query_segment_ids,
+        query_attention_mask,
         **kwargs,
     ):
         """
@@ -1433,16 +1433,17 @@ class DPRQuestion(LanguageModel):
 
         """
         output_tuple = self.model(
-            input_ids,
-            token_type_ids=segment_ids,
-            attention_mask=padding_mask,
+            input_ids=query_input_ids,
+            token_type_ids=query_segment_ids,
+            attention_mask=query_attention_mask,
+            return_dict=True
         )
         if self.model.question_encoder.config.output_hidden_states == True:
-            sequence_output, pooled_output, all_hidden_states = output_tuple[0], output_tuple[1], output_tuple[2]
-            return sequence_output, pooled_output, all_hidden_states
+            pooled_output, all_hidden_states =  output_tuple.pooler_output, output_tuple.hidden_states
+            return pooled_output, all_hidden_states
         else:
-            sequence_output, pooled_output = output_tuple[0], output_tuple[1]
-            return sequence_output, pooled_output
+            pooled_output = output_tuple.pooler_output
+            return pooled_output, None
 
     def enable_hidden_states_output(self):
         self.model.question_encoder.config.output_hidden_states = True
@@ -1508,9 +1509,9 @@ class DPRContext(LanguageModel):
 
     def forward(
         self,
-        input_ids,
-        segment_ids,
-        padding_mask,
+        passage_input_ids,
+        passage_segment_ids,
+        passage_attention_mask,
         **kwargs,
     ):
         """
@@ -1527,17 +1528,22 @@ class DPRContext(LanguageModel):
         :return: Embeddings for each token in the input sequence.
 
         """
+        max_seq_len = passage_input_ids.shape[-1]
+        passage_input_ids = passage_input_ids.view(-1, max_seq_len)
+        passage_segment_ids = passage_segment_ids.view(-1, max_seq_len)
+        passage_attention_mask = passage_attention_mask.view(-1, max_seq_len)
         output_tuple = self.model(
-            input_ids,
-            token_type_ids=segment_ids,
-            attention_mask=padding_mask,
+            input_ids=passage_input_ids,
+            token_type_ids=passage_segment_ids,
+            attention_mask=passage_attention_mask,
+            return_dict=True
         )
         if self.model.ctx_encoder.config.output_hidden_states == True:
-            sequence_output, pooled_output, all_hidden_states = output_tuple[0], output_tuple[1], output_tuple[2]
-            return sequence_output, pooled_output, all_hidden_states
+            pooled_output, all_hidden_states = output_tuple.pooler_output, output_tuple.hidden_states
+            return pooled_output, all_hidden_states
         else:
-            sequence_output, pooled_output = output_tuple[0], output_tuple[1]
-            return sequence_output, pooled_output
+            pooled_output = output_tuple.pooler_output
+            return pooled_output, None
 
     def enable_hidden_states_output(self):
         self.model.ctx_encoder.config.output_hidden_states = True
@@ -1546,4 +1552,4 @@ class DPRContext(LanguageModel):
         self.model.ctx_encoder.config.output_hidden_states = False
 
 
-question_model = LanguageModel.load("facebook/dpr-question_encoder-single-nq-base")
+#question_model = LanguageModel.load("facebook/dpr-question_encoder-single-nq-base")
