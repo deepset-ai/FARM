@@ -10,7 +10,7 @@ from typing import List
 
 import torch
 from torch import nn
-from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
+from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss, NLLLoss
 
 from farm.data_handler.utils import is_json
 from farm.utils import convert_iob_to_simple_tags, try_get
@@ -1532,3 +1532,80 @@ def pick_single_fn(heads, fn_name):
         return merge_fns[0]
     else:
         raise Exception(f"More than one of the prediction heads have a {fn_name}() function")
+
+
+class DensePassageRetrievalHead(PredictionHead):
+    def __init__(self, similarity_function="dot_product", **kwargs):
+        super(DensePassageRetrievalHead, self).__init__()
+
+        self.similarity_function = similarity_function
+        self.loss_fct = NLLLoss(reduction="mean")
+        self.task_name = "embedding_learning"
+        #self.ph_output_type = "per_sequence"
+
+        self.generate_config()
+
+    @classmethod
+    def dot_product_scores(cls, q_vectors, ctx_vectors):
+        # q_vector: n1 x D, ctx_vectors: n2 x D, result n1 x n2
+        r = torch.matmul(q_vectors, torch.transpose(ctx_vectors, 0, 1))
+        return r
+
+    @classmethod
+    def cosine_scores(cls, q_vector, ctx_vectors):
+        # q_vector: n1 x D, ctx_vectors: n2 x D, result n1 x n2
+        return nn.functional.cosine_similarity(q_vector, ctx_vectors, dim=1)
+
+    def get_similarity_function(self):
+        if "dot_product" in self.similarity_function:
+            return DensePassageRetrievalHead.dot_product_scores
+        elif "cosine" in self.similarity_function:
+            return DensePassageRetrievalHead.cosine_scores
+
+    def forward(self, question_vectors, passage_vectors):
+        sim_func = self.get_similarity_function()
+        scores = sim_func(question_vectors, passage_vectors)
+
+        if len(question_vectors.size()) > 1:
+            q_num = question_vectors.size(0)
+            scores = scores.view(q_num, -1)
+
+        softmax_scores = nn.functional.log_softmax(scores, dim=1)
+        return softmax_scores
+
+    def logits_to_loss(self, logits, **kwargs):
+        lm_label_ids = kwargs.get(self.label_tensor_name)
+        positive_idx_per_question = (lm_label_ids.view(-1) == 1).nonzero()
+        loss = self.loss_fct(logits,
+                             torch.tensor(positive_idx_per_question).squeeze(-1).to(logits.device))
+        #per_sample_loss = masked_lm_loss.view(-1, batch_size).mean(dim=0)
+        return loss #per_sample_loss
+
+    def logits_to_preds(self, logits, **kwargs):
+        max_score, max_idxs = torch.max(logits, 1)
+        lm_label_ids = kwargs.get(self.label_tensor_name).cpu().numpy()
+        positive_idx_per_question = (lm_label_ids == 1).nonzero()
+
+        preds_ids = torch.tensor(positive_idx_per_question).to(max_idxs.device)
+        #return loss, correct_predictions_count
+
+        lm_preds_ids = logits.argmax(2).cpu().numpy()
+        # apply mask to get rid of predictions for non-masked tokens
+        lm_preds_ids[lm_label_ids == -1] = -1
+        lm_preds_ids = lm_preds_ids.tolist()
+        preds = []
+        # we have a batch of sequences here. we need to convert for each token in each sequence.
+        for pred_ids_for_sequence in lm_preds_ids:
+            preds.append(
+                [self.label_list[int(x)] for x in pred_ids_for_sequence if int(x) != -1]
+            )
+        return preds
+
+    def prepare_labels(self, **kwargs):
+        label_ids = kwargs.get(self.label_tensor_name)
+        label_ids = label_ids.cpu().numpy().tolist()
+        labels = []
+        # we have a batch of sequences here. we need to convert for each token in each sequence.
+        for ids_for_sequence in label_ids:
+            labels.append([self.label_list[int(x)] for x in ids_for_sequence if int(x) != -1])
+        return labels
