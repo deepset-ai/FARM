@@ -1982,6 +1982,9 @@ class DPRProcessor(Processor):
         else:
             all_ctx = positive_ctx_texts + hard_negative_ctx_texts
 
+        # assign empty string tuples if hard_negative passages less than num_hard_negatives
+        all_ctx += [('', '')] * ((self.num_positives + self.num_hard_negatives)-len(all_ctx))
+
         ctx_inputs = self.passage_tokenizer.batch_encode_plus(
             all_ctx,
             add_special_tokens=True,
