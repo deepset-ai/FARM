@@ -1808,7 +1808,7 @@ class DPRProcessor(Processor):
         if metric:
             task_type = "representation_learning"
             self.add_task(name="embedding_learning",
-                          metric="nll",
+                          metric="acc",
                           label_list=label_list,
                           label_name="label",
                           task_type=task_type)
