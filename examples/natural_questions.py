@@ -17,25 +17,25 @@ from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
 
 
 def question_answering():
-    logging.basicConfig(
-        format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
-        datefmt="%m/%d/%Y %H:%M:%S",
-        level=logging.INFO)
-
-    ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
-    ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_natural_questions")
+    # logging.basicConfig(
+    #     format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
+    #     datefmt="%m/%d/%Y %H:%M:%S",
+    #     level=logging.INFO)
+    #
+    # ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
+    # ml_logger.init_experiment(experiment_name="Public_FARM", run_name="Run_natural_questions")
 
     ##########################
     ########## Settings
     ##########################
     set_all_seeds(seed=42)
-    device, n_gpu = initialize_device_settings(use_cuda=True)
+    device, n_gpu = initialize_device_settings(use_cuda=False)
     batch_size = 24
     n_epochs = 1
     evaluate_every = 500
     lang_model = "deepset/roberta-base-squad2" # start with a model that can already extract answers
     do_lower_case = False # roberta is a cased model
-    train_filename = "train_medium.jsonl"
+    train_filename = "dev_medium.jsonl"
     dev_filename = "dev_medium.jsonl"
     keep_is_impossible = 0.15 # downsample negative examples after data conversion
     downsample_context_size = 300 # reduce length of wikipedia articles to relevant part around the answer
@@ -74,7 +74,7 @@ def question_answering():
     )
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
-    data_silo = DataSilo(processor=processor, batch_size=batch_size, caching=True)
+    data_silo = DataSilo(processor=processor, batch_size=1, caching=False, max_processes=1)
 
     # 4. Create an AdaptiveModel
     # a) which consists of a pretrained language model as a basis

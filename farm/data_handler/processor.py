@@ -1311,8 +1311,27 @@ class NaturalQuestionsProcessor(QAProcessor):
         self.add_task("question_answering", "squad", ["start_token", "end_token"])
         self.add_task("text_classification", "f1_macro", self.answer_type_list, label_name="answer_type")
 
+    # def dataset_from_dicts(self, dicts, indices=None, return_baskets=False):
+    #     return SquadProcessor.dataset_from_dicts(self, dicts, indices, return_baskets)
+    #
+    # def _dicts_to_baskets(self, dicts, indices):
+    #     return SquadProcessor._dicts_to_baskets(self, dicts, indices)
+
     def file_to_dicts(self, file: str) -> [dict]:
-        dicts = read_jsonl(file, proxies=self.proxies)
+        #if file.endswith('.json'):
+        dicts = SquadProcessor.file_to_dicts(self, file)
+        ####
+        print('dicts lenght: {}'.format(len(dicts)))
+        new_dicts= []
+        for d in dicts:
+            for q in d['qas']:
+                new_dicts.append({'context': d['context'], 'qas': [q]})
+        dicts = new_dicts
+        print('dicts lenght: {}'.format(len(dicts)))
+        ####
+        #else:
+        #dicts = read_jsonl(file, proxies=self.proxies)
+
         return dicts
 
 
