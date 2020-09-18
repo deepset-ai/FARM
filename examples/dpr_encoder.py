@@ -32,7 +32,7 @@ def dense_passage_retrieval():
     device, n_gpu = initialize_device_settings(use_cuda=True)
     batch_size = 2
     n_epochs = 3
-    evaluate_every = 5000
+    evaluate_every = 3258
     question_lang_model = "facebook/dpr-question_encoder-single-nq-base"
     passage_lang_model = "facebook/dpr-ctx_encoder-single-nq-base"
     do_lower_case = True
@@ -50,7 +50,7 @@ def dense_passage_retrieval():
                                        do_lower_case=do_lower_case, use_fast=use_fast)
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
-    label_list = ["positive", "hard_negative"]
+    label_list = ["hard_negative", "positive"]
     metric = "representation"
     processor = DPRProcessor(tokenizer=query_tokenizer,
                              passage_tokenizer=context_tokenizer,
@@ -71,8 +71,8 @@ def dense_passage_retrieval():
 
     # 4. Create an AdaptiveModel+
     # a) which consists of a pretrained language model as a basis
-    question_language_model = LanguageModel.load(question_lang_model)
-    passage_language_model = LanguageModel.load(passage_lang_model)
+    question_language_model = LanguageModel.load(question_lang_model, pretrained_weights_model="bert-base-uncased")
+    passage_language_model = LanguageModel.load(passage_lang_model, pretrained_weights_model="bert-base-uncased")
 
 
     # b) and a prediction head on top that is suited for our task => Question Answering

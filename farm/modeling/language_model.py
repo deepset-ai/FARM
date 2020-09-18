@@ -1379,7 +1379,7 @@ class DPRQuestion(LanguageModel):
         return dpr_question_encoder
 
     @classmethod
-    def load(cls, pretrained_model_name_or_path, language=None, **kwargs):
+    def load(cls, pretrained_model_name_or_path, language=None, pretrained_weights_model=None, **kwargs):
         """
         Load a pretrained model by supplying
 
@@ -1397,6 +1397,7 @@ class DPRQuestion(LanguageModel):
             dpr_question_encoder.name = kwargs["farm_lm_name"]
         else:
             dpr_question_encoder.name = pretrained_model_name_or_path
+
         # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
         farm_lm_config = Path(pretrained_model_name_or_path) / "question_language_model_config.json"
         if os.path.exists(farm_lm_config):
@@ -1409,6 +1410,10 @@ class DPRQuestion(LanguageModel):
             # Pytorch-transformer Style
             dpr_question_encoder.model = DPRQuestionEncoder.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
             dpr_question_encoder.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
+
+        if pretrained_weights_model:
+            dpr_question_encoder.model.question_encoder.bert_model = dpr_question_encoder.model.question_encoder.bert_model.from_pretrained(pretrained_weights_model)
+
         return dpr_question_encoder
 
     def forward(
@@ -1475,7 +1480,7 @@ class DPRContext(LanguageModel):
         return dpr_context_encoder
 
     @classmethod
-    def load(cls, pretrained_model_name_or_path, language=None, **kwargs):
+    def load(cls, pretrained_model_name_or_path, language=None, pretrained_weights_model=None, **kwargs):
         """
         Load a pretrained model by supplying
 
@@ -1499,12 +1504,16 @@ class DPRContext(LanguageModel):
             # FARM style
             dpr_config = DPRConfig.from_pretrained(farm_lm_config)
             farm_lm_model = Path(pretrained_model_name_or_path) / "context_language_model.bin"
-            dpr_context_encoder.model = DPRQuestionEncoder.from_pretrained(farm_lm_model, config=dpr_config, **kwargs)
+            dpr_context_encoder.model = DPRContextEncoder.from_pretrained(farm_lm_model, config=dpr_config, **kwargs)
             dpr_context_encoder.language = dpr_context_encoder.model.config.language
         else:
             # Pytorch-transformer Style
             dpr_context_encoder.model = DPRContextEncoder.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
             dpr_context_encoder.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
+
+        if pretrained_weights_model:
+            dpr_context_encoder.model.ctx_encoder.bert_model = dpr_context_encoder.model.ctx_encoder.bert_model.from_pretrained(pretrained_weights_model)
+
         return dpr_context_encoder
 
     def forward(
