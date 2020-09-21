@@ -126,14 +126,16 @@ def question_answering():
     fetch_archive_from_http("https://s3.eu-central-1.amazonaws.com/deepset.ai-farm-qa/models/roberta-base-squad2-nq.zip", output_dir="../saved_models/farm")
     QA_input = [
         {
-            "qas": ["Did GameTrailers rated Twilight Princess as one of the best games ever created?"],
+            "qas": ["Did GameTrailers rated Twilight Princess as one of the best games ever created?", "Did GameTrailers rated Twilight Princess as one of the worst games ever created?"],
             "context":  "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
         }
     ]
 
     model = QAInferencer.load(model_name_or_path="../saved_models/farm/roberta-base-squad2-nq", batch_size=batch_size, gpu=True)
-    result = model.inference_from_dicts(dicts=QA_input, return_json=False) # result is a list of QAPred objects
 
+    result = model.inference_from_dicts(dicts=QA_input, return_json=False) # result is a list of QAPred objects
+    print(result)
+    print(len(result))
     print(f"\nQuestion: Did GameTrailers rated Twilight Princess as one of the best games ever created?"
           f"\nAnswer from model: {result[0].prediction[0].answer}")
     model.close_multiprocessing_pool()
