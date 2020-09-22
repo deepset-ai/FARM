@@ -1241,6 +1241,7 @@ class NaturalQuestionsProcessor(QAProcessor):
         downsample_context_size=None,
         inference=False,
         max_answers=6,
+        answer_type_list=["no_answer", "span", "yes", "no"],
         **kwargs):
         """
         Deals with all the preprocessing steps needed for Natural Questions. Follows Alberti 2019 et al. (https://arxiv.org/abs/1901.08634)
@@ -1286,7 +1287,7 @@ class NaturalQuestionsProcessor(QAProcessor):
 
         # These are classification labels from Natural Questions. Note that in this implementation, we are merging
         # the "long_answer" and "short_answer" labels into the one "span" label
-        self.answer_type_list = ["no_answer", "span", "yes", "no"]
+        self.answer_type_list = answer_type_list #["no_answer", "span", "yes", "no"]
 
         self.doc_stride = doc_stride
         self.max_query_length = max_query_length
