@@ -1309,7 +1309,7 @@ class NaturalQuestionsProcessor(QAProcessor):
 
         # Todo rename metric from squad to maybe QA spans or something like that
         self.add_task("question_answering", "squad", ["start_token", "end_token"])
-        self.add_task("text_classification", "f1_macro", self.answer_type_list, label_name="answer_type")
+        self.add_task("text_classification", "f1_macro", self.answer_type_list, label_name="answer_type", task_type='classification')
 
     # def dataset_from_dicts(self, dicts, indices=None, return_baskets=False):
     #     return SquadProcessor.dataset_from_dicts(self, dicts, indices, return_baskets)
