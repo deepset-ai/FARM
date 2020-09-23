@@ -12,7 +12,7 @@ from transformers.configuration_auto import AutoConfig
 from typing import Generator, List, Union
 
 from farm.data_handler.dataloader import NamedDataLoader
-from farm.data_handler.processor import Processor, InferenceProcessor, SquadProcessor, NERProcessor, TextClassificationProcessor
+from farm.data_handler.processor import Processor, InferenceProcessor, SquadProcessor, NERProcessor, TextClassificationProcessor, NaturalQuestionsProcessor
 from farm.data_handler.utils import grouper
 from farm.data_handler.inputs import QAInput
 from farm.modeling.tokenization import Tokenizer
@@ -696,6 +696,8 @@ class QAInferencer(Inferencer):
                              return_json=True,
                              multiprocessing_chunksize=None,
                              streaming=False) -> Union[List[QAPred], Generator[QAPred, None, None]]:
+        if isinstance(self.processor, NaturalQuestionsProcessor) and  any([len(dict['questions']) > 1 for dict in dicts]):
+            logger.warning('More than one question for document. NaturalQuestions inference will return just the answer to the first question.')
         return Inferencer.inference_from_dicts(self, dicts, return_json=return_json,
                                                multiprocessing_chunksize=multiprocessing_chunksize, streaming=streaming)
 
