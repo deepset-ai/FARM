@@ -720,6 +720,8 @@ class BertLMHead(PredictionHead):
         self.vocab_size = vocab_size
         self.loss_fct = CrossEntropyLoss(reduction="none", ignore_index=-1)
         self.num_labels = vocab_size  # vocab size
+        # Adding layer_dims (required for conversion to transformers)
+        self.layer_dims = [hidden_size, vocab_size]
         # TODO Check if weight init needed!
         # self.apply(self.init_bert_weights)
         self.ph_output_type = "per_token"
