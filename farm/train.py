@@ -86,7 +86,7 @@ class EarlyStopping:
         self.eval_values.append(float(eval_value))
         stopprocessing, savemodel = False, False
         if len(self.eval_values) <= self.min_evals:
-            return stopprocessing, savemodel
+            return stopprocessing, savemodel, eval_value
         if self.mode == "min":
             delta = self.best_so_far - eval_value
         else:
