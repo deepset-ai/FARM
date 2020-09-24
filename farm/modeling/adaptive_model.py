@@ -503,7 +503,10 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         return self.language_model.language
 
     def convert_to_transformers(self):
-        if len(self.prediction_heads) != 1:
+        if len(self.prediction_heads) == 2 and self.prediction_heads[0].model_type == "language_modelling":
+            logger.warning("Currently only the Masked Language Modeling component of the prediction head is converted, "
+                           "not the Next Sentence Prediction or Sentence Order Prediction components")
+        elif len(self.prediction_heads) != 1:
             raise ValueError(f"Currently conversion only works for models with a SINGLE prediction head. "
                              f"Your model has {len(self.prediction_heads)}")
         elif len(self.prediction_heads[0].layer_dims) != 2:
@@ -524,14 +527,15 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
             transformers_model = AutoModelWithLMHead.from_config(self.language_model.model.config)
             # transfer weights for language model + prediction head
             setattr(transformers_model, transformers_model.base_model_prefix, self.language_model.model)
+            # Adding decoder bias (required for conversion to transformers)
+            self.prediction_heads[0].decoder.bias = self.prediction_heads[0].bias
+
             ph_state_dict = self.prediction_heads[0].state_dict()
             ph_state_dict["transform.dense.weight"] = ph_state_dict.pop("dense.weight")
             ph_state_dict["transform.dense.bias"] = ph_state_dict.pop("dense.bias")
             ph_state_dict["transform.LayerNorm.weight"] = ph_state_dict.pop("LayerNorm.weight")
             ph_state_dict["transform.LayerNorm.bias"] = ph_state_dict.pop("LayerNorm.bias")
             transformers_model.cls.predictions.load_state_dict(ph_state_dict)
-            logger.warning("Currently only the Masked Language Modeling component of the prediction head is converted, "
-                           "not the Next Sentence Prediction or Sentence Order Prediction components")
 
         elif self.prediction_heads[0].model_type == "text_classification":
             if self.language_model.model.base_model_prefix == "roberta":
