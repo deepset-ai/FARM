@@ -128,33 +128,7 @@ class LanguageModel(nn.Module):
             language_model = cls.subclasses[config["name"]].load(pretrained_model_name_or_path)
         else:
             if language_model_class is None:
-                # it's transformers format (either from model hub or local)
-                pretrained_model_name_or_path = str(pretrained_model_name_or_path)
-                if "xlm" in pretrained_model_name_or_path and "roberta" in pretrained_model_name_or_path:
-                    language_model_class = 'XLMRoberta'
-                elif 'roberta' in pretrained_model_name_or_path:
-                    language_model_class = 'Roberta'
-                elif 'codebert' in pretrained_model_name_or_path.lower():
-                    if "mlm" in pretrained_model_name_or_path.lower():
-                        raise NotImplementedError("MLM part of codebert is currently not supported in FARM")
-                    else:
-                        language_model_class = 'Roberta'
-                elif 'camembert' in pretrained_model_name_or_path or 'umberto' in pretrained_model_name_or_path:
-                    language_model_class = "Camembert"
-                elif 'albert' in pretrained_model_name_or_path:
-                    language_model_class = 'Albert'
-                elif 'distilbert' in pretrained_model_name_or_path:
-                    language_model_class = 'DistilBert'
-                elif 'bert' in pretrained_model_name_or_path:
-                    language_model_class = 'Bert'
-                elif 'xlnet' in pretrained_model_name_or_path:
-                    language_model_class = 'XLNet'
-                elif 'electra' in pretrained_model_name_or_path:
-                    language_model_class = 'Electra'
-                elif "word2vec" in pretrained_model_name_or_path.lower() or "glove" in pretrained_model_name_or_path.lower():
-                    language_model_class = 'WordEmbedding_LM'
-                elif "minilm" in pretrained_model_name_or_path.lower():
-                    language_model_class = "Bert"
+                language_model_class = cls.get_language_model_class(pretrained_model_name_or_path)
 
             if language_model_class:
                 language_model = cls.subclasses[language_model_class].load(pretrained_model_name_or_path, **kwargs)
@@ -183,6 +157,39 @@ class LanguageModel(nn.Module):
             assert vocab_size == model_emb_size
 
         return language_model
+
+    @classmethod
+    def get_language_model_class(cls, model_name_or_path):
+        # it's transformers format (either from model hub or local)
+        model_name_or_path = str(model_name_or_path)
+        if "xlm" in model_name_or_path and "roberta" in model_name_or_path:
+            language_model_class = 'XLMRoberta'
+        elif 'roberta' in model_name_or_path:
+            language_model_class = 'Roberta'
+        elif 'codebert' in model_name_or_path.lower():
+            if "mlm" in model_name_or_path.lower():
+                raise NotImplementedError("MLM part of codebert is currently not supported in FARM")
+            else:
+                language_model_class = 'Roberta'
+        elif 'camembert' in model_name_or_path or 'umberto' in model_name_or_path:
+            language_model_class = "Camembert"
+        elif 'albert' in model_name_or_path:
+            language_model_class = 'Albert'
+        elif 'distilbert' in model_name_or_path:
+            language_model_class = 'DistilBert'
+        elif 'bert' in model_name_or_path:
+            language_model_class = 'Bert'
+        elif 'xlnet' in model_name_or_path:
+            language_model_class = 'XLNet'
+        elif 'electra' in model_name_or_path:
+            language_model_class = 'Electra'
+        elif "word2vec" in model_name_or_path.lower() or "glove" in model_name_or_path.lower():
+            language_model_class = 'WordEmbedding_LM'
+        elif "minilm" in model_name_or_path.lower():
+            language_model_class = "Bert"
+        else:
+            language_model_class = None
+        return language_model_class
 
     def get_output_dims(self):
         config = self.model.config

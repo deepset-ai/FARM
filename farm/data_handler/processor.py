@@ -11,6 +11,7 @@ from random import randint
 
 import numpy as np
 from sklearn.preprocessing import StandardScaler
+from transformers.configuration_auto import AutoConfig
 
 from numpy.random import random as random_float
 from farm.data_handler.dataset import convert_features_to_dataset
@@ -216,6 +217,53 @@ class Processor(ABC):
 
         if processor is None:
             raise Exception
+
+        return processor
+
+    @classmethod
+    def convert_from_transformers(cls, model_name_or_path, task_type, max_seq_len, doc_stride,
+                                  tokenizer_class=None, tokenizer_args=None, use_fast=None):
+        config = AutoConfig.from_pretrained(model_name_or_path)
+        tokenizer_args = tokenizer_args or {}
+        tokenizer = Tokenizer.load(model_name_or_path,
+                                   tokenizer_class=tokenizer_class,
+                                   use_fast=use_fast,
+                                   **tokenizer_args,
+                                   )
+
+        # TODO infer task_type automatically from config (if possible)
+        if task_type == "question_answering":
+            processor = SquadProcessor(
+                tokenizer=tokenizer,
+                max_seq_len=max_seq_len,
+                label_list=["start_token", "end_token"],
+                metric="squad",
+                data_dir="data",
+                doc_stride=doc_stride
+            )
+        elif task_type == "embeddings":
+            processor = InferenceProcessor(tokenizer=tokenizer, max_seq_len=max_seq_len)
+
+        elif task_type == "text_classification":
+            label_list = list(config.id2label[id] for id in range(len(config.id2label)))
+            processor = TextClassificationProcessor(tokenizer=tokenizer,
+                                                    max_seq_len=max_seq_len,
+                                                    data_dir="data",
+                                                    label_list=label_list,
+                                                    label_column_name="label",
+                                                    metric="acc",
+                                                    quote_char='"',
+                                                    )
+        elif task_type == "ner":
+            label_list = list(config.label2id.keys())
+            processor = NERProcessor(
+                tokenizer=tokenizer, max_seq_len=max_seq_len, data_dir="data", metric="seq_f1",
+                label_list=label_list
+            )
+        else:
+            raise ValueError(f"`task_type` {task_type} is not supported yet. "
+                             f"Valid options for arg `task_type`: 'question_answering', "
+                             f"'embeddings', 'text_classification', 'ner'")
 
         return processor
 

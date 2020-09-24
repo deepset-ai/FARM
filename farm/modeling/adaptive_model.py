@@ -2,7 +2,6 @@ import copy
 import json
 import logging
 import os
-from argparse import Namespace
 from pathlib import Path
 
 import multiprocessing
@@ -11,13 +10,11 @@ import torch
 from torch import nn
 from transformers.modeling_auto import AutoModelForQuestionAnswering, AutoModelForSequenceClassification, AutoModelForTokenClassification, AutoModelWithLMHead
 
-from farm.conversion.onnx_optimization.bert_model_optimization import main as optimize_onnx_model
-from farm.data_handler.data_silo import DataSilo
-from farm.data_handler.processor import SquadProcessor
 from farm.modeling.language_model import LanguageModel
 from farm.modeling.prediction_head import PredictionHead, QuestionAnsweringHead, TokenClassificationHead, TextClassificationHead, pick_single_fn
-from farm.modeling.tokenization import Tokenizer
 from farm.utils import MLFlowLogger as MlLogger, stack
+from transformers.convert_graph_to_onnx import convert
+from farm.data_handler.processor import Processor
 
 logger = logging.getLogger(__name__)
 
@@ -631,138 +628,45 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
 
         return adaptive_model
 
-    def convert_to_onnx(self, output_path, opset_version=11, optimize_for=None):
-        """
-        Convert a PyTorch AdaptiveModel to ONNX.
+    @classmethod
+    def convert_to_onnx(cls, model_name, output_path, task_type, opset_version=11):
+        language_model_class = LanguageModel.get_language_model_class(model_name)
+        if language_model_class not in ["Bert", "Roberta"]:
+            raise Exception("The current ONNX conversion only support 'BERT' & 'RoBERTa' models")
 
-        The conversion is trace-based by performing a forward pass on the model with a input batch.
-
-        :param output_path: model dir to write the model and config files
-        :type output_path: Path
-        :param opset_version: ONNX opset version
-        :type opset_version: int
-        :param optimize_for: optimize the exported model for a target device. Available options
-                             are "gpu_tensor_core" (GPUs with tensor core like V100 or T4),
-                             "gpu_without_tensor_core" (most other GPUs), and "cpu".
-        :type optimize_for: str
-        :return:
-        """
-        if type(self.prediction_heads[0]) is not QuestionAnsweringHead:
-            raise NotImplementedError
-
-        tokenizer = Tokenizer.load(
-            pretrained_model_name_or_path="deepset/bert-base-cased-squad2"
-        )
-
-        label_list = ["start_token", "end_token"]
-        metric = "squad"
-        max_seq_len = 384
-        batch_size = 1
-        processor = SquadProcessor(
-            tokenizer=tokenizer,
-            max_seq_len=max_seq_len,
-            label_list=label_list,
-            metric=metric,
-            train_filename="stub-file",  # the data is loaded from dicts instead of file.
-            dev_filename=None,
-            test_filename=None,
-            data_dir="stub-dir",
-        )
-
-        data_silo = DataSilo(processor=processor, batch_size=1, distributed=False, automatic_loading=False)
-        sample_dict = [
-            {
-                "context": 'The Normans were the people who in the 10th and 11th centuries gave their name to Normandy, '
-                           'a region in France. They were descended from Norse ("Norman" comes from "Norseman") raiders '
-                           'and pirates from Denmark, Iceland and Norway who, under their leader Rollo, agreed to swear '
-                           'fealty to King Charles III of West Francia.',
-                "qas": [
-                    {
-                        "question": "In what country is Normandy located?",
-                        "id": "56ddde6b9a695914005b9628",
-                        "answers": [],
-                        "is_impossible": False,
-                    }
-                ],
-            }
-        ]
-
-        data_silo._load_data(train_dicts=sample_dict)
-        data_loader = data_silo.get_data_loader("train")
-        data = next(iter(data_loader))
-        data = list(data.values())
-
-        inputs = {
-            'input_ids': data[0].to(self.device).reshape(batch_size, max_seq_len),
-            'padding_mask': data[1].to(self.device).reshape(batch_size, max_seq_len),
-            'segment_ids': data[2].to(self.device).reshape(batch_size, max_seq_len)
+        task_type_to_pipeline_map = {
+            "question_answering": "question-answering",
+            "embeddings": "feature-extraction",
+            "ner": "ner"
         }
 
-        # The method argument passing in torch.onnx.export is different to AdaptiveModel's forward().
-        # To resolve that, an ONNXWrapper instance is used.
-        model = ONNXWrapper.load_from_adaptive_model(self)
+        convert(
+            pipeline_name=task_type_to_pipeline_map[task_type],
+            framework="pt",
+            model=model_name,
+            output=output_path/"model.onnx",
+            opset=opset_version
+        )
 
-        if not os.path.exists(output_path):
-            os.makedirs(output_path)
-
-        with torch.no_grad():
-            symbolic_names = {0: 'batch_size', 1: 'max_seq_len'}
-            torch.onnx.export(model,
-                              args=tuple(inputs.values()),
-                              f=output_path / 'model.onnx'.format(opset_version),
-                              opset_version=opset_version,
-                              do_constant_folding=True,
-                              input_names=['input_ids',
-                                           'padding_mask',
-                                           'segment_ids'],
-                              output_names=['logits'],
-                              dynamic_axes={'input_ids': symbolic_names,
-                                            'padding_mask': symbolic_names,
-                                            'segment_ids': symbolic_names,
-                                            'logits': symbolic_names,
-                                            })
-
-        if optimize_for:
-            optimize_args = Namespace(
-                disable_attention=False, disable_bias_gelu=False, disable_embed_layer_norm=False, opt_level=99,
-                disable_skip_layer_norm=False, disable_bias_skip_layer_norm=False, hidden_size=768, verbose=False,
-                input='onnx-export/model.onnx', model_type='bert', num_heads=12, output='onnx-export/model.onnx'
-            )
-
-            if optimize_for == "gpu_tensor_core":
-                optimize_args.float16 = True
-                optimize_args.input_int32 = True
-            elif optimize_for == "gpu_without_tensor_core":
-                optimize_args.float16 = False
-                optimize_args.input_int32 = True
-            elif optimize_for == "cpu":
-                logger.info("")
-                optimize_args.float16 = False
-                optimize_args.input_int32 = False
-            else:
-                raise NotImplementedError(f"ONNXRuntime model optimization is not available for {optimize_for}. Choose "
-                                          f"one of 'gpu_tensor_core'(V100 or T4), 'gpu_without_tensor_core' or 'cpu'.")
-
-            optimize_onnx_model(optimize_args)
-        else:
-            logger.info("Exporting unoptimized ONNX model. To enable optimization, supply "
-                        "'optimize_for' parameter with the target device.'")
-
-        # PredictionHead contains functionalities like logits_to_preds() that would still be needed
-        # for Inference with ONNX models. Only the config of the PredictionHead is stored.
-        for i, ph in enumerate(self.prediction_heads):
-            ph.save_config(output_path, i)
-
+        processor = Processor.convert_from_transformers(
+            model_name_or_path=model_name,
+            task_type=task_type,
+            max_seq_len=256,
+            doc_stride=128,
+            use_fast=True
+        )
         processor.save(output_path)
+        model = AdaptiveModel.convert_from_transformers(model_name, device="cpu", task_type=task_type)
+        model.save(output_path)  # TODO remove PyTorch model
 
         onnx_model_config = {
+            "task_type": task_type,
             "onnx_opset_version": opset_version,
-            "language": self.get_language(),
+            "language_model_class": language_model_class,
+            "language": model.language_model.language
         }
-        with open(output_path / "model_config.json", "w") as f:
+        with open(output_path / "onnx_model_config.json", "w") as f:
             json.dump(onnx_model_config, f)
-
-        logger.info(f"Model exported at path {output_path}")
 
 
 class ONNXAdaptiveModel(BaseAdaptiveModel):
@@ -774,14 +678,15 @@ class ONNXAdaptiveModel(BaseAdaptiveModel):
 
     For inference, this class is compatible with the FARM Inferencer.
     """
-    def __init__(self, onnx_session, prediction_heads, language, device):
+    def __init__(self, onnx_session, language_model_class, language, prediction_heads, device):
         if str(device) == "cuda" and onnxruntime.get_device() != "GPU":
             raise Exception(f"Device {device} not available for Inference. For CPU, run pip install onnxruntime and"
                             f"for GPU run pip install onnxruntime-gpu")
         self.onnx_session = onnx_session
+        self.language_model_class = language_model_class
+        self.language = language
         self.prediction_heads = prediction_heads
         self.device = device
-        self.language = language
 
     @classmethod
     def load(cls, load_dir, device, **kwargs):
@@ -804,11 +709,12 @@ class ONNXAdaptiveModel(BaseAdaptiveModel):
             prediction_heads.append(head)
             ph_output_type.append(head.ph_output_type)
 
-        with open(load_dir/"model_config.json") as f:
+        with open(load_dir/"onnx_model_config.json") as f:
             model_config = json.load(f)
+            language_model_class = model_config["language_model_class"]
             language = model_config["language"]
 
-        return cls(onnx_session, prediction_heads, language, device)
+        return cls(onnx_session, language_model_class, language, prediction_heads, device)
 
     def forward(self, **kwargs):
         """
@@ -818,13 +724,21 @@ class ONNXAdaptiveModel(BaseAdaptiveModel):
         :return: all logits as torch.tensor or multiple tensors.
         """
         with torch.no_grad():
-            input_to_onnx = {
-                'input_ids': numpy.ascontiguousarray(kwargs['input_ids'].cpu().numpy()),
-                'padding_mask': numpy.ascontiguousarray(kwargs['padding_mask'].cpu().numpy()),
-                'segment_ids': numpy.ascontiguousarray(kwargs['segment_ids'].cpu().numpy()),
-            }
+            if self.language_model_class == "Bert":
+                input_to_onnx = {
+                    'input_ids': numpy.ascontiguousarray(kwargs['input_ids'].cpu().numpy()),
+                    'attention_mask': numpy.ascontiguousarray(kwargs['padding_mask'].cpu().numpy()),
+                    'token_type_ids': numpy.ascontiguousarray(kwargs['segment_ids'].cpu().numpy()),
+                }
+            elif self.language_model_class == "Roberta":
+                input_to_onnx = {
+                    'input_ids': numpy.ascontiguousarray(kwargs['input_ids'].cpu().numpy()),
+                    'attention_mask': numpy.ascontiguousarray(kwargs['padding_mask'].cpu().numpy())
+                }
             res = self.onnx_session.run(None, input_to_onnx)
-            logits = [torch.from_numpy(res[0]).to(self.device)]
+            res = numpy.vstack([res[0], res[1]]).transpose(1, 0)
+            res = res[numpy.newaxis, ...]
+            logits = [torch.Tensor(res).to(self.device)]
 
         return logits
 
