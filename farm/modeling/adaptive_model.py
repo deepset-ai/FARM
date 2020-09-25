@@ -657,7 +657,8 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         )
         processor.save(output_path)
         model = AdaptiveModel.convert_from_transformers(model_name, device="cpu", task_type=task_type)
-        model.save(output_path)  # TODO remove PyTorch model
+        model.save(output_path)
+        os.remove(output_path / "language_model.bin")
 
         onnx_model_config = {
             "task_type": task_type,
