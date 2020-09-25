@@ -221,11 +221,11 @@ class Processor(ABC):
         return processor
 
     @classmethod
-    def convert_from_transformers(cls, model_name_or_path, task_type, max_seq_len, doc_stride,
+    def convert_from_transformers(cls, tokenizer_name_or_path, task_type, max_seq_len, doc_stride,
                                   tokenizer_class=None, tokenizer_args=None, use_fast=None):
-        config = AutoConfig.from_pretrained(model_name_or_path)
+        config = AutoConfig.from_pretrained(tokenizer_name_or_path)
         tokenizer_args = tokenizer_args or {}
-        tokenizer = Tokenizer.load(model_name_or_path,
+        tokenizer = Tokenizer.load(tokenizer_name_or_path,
                                    tokenizer_class=tokenizer_class,
                                    use_fast=use_fast,
                                    **tokenizer_args,
