@@ -1,12 +1,11 @@
 import logging
 from pathlib import Path
-import numpy as np
 import pytest
 from math import isclose
 
 from farm.data_handler.processor import SquadProcessor
 from farm.modeling.adaptive_model import AdaptiveModel
-from farm.infer import Inferencer, QAInferencer
+from farm.infer import QAInferencer
 from farm.data_handler.inputs import QAInput, Question
 
 @pytest.mark.parametrize("distilbert_squad", [True, False], indirect=True)
@@ -145,42 +144,9 @@ def test_id(span_inference_result, no_answer_inference_result):
     assert no_answer_inference_result.id == "best_id_ever"
 
 
-def test_qa_onnx_inference(caplog=None):
-    if caplog:
-        caplog.set_level(logging.CRITICAL)
-
-    QA_input = [
-        {
-            "questions": ["Who counted the game among the best ever made?"],
-            "text": "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
-        }]
-    base_LM_model = "deepset/bert-base-cased-squad2"
-
-    # Pytorch
-    inferencer = Inferencer.load(base_LM_model, batch_size=2, gpu=False, task_type="question_answering",
-                                 num_processes=0)
-    result = inferencer.inference_from_dicts(dicts=QA_input)[0]
-
-    # ONNX
-    onnx_model_export_path = Path("testsave/onnx-export")
-    inferencer.model.convert_to_onnx(onnx_model_export_path)
-    inferencer = Inferencer.load(model_name_or_path=onnx_model_export_path, task_type="question_answering", num_processes=0)
-
-    result_onnx = inferencer.inference_from_dicts(QA_input)[0]
-
-    for (onnx, regular) in zip(result_onnx["predictions"][0]["answers"][0].items(), result["predictions"][0]["answers"][0].items()):
-        # keys
-        assert onnx[0] == regular[0]
-        # values
-        if type(onnx[1]) == float:
-            np.testing.assert_almost_equal(onnx[1], regular[1], decimal=4)  # score
-        else:
-            assert onnx[1] == regular[1]
-
-
 if(__name__=="__main__"):
     test_training()
     test_save_load()
     test_inference_dicts()
     test_inference_objs()
-    test_qa_onnx_inference()
+
