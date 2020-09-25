@@ -10,7 +10,7 @@ def test_onnx_conversion_and_inference(tmp_path, model_name):
     AdaptiveModel.convert_to_onnx(
         model_name=model_name, output_path=tmp_path / "test-onnx", task_type="question_answering"
     )
-    onnx_inferencer = Inferencer.load(tmp_path / "test-onnx", task_type="question_answering")
+    onnx_inferencer = Inferencer.load(tmp_path / "test-onnx", task_type="question_answering", num_processes=0)
     qa_input = [
         {
             "qas": ["What is the population of Berlin?"],
