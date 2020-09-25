@@ -8,13 +8,14 @@ import multiprocessing
 import numpy
 import torch
 from torch import nn
+from transformers.configuration_auto import AutoConfig
+from transformers.convert_graph_to_onnx import convert, quantize as quantize_model
 from transformers.modeling_auto import AutoModelForQuestionAnswering, AutoModelForSequenceClassification, AutoModelForTokenClassification, AutoModelWithLMHead
 
+from farm.data_handler.processor import Processor
 from farm.modeling.language_model import LanguageModel
 from farm.modeling.prediction_head import PredictionHead, QuestionAnsweringHead, TokenClassificationHead, TextClassificationHead, pick_single_fn
 from farm.utils import MLFlowLogger as MlLogger, stack
-from transformers.convert_graph_to_onnx import convert
-from farm.data_handler.processor import Processor
 
 logger = logging.getLogger(__name__)
 
@@ -629,10 +630,29 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         return adaptive_model
 
     @classmethod
-    def convert_to_onnx(cls, model_name, output_path, task_type, opset_version=11):
+    def convert_to_onnx(cls, model_name, output_path, task_type, convert_to_float16=False, quantize=False, opset_version=11):
+        """
+        Convert a PyTorch model from transformers hub to an ONNX Model.
+
+        :param model_name: transformers model name
+        :type model_name: str
+        :param output_path: output Path to write the converted to
+        :type output_path: Path
+        :param task_type: Type of task for the model. Available options: "embeddings", "question_answering",
+                          "text_classification", "ner".
+        :param convert_to_float16: By default, the model use float32 precision. With half precision of flaot16, inference
+                                should be faster on Nvidia GPUs with Tensor core like T4 or V100. On older GPUs, float32
+                                might be more performant.
+        :type convert_to_float16: bool
+        :param quantize: convert floating point number to integers
+        :type quantize: bool
+        :param opset_version: ONNX opset version
+        :type opset_version: int
+        :return:
+        """
         language_model_class = LanguageModel.get_language_model_class(model_name)
-        if language_model_class not in ["Bert", "Roberta"]:
-            raise Exception("The current ONNX conversion only support 'BERT' & 'RoBERTa' models")
+        if language_model_class not in ["Bert", "Roberta", "XLMRoberta"]:
+            raise Exception("The current ONNX conversion only support 'BERT', 'RoBERTa', and 'XLMRoberta' models.")
 
         task_type_to_pipeline_map = {
             "question_answering": "question-answering",
@@ -645,11 +665,13 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
             framework="pt",
             model=model_name,
             output=output_path/"model.onnx",
-            opset=opset_version
+            opset=opset_version,
+            use_external_format=True if language_model_class is "XLMRoberta" else False
         )
 
+        # save processor & model config files that are needed when loading the model with the FARM Inferencer
         processor = Processor.convert_from_transformers(
-            model_name_or_path=model_name,
+            tokenizer_name_or_path=model_name,
             task_type=task_type,
             max_seq_len=256,
             doc_stride=128,
@@ -658,7 +680,7 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         processor.save(output_path)
         model = AdaptiveModel.convert_from_transformers(model_name, device="cpu", task_type=task_type)
         model.save(output_path)
-        os.remove(output_path / "language_model.bin")
+        os.remove(output_path / "language_model.bin")  # remove the actual PyTorch model(only configs are required)
 
         onnx_model_config = {
             "task_type": task_type,
@@ -668,6 +690,21 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         }
         with open(output_path / "onnx_model_config.json", "w") as f:
             json.dump(onnx_model_config, f)
+
+        if convert_to_float16:
+            from onnxruntime_tools import optimizer
+            config = AutoConfig.from_pretrained(model_name)
+            optimized_model = optimizer.optimize_model(
+                input=str(output_path/"model.onnx"),
+                model_type='bert',
+                num_heads=config.num_hidden_layers,
+                hidden_size=config.hidden_size
+            )
+            optimized_model.convert_model_float32_to_float16()
+            optimized_model.save_model_to_file("model.onnx")
+
+        if quantize:
+            quantize_model(output_path/"model.onnx")
 
 
 class ONNXAdaptiveModel(BaseAdaptiveModel):
@@ -731,7 +768,7 @@ class ONNXAdaptiveModel(BaseAdaptiveModel):
                     'attention_mask': numpy.ascontiguousarray(kwargs['padding_mask'].cpu().numpy()),
                     'token_type_ids': numpy.ascontiguousarray(kwargs['segment_ids'].cpu().numpy()),
                 }
-            elif self.language_model_class == "Roberta":
+            elif self.language_model_class in ["Roberta", "XLMRoberta"]:
                 input_to_onnx = {
                     'input_ids': numpy.ascontiguousarray(kwargs['input_ids'].cpu().numpy()),
                     'attention_mask': numpy.ascontiguousarray(kwargs['padding_mask'].cpu().numpy())
