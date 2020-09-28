@@ -71,8 +71,8 @@ def dense_passage_retrieval():
 
     # 4. Create an AdaptiveModel+
     # a) which consists of a pretrained language model as a basis
-    question_language_model = LanguageModel.load(question_lang_model, pretrained_weights_model="bert-base-uncased")
-    passage_language_model = LanguageModel.load(passage_lang_model, pretrained_weights_model="bert-base-uncased")
+    question_language_model = LanguageModel.load(pretrained_model_name_or_path="bert-base-uncased", language_model_class="DPRQuestion")
+    passage_language_model = LanguageModel.load(pretrained_model_name_or_path="bert-base-uncased", language_model_class="DPRContext")
 
 
     # b) and a prediction head on top that is suited for our task => Question Answering
