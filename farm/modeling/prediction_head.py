@@ -1542,9 +1542,9 @@ class DensePassageRetrievalHead(PredictionHead):
 
         self.similarity_function = similarity_function
         self.loss_fct = NLLLoss(reduction="mean")
-        self.task_name = "embedding_learning"
+        self.task_name = "representation_learning"
         self.model_type = "representation_learning"
-        #self.ph_output_type = "per_sequence"
+        self.ph_output_type = "per_sequence"
 
         self.generate_config()
 
@@ -1595,8 +1595,8 @@ class DensePassageRetrievalHead(PredictionHead):
             gold_idx = (logits_sorted_indices[i] == idx.item()).nonzero()
             rank += gold_idx.item()
 
-        av_rank = float(rank / logits.size(0))
-        return av_rank
+        #av_rank = float(rank / logits.size(0))
+        return rank
 
     def logits_to_preds(self, logits, **kwargs):
         """
