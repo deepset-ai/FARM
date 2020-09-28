@@ -52,6 +52,18 @@ class BaseBiAdaptiveModel:
             model = cls.subclasses["BiAdaptiveModel"].load(**kwargs)
         return model
 
+    def logits_to_average_rank(self, logits, **kwargs):
+        """
+        Get average rank of positive contexts
+        """
+        all_ranks = []
+        # collect rank from all heads
+        for head, logits_for_head in zip(self.prediction_heads, logits):
+            ranks = head.logits_to_average_rank(logits=logits_for_head, **kwargs)
+            all_ranks.append(ranks)
+        return all_ranks
+
+
     def logits_to_preds(self, logits, **kwargs):
         """
         Get predictions from all prediction heads.
@@ -243,8 +255,8 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
         :type save_dir: Path
         """
         os.makedirs(save_dir, exist_ok=True)
-        self.language_model1.save(save_dir+"lm1")
-        self.language_model2.save(save_dir+"lm2")
+        self.language_model1.save(Path.joinpath(save_dir, Path("lm1")))
+        self.language_model2.save(Path.joinpath(save_dir, Path("lm2")))
 
     @classmethod
     def load(cls, load_dir, device, strict=True, lm1_name=None, lm2_name=None, processor=None):
