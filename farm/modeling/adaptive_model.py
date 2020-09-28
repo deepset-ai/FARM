@@ -778,8 +778,7 @@ class ONNXAdaptiveModel(BaseAdaptiveModel):
                     'attention_mask': numpy.ascontiguousarray(kwargs['padding_mask'].cpu().numpy())
                 }
             res = self.onnx_session.run(None, input_to_onnx)
-            res = numpy.vstack([res[0], res[1]]).transpose(1, 0)
-            res = res[numpy.newaxis, ...]
+            res = numpy.stack(res).transpose(1, 2, 0)
             logits = [torch.Tensor(res).to(self.device)]
 
         return logits
