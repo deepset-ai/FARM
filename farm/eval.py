@@ -9,6 +9,7 @@ from farm.evaluation.metrics import compute_metrics, compute_report_metrics
 from farm.utils import to_numpy
 from farm.utils import MLFlowLogger as MlLogger
 from farm.modeling.adaptive_model import AdaptiveModel
+from farm.modeling.biadaptive_model import BiAdaptiveModel
 from farm.visual.ascii.images import BUSH_SEP
 
 logger = logging.getLogger(__name__)
@@ -55,6 +56,7 @@ class Evaluator:
         preds_all = [[] for _ in model.prediction_heads]
         label_all = [[] for _ in model.prediction_heads]
         ids_all = [[] for _ in model.prediction_heads]
+        ranks_all = [[] for _ in model.prediction_heads]
         passage_start_t_all = [[] for _ in model.prediction_heads]
 
         for step, batch in enumerate(
@@ -65,6 +67,8 @@ class Evaluator:
             with torch.no_grad():
 
                 logits = model.forward(**batch)
+                if isinstance(model, BiAdaptiveModel): ## DPR validation: NLL or average_rank
+                    avg_ranks = model.logits_to_average_rank(logits=logits, **batch)
                 losses_per_head = model.logits_to_loss_per_head(logits=logits, **batch)
                 preds = model.logits_to_preds(logits=logits, **batch)
                 labels = model.prepare_labels(**batch)
@@ -77,6 +81,8 @@ class Evaluator:
                 if head.model_type == "span_classification":
                     ids_all[head_num] += list(to_numpy(batch["id"]))
                     passage_start_t_all[head_num] += list(to_numpy(batch["passage_start_t"]))
+                elif head.model_type == "representation_learning":
+                    ranks_all[head_num] += list(avg_ranks)
 
         # Evaluate per prediction head
         all_results = []
@@ -104,6 +110,9 @@ class Evaluator:
                 compute_metrics(metric=head.metric, preds=preds_all[head_num], labels=label_all[head_num]
                 )
             )
+
+            if head.model_type == "representation_learning":
+                result["average_rank"] = ranks_all[head_num]
 
             # Select type of report depending on prediction head output type
             if self.report:
