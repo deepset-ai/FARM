@@ -125,7 +125,8 @@ def compute_report_metrics(head, preds, labels):
             # Therefore we need to supply all possible label ids instead of label values.
             all_possible_labels = list(range(len(head.label_list)))
         else:
-            all_possible_labels = head.label_list
+            #all_possible_labels = head.label_list
+            all_possible_labels = range(len(head.label_list))
         return report_fn(
             labels,
             preds,
