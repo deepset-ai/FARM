@@ -56,9 +56,7 @@ class Evaluator:
         preds_all = [[] for _ in model.prediction_heads]
         label_all = [[] for _ in model.prediction_heads]
         ids_all = [[] for _ in model.prediction_heads]
-        ranks_all = [0 for _ in model.prediction_heads]
         passage_start_t_all = [[] for _ in model.prediction_heads]
-        total_samples = 0
 
         for step, batch in enumerate(
             tqdm(self.data_loader, desc="Evaluating", mininterval=10)
@@ -67,10 +65,7 @@ class Evaluator:
 
             with torch.no_grad():
 
-                logits  = model.forward(**batch)
-                if isinstance(model, BiAdaptiveModel): ## DPR validation: NLL or average_rank
-                    ranks_sum = model.logits_to_average_rank(logits=logits, **batch)
-                    total_samples += len(logits[0])
+                logits = model.forward(**batch)
                 losses_per_head = model.logits_to_loss_per_head(logits=logits, **batch)
                 preds = model.logits_to_preds(logits=logits, **batch)
                 labels = model.prepare_labels(**batch)
@@ -83,8 +78,7 @@ class Evaluator:
                 if head.model_type == "span_classification":
                     ids_all[head_num] += list(to_numpy(batch["id"]))
                     passage_start_t_all[head_num] += list(to_numpy(batch["passage_start_t"]))
-                elif head.model_type == "representation_learning":
-                    ranks_all[head_num] += np.sum(to_numpy(ranks_sum[head_num]))
+
 
         # Evaluate per prediction head
         all_results = []
@@ -108,8 +102,6 @@ class Evaluator:
 
             result = {"loss": loss_all[head_num] / len(self.data_loader.dataset),
                       "task_name": head.task_name}
-            if head.model_type == "representation_learning":
-                result["average_rank"] = ranks_all[head_num] / len(self.data_loader.dataset)
             result.update(
                 compute_metrics(metric=head.metric, preds=preds_all[head_num], labels=label_all[head_num]
                 )
