@@ -52,18 +52,6 @@ class BaseBiAdaptiveModel:
             model = cls.subclasses["BiAdaptiveModel"].load(**kwargs)
         return model
 
-    def logits_to_average_rank(self, logits, **kwargs):
-        """
-        Get average rank of positive contexts
-        """
-        all_ranks = []
-        # collect rank from all heads
-        for head, logits_for_head in zip(self.prediction_heads, logits):
-            ranks = head.logits_to_average_rank(logits=logits_for_head, **kwargs)
-            all_ranks.append(ranks)
-        return all_ranks
-
-
     def logits_to_preds(self, logits, **kwargs):
         """
         Get predictions from all prediction heads.
@@ -506,7 +494,7 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
         lm1 = LanguageModel.load(model_name_or_path1)
         lm2 = LanguageModel.load(model_name_or_path2)
         #TODO Infer type of head automatically from config
-        if task_type == "embeddings":
+        if task_type == "representation_ranking":
             bi_adaptive_model = cls(language_model1=lm1, language_model2=lm2, prediction_heads=[], embeds_dropout_prob=0.1,
                                  lm_output_types=["per_token", "per_sequence"], device=device)
         else:
