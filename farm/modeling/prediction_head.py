@@ -1583,29 +1583,14 @@ class DensePassageRetrievalHead(PredictionHead):
                              torch.tensor(positive_idx_per_question).squeeze(-1).to(logits.device))
         return loss
 
-    def logits_to_average_rank(self, logits, **kwargs):
-        logits_sorted, logits_sorted_indices = torch.sort(logits, dim=1, descending=True)
-
-        label_ids = kwargs.get(self.label_tensor_name)
-        positive_idx_per_question = (label_ids.view(-1) == 1).nonzero()
-
-        rank = 0
-        for i, idx in enumerate(positive_idx_per_question):
-            # aggregate the rank of the known gold passage in the sorted results for each question
-            gold_idx = (logits_sorted_indices[i] == idx.item()).nonzero()
-            rank += gold_idx.item()
-
-        #av_rank = float(rank / logits.size(0))
-        return rank
-
     def logits_to_preds(self, logits, **kwargs):
-        """
-        Returns what the model predicts the 'positive' context as
-        """
-        #max_score, pred_ids = torch.max(logits, 1)
-        lm_label_ids = kwargs.get(self.label_tensor_name)
-        return [pred.item() for pred in lm_label_ids.view(-1)]#[self.label_list[pred] for pred in lm_label_ids.view(-1)]
+        _, logits_sorted_indices = torch.sort(logits, dim=1, descending=True)
+        return logits_sorted_indices
 
     def prepare_labels(self, **kwargs):
         label_ids = kwargs.get(self.label_tensor_name)
-        return [id.item() for id in label_ids.view(-1)]#[self.label_list[id] for id in label_ids.view(-1)]
+        labels = torch.zeros(label_ids.size(0), label_ids.numel())
+        postive_indices = range(0, label_ids.numel(), 2)
+        for i, indx in enumerate(postive_indices):
+            labels[i, indx] = 1
+        return labels

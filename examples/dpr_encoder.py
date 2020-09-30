@@ -51,7 +51,7 @@ def dense_passage_retrieval():
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
     label_list = ["hard_negative", "positive"]
-    metric = "representation"
+    metric = "representation_learning"
     processor = DPRProcessor(tokenizer=query_tokenizer,
                              passage_tokenizer=context_tokenizer,
                              max_seq_len=512,
@@ -60,7 +60,7 @@ def dense_passage_retrieval():
                              data_dir="data/retriever",
                              train_filename="nq-train.json",
                              dev_filename="nq-dev.json",
-                             test_filename="nq-test.json",
+                             test_filename="nq-dev.json",
                              embed_title=embed_title,
                              num_hard_negatives=num_hard_negatives)
 
