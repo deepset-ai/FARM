@@ -25,8 +25,8 @@ params = {
     "modelname": ["deepset/bert-base-cased-squad2", "deepset/minilm-uncased-squad2", "deepset/roberta-base-squad2", "deepset/bert-large-uncased-whole-word-masking-squad2", "deepset/xlm-roberta-large-squad2"],
     "batch_size": [50],
     "document_size": [1000_000],
-    "max_seq_len": [384],
-    "doc_stride": [128],
+    "max_seq_len": [384],       # This param needs to be set to 384 otherwise the "passages per sec" calculation will be wrong
+    "doc_stride": [128],        # This param needs to be set to 128 otherwise the "passages per sec" calculation will be wrong
     "gpu": [True],
     "question": [l[:-1] for l in open(questions_file)][:2]
 }
