@@ -3,7 +3,7 @@ setuptools
 wheel
 # PyTorch
 --find-links=https://download.pytorch.org/whl/torch_stable.html
-torch>=1.5.1,<=1.6.0
+torch>1.5,<1.7
 # progress bars in model download and training scripts
 tqdm
 # Accessing files from S3 directly.
@@ -28,5 +28,7 @@ flask-cors
 dill # pickle extension for (de-)serialization
 # optional for inference
 #fasttext==0.9.1
-#onnxruntime  # Inference with ONNX models. Install onnxruntime-gpu for Inference on GPUs
+# Inference with ONNX models. Install onnxruntime-gpu for Inference on GPUs
+#onnxruntime
+#onnxruntime_tools
 psutil

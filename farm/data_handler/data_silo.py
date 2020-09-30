@@ -711,8 +711,11 @@ class _StreamingDataSet(IterableDataset):
 
 class DataSiloForCrossVal:
     """
-    For performing cross validation, we really want to combine all the instances from all
-    the sets or just some of the sets, then create a different data silo instance for each fold.
+    Perform cross validation or nested cross validation.
+
+    For performing cross validation or nested cross validation, we really want to combine all the
+    instances from all the sets or just some of the sets, then create a different data silo
+    instance for each fold or nested fold.
     Calling DataSiloForCrossVal.make() creates a list of DataSiloForCrossVal instances - one for each fold.
     """
 
@@ -754,7 +757,7 @@ class DataSiloForCrossVal:
 
     @classmethod
     def make(cls, datasilo, sets=["train", "dev", "test"], n_splits=5, shuffle=True, random_state=None,
-             stratified=True, n_neg_answers_per_question=1):
+             stratified=True, n_neg_answers_per_question=1, n_inner_splits=None):
         """
         Create number of folds data-silo-like objects which can be used for training from the
         original data silo passed on.
@@ -769,16 +772,45 @@ class DataSiloForCrossVal:
         :type shuffle: bool
         :param random_state: random state for shuffling
         :type random_state: int
-        :param stratified: if class stratification should be done
+        :param stratified: If class stratification should be done.
+            It is never done with question answering.
         :type stratified: bool
         :param n_neg_answers_per_question: number of negative answers per question to include for training
         :type n_neg_answers_per_question: int
+        :param n_inner_splits: Number of inner splits of a nested cross validation.
+            Default is ``None`` which means to do a normal (not nested) cross validation.
+            If at least 2 is given a nested cross validation is done. In that case the ``n_splits``
+            parameter is the number of outer splits.
+            The outer cross validation splits the data into a test set and a rest set.
+            The inner cross validation splits the rest data into a train set and a dev set.
+            The advantage of a nested cross validation is that it is doing the inner split
+            not just by random but in a more systematic way. When doing model evaluation
+            this also reduces the variance. This is because you train on more different
+            iterations with more different data constellations.
+        :type n_inner_splits: int
         """
+        # check n_inner_splits param
+        if (n_inner_splits is not None) and (not n_inner_splits >= 2):
+            raise ValueError("'n_inner_splits' must be at least 2!")
 
-        if "question_answering" in datasilo.processor.tasks:
-            return cls._make_question_answering(datasilo, sets, n_splits, shuffle, random_state, n_neg_answers_per_question)
+        if "question_answering" in datasilo.processor.tasks and n_inner_splits is None:
+            return cls._make_question_answering(
+                datasilo, sets, n_splits, shuffle, random_state, n_neg_answers_per_question
+            )
+        elif "question_answering" in datasilo.processor.tasks and n_inner_splits is not None:
+            raise NotImplementedError()
+        elif n_inner_splits is None:
+            return cls._make(
+                datasilo, sets, n_splits, shuffle, random_state, stratified
+            )
+        elif n_inner_splits is not None:
+            return cls._make_nested(
+                datasilo, sets, n_splits, shuffle, random_state, stratified,
+                n_inner_splits
+            )
         else:
-            return cls._make(datasilo, sets, n_splits, shuffle, random_state, stratified)
+            raise RuntimeError("Cross validation can not be done under these conditions!")
+
 
     @classmethod
     def _make_question_answering(cls, datasilo, sets=["train", "dev", "test"], n_splits=5, shuffle=True,
@@ -942,3 +974,45 @@ class DataSiloForCrossVal:
             current_train_set = np.hstack(np.delete(splits, idx, axis=0))
 
             yield current_train_set, current_test_set
+
+    @staticmethod
+    def _make_nested(datasilo, sets=["train", "dev", "test"],
+                     n_splits=5, shuffle=True, random_state=None,
+                     stratified=True, n_inner_splits=5):
+        setstoconcat = [datasilo.data[setname] for setname in sets]
+        ds_all = ConcatDataset(setstoconcat)
+        idxs = list(range(len(ds_all)))
+
+        silos = []
+
+        # outer cross validation where we split all data to test and rest
+        if stratified:
+            # get all the labels for stratification
+            ytensors = [t[3][0] for t in ds_all]
+            y = torch.stack(ytensors)
+            outer_cv = StratifiedKFold(n_splits=n_splits, shuffle=shuffle, random_state=random_state)
+            outer_split = outer_cv.split(idxs, y)
+        else:
+            outer_cv = KFold(n_splits=n_splits, shuffle=shuffle, random_state=random_state)
+            outer_split = outer_cv.split(idxs)
+        for idxs_rest, idxs_test in outer_split:
+
+            # inner cross validation where we split rest data into train and dev
+            if stratified:
+                y_rest = y[idxs_rest]
+                inner_cv = StratifiedKFold(n_splits=n_inner_splits, shuffle=shuffle, random_state=random_state)
+                inner_split = inner_cv.split(idxs_rest, y_rest)
+            else:
+                inner_cv = KFold(n_splits=n_inner_splits, shuffle=shuffle, random_state=random_state)
+                inner_split = inner_cv.split(idxs_rest)
+            for idxs_train_idxs, idxs_dev_idxs in inner_split:
+
+                # split idxs_rest with indexes from inner cross validation
+                idxs_train = idxs_rest[idxs_train_idxs]
+                idxs_dev = idxs_rest[idxs_dev_idxs]
+
+                ds_train = Subset(ds_all, idxs_train)
+                ds_dev = Subset(ds_all, idxs_dev)
+                ds_test = Subset(ds_all, idxs_test)
+                silos.append(DataSiloForCrossVal(datasilo, ds_train, ds_dev, ds_test))
+        return silos
