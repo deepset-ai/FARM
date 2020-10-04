@@ -764,7 +764,7 @@ class DistilBert(LanguageModel):
         farm_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(farm_lm_config):
             # FARM style
-            config = AlbertConfig.from_pretrained(farm_lm_config)
+            config = DistilBertConfig.from_pretrained(farm_lm_config)
             farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
             distilbert.model = DistilBertModel.from_pretrained(farm_lm_model, config=config, **kwargs)
             distilbert.language = distilbert.model.config.language
