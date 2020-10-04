@@ -14,7 +14,6 @@ from farm.modeling.optimization import initialize_optimizer
 from farm.train import Trainer
 from farm.eval import Evaluator
 from farm.evaluation.metrics import squad
-import numpy as np
 
 
 def question_answering_crossvalidation():
@@ -41,20 +40,20 @@ def question_answering_crossvalidation():
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)
 
-    lang_model = "deepset/xlm-roberta-large-squad2"
+    lang_model = "deepset/roberta-base-squad2"
     do_lower_case = False
 
     n_epochs = 2
     batch_size = 80
-    learning_rate = 1e-5
-    print(batch_size)
+    learning_rate = 3e-5
 
-    data_dir = Path("../data/germanQA/labeltool_export/jugu")
-    filename = "jugu-combined-all.json"
-    xval_folds = 2
+
+    data_dir = Path("../data/covidqa")
+    filename = "COVID-QA.json"
+    xval_folds = 5
     dev_split = 0
     evaluate_every = 0
-    no_ans_boost = 0 # use large negative values to disable giving "no answer" option
+    no_ans_boost = -100 # use large negative values to disable giving "no answer" option
     accuracy_at = 3 # accuracy at n is useful for answers inside long documents
     use_amp = None
 
@@ -65,13 +64,12 @@ def question_answering_crossvalidation():
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
         pretrained_model_name_or_path=lang_model,
-        use_fast=False,
         do_lower_case=do_lower_case)
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
     processor = SquadProcessor(
         tokenizer=tokenizer,
-        max_seq_len=256,
+        max_seq_len=384,
         label_list=["start_token", "end_token"],
         metric="squad",
         train_filename=filename,
@@ -79,12 +77,11 @@ def question_answering_crossvalidation():
         dev_split=dev_split,
         test_filename=None,
         data_dir=data_dir,
-        doc_stride=128,
+        doc_stride=192,
     )
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
     data_silo = DataSilo(
-        max_multiprocessing_chunksize=10,
         processor=processor,
         batch_size=batch_size)
 
@@ -127,7 +124,6 @@ def question_answering_crossvalidation():
             device=device,
             n_batches=len(silo_to_use.loaders["train"]),
             n_epochs=n_epochs,
-            distributed=False,
             use_amp=use_amp)
 
         # Feed everything to the Trainer, which keeps care of growing our model into powerful plant and evaluates it from time to time
@@ -145,7 +141,7 @@ def question_answering_crossvalidation():
             evaluator_test=False)
 
         # train it
-        #trainer.train()
+        trainer.train()
 
         return trainer.model
 
@@ -169,21 +165,18 @@ def question_answering_crossvalidation():
             device=device
         )
         result = evaluator_test.eval(model, return_preds_and_labels=True)
-        #evaluator_test.log_results(result, "Test", logging=False, steps=len(silo.get_data_loader("test")), num_fold=num_fold)
+        evaluator_test.log_results(result, "Test", logging=False, steps=len(silo.get_data_loader("test")), num_fold=num_fold)
 
-        #all_results.append(result)
-        # all_preds.extend(result[0].get("preds"))
-        # all_labels.extend(result[0].get("labels"))
+        all_results.append(result)
+        all_preds.extend(result[0].get("preds"))
+        all_labels.extend(result[0].get("labels"))
         all_f1.append(result[0]["f1"])
         all_em.append(result[0]["EM"])
         all_topnaccuracy.append(result[0]["top_n_accuracy"])
 
         # emtpy cache to avoid memory leak and cuda OOM across multiple folds
         model.cpu()
-        del model
-        del result
         torch.cuda.empty_cache()
-        torch.cuda.synchronize()
 
     # Save the per-fold results to json for a separate, more detailed analysis
     # TODO currently not supported - adjust to QAPred and QACandidate objects
@@ -198,22 +191,18 @@ def question_answering_crossvalidation():
     #          json.dump(all_results, fp, default=convert_numpy_dtype)
 
     # calculate overall metrics across all folds
-    #xval_score = squad(preds=all_preds, labels=all_labels)
+    xval_score = squad(preds=all_preds, labels=all_labels)
 
 
     logger.info(f"Single EM-Scores:   {all_em}")
     logger.info(f"Single F1-Scores:   {all_f1}")
     logger.info(f"Single top_{accuracy_at}_accuracy Scores:   {all_topnaccuracy}")
-
-    logger.info(f"mean EM-Scores:   {np.mean(all_em)}")
-    logger.info(f"mean F1-Scores:   {np.mean(all_f1)}")
-    logger.info(f"mean top_{accuracy_at}_accuracy Scores:   {np.mean(all_topnaccuracy)}")
-    #logger.info(f"XVAL EM:   {xval_score['EM']}")
-    #logger.info(f"XVAL f1:   {xval_score['f1']}")
-    #logger.info(f"XVAL top_{accuracy_at}_accuracy:   {xval_score['top_n_accuracy']}")
-    #ml_logger.log_metrics({"XVAL EM": xval_score["EM"]}, 0)
-    #ml_logger.log_metrics({"XVAL f1": xval_score["f1"]}, 0)
-    #ml_logger.log_metrics({f"XVAL top_{accuracy_at}_accuracy": xval_score["top_n_accuracy"]}, 0)
+    logger.info(f"XVAL EM:   {xval_score['EM']}")
+    logger.info(f"XVAL f1:   {xval_score['f1']}")
+    logger.info(f"XVAL top_{accuracy_at}_accuracy:   {xval_score['top_n_accuracy']}")
+    ml_logger.log_metrics({"XVAL EM": xval_score["EM"]}, 0)
+    ml_logger.log_metrics({"XVAL f1": xval_score["f1"]}, 0)
+    ml_logger.log_metrics({f"XVAL top_{accuracy_at}_accuracy": xval_score["top_n_accuracy"]}, 0)
 
 if __name__ == "__main__":
     question_answering_crossvalidation()
