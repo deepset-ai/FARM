@@ -6,17 +6,16 @@ from farm.modeling.adaptive_model import AdaptiveModel
 
 def onnx_runtime_example():
     """
-    This example converts a Question Answering FARM AdaptiveModel
-    to ONNX format and uses ONNX Runtime for doing Inference.
+    This example shows conversion of a transformers model from the Model Hub to
+    ONNX format & inference using ONNXRuntime.
     """
 
-    device = "cpu"
-    model_name_or_path = "deepset/bert-base-cased-squad2"
-    onnx_model_export_path = Path("./onnx-export")
+    model_name_or_path = "deepset/roberta-base-squad2"
+    onnx_model_export_path = Path("./roberta-onnx")
 
-    model = AdaptiveModel.convert_from_transformers(model_name_or_path, device=device, task_type="question_answering")
-    model.convert_to_onnx(onnx_model_export_path)
+    AdaptiveModel.convert_to_onnx(model_name_or_path, onnx_model_export_path, task_type="question_answering")
 
+    # for ONNX models, the Inferencer uses ONNXRuntime under-the-hood
     inferencer = Inferencer.load(model_name_or_path=onnx_model_export_path)
 
     qa_input = [

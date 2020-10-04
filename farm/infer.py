@@ -3,19 +3,16 @@ import multiprocessing as mp
 import os
 from functools import partial
 import warnings
-import time
 
 import torch
 from torch.utils.data.sampler import SequentialSampler
 from tqdm import tqdm
-from transformers.configuration_auto import AutoConfig
 from typing import Generator, List, Union
 
 from farm.data_handler.dataloader import NamedDataLoader
-from farm.data_handler.processor import Processor, InferenceProcessor, SquadProcessor, NERProcessor, TextClassificationProcessor, NaturalQuestionsProcessor
+from farm.data_handler.processor import Processor, InferenceProcessor, NaturalQuestionsProcessor
 from farm.data_handler.utils import grouper
 from farm.data_handler.inputs import QAInput
-from farm.modeling.tokenization import Tokenizer
 from farm.modeling.adaptive_model import AdaptiveModel, BaseAdaptiveModel, ONNXAdaptiveModel
 from farm.modeling.optimization import optimize_model
 from farm.utils import initialize_device_settings
@@ -266,46 +263,8 @@ class Inferencer:
                                  "'question_answering', 'embeddings', 'text_classification', 'ner'")
 
             model = AdaptiveModel.convert_from_transformers(model_name_or_path, device, task_type)
-            config = AutoConfig.from_pretrained(model_name_or_path)
-            tokenizer = Tokenizer.load(model_name_or_path,
-                                       tokenizer_class=tokenizer_class,
-                                       use_fast=use_fast,
-                                       **tokenizer_args,
-                                       )
-
-            # TODO infer task_type automatically from config (if possible)
-            if task_type == "question_answering":
-                processor = SquadProcessor(
-                    tokenizer=tokenizer,
-                    max_seq_len=max_seq_len,
-                    label_list=["start_token", "end_token"],
-                    metric="squad",
-                    data_dir="data",
-                    doc_stride=doc_stride
-                )
-            elif task_type == "embeddings":
-                processor = InferenceProcessor(tokenizer=tokenizer, max_seq_len=max_seq_len)
-
-            elif task_type == "text_classification":
-                label_list = list(config.id2label[id] for id in range(len(config.id2label)))
-                processor = TextClassificationProcessor(tokenizer=tokenizer,
-                                                        max_seq_len=max_seq_len,
-                                                        data_dir="data",
-                                                        label_list=label_list,
-                                                        label_column_name="label",
-                                                        metric="acc",
-                                                        quote_char='"',
-                                                        )
-            elif task_type == "ner":
-                label_list = list(config.label2id.keys())
-                processor = NERProcessor(
-                    tokenizer=tokenizer, max_seq_len=max_seq_len, data_dir="data", metric="seq_f1",
-                    label_list=label_list
-                )
-            else:
-                raise ValueError(f"`task_type` {task_type} is not supported yet. "
-                                 f"Valid options for arg `task_type`: 'question_answering', "
-                                 f"'embeddings', 'text_classification', 'ner'")
+            processor = Processor.convert_from_transformers(model_name_or_path, task_type, max_seq_len, doc_stride,
+                                                            tokenizer_class, tokenizer_args, use_fast)
 
         if not isinstance(model,ONNXAdaptiveModel):
             model, _ = optimize_model(model=model, device=device, local_rank=-1, optimizer=None)
