@@ -243,6 +243,10 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
         :type save_dir: Path
         """
         os.makedirs(save_dir, exist_ok=True)
+        if not os.path.exists(Path.joinpath(save_dir, Path("lm1"))):
+            os.makedirs(Path.joinpath(save_dir, Path("lm1")))
+        if not os.path.exists(Path.joinpath(save_dir, Path("lm2"))):
+            os.makedirs(Path.joinpath(save_dir, Path("lm2")))
         self.language_model1.save(Path.joinpath(save_dir, Path("lm1")))
         self.language_model2.save(Path.joinpath(save_dir, Path("lm2")))
 
