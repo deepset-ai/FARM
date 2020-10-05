@@ -2,6 +2,7 @@ import logging
 
 import numpy as np
 import torch
+from functools import reduce
 from scipy.stats import pearsonr, spearmanr
 from seqeval.metrics import classification_report as token_classification_report
 from seqeval.metrics import f1_score as ner_f1_score
@@ -128,8 +129,8 @@ def compute_report_metrics(head, preds, labels):
             # Therefore we need to supply all possible label ids instead of label values.
             all_possible_labels = list(range(len(head.label_list)))
         elif head.model_type == "representation_learning":
-            labels = list(torch.tensor(labels[:-1], dtype=torch.long).view(-1).cpu().numpy()) + list(labels[-1])
-            preds = list(torch.tensor(preds[:-1]).view(-1).cpu().numpy()) + list(preds[-1])
+            labels = reduce(lambda x, y: x + list(y.astype('long')), labels, [])
+            preds = reduce(lambda x, y: x + [0] * y[0] + [1] + [0] * (len(y) - y[0] - 1), preds, [])
             all_possible_labels = list(range(len(head.label_list)))
         else:
             all_possible_labels = head.label_list
@@ -218,38 +219,19 @@ def top_n_accuracy(preds, labels):
     return np.mean(answer_in_top_n)
 
 def representation_learning_acc_and_f1(preds, labels):
-    # accuracy and f1 scores
-    last_pred = preds[-1]
-    last_label = labels[-1].astype(np.long)
-    preds = torch.tensor(preds[:-1], dtype=torch.long)
-    labels = torch.tensor(labels[:-1], dtype=torch.long)
-
-    top_1_pred = torch.zeros_like(preds)
-    for i, idx in enumerate(preds[:, 0]):
-        top_1_pred[i, idx] = 1
-    top_1_pred = top_1_pred.view(-1)
-
-    top_1_pred = list(torch.cat((top_1_pred, torch.tensor(last_pred)), dim=0).cpu().numpy())
-    labels = list(torch.cat((labels.view(-1), torch.tensor(last_label)), dim=0).cpu().numpy())
-
+    # accuracy an
+    top_1_pred = reduce(lambda x, y: x + [0] * y[0] + [1] + [0] * (len(y) - y[0] - 1), preds, [])
+    labels = reduce(lambda x, y: x + list(y.astype('long')), labels, [])
     return acc_and_f1(top_1_pred, labels)
 
 def representation_learning_avg_ranks(preds, labels):
-    last_pred = preds[-1]
-    last_label = labels[-1].astype(np.long)
-    preds = torch.tensor(preds[:-1], dtype=torch.long)
-    labels = torch.tensor(labels[:-1], dtype=torch.long)
-
-    positive_idx_per_question = (labels == 1).nonzero()
-
+    positive_idx_per_question = list(reduce(lambda x, y: x + list((y == 1).nonzero()[0]), labels, []))
     rank = 0
     for i, idx in enumerate(positive_idx_per_question):
         # aggregate the rank of the known gold passage in the sorted results for each question
-        gold_idx = (preds[i] == idx[1]).nonzero()
+        gold_idx = (preds[i] == idx).nonzero()[0]
         rank += gold_idx.item()
-
-    rank += (last_pred == (last_label == 1).nonzero()[0].item()).nonzero()[0].item()
-    return float(rank / (len(preds)+1))
+    return float(rank / len(preds))
 
 def representation_learning(preds, labels):
     scores = representation_learning_acc_and_f1(preds, labels)
