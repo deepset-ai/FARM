@@ -657,7 +657,7 @@ class QAInferencer(Inferencer):
                              streaming=False) -> Union[List[QAPred], Generator[QAPred, None, None]]:
         if isinstance(self.processor, NaturalQuestionsProcessor):
             for questions_key in ['questions', 'qas']:
-                if questions_key in dicts.keys() and any([len(dict[questions_key]) > 1 for dict in dicts]):
+                if questions_key in dicts[0].keys() and any([len(dict[questions_key]) > 1 for dict in dicts]):
                     logger.warning('More than one question for document. NaturalQuestions inference will return just the answer to the first question.')
         return Inferencer.inference_from_dicts(self, dicts, return_json=return_json,
                                                multiprocessing_chunksize=multiprocessing_chunksize, streaming=streaming)
