@@ -255,7 +255,7 @@ class Processor(ABC):
                                                     quote_char='"',
                                                     )
         elif task_type == "ner":
-            label_list = list(config.label2id.keys())
+            label_list = list(config.id2label.values())
             processor = NERProcessor(
                 tokenizer=tokenizer, max_seq_len=max_seq_len, data_dir="data", metric="seq_f1",
                 label_list=label_list
