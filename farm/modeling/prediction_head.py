@@ -92,6 +92,8 @@ class PredictionHead(nn.Module):
                 value = value.tolist()
             if is_json(value) and key[0] != "_":
                 config[key] = value
+            if self.task_name == "text_similarity" and key == "similarity_function":
+                config['similarity_function'] = value
         config["name"] = self.__class__.__name__
         self.config = config
 
@@ -1534,14 +1536,14 @@ def pick_single_fn(heads, fn_name):
         raise Exception(f"More than one of the prediction heads have a {fn_name}() function")
 
 
-class DensePassageRetrievalHead(PredictionHead):
+class TextSimilarityHead(PredictionHead):
     def __init__(self, similarity_function="dot_product", **kwargs):
-        super(DensePassageRetrievalHead, self).__init__()
+        super(TextSimilarityHead, self).__init__()
 
         self.similarity_function = similarity_function
         self.loss_fct = NLLLoss(reduction="mean")
-        self.task_name = "representation_learning"
-        self.model_type = "representation_learning"
+        self.task_name = "text_similarity"
+        self.model_type = "text_similarity"
         self.ph_output_type = "per_sequence"
 
         self.generate_config()
@@ -1559,9 +1561,9 @@ class DensePassageRetrievalHead(PredictionHead):
 
     def get_similarity_function(self):
         if "dot_product" in self.similarity_function:
-            return DensePassageRetrievalHead.dot_product_scores
+            return TextSimilarityHead.dot_product_scores
         elif "cosine" in self.similarity_function:
-            return DensePassageRetrievalHead.cosine_scores
+            return TextSimilarityHead.cosine_scores
 
     def forward(self, question_vectors, passage_vectors):
         sim_func = self.get_similarity_function()
