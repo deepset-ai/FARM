@@ -1432,11 +1432,11 @@ class DPRQuestion(LanguageModel):
             dpr_question_encoder.name = pretrained_model_name_or_path
 
         # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
-        farm_lm_config = Path(pretrained_model_name_or_path) / "question_language_model_config.json"
+        farm_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(farm_lm_config):
             # FARM style
             dpr_config = DPRConfig.from_pretrained(farm_lm_config)
-            farm_lm_model = Path(pretrained_model_name_or_path) / "question_language_model.bin"
+            farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
             dpr_question_encoder.model = DPRQuestionEncoder.from_pretrained(farm_lm_model, config=dpr_config, **kwargs)
             dpr_question_encoder.language = dpr_question_encoder.model.config.language
         else:
@@ -1532,11 +1532,11 @@ class DPRContext(LanguageModel):
         else:
             dpr_context_encoder.name = pretrained_model_name_or_path
         # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
-        farm_lm_config = Path(pretrained_model_name_or_path) / "context_language_model_config.json"
+        farm_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(farm_lm_config):
             # FARM style
             dpr_config = DPRConfig.from_pretrained(farm_lm_config)
-            farm_lm_model = Path(pretrained_model_name_or_path) / "context_language_model.bin"
+            farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
             dpr_context_encoder.model = DPRContextEncoder.from_pretrained(farm_lm_model, config=dpr_config, **kwargs)
             dpr_context_encoder.language = dpr_context_encoder.model.config.language
         else:
