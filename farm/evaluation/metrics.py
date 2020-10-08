@@ -94,8 +94,8 @@ def compute_metrics(metric, preds, labels):
         return {"r2": r2_score(preds, labels)}
     elif metric == "top_n_accuracy":
         return {"top_n_accuracy": top_n_accuracy(preds, labels)}
-    elif metric == "representation_learning":
-        return representation_learning(preds, labels)
+    elif metric == "text_similarity_metric":
+        return text_similarity_metric(preds, labels)
     # elif metric == "masked_accuracy":
     #     return simple_accuracy(preds, labels, ignore=-1)
     elif metric in registered_metrics:
@@ -128,7 +128,7 @@ def compute_report_metrics(head, preds, labels):
             # For multilabel classification, we don't eval with string labels here, but with multihot vectors.
             # Therefore we need to supply all possible label ids instead of label values.
             all_possible_labels = list(range(len(head.label_list)))
-        elif head.model_type == "representation_learning":
+        elif head.model_type == "text_similarity":
             labels = reduce(lambda x, y: x + list(y.astype('long')), labels, [])
             preds = reduce(lambda x, y: x + [0] * y[0] + [1] + [0] * (len(y) - y[0] - 1), preds, [])
             all_possible_labels = list(range(len(head.label_list)))
@@ -218,13 +218,19 @@ def top_n_accuracy(preds, labels):
 
     return np.mean(answer_in_top_n)
 
-def representation_learning_acc_and_f1(preds, labels):
+def text_similarity_acc_and_f1(preds, labels):
     # accuracy an
+    positive_idx_per_question = list(map(lambda x: x.nonzero()[0].item(), labels))
+    top_1_pred_per_question = list(map(lambda x: x[0], preds))
+    correct_predictions_count = (np.array(top_1_pred_per_question) == np.array(positive_idx_per_question)).sum()
+
     top_1_pred = reduce(lambda x, y: x + [0] * y[0] + [1] + [0] * (len(y) - y[0] - 1), preds, [])
     labels = reduce(lambda x, y: x + list(y.astype('long')), labels, [])
-    return acc_and_f1(top_1_pred, labels)
+    res = acc_and_f1(top_1_pred, labels)
+    res["positive_ratio"] = correct_predictions_count/len(preds)
+    return res
 
-def representation_learning_avg_ranks(preds, labels):
+def text_similarity_avg_ranks(preds, labels):
     positive_idx_per_question = list(reduce(lambda x, y: x + list((y == 1).nonzero()[0]), labels, []))
     rank = 0
     for i, idx in enumerate(positive_idx_per_question):
@@ -233,7 +239,7 @@ def representation_learning_avg_ranks(preds, labels):
         rank += gold_idx.item()
     return float(rank / len(preds))
 
-def representation_learning(preds, labels):
-    scores = representation_learning_acc_and_f1(preds, labels)
-    scores["average_rank"] = representation_learning_avg_ranks(preds, labels)
+def text_similarity_metric(preds, labels):
+    scores = text_similarity_acc_and_f1(preds, labels)
+    scores["average_rank"] = text_similarity_avg_ranks(preds, labels)
     return scores

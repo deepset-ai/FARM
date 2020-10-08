@@ -13,7 +13,7 @@ from torch import nn
 from farm.conversion.onnx_optimization.bert_model_optimization import main as optimize_onnx_model
 from farm.data_handler.data_silo import DataSilo
 from farm.modeling.language_model import LanguageModel
-from farm.modeling.prediction_head import PredictionHead, DensePassageRetrievalHead
+from farm.modeling.prediction_head import PredictionHead, TextSimilarityHead
 from farm.modeling.tokenization import Tokenizer
 from farm.utils import MLFlowLogger as MlLogger, stack
 
@@ -249,9 +249,12 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
             os.makedirs(Path.joinpath(save_dir, Path("lm2")))
         self.language_model1.save(Path.joinpath(save_dir, Path("lm1")))
         self.language_model2.save(Path.joinpath(save_dir, Path("lm2")))
+        for i, ph in enumerate(self.prediction_heads):
+            logger.info("prediction_head saving")
+            ph.save(save_dir, i)
 
     @classmethod
-    def load(cls, load_dir, device, strict=True, lm1_name=None, lm2_name=None, processor=None):
+    def load(cls, load_dir, device, strict=True, lm1_name="lm1", lm2_name="lm2", processor=None):
         """
         Loads an AdaptiveModel from a directory. The directory must contain:
 
@@ -275,19 +278,18 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
         :param processor: populates prediction head with information coming from tasks
         :type processor: Processor
         """
-
         # Language Model
         if lm1_name:
-            language_model1 = LanguageModel.load(load_dir, farm_lm_name=lm1_name)
+            language_model1 = LanguageModel.load(os.path.join(load_dir, lm1_name))
         else:
             language_model1 = LanguageModel.load(load_dir)
         if lm2_name:
-            language_model2 = LanguageModel.load(load_dir, farm_lm_name=lm2_name)
+            language_model2 = LanguageModel.load(os.path.join(load_dir, lm2_name))
         else:
             language_model2 = LanguageModel.load(load_dir)
 
         # Prediction heads
-        _, ph_config_files = cls._get_prediction_head_files(load_dir)
+        ph_config_files = cls._get_prediction_head_files(load_dir)
         prediction_heads = []
         ph_output_type = []
         for config_file in ph_config_files:
@@ -498,9 +500,9 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
         lm1 = LanguageModel.load(model_name_or_path1)
         lm2 = LanguageModel.load(model_name_or_path2)
         #TODO Infer type of head automatically from config
-        if task_type == "representation_ranking":
+        if task_type == "text_similarity":
             bi_adaptive_model = cls(language_model1=lm1, language_model2=lm2, prediction_heads=[], embeds_dropout_prob=0.1,
-                                 lm_output_types=["per_token", "per_sequence"], device=device)
+                                 lm_output_types=["per_sequence"], device=device)
         else:
             raise NotImplementedError(f"Huggingface's transformer models of type {task_type} are not supported yet for BiAdaptive Models")
 
@@ -644,7 +646,7 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
         logger.info(f"Model exported at path {output_path}")
     '''
 
-class ONNXAdaptiveModel(BaseBiAdaptiveModel):
+class ONNXBiAdaptiveModel(BaseBiAdaptiveModel):
     """
     Implementation of ONNX Runtime for Inference of ONNX Models.
 

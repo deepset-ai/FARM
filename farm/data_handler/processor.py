@@ -1680,7 +1680,7 @@ class RegressionProcessor(Processor):
         )
         return features
 
-class DPRProcessor(Processor):
+class TextSimilarityProcessor(Processor):
     """
     Used to handle the text DPR datasets that come in json format
     """
@@ -1746,7 +1746,7 @@ class DPRProcessor(Processor):
         self.num_hard_negatives = num_hard_negatives
         self.num_positives = num_positives
 
-        super(DPRProcessor, self).__init__(
+        super(TextSimilarityProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
             train_filename=train_filename,
@@ -1758,12 +1758,11 @@ class DPRProcessor(Processor):
             proxies=proxies,
         )
         if metric:
-            task_type = "representation_learning"
-            self.add_task(name="representation_learning",
+            self.add_task(name="text_similarity",
                           metric=metric,
                           label_list=label_list,
                           label_name="label",
-                          task_type=task_type)
+                          task_type="text_similarity")
         else:
             logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
                         "using the default task or add a custom task later via processor.add_task()")
@@ -1771,10 +1770,10 @@ class DPRProcessor(Processor):
     @classmethod
     def load_from_dir(cls, load_dir):
         """
-         Overwriting method from parent class to **always** load the DPRProcessor instead of the specific class stored in the config.
+         Overwriting method from parent class to **always** load the TextSimilarityProcessor instead of the specific class stored in the config.
 
         :param load_dir: str, directory that contains a 'processor_config.json'
-        :return: An instance of an DPRProcessor
+        :return: An instance of an TextSimilarityProcessor
         """
         # read config
         processor_config_file = Path(load_dir) / "processor_config.json"
@@ -1787,7 +1786,7 @@ class DPRProcessor(Processor):
         del config["tokenizer"]
         del config["passage_tokenizer"]
 
-        processor = cls.load(tokenizer=tokenizer, passage_tokenizer=passage_tokenizer, processor_name="DPRProcessor", **config)
+        processor = cls.load(tokenizer=tokenizer, passage_tokenizer=passage_tokenizer, processor_name="TextSimilarityProcessor", **config)
         for task_name, task in config["tasks"].items():
             processor.add_task(name=task_name, metric=task["metric"], label_list=task["label_list"])
 
