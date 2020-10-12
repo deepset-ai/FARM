@@ -160,13 +160,13 @@ class Tokenizer:
                 ret = CamembertTokenizer._from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
                 ret = CamembertTokenizer._from_pretrained(pretrained_model_name_or_path, **kwargs)
-        elif tokenizer_class == "DPRQuestionEncoderTokenizer":
-            if use_fast:
+        elif tokenizer_class == "DPRQuestionEncoderTokenizer" or tokenizer_class == "DPRQuestionEncoderTokenizerFast":
+            if use_fast or tokenizer_class == "DPRQuestionEncoderTokenizerFast":
                 ret = DPRQuestionEncoderTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
                 ret = DPRQuestionEncoderTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
-        elif tokenizer_class == "DPRContextEncoderTokenizer":
-            if use_fast:
+        elif tokenizer_class == "DPRContextEncoderTokenizer" or tokenizer_class == "DPRContextEncoderTokenizerFast":
+            if use_fast or tokenizer_class == "DPRContextEncoderTokenizerFast":
                 ret = DPRContextEncoderTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
                 ret = DPRContextEncoderTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
