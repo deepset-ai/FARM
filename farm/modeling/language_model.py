@@ -44,7 +44,7 @@ from transformers.modeling_electra import ElectraModel, ElectraConfig
 from transformers.modeling_camembert import CamembertModel, CamembertConfig
 from transformers.modeling_utils import SequenceSummary
 from transformers.tokenization_bert import load_vocab
-from transformers import DPRQuestionEncoder, DPRContextEncoder, DPRConfig
+import transformers
 
 from farm.modeling import wordembedding_utils
 from farm.modeling.wordembedding_utils import s3e_pooling
@@ -159,9 +159,9 @@ class LanguageModel(nn.Module):
                 elif "minilm" in pretrained_model_name_or_path.lower():
                     language_model_class = "Bert"
                 elif "dpr-question_encoder" in pretrained_model_name_or_path.lower():
-                    language_model_class = "DPRQuestion"
+                    language_model_class = "DPRQuestionEncoder"
                 elif "dpr-ctx_encoder" in pretrained_model_name_or_path.lower():
-                    language_model_class = "DPRContext"
+                    language_model_class = "DPRContextEncoder"
 
             if language_model_class:
                 language_model = cls.subclasses[language_model_class].load(pretrained_model_name_or_path, **kwargs)
@@ -1356,7 +1356,7 @@ class Camembert(Roberta):
         return camembert
 
 
-class DPRQuestion(LanguageModel):
+class DPRQuestionEncoder(LanguageModel):
     """
     A BERT model that wraps HuggingFace's implementation
     (https://github.com/huggingface/transformers) to fit the LanguageModel class.
@@ -1365,7 +1365,7 @@ class DPRQuestion(LanguageModel):
     """
 
     def __init__(self):
-        super(DPRQuestion, self).__init__()
+        super(DPRQuestionEncoder, self).__init__()
         self.model = None
         self.name = "dpr_question_encoder"
 
@@ -1374,8 +1374,8 @@ class DPRQuestion(LanguageModel):
         dpr_question_encoder = cls()
         dpr_question_encoder.name = name
         dpr_question_encoder.language = language
-        config = DPRConfig(vocab_size=vocab_size)
-        dpr_question_encoder.model = DPRQuestionEncoder(config)
+        config = transformers.DPRConfig(vocab_size=vocab_size)
+        dpr_question_encoder.model = transformers.DPRQuestionEncoder(config)
         return dpr_question_encoder
 
     @classmethod
@@ -1402,13 +1402,13 @@ class DPRQuestion(LanguageModel):
         farm_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(farm_lm_config):
             # FARM style
-            dpr_config = DPRConfig.from_pretrained(farm_lm_config)
+            dpr_config = transformers.DPRConfig.from_pretrained(farm_lm_config)
             farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
-            dpr_question_encoder.model = DPRQuestionEncoder.from_pretrained(farm_lm_model, config=dpr_config, **kwargs)
+            dpr_question_encoder.model = transformers.DPRQuestionEncoder.from_pretrained(farm_lm_model, config=dpr_config, **kwargs)
             dpr_question_encoder.language = dpr_question_encoder.model.config.language
         else:
             # Pytorch-transformer Style
-            dpr_question_encoder.model = DPRQuestionEncoder.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
+            dpr_question_encoder.model = transformers.DPRQuestionEncoder.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
             dpr_question_encoder.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
 
         #if pretrained_weights_model:
@@ -1457,7 +1457,7 @@ class DPRQuestion(LanguageModel):
         self.model.question_encoder.config.output_hidden_states = False
 
 
-class DPRContext(LanguageModel):
+class DPRContextEncoder(LanguageModel):
     """
     A BERT model that wraps HuggingFace's implementation
     (https://github.com/huggingface/transformers) to fit the LanguageModel class.
@@ -1466,7 +1466,7 @@ class DPRContext(LanguageModel):
     """
 
     def __init__(self):
-        super(DPRContext, self).__init__()
+        super(DPRContextEncoder, self).__init__()
         self.model = None
         self.name = "dpr_context_encoder"
 
@@ -1475,8 +1475,8 @@ class DPRContext(LanguageModel):
         dpr_context_encoder = cls()
         dpr_context_encoder.name = name
         dpr_context_encoder.language = language
-        config = DPRConfig(vocab_size=vocab_size)
-        dpr_context_encoder.model = DPRContextEncoder(config)
+        config = transformers.DPRConfig(vocab_size=vocab_size)
+        dpr_context_encoder.model = transformers.DPRContextEncoder(config)
         return dpr_context_encoder
 
     @classmethod
@@ -1502,13 +1502,13 @@ class DPRContext(LanguageModel):
         farm_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(farm_lm_config):
             # FARM style
-            dpr_config = DPRConfig.from_pretrained(farm_lm_config)
+            dpr_config = transformers.DPRConfig.from_pretrained(farm_lm_config)
             farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
-            dpr_context_encoder.model = DPRContextEncoder.from_pretrained(farm_lm_model, config=dpr_config, **kwargs)
+            dpr_context_encoder.model = transformers.DPRContextEncoder.from_pretrained(farm_lm_model, config=dpr_config, **kwargs)
             dpr_context_encoder.language = dpr_context_encoder.model.config.language
         else:
             # Pytorch-transformer Style
-            dpr_context_encoder.model = DPRContextEncoder.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
+            dpr_context_encoder.model = transformers.DPRContextEncoder.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
             dpr_context_encoder.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
 
         #if pretrained_weights_model:
