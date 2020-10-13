@@ -4,13 +4,13 @@ import os
 import numpy as np
 
 from pathlib import Path
-from transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN
+from transformers.modeling_bert import BertForPreTraining, ACT2FN
 from transformers.modeling_auto import AutoModelForQuestionAnswering, AutoModelForTokenClassification, AutoModelForSequenceClassification
 from typing import List
 
 import torch
 from torch import nn
-from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
+from torch.nn import CrossEntropyLoss, LayerNorm, MSELoss, BCEWithLogitsLoss
 
 from farm.data_handler.utils import is_json
 from farm.utils import convert_iob_to_simple_tags, try_get
@@ -734,7 +734,7 @@ class BertLMHead(PredictionHead):
         # this is the "transform" module in the pytorch-transformers repo
         self.dense = nn.Linear(self.hidden_size, self.hidden_size)
         self.transform_act_fn = ACT2FN[self.hidden_act]
-        self.LayerNorm = BertLayerNorm(self.hidden_size, eps=1e-12)
+        self.LayerNorm = LayerNorm(self.hidden_size, eps=1e-12)
 
         # this is the "decoder" in the pytorch-transformers repo
         # The output weights are the same as the input embeddings, but there is
