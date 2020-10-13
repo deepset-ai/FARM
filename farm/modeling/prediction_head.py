@@ -10,13 +10,19 @@ from typing import List
 
 import torch
 from torch import nn
-from torch.nn import CrossEntropyLoss, LayerNorm, MSELoss, BCEWithLogitsLoss
+from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss
 
 from farm.data_handler.utils import is_json
 from farm.utils import convert_iob_to_simple_tags, try_get
 from farm.modeling.predictions import QACandidate, QAPred
 
 logger = logging.getLogger(__name__)
+
+try:
+    from apex.normalization.fused_layer_norm import FusedLayerNorm as BertLayerNorm
+except (ImportError, AttributeError) as e:
+    logger.info("Better speed can be achieved with apex installed from https://www.github.com/nvidia/apex .")
+    BertLayerNorm = torch.nn.LayerNorm
 
 
 class PredictionHead(nn.Module):
@@ -734,7 +740,7 @@ class BertLMHead(PredictionHead):
         # this is the "transform" module in the pytorch-transformers repo
         self.dense = nn.Linear(self.hidden_size, self.hidden_size)
         self.transform_act_fn = ACT2FN[self.hidden_act]
-        self.LayerNorm = LayerNorm(self.hidden_size, eps=1e-12)
+        self.LayerNorm = BertLayerNorm(self.hidden_size, eps=1e-12)
 
         # this is the "decoder" in the pytorch-transformers repo
         # The output weights are the same as the input embeddings, but there is
