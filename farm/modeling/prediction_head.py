@@ -93,6 +93,7 @@ class PredictionHead(nn.Module):
             if is_json(value) and key[0] != "_":
                 config[key] = value
         config["name"] = self.__class__.__name__
+        config.pop("config", None)
         self.config = config
 
     @classmethod
@@ -559,6 +560,8 @@ class TokenClassificationHead(PredictionHead):
         self.ph_output_type = "per_token"
         self.model_type = "token_classification"
         self.task_name = task_name
+        if "label_list" in kwargs:
+            self.label_list = kwargs["label_list"]
         self.generate_config()
 
     @classmethod
@@ -594,6 +597,7 @@ class TokenClassificationHead(PredictionHead):
             head.feed_forward.feed_forward[0].load_state_dict(full_model.classifier.state_dict())
             # add label list
             head.label_list = list(full_model.config.id2label.values())
+            head.generate_config()
             del full_model
         return head
 
