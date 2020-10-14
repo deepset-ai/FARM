@@ -116,15 +116,17 @@ def dense_passage_retrieval():
     # 7. Let it grow! Watch the tracked metrics live on the public mlflow server: https://public-mlflow.deepset.ai
     trainer.train()
 
-    test_data_loader = data_silo.get_data_loader("test")
-    if test_data_loader is not None:
-        evaluator_test = Evaluator(
-            data_loader=test_data_loader, tasks=data_silo.processor.tasks, device=device)
-        test_result = evaluator_test.eval(model)
-
     # 8. Hooray! You have a model. Store it:
     save_dir = Path("../saved_models/dpr-tutorial")
     model.save(save_dir)
     processor.save(save_dir)
+
+    # 9. Evaluate
+    test_data_loader = data_silo.get_data_loader("test")
+    if test_data_loader is not None:
+        evaluator_test = Evaluator(
+            data_loader=test_data_loader, tasks=data_silo.processor.tasks, device=device)
+        model.connect_heads_with_processor(processor.tasks)
+        test_result = evaluator_test.eval(model)
 
 dense_passage_retrieval()

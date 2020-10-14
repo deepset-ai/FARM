@@ -1880,17 +1880,26 @@ class TextSimilarityProcessor(Processor):
 
         Returns:
         list of dictionaries: List[dict]
-        each dictionary: {
-                    query": query_text
-                    "passages": [{"text": document_text, "title": xxx, "label": "positive", "external_id": abb123},
-                                {"text": document_text, "title": xxx, "label": "hard_negative", "external_id": abb134},
-                                ...]
-                    }
+        each dictionary:
+        {
+            "query": query_text
+            "passages": [{"text": document_text, "title": xxx, "label": "positive", "external_id": abb123},
+                         {"text": document_text, "title": xxx, "label": "hard_negative", "external_id": abb134},
+                         ...]
+        }
         """
         dicts = read_dpr_json(file)
         return dicts
 
     def _normalize_question(self, question: str) -> str:
+        """
+        Removes '?' from queries/questions
+
+        :param question: string representing the question
+
+        Returns:
+            Question without the '?'
+        """
         if question[-1] == '?':
             question = question[:-1]
         return question

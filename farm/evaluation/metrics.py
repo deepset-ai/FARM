@@ -219,18 +219,34 @@ def top_n_accuracy(preds, labels):
     return np.mean(answer_in_top_n)
 
 def text_similarity_acc_and_f1(preds, labels):
-    # accuracy an
-    positive_idx_per_question = list(map(lambda x: x.nonzero()[0].item(), labels))
-    top_1_pred_per_question = list(map(lambda x: x[0], preds))
-    correct_predictions_count = (np.array(top_1_pred_per_question) == np.array(positive_idx_per_question)).sum()
+    """
+    Returns accuracy and F1 scores for top-1(highest) ranked sequence(context/passage) for each sample/query
 
+    :param preds: list of numpy arrays of dimension n1 x n2 containing n2 predicted ranks for n1 sequences/queries
+    :type preds: List of numpy array containing similarity scores for each sequence in batch
+    :param labels: list of arrays of dimension n1 x n2 where each array contains n2 labels(0/1)
+    indicating whether the sequence/passage is a positive(1) passage or hard_negative(0) passage
+    :type labels: List of list containing values(0/1)
+
+    :return: predicted ranks of passages for each query
+    """
     top_1_pred = reduce(lambda x, y: x + [0] * y[0] + [1] + [0] * (len(y) - y[0] - 1), preds, [])
     labels = reduce(lambda x, y: x + list(y.astype('long')), labels, [])
     res = acc_and_f1(top_1_pred, labels)
-    res["positive_ratio"] = correct_predictions_count/len(preds)
     return res
 
 def text_similarity_avg_ranks(preds, labels):
+    """
+    Calculates average predicted rank of positive sequence(context/passage) for each sample/query
+
+    :param preds: list of numpy arrays of dimension n1 x n2 containing n2 predicted ranks for n1 sequences/queries
+    :type preds: List of numpy array containing similarity scores for each sequence in batch
+    :param labels: list of arrays of dimension n1 x n2 where each array contains n2 labels(0/1)
+    indicating whether the sequence/passage is a positive(1) passage or hard_negative(0) passage
+    :type labels: List of list containing values(0/1)
+
+    :return: average predicted ranks of positive sequence/passage for each sample/query
+    """
     positive_idx_per_question = list(reduce(lambda x, y: x + list((y == 1).nonzero()[0]), labels, []))
     rank = 0
     for i, idx in enumerate(positive_idx_per_question):
@@ -240,6 +256,17 @@ def text_similarity_avg_ranks(preds, labels):
     return float(rank / len(preds))
 
 def text_similarity_metric(preds, labels):
+    """
+    Returns accuracy, F1 scores and average rank scores for text similarity task
+
+    :param preds: list of numpy arrays of dimension n1 x n2 containing n2 predicted ranks for n1 sequences/queries
+    :type preds: List of numpy array containing similarity scores for each sequence in batch
+    :param labels: list of arrays of dimension n1 x n2 where each array contains n2 labels(0/1)
+    indicating whether the sequence/passage is a positive(1) passage or hard_negative(0) passage
+    :type labels: List of list containing values(0/1)
+
+    :return metrics(accuracy, F1, average rank) for text similarity task
+    """
     scores = text_similarity_acc_and_f1(preds, labels)
     scores["average_rank"] = text_similarity_avg_ranks(preds, labels)
     return scores

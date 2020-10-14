@@ -1392,10 +1392,7 @@ class Camembert(Roberta):
 
 class DPRQuestionEncoder(LanguageModel):
     """
-    A BERT model that wraps HuggingFace's implementation
-    (https://github.com/huggingface/transformers) to fit the LanguageModel class.
-    Paper: https://arxiv.org/abs/1810.04805
-
+    A DPRQuestionEncoder model that wraps HuggingFace's implementation
     """
 
     def __init__(self):
@@ -1417,13 +1414,14 @@ class DPRQuestionEncoder(LanguageModel):
         """
         Load a pretrained model by supplying
 
-        * the name of a remote model on s3 ("bert-base-cased" ...)
+        * the name of a remote model on s3 ("facebook/dpr-question_encoder-single-nq-base" ...)
         * OR a local path of a model trained via transformers ("some_dir/huggingface_model")
         * OR a local path of a model trained via FARM ("some_dir/farm_model")
 
-        :param pretrained_model_name_or_path: The path of the saved pretrained model or its name.
+        :param pretrained_model_name_or_path: The path of the base pretrained language model or its name.
         :type pretrained_model_name_or_path: str
-
+        :param pretrained_weights_model: The path of the model from which weights will be initialized in the language model
+        :type pretrained_weights_model: str
         """
 
         dpr_question_encoder = cls()
@@ -1456,16 +1454,17 @@ class DPRQuestionEncoder(LanguageModel):
         **kwargs,
     ):
         """
-        Perform the forward pass of the BERT model.
+        Perform the forward pass of the DPRQuestionEncoder model.
 
-        :param input_ids: The ids of each token in the input sequence. Is a tensor of shape [batch_size, max_seq_len]
-        :type input_ids: torch.Tensor
-        :param segment_ids: The id of the segment. For example, in next sentence prediction, the tokens in the
+        :param query_input_ids: The ids of each token in the input sequence. Is a tensor of shape [batch_size, max_seq_len]
+        :type query_input_ids: torch.Tensor
+        :param query_segment_ids: The id of the segment. For example, in next sentence prediction, the tokens in the
            first sentence are marked with 0 and those in the second are marked with 1.
            It is a tensor of shape [batch_size, max_seq_len]
-        :type segment_ids: torch.Tensor
-        :param padding_mask: A mask that assigns a 1 to valid input tokens and 0 to padding tokens
+        :type query_segment_ids: torch.Tensor
+        :param query_attention_mask: A mask that assigns a 1 to valid input tokens and 0 to padding tokens
            of shape [batch_size, max_seq_len]
+        :type query_attention_mask: torch.Tensor
         :return: Embeddings for each token in the input sequence.
 
         """
@@ -1491,10 +1490,7 @@ class DPRQuestionEncoder(LanguageModel):
 
 class DPRContextEncoder(LanguageModel):
     """
-    A BERT model that wraps HuggingFace's implementation
-    (https://github.com/huggingface/transformers) to fit the LanguageModel class.
-    Paper: https://arxiv.org/abs/1810.04805
-
+    A DPRContextEncoder model that wraps HuggingFace's implementation
     """
 
     def __init__(self):
@@ -1516,13 +1512,14 @@ class DPRContextEncoder(LanguageModel):
         """
         Load a pretrained model by supplying
 
-        * the name of a remote model on s3 ("bert-base-cased" ...)
+        * the name of a remote model on s3 ("facebook/dpr-ctx_encoder-single-nq-base" ...)
         * OR a local path of a model trained via transformers ("some_dir/huggingface_model")
         * OR a local path of a model trained via FARM ("some_dir/farm_model")
 
-        :param pretrained_model_name_or_path: The path of the saved pretrained model or its name.
+        :param pretrained_model_name_or_path: The path of the base pretrained language model or its name.
         :type pretrained_model_name_or_path: str
-
+        :param pretrained_weights_model: The path of the model from which weights will be initialized in the language model
+        :type pretrained_weights_model: str
         """
 
         dpr_context_encoder = cls()
@@ -1541,8 +1538,7 @@ class DPRContextEncoder(LanguageModel):
         else:
             # Pytorch-transformer Style
             dpr_context_encoder.model = transformers.DPRContextEncoder(config=transformers.DPRConfig(**kwargs))
-            dpr_context_encoder.model.base_model.bert_model = AutoModel.from_pretrained(str(pretrained_model_name_or_path),
-                                                                                        config=transformers.DPRConfig(**kwargs))
+            dpr_context_encoder.model.base_model.bert_model = AutoModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
             dpr_context_encoder.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
 
         return dpr_context_encoder
@@ -1555,16 +1551,16 @@ class DPRContextEncoder(LanguageModel):
         **kwargs,
     ):
         """
-        Perform the forward pass of the BERT model.
+        Perform the forward pass of the DPRContextEncoder model.
 
-        :param input_ids: The ids of each token in the input sequence. Is a tensor of shape [batch_size, max_seq_len]
-        :type input_ids: torch.Tensor
-        :param segment_ids: The id of the segment. For example, in next sentence prediction, the tokens in the
+        :param passage_input_ids: The ids of each token in the input sequence. Is a tensor of shape [batch_size, number_of_hard_negative_passages, max_seq_len]
+        :type passage_input_ids: torch.Tensor
+        :param passage_segment_ids: The id of the segment. For example, in next sentence prediction, the tokens in the
            first sentence are marked with 0 and those in the second are marked with 1.
-           It is a tensor of shape [batch_size, max_seq_len]
-        :type segment_ids: torch.Tensor
-        :param padding_mask: A mask that assigns a 1 to valid input tokens and 0 to padding tokens
-           of shape [batch_size, max_seq_len]
+           It is a tensor of shape [batch_size, number_of_hard_negative_passages, max_seq_len]
+        :type passage_segment_ids: torch.Tensor
+        :param passage_attention_mask: A mask that assigns a 1 to valid input tokens and 0 to padding tokens
+           of shape [batch_size,  number_of_hard_negative_passages, max_seq_len]
         :return: Embeddings for each token in the input sequence.
 
         """

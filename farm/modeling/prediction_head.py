@@ -1551,34 +1551,87 @@ class TextSimilarityHead(PredictionHead):
         self.generate_config()
 
     @classmethod
-    def dot_product_scores(cls, q_vectors, ctx_vectors):
+    def dot_product_scores(cls, query_vectors, context_vectors):
+        """
+        Calculates dot product similarity scores for two 2-dimensional tensors
+
+        :param query_vectors: tensor of query embeddings from BiAdaptive model
+                          of dimension n1 x D,
+                          where n1 is the number of queries/batch size and D is embedding size
+        :type query_vectors: torch.Tensor
+        :param context_vectors: tensor of context/passage embeddings from BiAdaptive model
+                          of dimension n2 x D,
+                          where n2 is the number of queries/batch size and D is embedding size
+        "type context_vectors: torch.Tensor
+
+        :return dot_product: similarity score of each query with each context/passage (dimension: n1xn2)
+        """
         # q_vector: n1 x D, ctx_vectors: n2 x D, result n1 x n2
-        r = torch.matmul(q_vectors, torch.transpose(ctx_vectors, 0, 1))
-        return r
+        dot_product = torch.matmul(query_vectors, torch.transpose(context_vectors, 0, 1))
+        return dot_product
 
     @classmethod
-    def cosine_scores(cls, q_vector, ctx_vectors):
+    def cosine_scores(cls, query_vectors, context_vectors):
+        """
+        Calculates cosine similarity scores for two 2-dimensional tensors
+
+        :param query_vectors: tensor of query embeddings from BiAdaptive model
+                          of dimension n1 x D,
+                          where n1 is the number of queries/batch size and D is embedding size
+        :type query_vectors: torch.Tensor
+        :param context_vectors: tensor of context/passage embeddings from BiAdaptive model
+                          of dimension n2 x D,
+                          where n2 is the number of queries/batch size and D is embedding size
+        :type context_vectors: torch.Tensor
+
+        :return: cosine similarity score of each query with each context/passage (dimension: n1xn2)
+        """
         # q_vector: n1 x D, ctx_vectors: n2 x D, result n1 x n2
-        return nn.functional.cosine_similarity(q_vector, ctx_vectors, dim=1)
+        return nn.functional.cosine_similarity(query_vectors, context_vectors, dim=1)
 
     def get_similarity_function(self):
+        """
+        Returns the type of similarity function used to compare queries and passages/contexts
+        """
         if "dot_product" in self.similarity_function:
             return TextSimilarityHead.dot_product_scores
         elif "cosine" in self.similarity_function:
             return TextSimilarityHead.cosine_scores
 
-    def forward(self, question_vectors, passage_vectors):
-        sim_func = self.get_similarity_function()
-        scores = sim_func(question_vectors, passage_vectors)
+    def forward(self, query_vectors, context_vectors):
+        """
+        Computes the log softmax similarity scores between two 2-dimensional tensors
 
-        if len(question_vectors.size()) > 1:
-            q_num = question_vectors.size(0)
+        :param query_vectors: tensor of query embeddings from BiAdaptive model
+                          of dimension n1 x D,
+                          where n1 is the number of queries/batch size and D is embedding size
+        :type query_vectors: torch.Tensor
+        :param context_vectors: tensor of context/passage embeddings from BiAdaptive model
+                          of dimension n2 x D,
+                          where n2 is the number of queries/batch size and D is embedding size
+        :type context_vectors: torch.Tensor
+
+        :return: log softmax similarity score of each query with each context/passage (dimension: n1xn2)
+        """
+        sim_func = self.get_similarity_function()
+        scores = sim_func(query_vectors, context_vectors)
+
+        if len(query_vectors.size()) > 1:
+            q_num = query_vectors.size(0)
             scores = scores.view(q_num, -1)
 
         softmax_scores = nn.functional.log_softmax(scores, dim=1)
         return softmax_scores
 
     def logits_to_loss(self, logits, **kwargs):
+        """
+        Computes the loss from similarity scores
+
+        :param logits: tensor of log softmax similarity scores of each query with each context/passage (dimension: n1xn2)
+        :type logits: torch.Tensor
+
+        :return: negative log likelihood loss from similarity scores
+        """
         lm_label_ids = kwargs.get(self.label_tensor_name)
         positive_idx_per_question = (lm_label_ids.view(-1) == 1).nonzero()
         loss = self.loss_fct(logits,
@@ -1586,10 +1639,23 @@ class TextSimilarityHead(PredictionHead):
         return loss
 
     def logits_to_preds(self, logits, **kwargs):
+        """
+        Returns predicted ranks(similarity) of passages/context for each query
+
+        :param logits: tensor of log softmax similarity scores of each query with each context/passage (dimension: n1xn2)
+        :type logits: torch.Tensor
+
+        :return: predicted ranks of passages for each query
+        """
         _, logits_sorted_indices = torch.sort(logits, dim=1, descending=True)
         return logits_sorted_indices
 
     def prepare_labels(self, **kwargs):
+        """
+        Returns a tensor with passage labels(0:hard_negative/1:positive) for each query
+
+        :return: passage labels(0:hard_negative/1:positive) for each query
+        """
         label_ids = kwargs.get(self.label_tensor_name)
         labels = torch.zeros(label_ids.size(0), label_ids.numel())
         postive_indices = range(0, label_ids.numel(), 2)
