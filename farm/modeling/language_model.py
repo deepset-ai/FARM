@@ -1442,12 +1442,9 @@ class DPRQuestionEncoder(LanguageModel):
             dpr_question_encoder.language = dpr_question_encoder.model.config.language
         else:
             # Pytorch-transformer Style
-            dpr_question_encoder.model = transformers.DPRQuestionEncoder(config=transformers.DPRConfig())
+            dpr_question_encoder.model = transformers.DPRQuestionEncoder(config=transformers.DPRConfig(**kwargs))
             dpr_question_encoder.model.base_model.bert_model = AutoModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
             dpr_question_encoder.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
-
-        #if pretrained_weights_model:
-        #    dpr_question_encoder.model.question_encoder.bert_model = dpr_question_encoder.model.question_encoder.bert_model.from_pretrained(pretrained_weights_model)
 
         return dpr_question_encoder
 
@@ -1543,12 +1540,10 @@ class DPRContextEncoder(LanguageModel):
             dpr_context_encoder.language = dpr_context_encoder.model.config.language
         else:
             # Pytorch-transformer Style
-            dpr_context_encoder.model = transformers.DPRContextEncoder(config=transformers.DPRConfig())
-            dpr_context_encoder.model.base_model.bert_model = AutoModel.from_pretrained(str(pretrained_model_name_or_path))
+            dpr_context_encoder.model = transformers.DPRContextEncoder(config=transformers.DPRConfig(**kwargs))
+            dpr_context_encoder.model.base_model.bert_model = AutoModel.from_pretrained(str(pretrained_model_name_or_path),
+                                                                                        config=transformers.DPRConfig(**kwargs))
             dpr_context_encoder.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
-
-        #if pretrained_weights_model:
-        #    dpr_context_encoder.model.ctx_encoder.bert_model = dpr_context_encoder.model.ctx_encoder.bert_model.from_pretrained(pretrained_weights_model)
 
         return dpr_context_encoder
 
