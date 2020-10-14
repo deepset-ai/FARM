@@ -30,7 +30,7 @@ def dense_passage_retrieval():
     ##########################
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)
-    batch_size = 14
+    batch_size = 2
     n_epochs = 3
     evaluate_every = 1000
     question_lang_model = "facebook/dpr-question_encoder-single-nq-base"
