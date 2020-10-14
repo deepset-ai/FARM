@@ -1567,7 +1567,7 @@ class DPRContextEncoder(LanguageModel):
         :param segment_ids: The id of the segment. For example, in next sentence prediction, the tokens in the
            first sentence are marked with 0 and those in the second are marked with 1.
            It is a tensor of shape [batch_size, max_seq_len]
-        :type segment_ids: torch.Tenso
+        :type segment_ids: torch.Tensor
         :param padding_mask: A mask that assigns a 1 to valid input tokens and 0 to padding tokens
            of shape [batch_size, max_seq_len]
         :return: Embeddings for each token in the input sequence.
@@ -1597,4 +1597,3 @@ class DPRContextEncoder(LanguageModel):
         self.model.ctx_encoder.config.output_hidden_states = False
 
 
-#question_model = LanguageModel.load("facebook/dpr-question_encoder-single-nq-base")

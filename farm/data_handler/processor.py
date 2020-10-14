@@ -1972,43 +1972,6 @@ class TextSimilarityProcessor(Processor):
                                                            ctx_inputs["attention_mask"]
         ctx_segment_ids = list(torch.zeros((len(ctx_segment_ids_), len(ctx_segment_ids_[0]))).numpy())
 
-        # featurize the query
-        query_inputs = self.query_tokenizer.encode_plus(
-            text=query,
-            max_length=self.max_seq_len,
-            add_special_tokens=True,
-            truncation_strategy='do_not_truncate',
-            padding="max_length",
-            return_token_type_ids=True,
-        )
-
-        # featurize context passages
-        if self.embed_title:
-            # embed title with positive context passages + negative context passages
-            all_ctx = [tuple((title, ctx)) for title, ctx in
-                       zip(positive_ctx_titles, positive_ctx_texts)] + \
-                      [tuple((title, ctx)) for title, ctx in
-                       zip(hard_negative_ctx_titles, hard_negative_ctx_texts)]
-        else:
-            all_ctx = positive_ctx_texts + hard_negative_ctx_texts
-
-        # assign empty string tuples if hard_negative passages less than num_hard_negatives
-        all_ctx += [('', '')] * ((self.num_positives + self.num_hard_negatives)-len(all_ctx))
-
-        ctx_inputs = self.passage_tokenizer.batch_encode_plus(
-            all_ctx,
-            add_special_tokens=True,
-            truncation=True,
-            padding="max_length",
-            max_length=self.max_seq_len,
-            return_token_type_ids=True
-        )
-
-        query_input_ids, query_segment_ids, query_padding_mask = query_inputs["input_ids"], query_inputs[
-                                                            "token_type_ids"], query_inputs["attention_mask"]
-        ctx_input_ids, ctx_segment_ids, ctx_padding_mask = ctx_inputs["input_ids"], ctx_inputs["token_type_ids"], \
-                                                           ctx_inputs["attention_mask"]
-
         # tokenize query and contexts
         tokenized_query = self.query_tokenizer.convert_ids_to_tokens(query_input_ids)
         tokenized_passage = [self.passage_tokenizer.convert_ids_to_tokens(ctx) for ctx in ctx_input_ids]
