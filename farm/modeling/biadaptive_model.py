@@ -170,8 +170,8 @@ def loss_per_head_sum(loss_per_head, global_step=None, batch=None):
     return sum(loss_per_head)
 
 class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
-    """ PyTorch implementation containing all the modelling needed for your NLP task. Combines a language
-    model and a prediction head. Allows for gradient flow back to the language model component."""
+    """ PyTorch implementation containing all the modelling needed for your NLP task. Combines 2 language
+    models for representation of 2 sequences and a prediction head. Allows for gradient flow back to the 2 language model components."""
 
     def __init__(
         self,
@@ -185,19 +185,27 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
         loss_aggregation_fn=None,
     ):
         """
-        :param language_model: Any model that turns token ids into vector representations
-        :type language_model: LanguageModel
-        :param prediction_heads: A list of models that take embeddings and return logits for a given task
+        :param language_model1: Any model that turns token ids into vector representations
+        :type language_model1: LanguageModel
+        :param language_model2: Any model that turns token ids into vector representations
+        :type language_model2: LanguageModel
+        :param prediction_heads: A list of models that take 2 sequence embeddings and return logits for a given task
         :type prediction_heads: list
-        :param embeds_dropout_prob: The probability that a value in the embeddings returned by the
+        :param embeds_dropout_prob: The probability that a value in the embeddings returned by any of the 2
            language model will be zeroed.
         :param embeds_dropout_prob: float
-        :param lm_output_types: How to extract the embeddings from the final layer of the language model. When set
+        :param lm1_output_types: How to extract the embeddings from the final layer of the first language model. When set
                                 to "per_token", one embedding will be extracted per input token. If set to
                                 "per_sequence", a single embedding will be extracted to represent the full
                                 input sequence. Can either be a single string, or a list of strings,
                                 one for each prediction head.
-        :type lm_output_types: list or str
+        :type lm1_output_types: list or str
+        :param lm2_output_types: How to extract the embeddings from the final layer of the second language model. When set
+                                to "per_token", one embedding will be extracted per input token. If set to
+                                "per_sequence", a single embedding will be extracted to represent the full
+                                input sequence. Can either be a single string, or a list of strings,
+                                one for each prediction head.
+        :type lm2_output_types: list or str
         :param device: The device on which this model will operate. Either "cpu" or "cuda".
         :param loss_aggregation_fn: Function to aggregate the loss of multiple prediction heads.
                                     Input: loss_per_head (list of tensors), global_step (int), batch (dict)
@@ -219,7 +227,6 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
         self.language_model2 = language_model2.to(device)
         self.lm2_output_dims = language_model2.get_output_dims()
         self.prediction_heads = nn.ModuleList([ph.to(device) for ph in prediction_heads])
-
         self.dropout1 = nn.Dropout(embeds_dropout_prob)
         self.dropout2 = nn.Dropout(embeds_dropout_prob)
         self.lm1_output_types = (
@@ -234,43 +241,49 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
             loss_aggregation_fn = loss_per_head_sum
         self.loss_aggregation_fn = loss_aggregation_fn
 
-    def save(self, save_dir):
+    def save(self, save_dir, lm1_name="lm1", lm2_name="lm2"):
         """
-        Saves the language model. This will generate a config file
-        and model weights for each.
+        Saves the 2 language model weights and respective config_files in directories lm1 and lm2 within save_dir.
 
         :param save_dir: path to save to
         :type save_dir: Path
         """
         os.makedirs(save_dir, exist_ok=True)
-        if not os.path.exists(Path.joinpath(save_dir, Path("lm1"))):
-            os.makedirs(Path.joinpath(save_dir, Path("lm1")))
-        if not os.path.exists(Path.joinpath(save_dir, Path("lm2"))):
-            os.makedirs(Path.joinpath(save_dir, Path("lm2")))
-        self.language_model1.save(Path.joinpath(save_dir, Path("lm1")))
-        self.language_model2.save(Path.joinpath(save_dir, Path("lm2")))
+        if not os.path.exists(Path.joinpath(save_dir, Path(lm1_name))):
+            os.makedirs(Path.joinpath(save_dir, Path(lm1_name)))
+        if not os.path.exists(Path.joinpath(save_dir, Path(lm2_name))):
+            os.makedirs(Path.joinpath(save_dir, Path(lm2_name)))
+        self.language_model1.save(Path.joinpath(save_dir, Path(lm1_name)))
+        self.language_model2.save(Path.joinpath(save_dir, Path(lm2_name)))
         for i, ph in enumerate(self.prediction_heads):
             logger.info("prediction_head saving")
             ph.save(save_dir, i)
 
     @classmethod
-    def load(cls, load_dir, device, strict=True, lm1_name="lm1", lm2_name="lm2", processor=None):
+    def load(cls, load_dir, device, strict=False, lm1_name="lm1", lm2_name="lm2", processor=None):
         """
-        Loads an AdaptiveModel from a directory. The directory must contain:
+        Loads a BiAdaptiveModel from a directory. The directory must contain:
 
-        * language_model.bin
-        * language_model_config.json
+        * directory "lm1_name" with following files:
+            -> language_model.bin
+            -> language_model_config.json
+        * directory "lm2_name" with following files:
+            -> language_model.bin
+            -> language_model_config.json
         * prediction_head_X.bin  multiple PH possible
         * prediction_head_X_config.json
         * processor_config.json config for transforming input
-        * vocab.txt vocab file for language model, turning text to Wordpiece Tokens
+        * vocab.txt vocab file for language model, turning text to Wordpiece Token
+        * special_tokens_map.json
 
         :param load_dir: location where adaptive model is stored
         :type load_dir: Path
         :param device: to which device we want to sent the model, either cpu or cuda
         :type device: torch.device
-        :param lm_name: the name to assign to the loaded language model
-        :type lm_name: str
+        :param lm1_name: the name to assign to the first loaded language model(for encoding queries)
+        :type lm1_name: str
+        :param lm2_name: the name to assign to the second loaded language model(for encoding context/passages)
+        :type lm2_name: str
         :param strict: whether to strictly enforce that the keys loaded from saved model match the ones in
                        the PredictionHead (see torch.nn.module.load_state_dict()).
                        Set to `False` for backwards compatibility with PHs saved with older version of FARM.
@@ -359,10 +372,11 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
 
     def forward(self, **kwargs):
         """
-        Push data through the whole model and returns logits. The data will propagate through the language
-        model and each of the attached prediction heads.
+        Push data through the whole model and returns logits. The data will propagate through
+        the first language model and second language model based on the tensor names and both the
+        encodings through each of the attached prediction heads.
 
-        :param kwargs: Holds all arguments that need to be passed to the language model and prediction head(s).
+        :param kwargs: Holds all arguments that need to be passed to both the language models and prediction head(s).
         :return: all logits as torch.tensor or multiple tensors.
         """
 
@@ -398,10 +412,10 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
 
     def forward_lm(self, **kwargs):
         """
-        Forward pass for the DPR model
+        Forward pass for the BiAdaptive model.
 
         :param kwargs:
-        :return:
+        :return: 2 tensors of pooled_output from the 2 language models
         """
         pooled_output1, hidden_states1 = self.language_model1(**kwargs)
         pooled_output2, hidden_states2 = self.language_model2(**kwargs)
@@ -450,16 +464,21 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
         return self.language_model1.language, self.language_model2.language
 
     def convert_to_transformers(self):
-        from transformers.modeling_auto import AutoModel
-        from transformers import DPRContextEncoder, DPRQuestionEncoder, DPRConfig
+        from transformers import DPRContextEncoder, DPRQuestionEncoder, AutoModel
         if len(self.prediction_heads) != 1:
             raise ValueError(f"Currently conversion only works for models with a SINGLE prediction head. "
                              f"Your model has {len(self.prediction_heads)}")
 
         if self.prediction_heads[0].model_type == "text_similarity":
             # init model
-            transformers_model1 = DPRQuestionEncoder(config=self.language_model1.model.config)
-            transformers_model2 = DPRContextEncoder(config=self.language_model2.model.config)
+            if "dpr" in self.language_model1.model.config.model_type:
+                transformers_model1 = DPRQuestionEncoder(config=self.language_model1.model.config)
+            else:
+                transformers_model1 = AutoModel.from_config(config=self.language_model1.model.config)
+            if "dpr" in self.language_model2.model.config.model_type:
+                transformers_model2 = DPRContextEncoder(config=self.language_model2.model.config)
+            else:
+                transformers_model2 = AutoModel.from_config(config=self.language_model2.model.config)
 
             # transfer weights for language model + prediction head
             setattr(transformers_model1, transformers_model1.base_model_prefix, self.language_model1.model)
@@ -481,12 +500,14 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
          - compare models without switching frameworks
          - use model directly for inference
 
-        :param model_name_or_path1: local path of a saved model or name of a public one for Quetion Encoder
+        :param model_name_or_path1: local path of a saved model or name of a public one for Question Encoder
                                               Exemplary public names:
-                                              - distilbert-base-uncased-distilled-squad
+                                              - facebook/dpr-question_encoder-single-nq-base
                                               - deepset/bert-large-uncased-whole-word-masking-squad2
-
-                                              See https://huggingface.co/models for full list
+        :param model_name_or_path2: local path of a saved model or name of a public one for Context/Passage Encoder
+                                      Exemplary public names:
+                                      - facebook/dpr-ctx_encoder-single-nq-base
+                                      - deepset/bert-large-uncased-whole-word-masking-squad2
         :param device: "cpu" or "cuda"
         :param task_type: 'text_similarity'
                           More tasks coming soon ...

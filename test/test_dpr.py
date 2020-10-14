@@ -38,8 +38,6 @@ def test_dpr_modules(caplog=None):
         num_hard_negatives=1
     )
 
-    #data_silo = DataSilo(processor=processor, batch_size=batch_size, max_processes=1)
-    config = DPRConfig(hidden_dropout_prob=0, attention_probs_dropout_prob=0)
     question_language_model = LanguageModel.load(pretrained_model_name_or_path="bert-base-uncased",
                                                  language_model_class="DPRQuestionEncoder",
                                                  hidden_dropout_prob=0, attention_probs_dropout_prob=0)
@@ -90,6 +88,8 @@ def test_dpr_modules(caplog=None):
     feats = processor._sample_to_features(sample[0])
     dataset, tensor_names = convert_features_to_dataset(feats)
     features = {key: val.unsqueeze(0).to(device) for key, val in zip(tensor_names, dataset[0])}
+
+    # test features
     assert torch.all(torch.eq(features["query_input_ids"][0][:10].cpu(),
                               torch.tensor([101, 2502, 2210, 3658, 2161, 1016, 2129, 2116, 4178, 102])))
     assert torch.all(torch.eq(features["passage_input_ids"][0][0][:10].cpu(),
@@ -99,6 +99,8 @@ def test_dpr_modules(caplog=None):
     assert torch.all(torch.eq(features["query_attention_mask"].nonzero()[:, 1].cpu(), torch.tensor(list(range(10)))))
     assert torch.all(torch.eq(features["passage_attention_mask"][0][0].nonzero().cpu().squeeze(), torch.tensor(list(range(127)))))
     assert torch.all(torch.eq(features["passage_attention_mask"][0][1].nonzero().cpu().squeeze(), torch.tensor(list(range(143)))))
+
+    # test model encodings
     query_vector = model.language_model1(**features)[0]
     passage_vector = model.language_model2(**features)[0]
     assert torch.all(torch.le(query_vector[0, :10].cpu() - torch.tensor([-0.2135, -0.4748, 0.0501, -0.0430, -0.1747, -0.0441, 0.5638, 0.1405,
@@ -108,11 +110,14 @@ def test_dpr_modules(caplog=None):
     assert torch.all(torch.le(passage_vector[1, :10].cpu() - torch.tensor([-0.2006, -1.5002, -0.1897, -0.3421, -0.0405, -0.0471, -0.0306,  0.1156,
                                                                            0.3350, -0.3412]), torch.ones((1, 10)) * 0.0001))
 
-    scores = model(**features)
-    loss = model.logits_to_loss_per_head(scores, **features)
-    scores = scores[0].cpu()
-    assert torch.all(torch.le(scores - torch.tensor([[-1.8311e-03, -6.3016e+00]]), torch.ones((1, 2)) * 0.0001))
+    # test logits and loss
+    logits = model(**features)
+    loss = model.logits_to_loss_per_head(logits, **features)
+    similarity_scores = logits[0].cpu()
+    assert torch.all(torch.le(similarity_scores - torch.tensor([[-1.8311e-03, -6.3016e+00]]), torch.ones((1, 2)) * 0.0001))
     assert (loss[0].item() - 0.0018) <= 0.0001
+
+
 
 query_input_ids = [torch.tensor([101, 2073, 2003, 3317, 2006, 1996, 2940, 2241, 2006, 102]),
                    torch.tensor([101, 2043, 2106, 1996, 2548, 2155, 11092, 1996, 2171, 10064]),
@@ -201,7 +206,7 @@ def test_dpr_processor(embed_title, passage_ids, passage_attns, use_fast, num_ha
     processor = TextSimilarityProcessor(tokenizer=query_tokenizer,
                                         passage_tokenizer=context_tokenizer,
                                         max_seq_len=256,
-                                        data_dir="/home/ubuntu/data/data/retriever",
+                                        data_dir="data/retriever",
                                         train_filename="nq-train.json",
                                         test_filename="nq-dev.json",
                                         embed_title=embed_title,
