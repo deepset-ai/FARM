@@ -93,6 +93,7 @@ class PredictionHead(nn.Module):
             if is_json(value) and key[0] != "_":
                 config[key] = value
         config["name"] = self.__class__.__name__
+        config.pop("config", None)
         self.config = config
 
     @classmethod
@@ -294,6 +295,10 @@ class TextClassificationHead(PredictionHead):
             ignore_index=loss_ignore_index,
         )
 
+        # add label list
+        if "label_list" in kwargs:
+            self.label_list = kwargs["label_list"]
+
         self.generate_config()
 
     @classmethod
@@ -327,6 +332,8 @@ class TextClassificationHead(PredictionHead):
             head = cls(layer_dims=[full_model.config.hidden_size, len(full_model.config.id2label)])
             # transfer weights for head from full model
             head.feed_forward.feed_forward[0].load_state_dict(full_model.classifier.state_dict())
+            # add label list
+            head.label_list = list(full_model.config.id2label.values())
             del full_model
 
         return head
@@ -553,6 +560,8 @@ class TokenClassificationHead(PredictionHead):
         self.ph_output_type = "per_token"
         self.model_type = "token_classification"
         self.task_name = task_name
+        if "label_list" in kwargs:
+            self.label_list = kwargs["label_list"]
         self.generate_config()
 
     @classmethod
@@ -586,6 +595,9 @@ class TokenClassificationHead(PredictionHead):
             head = cls(layer_dims=[full_model.config.hidden_size, len(full_model.config.label2id)])
             # transfer weights for head from full model
             head.feed_forward.feed_forward[0].load_state_dict(full_model.classifier.state_dict())
+            # add label list
+            head.label_list = list(full_model.config.id2label.values())
+            head.generate_config()
             del full_model
         return head
 
