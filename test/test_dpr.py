@@ -1,7 +1,118 @@
-from farm.data_handler.processor import DPRProcessor
-from farm.modeling.tokenization import Tokenizer
 import pytest
 import torch
+import logging
+import numpy as np
+from farm.data_handler.processor import TextSimilarityProcessor
+from farm.modeling.biadaptive_model import BiAdaptiveModel
+from farm.modeling.language_model import LanguageModel, DPRContextEncoder, DPRQuestionEncoder
+from farm.modeling.prediction_head import TextSimilarityHead
+from farm.modeling.tokenization import Tokenizer
+from farm.utils import set_all_seeds, initialize_device_settings
+from farm.data_handler.dataset import convert_features_to_dataset
+from transformers import DPRConfig
+
+def test_dpr_modules(caplog=None):
+    if caplog:
+        caplog.set_level(logging.CRITICAL)
+
+    set_all_seeds(seed=42)
+    device, n_gpu = initialize_device_settings(use_cuda=True)
+
+    # 1.Create question and passage tokenizers
+    query_tokenizer = Tokenizer.load(pretrained_model_name_or_path="facebook/dpr-question_encoder-single-nq-base",
+                                     do_lower_case=True, use_fast=True)
+    context_tokenizer = Tokenizer.load(pretrained_model_name_or_path="facebook/dpr-ctx_encoder-single-nq-base",
+                                       do_lower_case=True, use_fast=True)
+
+    processor = TextSimilarityProcessor(
+        tokenizer=query_tokenizer,
+        passage_tokenizer=context_tokenizer,
+        max_seq_len=256,
+        label_list=["hard_negative", "positive"],
+        metric="text_similarity_metric",
+        data_dir="data/retriever",
+        train_filename="nq-train.json",
+        dev_filename="nq-dev.json",
+        test_filename="nq-dev.json",
+        embed_title=True,
+        num_hard_negatives=1
+    )
+
+    #data_silo = DataSilo(processor=processor, batch_size=batch_size, max_processes=1)
+    config = DPRConfig(hidden_dropout_prob=0, attention_probs_dropout_prob=0)
+    question_language_model = LanguageModel.load(pretrained_model_name_or_path="bert-base-uncased",
+                                                 language_model_class="DPRQuestionEncoder",
+                                                 hidden_dropout_prob=0, attention_probs_dropout_prob=0)
+    passage_language_model = LanguageModel.load(pretrained_model_name_or_path="bert-base-uncased",
+                                                language_model_class="DPRContextEncoder",
+                                                hidden_dropout_prob=0, attention_probs_dropout_prob=0)
+
+    prediction_head = TextSimilarityHead(similarity_function="dot_product")
+
+    model = BiAdaptiveModel(
+        language_model1=question_language_model,
+        language_model2=passage_language_model,
+        prediction_heads=[prediction_head],
+        embeds_dropout_prob=0.0,
+        lm1_output_types=["per_sequence"],
+        lm2_output_types=["per_sequence"],
+        device=device,
+    )
+
+    model.connect_heads_with_processor(processor.tasks)
+
+    assert type(model) == BiAdaptiveModel
+    assert type(processor) == TextSimilarityProcessor
+    assert type(question_language_model) == DPRQuestionEncoder
+    assert type(passage_language_model) == DPRContextEncoder
+
+    # check embedding layer weights
+    assert list(model.named_parameters())[0][1][0, 0].item() - -0.010200000368058681 < 0.0001
+
+    d = {'query': 'big little lies season 2 how many episodes',
+         'passages': [
+                         {'title': 'Big Little Lies (TV series)',
+                          'text': 'series garnered several accolades. It received 16 Emmy Award nominations and won eight, including Outstanding Limited Series and acting awards for Kidman, Skarsgård, and Dern. The trio also won Golden Globe Awards in addition to a Golden Globe Award for Best Miniseries or Television Film win for the series. Kidman and Skarsgård also received Screen Actors Guild Awards for their performances. Despite originally being billed as a miniseries, HBO renewed the series for a second season. Production on the second season began in March 2018 and is set to premiere in 2019. All seven episodes are being written by Kelley',
+                          'label': 'positive',
+                          'external_id': '18768923'},
+                         {'title': 'Little People, Big World',
+                          'text': 'final minutes of the season two-A finale, "Farm Overload". A crowd had gathered around Jacob, who was lying on the ground near the trebuchet. The first two episodes of season two-B focus on the accident, and how the local media reacted to it. The first season of "Little People, Big World" generated solid ratings for TLC (especially in the important 18–49 demographic), leading to the show\'s renewal for a second season. Critical reviews of the series have been generally positive, citing the show\'s positive portrayal of little people. Conversely, other reviews have claimed that the show has a voyeuristic bend',
+                          'label': 'hard_negative',
+                          'external_id': '7459116'},
+                         {'title': 'Cormac McCarthy',
+                          'text': 'chores of the house, Lee was asked by Cormac to also get a day job so he could focus on his novel writing. Dismayed with the situation, she moved to Wyoming, where she filed for divorce and landed her first job teaching. Cormac McCarthy is fluent in Spanish and lived in Ibiza, Spain, in the 1960s and later settled in El Paso, Texas, where he lived for nearly 20 years. In an interview with Richard B. Woodward from "The New York Times", "McCarthy doesn\'t drink anymore – he quit 16 years ago in El Paso, with one of his young',
+                          'label': 'negative',
+                          'passage_id': '2145653'}
+                     ]
+         }
+
+    sample = processor._dict_to_samples(d)
+    feats = processor._sample_to_features(sample[0])
+    dataset, tensor_names = convert_features_to_dataset(feats)
+    features = {key: val.unsqueeze(0).to(device) for key, val in zip(tensor_names, dataset[0])}
+    assert torch.all(torch.eq(features["query_input_ids"][0][:10].cpu(),
+                              torch.tensor([101, 2502, 2210, 3658, 2161, 1016, 2129, 2116, 4178, 102])))
+    assert torch.all(torch.eq(features["passage_input_ids"][0][0][:10].cpu(),
+                              torch.tensor([101,  2502,  2210,  3658,  1006,  2694,  2186,  1007,   102,  2186])))
+    assert len(features["query_segment_ids"][0].nonzero()) == 0
+    assert len(features["passage_segment_ids"][0].nonzero()) == 0
+    assert torch.all(torch.eq(features["query_attention_mask"].nonzero()[:, 1].cpu(), torch.tensor(list(range(10)))))
+    assert torch.all(torch.eq(features["passage_attention_mask"][0][0].nonzero().cpu().squeeze(), torch.tensor(list(range(127)))))
+    assert torch.all(torch.eq(features["passage_attention_mask"][0][1].nonzero().cpu().squeeze(), torch.tensor(list(range(143)))))
+    query_vector = model.language_model1(**features)[0]
+    passage_vector = model.language_model2(**features)[0]
+    assert torch.all(torch.le(query_vector[0, :10].cpu() - torch.tensor([-0.2135, -0.4748, 0.0501, -0.0430, -0.1747, -0.0441, 0.5638, 0.1405,
+                                                                         0.2285, 0.0893]), torch.ones((1, 10))*0.0001))
+    assert torch.all(torch.le(passage_vector[0, :10].cpu() - torch.tensor([0.0557, -0.6836, -0.3645, -0.5566,  0.2034, -0.3656,  0.2969, -0.0555,
+                                                                          0.3405, -0.8691]), torch.ones((1, 10))*0.0001))
+    assert torch.all(torch.le(passage_vector[1, :10].cpu() - torch.tensor([-0.2006, -1.5002, -0.1897, -0.3421, -0.0405, -0.0471, -0.0306,  0.1156,
+                                                                           0.3350, -0.3412]), torch.ones((1, 10)) * 0.0001))
+
+    scores = model(**features)
+    loss = model.logits_to_loss_per_head(scores, **features)
+    scores = scores[0].cpu()
+    assert torch.all(torch.le(scores - torch.tensor([[-1.8311e-03, -6.3016e+00]]), torch.ones((1, 2)) * 0.0001))
+    assert (loss[0].item() - 0.0018) <= 0.0001
 
 query_input_ids = [torch.tensor([101, 2073, 2003, 3317, 2006, 1996, 2940, 2241, 2006, 102]),
                    torch.tensor([101, 2043, 2106, 1996, 2548, 2155, 11092, 1996, 2171, 10064]),
@@ -12,32 +123,39 @@ passage_ids = {
                                      [101, 3317, 2940, 1010, 2047, 2148, 3575,  102, 8765, 2061],
                                      [101, 3317, 2940, 1010, 27492, 102, 3419, 18874, 3385, 1010]]),
                        torch.tensor([[101,  2160,  1997, 10064,   102,  2160,  1997, 10064,  1996,  2160],
-                                     [101, 26902,  1010, 11017,  1997, 10387,   102,  2384,  1010,  1998]]),
-                       torch.tensor([[101, 2516, 2007, 1000, 2569, 3494, 1000,  102, 2023, 2003]])
+                                     [101, 26902,  1010, 11017,  1997, 10387,   102,  2384,  1010,  1998],
+                                     [101, 102, 102, 0, 0, 0, 0, 0, 0, 0]]),
+                       torch.tensor([[101, 2516, 2007, 1000, 2569, 3494, 1000,  102, 2023, 2003],
+                                     [101, 102, 102, 0, 0, 0, 0, 0, 0, 0],
+                                     [101, 102, 102, 0, 0, 0, 0, 0, 0, 0]])
                        ],
 
             'untitled': [torch.tensor([[101, 3317, 2006, 1996, 2940, 1000, 3317, 2006, 1996, 2940],
                                        [101, 8765, 2061, 2004, 2000, 5438, 1037, 8084, 10527, 5701],
                                        [101, 3419, 18874, 3385, 1010, 3818, 1000, 1000, 2152, 2006]]),
                          torch.tensor([[101, 2160, 1997, 10064, 1996, 2160, 1997, 10064, 2003, 1996],
-                                       [101, 2384, 1010, 1998, 2001, 2000, 2202, 2173, 1999, 1037]]),
-                         torch.tensor([[101, 2023, 2003, 1037, 1026, 7308, 1028, 6251,  1012, 8870]])
+                                       [101, 2384, 1010, 1998, 2001, 2000, 2202, 2173, 1999, 1037],
+                                       [101, 102, 102, 0, 0, 0, 0, 0, 0, 0]]),
+                         torch.tensor([[101, 2023, 2003, 1037, 1026, 7308, 1028, 6251,  1012, 8870],
+                                       [101, 102, 102, 0, 0, 0, 0, 0, 0, 0],
+                                       [101, 102, 102, 0, 0, 0, 0, 0, 0, 0]]),
                          ]}
 
 passage_attention = {
         'titled': [[torch.tensor(range(140)).unsqueeze(-1), torch.tensor(range(130)).unsqueeze(-1), torch.tensor(range(127)).unsqueeze(-1)],
-                   [torch.tensor(range(132)).unsqueeze(-1),  torch.tensor(range(121)).unsqueeze(-1)],
-                   [torch.tensor(range(22)).unsqueeze(-1)]],
+                   [torch.tensor(range(132)).unsqueeze(-1),  torch.tensor(range(121)).unsqueeze(-1), torch.tensor(range(3)).unsqueeze(-1)],
+                   [torch.tensor(range(22)).unsqueeze(-1), torch.tensor(range(3)).unsqueeze(-1),torch.tensor(range(3)).unsqueeze(-1)]],
 'untitled': [[torch.tensor(range(135)).unsqueeze(-1), torch.tensor(range(123)).unsqueeze(-1), torch.tensor(range(122)).unsqueeze(-1)],
-             [torch.tensor(range(128)).unsqueeze(-1), torch.tensor(range(115)).unsqueeze(-1)],
-             [torch.tensor(range(15)).unsqueeze(-1)]]
+             [torch.tensor(range(128)).unsqueeze(-1), torch.tensor(range(115)).unsqueeze(-1), torch.tensor(range(3)).unsqueeze(-1)],
+             [torch.tensor(range(15)).unsqueeze(-1), torch.tensor(range(3)).unsqueeze(-1),torch.tensor(range(3)).unsqueeze(-1)]]
                     }
-labels = [[1,0,0], [1,0], [1]]
+labels1 = [[1,0], [1,0], [1,0]]
+labels2 = [[1,0,0], [1,0,0], [1,0,0]]
 
 @pytest.mark.parametrize("embed_title, passage_ids, passage_attns", [(True, passage_ids['titled'], passage_attention['titled']),  (False, passage_ids['untitled'], passage_attention['untitled'])])
 @pytest.mark.parametrize("use_fast", [True, False])
-@pytest.mark.parametrize("num_hard_negatives", [1,2])
-def test_dpr_processor(embed_title, passage_ids, passage_attns, use_fast, num_hard_negatives):
+@pytest.mark.parametrize("num_hard_negatives, labels", [(1, labels1),(2, labels2)])
+def test_dpr_processor(embed_title, passage_ids, passage_attns, use_fast, num_hard_negatives, labels):
     dict = [{
              'query': 'where is castle on the hill based on',
              'answers': ['Framlingham Castle'],
@@ -80,38 +198,34 @@ def test_dpr_processor(embed_title, passage_ids, passage_attns, use_fast, num_ha
     query_tokenizer = Tokenizer.load(query_tok, use_fast=use_fast)
     passage_tok = "facebook/dpr-ctx_encoder-single-nq-base"
     context_tokenizer = Tokenizer.load(passage_tok, use_fast=use_fast)
-    processor = DPRProcessor(tokenizer=query_tokenizer,
-                             passage_tokenizer=context_tokenizer,
-                             max_seq_len=256,
-                             data_dir="data/retriever",
-                             train_filename="nq-train.json",
-                             test_filename="nq-dev.json",
-                             embed_title=embed_title,
-                             num_hard_negatives=num_hard_negatives)
+    processor = TextSimilarityProcessor(tokenizer=query_tokenizer,
+                                        passage_tokenizer=context_tokenizer,
+                                        max_seq_len=256,
+                                        data_dir="/home/ubuntu/data/data/retriever",
+                                        train_filename="nq-train.json",
+                                        test_filename="nq-dev.json",
+                                        embed_title=embed_title,
+                                        num_hard_negatives=num_hard_negatives,
+                                        label_list=["hard_negative", "positive"],
+                                        metric="text_similarity_metric",
+                                        shuffle_negatives=False)
+
 
     for i, d in enumerate(dict):
         sample = processor._dict_to_samples(d)
-        feat = processor._sample_to_features(sample)
+        feat = processor._sample_to_features(sample[0])
         assert (torch.all(torch.eq(torch.tensor(feat[0]["query_input_ids"][:10]), query_input_ids[i])))
         assert (len(torch.tensor(feat[0]["query_segment_ids"]).nonzero()) == 0)
         assert (torch.all(torch.eq(torch.tensor(feat[0]["query_attention_mask"]).nonzero(), query_attention_mask[i])))
 
-        if embed_title:
-            assert (torch.all(torch.eq(torch.tensor(feat[0]["passage_input_ids"])[:num_hard_negatives+1, :10], passage_ids[i][:num_hard_negatives+1])))
-            for j in range(num_hard_negatives+1):
-                if j < len(passage_attns[i]):
-                    assert (torch.all(torch.eq(torch.tensor(feat[0]["passage_attention_mask"][j]).nonzero(), passage_attns[i][j])))
-            assert (torch.all(torch.eq(torch.tensor(feat[0]["label"]), torch.tensor(labels[i])[:num_hard_negatives+1])))
-            # TO-DO: official DPR uses segment_ids all 0
-            # assert (len(torch.tensor(feat[0]["passage_segment_ids"]).nonzero()) == 0)
-        else:
-            assert (torch.all(torch.eq(torch.tensor(feat[0]["passage_input_ids"])[:num_hard_negatives+1, :10], passage_ids[i][:num_hard_negatives+1])))
-            for j in range(num_hard_negatives+1):
-                if j < len(passage_attns[i]):
-                    assert (torch.all(torch.eq(torch.tensor(feat[0]["passage_attention_mask"][j]).nonzero(), passage_attns[i][j])))
-            assert (torch.all(torch.eq(torch.tensor(feat[0]["label"]), torch.tensor(labels[i])[:num_hard_negatives+1])))
-            # TO-DO: official DPR uses segment_ids all 0
-            # assert (len(torch.tensor(feat[0]["passage_segment_ids"]).nonzero()) == 0)
+        positive_indices = np.where(np.array(feat[0]["label_ids"]) == 1)[0].item()
+        assert (torch.all(torch.eq(torch.tensor(feat[0]["passage_input_ids"])[positive_indices, :10], passage_ids[i][positive_indices])))
+        for j in range(num_hard_negatives+1):
+            assert (torch.all(torch.eq(torch.tensor(feat[0]["passage_attention_mask"][j]).nonzero(), passage_attns[i][j])))
+        assert (torch.all(torch.eq(torch.tensor(feat[0]["label_ids"]), torch.tensor(labels[i])[:num_hard_negatives+1])))
+        assert (len(torch.tensor(feat[0]["passage_segment_ids"]).nonzero()) == 0)
 
 
-
+if __name__=="__main__":
+    test_dpr_processor()
+    test_dpr_modules()
