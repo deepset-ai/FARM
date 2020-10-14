@@ -1,7 +1,7 @@
-import pytest
 from transformers import BertForSequenceClassification, BertForTokenClassification
 
-from farm.modeling.adaptive_model import AdaptiveModel, Converter
+from farm.modeling.adaptive_model import AdaptiveModel
+from farm.conversion.transformers import Converter
 from farm.modeling.language_model import LanguageModel
 from farm.modeling.prediction_head import TextClassificationHead, TokenClassificationHead, QuestionAnsweringHead
 from farm.modeling.tokenization import Tokenizer
@@ -11,9 +11,6 @@ from transformers.modeling_auto import AutoModelForQuestionAnswering, AutoModelW
     AutoModelForSequenceClassification, AutoModelForTokenClassification
 import os
 from pathlib import Path
-
-
-import logging
 
 
 def test_conversion_adaptive_model_qa():
