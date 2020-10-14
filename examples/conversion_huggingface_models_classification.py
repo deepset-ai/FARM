@@ -1,5 +1,5 @@
 from farm.modeling.adaptive_model import AdaptiveModel
-from farm.modeling.tokenization import Tokenizer
+from farm.conversion.transformers import Converter
 from farm.data_handler.processor import Processor
 
 from farm.infer import Inferencer
@@ -16,7 +16,10 @@ def convert_from_transformers():
 
     # # CASE 1: MODEL
     # # Load model from transformers model hub (-> continue training / compare models / ...)
-    model = AdaptiveModel.convert_from_transformers(transformers_input_name, device="cpu", task_type="text_classification")
+    model = Converter.convert_from_transformers(transformers_input_name, device="cpu")
+
+    # # Alternative way to load from transformers model hub:
+    #model = AdaptiveModel.convert_from_transformers(transformers_input_name, device="cpu", task_type="text_classification")
     # # ... continue as in the other examples e.g. to fine-tune this QA model on your own data
     #
     # # CASE 2: INFERENCER
@@ -35,7 +38,7 @@ def convert_from_transformers():
 # ###  From FARM -> Transformers
 # ##############################################
 def convert_to_transformers():
-    farm_input_dir = Path("../saved_models/farm-bert-base-german-cased-german-GermEval18Coarse")
+    farm_input_dir = Path("../saved_models/farm-bert-base-german-cased-hatespeech-GermEval18Coarse")
     transformers_output_dir = "../saved_models/bert-base-german-cased-hatespeech-GermEval18Coarse"
     #
     # # # load from FARM format
@@ -44,7 +47,9 @@ def convert_to_transformers():
     model.connect_heads_with_processor(processor.tasks)
 
     # convert to transformers
-    transformer_model = model.convert_to_transformers()
+    transformer_model = Converter.convert_to_transformers(model)[0]
+    # # Alternative way to convert to transformers:
+    #transformer_model = model.convert_to_transformers()[0]
 
     # save it (note: transformers use str instead of Path objects)
     Path(transformers_output_dir).mkdir(parents=True, exist_ok=True)
