@@ -8,7 +8,7 @@ from abc import ABC
 from inspect import signature
 from pathlib import Path
 from random import randint
-
+import torch
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from transformers.configuration_auto import AutoConfig
@@ -1748,6 +1748,8 @@ class TextSimilarityProcessor(Processor):
         embed_title=True,
         num_positives=1,
         num_hard_negatives=1,
+        shuffle_negatives=True,
+        shuffle_positives=False,
         label_list=None,
         **kwargs
     ):
@@ -1793,6 +1795,8 @@ class TextSimilarityProcessor(Processor):
         self.embed_title = embed_title
         self.num_hard_negatives = num_hard_negatives
         self.num_positives = num_positives
+        self.shuffle_negatives = shuffle_negatives
+        self.shuffle_positives = shuffle_positives
 
         super(TextSimilarityProcessor, self).__init__(
             tokenizer=tokenizer,
@@ -1912,8 +1916,14 @@ class TextSimilarityProcessor(Processor):
         """
         # extract query, positive context passages and titles, hard-negative passages and titles
         query = self._normalize_question(dictionary["query"])
-        positive_context = list(filter(lambda x: x["label"] == "positive", dictionary["passages"]))[:self.num_positives]
-        hard_negative_context = list(filter(lambda x: x["label"] == "hard_negative", dictionary["passages"]))[:self.num_hard_negatives]
+        positive_context = list(filter(lambda x: x["label"] == "positive", dictionary["passages"]))
+        if self.shuffle_positives:
+            random.shuffle(positive_context)
+        positive_context = positive_context[:self.num_positives]
+        hard_negative_context = list(filter(lambda x: x["label"] == "hard_negative", dictionary["passages"]))
+        if self.shuffle_negatives:
+            random.shuffle(hard_negative_context)
+        hard_negative_context = hard_negative_context[:self.num_hard_negatives]
 
         positive_ctx_titles = [passage.get("title", None) for passage in positive_context]
         positive_ctx_texts = [passage["text"] for passage in positive_context]
@@ -1958,8 +1968,9 @@ class TextSimilarityProcessor(Processor):
 
         query_input_ids, query_segment_ids, query_padding_mask = query_inputs["input_ids"], query_inputs[
                                                             "token_type_ids"], query_inputs["attention_mask"]
-        ctx_input_ids, ctx_segment_ids, ctx_padding_mask = ctx_inputs["input_ids"], ctx_inputs["token_type_ids"], \
+        ctx_input_ids, ctx_segment_ids_, ctx_padding_mask = ctx_inputs["input_ids"], ctx_inputs["token_type_ids"], \
                                                            ctx_inputs["attention_mask"]
+        ctx_segment_ids = list(torch.zeros((len(ctx_segment_ids_), len(ctx_segment_ids_[0]))).numpy())
 
         # featurize the query
         query_inputs = self.query_tokenizer.encode_plus(
