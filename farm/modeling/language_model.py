@@ -42,6 +42,7 @@ from transformers.modeling_xlm_roberta import XLMRobertaModel, XLMRobertaConfig
 from transformers.modeling_distilbert import DistilBertModel, DistilBertConfig
 from transformers.modeling_electra import ElectraModel, ElectraConfig
 from transformers.modeling_camembert import CamembertModel, CamembertConfig
+from transformers.modeling_auto import AutoModel
 from transformers.modeling_utils import SequenceSummary
 from transformers.tokenization_bert import load_vocab
 import transformers
@@ -1441,7 +1442,8 @@ class DPRQuestionEncoder(LanguageModel):
             dpr_question_encoder.language = dpr_question_encoder.model.config.language
         else:
             # Pytorch-transformer Style
-            dpr_question_encoder.model = transformers.DPRQuestionEncoder.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
+            dpr_question_encoder.model = transformers.DPRQuestionEncoder(config=transformers.DPRConfig())
+            dpr_question_encoder.model.base_model.bert_model = AutoModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
             dpr_question_encoder.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
 
         #if pretrained_weights_model:
@@ -1477,7 +1479,7 @@ class DPRQuestionEncoder(LanguageModel):
             return_dict=True
         )
         if self.model.question_encoder.config.output_hidden_states == True:
-            pooled_output, all_hidden_states =  output_tuple.pooler_output, output_tuple.hidden_states
+            pooled_output, all_hidden_states = output_tuple.pooler_output, output_tuple.hidden_states
             return pooled_output, all_hidden_states
         else:
             pooled_output = output_tuple.pooler_output
@@ -1541,7 +1543,8 @@ class DPRContextEncoder(LanguageModel):
             dpr_context_encoder.language = dpr_context_encoder.model.config.language
         else:
             # Pytorch-transformer Style
-            dpr_context_encoder.model = transformers.DPRContextEncoder.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
+            dpr_context_encoder.model = transformers.DPRContextEncoder(config=transformers.DPRConfig())
+            dpr_context_encoder.model.base_model.bert_model = AutoModel.from_pretrained(str(pretrained_model_name_or_path))
             dpr_context_encoder.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
 
         #if pretrained_weights_model:
