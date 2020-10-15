@@ -1555,14 +1555,10 @@ class TextSimilarityHead(PredictionHead):
         """
         Calculates dot product similarity scores for two 2-dimensional tensors
 
-        :param query_vectors: tensor of query embeddings from BiAdaptive model
-                          of dimension n1 x D,
-                          where n1 is the number of queries/batch size and D is embedding size
+        :param query_vectors: tensor of query embeddings from BiAdaptive model of dimension n1 x D, where n1 is the number of queries/batch size and D is embedding size
         :type query_vectors: torch.Tensor
-        :param context_vectors: tensor of context/passage embeddings from BiAdaptive model
-                          of dimension n2 x D,
-                          where n2 is the number of queries/batch size and D is embedding size
-        "type context_vectors: torch.Tensor
+        :param context_vectors: tensor of context/passage embeddings from BiAdaptive model of dimension n2 x D, where n2 is the number of queries/batch size and D is embedding size
+        :type context_vectors: torch.Tensor
 
         :return dot_product: similarity score of each query with each context/passage (dimension: n1xn2)
         """
