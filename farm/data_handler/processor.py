@@ -8,7 +8,7 @@ from abc import ABC
 from inspect import signature
 from pathlib import Path
 from random import randint
-
+import torch
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from transformers.configuration_auto import AutoConfig
@@ -34,6 +34,7 @@ from farm.data_handler.utils import (
     read_ner_file,
     read_squad_file,
     read_jsonl,
+    read_dpr_json,
     is_json,
     get_sentence_pair,
     split_with_metadata,
@@ -1726,6 +1727,362 @@ class RegressionProcessor(Processor):
             tokenizer=self.tokenizer
         )
         return features
+
+class TextSimilarityProcessor(Processor):
+    """
+    Used to handle the text DPR datasets that come in json format, example: nq-train.json, nq-dev.json, trivia-train.json, trivia-dev.json
+    Datasets can be downloaded from the official DPR github repository (https://github.com/facebookresearch/DPR)
+
+    dataset format: list of dictionaries with keys: 'dataset', 'question', 'answers', 'positive_ctxs', 'negative_ctxs', 'hard_negative_ctxs'
+    Each sample is a dictionary of format:
+    {"dataset": str,
+    "question": str,
+    "answers": list of str
+    "positive_ctxs": list of dictionaries of format {'title': str, 'text': str, 'score': int, 'title_score': int, 'passage_id': str}
+    "negative_ctxs": list of dictionaries of format {'title': str, 'text': str, 'score': int, 'title_score': int, 'passage_id': str}
+    "hard_negative_ctxs": list of dictionaries of format {'title': str, 'text': str, 'score': int, 'title_score': int, 'passage_id': str}
+    }
+
+    Example of 1 sample in DPR data json:
+    {
+    "dataset": "nq_dev_psgs_w100",
+    "question": "who sings does he love me with reba",
+    "answers": ["Linda Davis"],
+    "positive_ctxs": [
+    {
+    "title": "Does He Love You",
+    "text": "Does He Love You \"Does He Love You\" is a song written by Sandy Knox and Billy Stritch, and recorded as a duet by American country music artists Reba McEntire and Linda Davis. It was released in August 1993 as the first single from Reba's album \"Greatest Hits Volume Two\". It is one of country music's several songs about a love triangle. \"Does He Love You\" was written in 1982 by Billy Stritch. He recorded it with a trio in which he performed at the time, because he wanted a song that could be sung by the other two members",
+    "score": 1000,
+    "title_score": 1,
+    "passage_id": "11828866"
+    },
+    {
+    "title": "Does He Love You",
+    "text": "Does He Love You \"Does He Love You\" is a song written by Sandy Knox and Billy Stritch, and recorded as a duet by American country music artists Reba McEntire and Linda Davis. It was released in August 1993 as the first single from Reba's album \"Greatest Hits Volume Two\". It is one of country music's several songs about a love triangle. \"Does He Love You\" was written in 1982 by Billy Stritch. He recorded it with a trio in which he performed at the time, because he wanted a song that could be sung by the other two members",
+    "score": 13.394315,
+    "title_score": 0,
+    "passage_id": "11828866"
+    }, .... ]
+    "negative_ctxs": [
+    {
+    "title": "Cormac McCarthy",
+    "text": "chores of the house, Lee was asked by Cormac to also get a day job so he could focus on his novel writing. Dismayed with the situation, she moved to Wyoming, where she filed for divorce and landed her first job teaching. Cormac McCarthy is fluent in Spanish and lived in Ibiza, Spain, in the 1960s and later settled in El Paso, Texas, where he lived for nearly 20 years. In an interview with Richard B. Woodward from \"The New York Times\", \"McCarthy doesn't drink anymore \u2013 he quit 16 years ago in El Paso, with one of his young",
+    "score": 0,
+    "title_score": 0,
+    "passage_id": "2145653"
+    },
+    {
+    "title": "Pragmatic Sanction of 1549",
+    "text": "one heir, Charles effectively united the Netherlands as one entity. After Charles' abdication in 1555, the Seventeen Provinces passed to his son, Philip II of Spain. The Pragmatic Sanction is said to be one example of the Habsburg contest with particularism that contributed to the Dutch Revolt. Each of the provinces had its own laws, customs and political practices. The new policy, imposed from the outside, angered many inhabitants, who viewed their provinces as distinct entities. It and other monarchical acts, such as the creation of bishoprics and promulgation of laws against heresy, stoked resentments, which fired the eruption of",
+    "score": 0,
+    "title_score": 0,
+    "passage_id": "2271902"
+    }, ..... ]
+    "hard_negative_ctxs": [
+    {
+    "title": "Why Don't You Love Me (Beyonce\u0301 song)",
+    "text": "song. According to the lyrics of \"Why Don't You Love Me\", Knowles impersonates a woman who questions her love interest about the reason for which he does not value her fabulousness, convincing him she's the best thing for him as she sings: \"Why don't you love me... when I make me so damn easy to love?... I got beauty... I got class... I got style and I got ass...\". The singer further tells her love interest that the decision not to choose her is \"entirely foolish\". Originally released as a pre-order bonus track on the deluxe edition of \"I Am...",
+    "score": 14.678405,
+    "title_score": 0,
+    "passage_id": "14525568"
+    },
+    {
+    "title": "Does He Love You",
+    "text": "singing the second chorus. Reba stays behind the wall the whole time, while Linda is in front of her. It then briefly goes back to the dressing room, where Reba continues to smash her lover's picture. The next scene shows Reba approaching Linda's house in the pouring rain at night, while Linda stands on her porch as they sing the bridge. The scene then shifts to the next day, where Reba watches from afar as Linda and the man are seen on a speedboat, where he hugs her, implying that Linda is who he truly loves. Reba finally smiles at",
+    "score": 14.385411,
+    "title_score": 0,
+    "passage_id": "11828871"
+    }, ...]
+    """
+    def __init__(
+        self,
+        tokenizer,
+        passage_tokenizer,
+        max_seq_len,
+        data_dir,
+        metric=None,
+        train_filename="train.json",
+        dev_filename=None,
+        test_filename="test.json",
+        dev_split=0.1,
+        proxies=None,
+        max_samples=None,
+        embed_title=True,
+        num_positives=1,
+        num_hard_negatives=1,
+        shuffle_negatives=True,
+        shuffle_positives=False,
+        label_list=None,
+        **kwargs
+    ):
+        """
+        :param tokenizer: Used to split a question (str) into tokens
+        :param passage_tokenizer: Used to split a passage (str) into tokens.
+        :param max_seq_len: Samples are truncated after this many tokens.
+        :type max_seq_len: int
+        :param data_dir: The directory in which the train and dev files can be found.
+                         If not available the dataset will be loaded automaticaly
+                         if the last directory has the same name as a predefined dataset.
+                         These predefined datasets are defined as the keys in the dict at
+                         `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
+        :type data_dir: str
+        :param metric: name of metric that shall be used for evaluation, e.g. "acc" or "f1_macro".
+                 Alternatively you can also supply a custom function, that takes preds and labels as args and returns a numerical value.
+                 For using multiple metrics supply them as a list, e.g ["acc", my_custom_metric_fn].
+        :type metric: str, function, or list
+        :param train_filename: The name of the file containing training data.
+        :type train_filename: str
+        :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
+                             will be a slice of the train set.
+        :type dev_filename: str or None
+        :param test_filename: None
+        :type test_filename: str
+        :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
+        :type dev_split: float
+        :param proxies: proxy configuration to allow downloads of remote datasets.
+                        Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
+        :type proxies: dict
+        :param max_samples: maximum number of samples to use
+        :type max_samples: int
+        :param embed_title: Whether to embed title in passages during tensorization (bool),
+        :param num_hard_negatives: maximum number to hard negative context passages in a sample
+        :param num_positives: maximum number to positive context passages in a sample
+        :param shuffle_negatives: Whether to shuffle all the hard_negative passages before selecting the num_hard_negative number of passages
+        :type shuffle_negatives: bool
+        :param shuffle_positives: Whether to shuffle all the positive passages before selecting the num_positive number of passages
+        :type shuffle_positives: bool
+        :param label_list: list of labels to predict. Usually ["hard_negative", "positive"]
+        :type label_list: list[str]
+        :param kwargs: placeholder for passing generic parameters
+        :type kwargs: object
+        """
+        #TODO If an arg is misspelt, e.g. metrics, it will be swallowed silently by kwargs
+
+        # Custom processor attributes
+        self.max_samples = max_samples
+        self.query_tokenizer = tokenizer
+        self.passage_tokenizer = passage_tokenizer
+        self.embed_title = embed_title
+        self.num_hard_negatives = num_hard_negatives
+        self.num_positives = num_positives
+        self.shuffle_negatives = shuffle_negatives
+        self.shuffle_positives = shuffle_positives
+
+        super(TextSimilarityProcessor, self).__init__(
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            train_filename=train_filename,
+            dev_filename=dev_filename,
+            test_filename=test_filename,
+            dev_split=dev_split,
+            data_dir=data_dir,
+            tasks={},
+            proxies=proxies,
+        )
+        if metric:
+            self.add_task(name="text_similarity",
+                          metric=metric,
+                          label_list=label_list,
+                          label_name="label",
+                          task_type="text_similarity")
+        else:
+            logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
+                        "using the default task or add a custom task later via processor.add_task()")
+
+    @classmethod
+    def load_from_dir(cls, load_dir):
+        """
+         Overwriting method from parent class to **always** load the TextSimilarityProcessor instead of the specific class stored in the config.
+
+        :param load_dir: str, directory that contains a 'processor_config.json'
+        :return: An instance of an TextSimilarityProcessor
+        """
+        # read config
+        processor_config_file = Path(load_dir) / "processor_config.json"
+        config = json.load(open(processor_config_file))
+        # init tokenizer
+        tokenizer = Tokenizer.load(load_dir, tokenizer_class=config["tokenizer"])
+        passage_tokenizer = Tokenizer.load(load_dir, tokenizer_class=config["passage_tokenizer"])
+
+        # we have to delete the tokenizer string from config, because we pass it as Object
+        del config["tokenizer"]
+        del config["passage_tokenizer"]
+
+        processor = cls.load(tokenizer=tokenizer, passage_tokenizer=passage_tokenizer, processor_name="TextSimilarityProcessor", **config)
+        for task_name, task in config["tasks"].items():
+            processor.add_task(name=task_name, metric=task["metric"], label_list=task["label_list"])
+
+        if processor is None:
+            raise Exception
+
+        return processor
+
+    def save(self, save_dir):
+        """
+        Saves the vocabulary to file and also creates a json file containing all the
+        information needed to load the same processor.
+
+        :param save_dir: Directory where the files are to be saved
+        :type save_dir: str
+        """
+        os.makedirs(save_dir, exist_ok=True)
+        config = self.generate_config()
+        # save tokenizer incl. attributes
+        config["tokenizer"] = self.tokenizer.__class__.__name__
+        config["passage_tokenizer"] = self.tokenizer.__class__.__name__
+
+        # Because the fast tokenizers expect a str and not Path
+        # always convert Path to str here.
+        self.tokenizer.save_pretrained(str(save_dir))
+        self.passage_tokenizer.save_pretrained(str(save_dir))
+
+        # save processor
+        config["processor"] = self.__class__.__name__
+        output_config_file = Path(save_dir) / "processor_config.json"
+        with open(output_config_file, "w") as file:
+            json.dump(config, file)
+
+    def file_to_dicts(self, file: str) -> [dict]:
+        """
+        Converts a Dense Passage Retrieval (DPR) data file in json format to a list of dictionaries.
+
+        :param file: filename of DPR data in json format
+
+        Returns:
+        list of dictionaries: List[dict]
+        each dictionary:
+        {"query": str,
+        "passages": [{"text": document_text, "title": xxx, "label": "positive", "external_id": abb123},
+        {"text": document_text, "title": xxx, "label": "hard_negative", "external_id": abb134},
+        ...]}
+        """
+        dicts = read_dpr_json(file)
+        return dicts
+
+    def _normalize_question(self, question: str) -> str:
+        """
+        Removes '?' from queries/questions
+
+        :param question: string representing the question
+
+        Returns:
+            Question without the '?'
+        """
+        if question[-1] == '?':
+            question = question[:-1]
+        return question
+
+    def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
+        """
+        Creates one sample from one dict consisting of the query, positive passages and hard negative passages
+        :param dictionary:  {"query": str,
+                            "passages": List[
+                                            {'title': str,
+                                            'text': str,
+                                            'label': 'hard_negative',
+                                            'external_id': str},
+                                            {'title': str,
+                                            'text': str,
+                                            'label': 'positive',
+                                            'external_id': str},
+                                            ....
+                                            ]
+                            }
+
+        Returns:
+                sample: instance of Sample
+        """
+        # extract query, positive context passages and titles, hard-negative passages and titles
+        query = self._normalize_question(dictionary["query"])
+        positive_context = list(filter(lambda x: x["label"] == "positive", dictionary["passages"]))
+        if self.shuffle_positives:
+            random.shuffle(positive_context)
+        positive_context = positive_context[:self.num_positives]
+        hard_negative_context = list(filter(lambda x: x["label"] == "hard_negative", dictionary["passages"]))
+        if self.shuffle_negatives:
+            random.shuffle(hard_negative_context)
+        hard_negative_context = hard_negative_context[:self.num_hard_negatives]
+
+        positive_ctx_titles = [passage.get("title", None) for passage in positive_context]
+        positive_ctx_texts = [passage["text"] for passage in positive_context]
+        hard_negative_ctx_titles = [passage.get("title", None) for passage in hard_negative_context]
+        hard_negative_ctx_texts = [passage["text"] for passage in hard_negative_context]
+
+        # all context passages and labels: 1 for positive context and 0 for hard-negative context
+        ctx_label = [1]*self.num_positives + [0]*self.num_hard_negatives #(self.num_positives if self.num_positives < len(positive_context) else len(positive_context)) + \
+        # +(self.num_hard_negatives if self.num_hard_negatives < len(hard_negative_context) else len(hard_negative_context))
+
+        # featurize the query
+        query_inputs = self.query_tokenizer.encode_plus(
+            text=query,
+            max_length=self.max_seq_len,
+            add_special_tokens=True,
+            truncation_strategy='do_not_truncate',
+            padding="max_length",
+            return_token_type_ids=True,
+        )
+
+        # featurize context passages
+        if self.embed_title:
+            # embed title with positive context passages + negative context passages
+            all_ctx = [tuple((title, ctx)) for title, ctx in
+                       zip(positive_ctx_titles, positive_ctx_texts)] + \
+                      [tuple((title, ctx)) for title, ctx in
+                       zip(hard_negative_ctx_titles, hard_negative_ctx_texts)]
+        else:
+            all_ctx = positive_ctx_texts + hard_negative_ctx_texts
+
+        # assign empty string tuples if hard_negative passages less than num_hard_negatives
+        all_ctx += [('', '')] * ((self.num_positives + self.num_hard_negatives)-len(all_ctx))
+
+        ctx_inputs = self.passage_tokenizer.batch_encode_plus(
+            all_ctx,
+            add_special_tokens=True,
+            truncation=True,
+            padding="max_length",
+            max_length=self.max_seq_len,
+            return_token_type_ids=True
+        )
+
+        query_input_ids, query_segment_ids, query_padding_mask = query_inputs["input_ids"], query_inputs[
+                                                            "token_type_ids"], query_inputs["attention_mask"]
+        ctx_input_ids, ctx_segment_ids_, ctx_padding_mask = ctx_inputs["input_ids"], ctx_inputs["token_type_ids"], \
+                                                           ctx_inputs["attention_mask"]
+        ctx_segment_ids = list(torch.zeros((len(ctx_segment_ids_), len(ctx_segment_ids_[0]))).numpy())
+
+        # tokenize query and contexts
+        tokenized_query = self.query_tokenizer.convert_ids_to_tokens(query_input_ids)
+        tokenized_passage = [self.passage_tokenizer.convert_ids_to_tokens(ctx) for ctx in ctx_input_ids]
+
+        if len(tokenized_query) == 0 or len(tokenized_passage) == 0:
+            logger.warning(f"The text could not be tokenized, likely because it contains a character that the tokenizer does not recognize")
+            return None
+
+        clear_text = {"query_text": query,
+                      "passages": positive_context + hard_negative_context
+                      }
+
+        tokenized = {"query_tokens": tokenized_query,
+                     "passages_tokens": tokenized_passage
+                     }
+
+        features = {"query_input_ids": query_input_ids,
+                    "query_segment_ids": query_segment_ids,
+                    "query_attention_mask": query_padding_mask,
+                    "passage_input_ids": ctx_input_ids,
+                    "passage_segment_ids": ctx_segment_ids,
+                    "passage_attention_mask": ctx_padding_mask,
+                    "label_ids": ctx_label
+                    }
+
+        sample = Sample(id=None,
+                        clear_text=clear_text,
+                        tokenized=tokenized,
+                        features=features)
+        return [sample]
+
+    def _sample_to_features(self, sample) -> dict:
+        return [sample.features]
 
 
 def _apply_tokenization(dictionary, tokenizer):
