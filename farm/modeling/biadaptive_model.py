@@ -71,7 +71,7 @@ class BaseBiAdaptiveModel:
 
     def formatted_preds(self, logits, language_model1, language_model2, **kwargs):
         """
-        Format predictions for inference.
+        Format predictions to strings for inference output
 
         :param logits: model logits
         :type logits: torch.tensor
@@ -81,12 +81,7 @@ class BaseBiAdaptiveModel:
         """
         n_heads = len(self.prediction_heads)
 
-        if n_heads == 0:
-            # just return LM output (e.g. useful for extracting embeddings at inference time)
-            preds1_final = language_model1.formatted_preds(logits=logits, **kwargs)
-            preds2_final = language_model2.formatted_preds(logits=logits, **kwargs)
-
-        elif n_heads == 1:
+        if n_heads == 1:
             preds_final = []
             # This try catch is to deal with the fact that sometimes we collect preds before passing it to
             # formatted_preds (see Inferencer._get_predictions_and_aggregate()) and sometimes we don't
@@ -106,28 +101,6 @@ class BaseBiAdaptiveModel:
                 preds_final += preds
             elif type(preds) == dict and "predictions" in preds:
                 preds_final.append(preds)
-
-        # This case is triggered by Natural Questions
-        else:
-            preds_final = [list() for _ in range(n_heads)]
-            preds = kwargs["preds"]
-            preds_for_heads = stack(preds)
-            logits_for_heads = [None] * n_heads
-
-            samples = [s for b in kwargs["baskets"] for s in b.samples]
-            kwargs["samples"] = samples
-
-            del kwargs["preds"]
-
-            for i, (head, preds_for_head, logits_for_head) in enumerate(zip(self.prediction_heads, preds_for_heads, logits_for_heads)):
-                preds = head.formatted_preds(logits=logits_for_head, preds=preds_for_head, **kwargs)
-                preds_final[i].append(preds)
-
-            # Look for a merge() function amongst the heads and if a single one exists, apply it to preds_final
-            merge_fn = pick_single_fn(self.prediction_heads, "merge_formatted_preds")
-            if merge_fn:
-                preds_final = merge_fn(preds_final)
-
         return preds_final
 
     def connect_heads_with_processor(self, tasks, require_labels=True):

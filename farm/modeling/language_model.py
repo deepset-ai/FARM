@@ -132,37 +132,7 @@ class LanguageModel(nn.Module):
             language_model = cls.subclasses[config["name"]].load(pretrained_model_name_or_path)
         else:
             if language_model_class is None:
-                # it's transformers format (either from model hub or local)
-                pretrained_model_name_or_path = str(pretrained_model_name_or_path)
-                if "xlm" in pretrained_model_name_or_path and "roberta" in pretrained_model_name_or_path:
-                    language_model_class = 'XLMRoberta'
-                elif 'roberta' in pretrained_model_name_or_path:
-                    language_model_class = 'Roberta'
-                elif 'codebert' in pretrained_model_name_or_path.lower():
-                    if "mlm" in pretrained_model_name_or_path.lower():
-                        raise NotImplementedError("MLM part of codebert is currently not supported in FARM")
-                    else:
-                        language_model_class = 'Roberta'
-                elif 'camembert' in pretrained_model_name_or_path or 'umberto' in pretrained_model_name_or_path:
-                    language_model_class = "Camembert"
-                elif 'albert' in pretrained_model_name_or_path:
-                    language_model_class = 'Albert'
-                elif 'distilbert' in pretrained_model_name_or_path:
-                    language_model_class = 'DistilBert'
-                elif 'bert' in pretrained_model_name_or_path:
-                    language_model_class = 'Bert'
-                elif 'xlnet' in pretrained_model_name_or_path:
-                    language_model_class = 'XLNet'
-                elif 'electra' in pretrained_model_name_or_path:
-                    language_model_class = 'Electra'
-                elif "word2vec" in pretrained_model_name_or_path.lower() or "glove" in pretrained_model_name_or_path.lower():
-                    language_model_class = 'WordEmbedding_LM'
-                elif "minilm" in pretrained_model_name_or_path.lower():
-                    language_model_class = "Bert"
-                elif "dpr-question_encoder" in pretrained_model_name_or_path.lower():
-                    language_model_class = "DPRQuestionEncoder"
-                elif "dpr-ctx_encoder" in pretrained_model_name_or_path.lower():
-                    language_model_class = "DPRContextEncoder"
+                language_model_class = cls.get_language_model_class(pretrained_model_name_or_path)
 
             if language_model_class:
                 language_model = cls.subclasses[language_model_class].load(pretrained_model_name_or_path, **kwargs)
@@ -221,6 +191,10 @@ class LanguageModel(nn.Module):
             language_model_class = 'WordEmbedding_LM'
         elif "minilm" in model_name_or_path.lower():
             language_model_class = "Bert"
+        elif "dpr-question_encoder" in model_name_or_path.lower():
+            language_model_class = "DPRQuestionEncoder"
+        elif "dpr-ctx_encoder" in model_name_or_path.lower():
+            language_model_class = "DPRContextEncoder"
         else:
             language_model_class = None
         return language_model_class
@@ -1401,16 +1375,7 @@ class DPRQuestionEncoder(LanguageModel):
         self.name = "dpr_question_encoder"
 
     @classmethod
-    def from_scratch(cls, vocab_size, name="dpr_question_encoder", language="en"):
-        dpr_question_encoder = cls()
-        dpr_question_encoder.name = name
-        dpr_question_encoder.language = language
-        config = transformers.DPRConfig(vocab_size=vocab_size)
-        dpr_question_encoder.model = transformers.DPRQuestionEncoder(config)
-        return dpr_question_encoder
-
-    @classmethod
-    def load(cls, pretrained_model_name_or_path, language=None, pretrained_weights_model=None, **kwargs):
+    def load(cls, pretrained_model_name_or_path, language=None, **kwargs):
         """
         Load a pretrained model by supplying
 
@@ -1418,10 +1383,8 @@ class DPRQuestionEncoder(LanguageModel):
         * OR a local path of a model trained via transformers ("some_dir/huggingface_model")
         * OR a local path of a model trained via FARM ("some_dir/farm_model")
 
-        :param pretrained_model_name_or_path: The path of the base pretrained language model or its name.
+        :param pretrained_model_name_or_path: The path of the base pretrained language model whose weights are used to initialize DPRQuestionEncoder
         :type pretrained_model_name_or_path: str
-        :param pretrained_weights_model: The path of the model from which weights will be initialized in the language model
-        :type pretrained_weights_model: str
         """
 
         dpr_question_encoder = cls()
@@ -1441,6 +1404,7 @@ class DPRQuestionEncoder(LanguageModel):
         else:
             # Pytorch-transformer Style
             dpr_question_encoder.model = transformers.DPRQuestionEncoder(config=transformers.DPRConfig(**kwargs))
+            # load weights from pretrained_model_name_or_path Language model into DPRQuestionEncoder
             dpr_question_encoder.model.base_model.bert_model = AutoModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
             dpr_question_encoder.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
 
@@ -1499,16 +1463,7 @@ class DPRContextEncoder(LanguageModel):
         self.name = "dpr_context_encoder"
 
     @classmethod
-    def from_scratch(cls, vocab_size, name="dpr_context_encoder", language="en"):
-        dpr_context_encoder = cls()
-        dpr_context_encoder.name = name
-        dpr_context_encoder.language = language
-        config = transformers.DPRConfig(vocab_size=vocab_size)
-        dpr_context_encoder.model = transformers.DPRContextEncoder(config)
-        return dpr_context_encoder
-
-    @classmethod
-    def load(cls, pretrained_model_name_or_path, language=None, pretrained_weights_model=None, **kwargs):
+    def load(cls, pretrained_model_name_or_path, language=None, **kwargs):
         """
         Load a pretrained model by supplying
 
@@ -1516,10 +1471,8 @@ class DPRContextEncoder(LanguageModel):
         * OR a local path of a model trained via transformers ("some_dir/huggingface_model")
         * OR a local path of a model trained via FARM ("some_dir/farm_model")
 
-        :param pretrained_model_name_or_path: The path of the base pretrained language model or its name.
+        :param pretrained_model_name_or_path: The path of the base pretrained language model whose weights are used to initialize DPRContextEncoder
         :type pretrained_model_name_or_path: str
-        :param pretrained_weights_model: The path of the model from which weights will be initialized in the language model
-        :type pretrained_weights_model: str
         """
 
         dpr_context_encoder = cls()
@@ -1538,6 +1491,7 @@ class DPRContextEncoder(LanguageModel):
         else:
             # Pytorch-transformer Style
             dpr_context_encoder.model = transformers.DPRContextEncoder(config=transformers.DPRConfig(**kwargs))
+            # load weights from pretrained_model_name_or_path Language model into DPRContextEncoder
             dpr_context_encoder.model.base_model.bert_model = AutoModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
             dpr_context_encoder.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
 
@@ -1586,5 +1540,3 @@ class DPRContextEncoder(LanguageModel):
 
     def disable_hidden_states_output(self):
         self.model.ctx_encoder.config.output_hidden_states = False
-
-
