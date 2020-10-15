@@ -1,5 +1,6 @@
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.tokenization import Tokenizer
+from farm.conversion.transformers import Converter
 from farm.infer import Inferencer
 import pprint
 from transformers.pipelines import pipeline
@@ -12,7 +13,9 @@ from pathlib import Path
 def convert_from_transformers():
     # CASE 1: MODEL
     # Load model from transformers model hub (-> continue training / compare models / ...)
-    model = AdaptiveModel.convert_from_transformers("deepset/bert-large-uncased-whole-word-masking-squad2", device="cpu", task_type="question_answering")
+    model = Converter.convert_from_transformers("deepset/bert-large-uncased-whole-word-masking-squad2", device="cpu")
+    #Alternative way to load from transformers model hub:
+    #model = AdaptiveModel.convert_from_transformers("deepset/bert-large-uncased-whole-word-masking-squad2", device="cpu", task_type="question_answering")
     # ... continue as in the other examples e.g. to fine-tune this QA model on your own data
 
     # CASE 2: INFERENCER
@@ -41,7 +44,9 @@ def convert_to_transformers():
     tokenizer = Tokenizer.load(farm_model_dir)
 
     # convert to transformers
-    transformer_model = model.convert_to_transformers()
+    transformer_model = Converter.convert_to_transformers(model)[0]
+    #Alternative way to convert to transformers:
+    #transformer_model = model.convert_to_transformers()[0]
 
     # save it (Note: transformers uses strings rather than Path objects)
     model_dir = "../saved_models/bert-large-uncased-whole-word-masking-squad2"
