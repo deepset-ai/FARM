@@ -1881,12 +1881,10 @@ class TextSimilarityProcessor(Processor):
         Returns:
         list of dictionaries: List[dict]
         each dictionary:
-        {
-            "query": query_text
-            "passages": [{"text": document_text, "title": xxx, "label": "positive", "external_id": abb123},
-                         {"text": document_text, "title": xxx, "label": "hard_negative", "external_id": abb134},
-                         ...]
-        }
+        {"query": str,
+        "passages": [{"text": document_text, "title": xxx, "label": "positive", "external_id": abb123},
+        {"text": document_text, "title": xxx, "label": "hard_negative", "external_id": abb134},
+        ...]}
         """
         dicts = read_dpr_json(file)
         return dicts
@@ -1919,6 +1917,7 @@ class TextSimilarityProcessor(Processor):
                                             'external_id': str},
                                             ....
                                             ]
+                            }
 
         Returns:
                 sample: instance of Sample
