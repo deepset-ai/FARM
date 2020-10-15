@@ -10,12 +10,13 @@ import torch
 from torch import nn
 from transformers.configuration_auto import AutoConfig
 from transformers.convert_graph_to_onnx import convert, quantize as quantize_model
-from transformers.modeling_auto import AutoModelForQuestionAnswering, AutoModelForSequenceClassification, AutoModelForTokenClassification, AutoModelWithLMHead
+
 
 from farm.data_handler.processor import Processor
 from farm.modeling.language_model import LanguageModel
-from farm.modeling.prediction_head import PredictionHead, QuestionAnsweringHead, TokenClassificationHead, TextClassificationHead, pick_single_fn
+from farm.modeling.prediction_head import PredictionHead, pick_single_fn
 from farm.utils import MLFlowLogger as MlLogger, stack
+import farm.conversion.transformers as conv
 
 logger = logging.getLogger(__name__)
 
@@ -501,85 +502,16 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         return self.language_model.language
 
     def convert_to_transformers(self):
-        if len(self.prediction_heads) == 2 and self.prediction_heads[0].model_type == "language_modelling":
-            logger.warning("Currently only the Masked Language Modeling component of the prediction head is converted, "
-                           "not the Next Sentence Prediction or Sentence Order Prediction components")
-        elif len(self.prediction_heads) != 1:
-            raise ValueError(f"Currently conversion only works for models with a SINGLE prediction head. "
-                             f"Your model has {len(self.prediction_heads)}")
-        elif len(self.prediction_heads[0].layer_dims) != 2:
-            raise ValueError(f"Currently conversion only works for PredictionHeads that are a single layer Feed Forward NN with dimensions [LM_output_dim, number_classes].\n"
-                             f"            Your PredictionHead has {str(self.prediction_heads[0].layer_dims)} dimensions.")
-        #TODO add more infos to config
+        """
+        Convert an adaptive model to huggingface's transformers format. Returns a list containing one model for each
+        prediction head.
 
-        if self.prediction_heads[0].model_type == "span_classification":
-            # init model
-            transformers_model = AutoModelForQuestionAnswering.from_config(self.language_model.model.config)
-            # transfer weights for language model + prediction head
-            setattr(transformers_model, transformers_model.base_model_prefix, self.language_model.model)
-            transformers_model.qa_outputs.load_state_dict(
-                self.prediction_heads[0].feed_forward.feed_forward[0].state_dict())
-
-        elif self.prediction_heads[0].model_type == "language_modelling":
-            # init model
-            transformers_model = AutoModelWithLMHead.from_config(self.language_model.model.config)
-            # transfer weights for language model + prediction head
-            setattr(transformers_model, transformers_model.base_model_prefix, self.language_model.model)
-            # Adding decoder bias (required for conversion to transformers)
-            self.prediction_heads[0].decoder.bias = self.prediction_heads[0].bias
-
-            ph_state_dict = self.prediction_heads[0].state_dict()
-            ph_state_dict["transform.dense.weight"] = ph_state_dict.pop("dense.weight")
-            ph_state_dict["transform.dense.bias"] = ph_state_dict.pop("dense.bias")
-            ph_state_dict["transform.LayerNorm.weight"] = ph_state_dict.pop("LayerNorm.weight")
-            ph_state_dict["transform.LayerNorm.bias"] = ph_state_dict.pop("LayerNorm.bias")
-            transformers_model.cls.predictions.load_state_dict(ph_state_dict)
-
-        elif self.prediction_heads[0].model_type == "text_classification":
-            if self.language_model.model.base_model_prefix == "roberta":
-                # Classification Heads in transformers have different architecture across Language Model variants
-                # The RobertaClassificationhead has components: input2dense, dropout, tanh, dense2output
-                # The tanh function cannot be mapped to current FARM style linear Feed Forward ClassificationHeads.
-                # So conversion for this type cannot work. We would need a compatible FARM RobertaClassificationHead
-                logger.error("Conversion for Text Classification with Roberta or XLMRoberta not possible at the moment.")
-                raise NotImplementedError
-
-            # add more info to config
-            self.language_model.model.config.id2label = {id: label for id, label in enumerate(self.prediction_heads[0].label_list)}
-            self.language_model.model.config.label2id = {label: id for id, label in enumerate(self.prediction_heads[0].label_list)}
-            self.language_model.model.config.finetuning_task = "text_classification"
-            self.language_model.model.config.language = self.language_model.language
-            self.language_model.model.config.num_labels = self.prediction_heads[0].num_labels
-
-            # init model
-            transformers_model = AutoModelForSequenceClassification.from_config(self.language_model.model.config)
-            # transfer weights for language model + prediction head
-            setattr(transformers_model, transformers_model.base_model_prefix, self.language_model.model)
-            transformers_model.classifier.load_state_dict(
-                self.prediction_heads[0].feed_forward.feed_forward[0].state_dict())
-        elif self.prediction_heads[0].model_type == "token_classification":
-            # add more info to config
-            self.language_model.model.config.id2label = {id: label for id, label in enumerate(self.prediction_heads[0].label_list)}
-            self.language_model.model.config.label2id = {label: id for id, label in enumerate(self.prediction_heads[0].label_list)}
-            self.language_model.model.config.finetuning_task = "token_classification"
-            self.language_model.model.config.language = self.language_model.language
-            self.language_model.model.config.num_labels = self.prediction_heads[0].num_labels
-
-            # init model
-            transformers_model = AutoModelForTokenClassification.from_config(self.language_model.model.config)
-            # transfer weights for language model + prediction head
-            setattr(transformers_model, transformers_model.base_model_prefix, self.language_model.model)
-            transformers_model.classifier.load_state_dict(
-                self.prediction_heads[0].feed_forward.feed_forward[0].state_dict())
-        else:
-            raise NotImplementedError(f"FARM -> Transformers conversion is not supported yet for"
-                                      f" prediction heads of type {self.prediction_heads[0].model_type}")
-        pass
-
-        return transformers_model
+        :return: List of huggingface transformers models.
+        """
+        return conv.Converter.convert_to_transformers(self)
 
     @classmethod
-    def convert_from_transformers(cls, model_name_or_path, device, task_type, processor=None):
+    def convert_from_transformers(cls, model_name_or_path, device, task_type=None, processor=None):
         """
         Load a (downstream) model from huggingface's transformers format. Use cases:
          - continue training in FARM (e.g. take a squad QA model and fine-tune on your own data)
@@ -602,36 +534,8 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         :type processor: Processor
         :return: AdaptiveModel
         """
-        lm = LanguageModel.load(model_name_or_path)
-        #TODO Infer type of head automatically from config
+        return conv.Converter.convert_from_transformers(model_name_or_path, device, task_type, processor)
 
-        if task_type == "question_answering":
-            ph = QuestionAnsweringHead.load(model_name_or_path)
-            adaptive_model = cls(language_model=lm, prediction_heads=[ph], embeds_dropout_prob=0.1,
-                               lm_output_types="per_token", device=device)
-        elif task_type == "text_classification":
-            if "roberta" in model_name_or_path:
-                # The RobertaClassificationhead has components: input2dense, dropout, tanh, dense2output
-                # The tanh function cannot be mapped to current FARM style linear Feed Forward PredictionHeads.
-                logger.error("Conversion for Text Classification with Roberta or XLMRoberta not possible at the moment.")
-                raise NotImplementedError
-            ph = TextClassificationHead.load(model_name_or_path)
-            adaptive_model = cls(language_model=lm, prediction_heads=[ph], embeds_dropout_prob=0.1,
-                                 lm_output_types="per_sequence", device=device)
-        elif task_type == "ner":
-            ph = TokenClassificationHead.load(model_name_or_path)
-            adaptive_model = cls(language_model=lm, prediction_heads=[ph], embeds_dropout_prob=0.1,
-                               lm_output_types="per_token", device=device)
-        elif task_type == "embeddings":
-            adaptive_model = cls(language_model=lm, prediction_heads=[], embeds_dropout_prob=0.1,
-                                 lm_output_types=["per_token", "per_sequence"], device=device)
-        else:
-            raise NotImplementedError(f"Huggingface's transformer models of type {task_type} are not supported yet")
-
-        if processor:
-            adaptive_model.connect_heads_with_processor(processor.tasks)
-
-        return adaptive_model
 
     @classmethod
     def convert_to_onnx(cls, model_name, output_path, task_type, convert_to_float16=False, quantize=False, opset_version=11):
