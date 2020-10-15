@@ -9,6 +9,7 @@ from farm.evaluation.metrics import compute_metrics, compute_report_metrics
 from farm.utils import to_numpy
 from farm.utils import MLFlowLogger as MlLogger
 from farm.modeling.adaptive_model import AdaptiveModel
+from farm.modeling.biadaptive_model import BiAdaptiveModel
 from farm.visual.ascii.images import BUSH_SEP
 
 logger = logging.getLogger(__name__)
@@ -77,6 +78,7 @@ class Evaluator:
                 if head.model_type == "span_classification":
                     ids_all[head_num] += list(to_numpy(batch["id"]))
                     passage_start_t_all[head_num] += list(to_numpy(batch["passage_start_t"]))
+
 
         # Evaluate per prediction head
         all_results = []

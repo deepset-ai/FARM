@@ -1,6 +1,8 @@
 import logging
 
 import numpy as np
+import torch
+from functools import reduce
 from scipy.stats import pearsonr, spearmanr
 from seqeval.metrics import classification_report as token_classification_report
 from seqeval.metrics import f1_score as ner_f1_score
@@ -53,7 +55,7 @@ def simple_accuracy(preds, labels):
 def acc_and_f1(preds, labels):
     acc = simple_accuracy(preds, labels)
     f1 = f1_score(y_true=labels, y_pred=preds)
-    return {"acc": acc, "f1": f1, "acc_and_f1": (acc + f1) / 2}
+    return {"acc": acc['acc'], "f1": f1, "acc_and_f1": (acc['acc'] + f1) / 2}
 
 
 def f1_macro(preds, labels):
@@ -92,6 +94,8 @@ def compute_metrics(metric, preds, labels):
         return {"r2": r2_score(preds, labels)}
     elif metric == "top_n_accuracy":
         return {"top_n_accuracy": top_n_accuracy(preds, labels)}
+    elif metric == "text_similarity_metric":
+        return text_similarity_metric(preds, labels)
     # elif metric == "masked_accuracy":
     #     return simple_accuracy(preds, labels, ignore=-1)
     elif metric in registered_metrics:
@@ -123,6 +127,10 @@ def compute_report_metrics(head, preds, labels):
         if head.model_type == "multilabel_text_classification":
             # For multilabel classification, we don't eval with string labels here, but with multihot vectors.
             # Therefore we need to supply all possible label ids instead of label values.
+            all_possible_labels = list(range(len(head.label_list)))
+        elif head.model_type == "text_similarity":
+            labels = reduce(lambda x, y: x + list(y.astype('long')), labels, [])
+            preds = reduce(lambda x, y: x + [0] * y[0] + [1] + [0] * (len(y) - y[0] - 1), preds, [])
             all_possible_labels = list(range(len(head.label_list)))
         else:
             all_possible_labels = head.label_list
@@ -210,3 +218,52 @@ def top_n_accuracy(preds, labels):
 
     return np.mean(answer_in_top_n)
 
+def text_similarity_acc_and_f1(preds, labels):
+    """
+    Returns accuracy and F1 scores for top-1(highest) ranked sequence(context/passage) for each sample/query
+
+    :param preds: list of numpy arrays of dimension n1 x n2 containing n2 predicted ranks for n1 sequences/queries
+    :type preds: List of numpy array containing similarity scores for each sequence in batch
+    :param labels: list of arrays of dimension n1 x n2 where each array contains n2 labels(0/1) indicating whether the sequence/passage is a positive(1) passage or hard_negative(0) passage
+    :type labels: List of list containing values(0/1)
+
+    :return: predicted ranks of passages for each query
+    """
+    top_1_pred = reduce(lambda x, y: x + [0] * y[0] + [1] + [0] * (len(y) - y[0] - 1), preds, [])
+    labels = reduce(lambda x, y: x + list(y.astype('long')), labels, [])
+    res = acc_and_f1(top_1_pred, labels)
+    return res
+
+def text_similarity_avg_ranks(preds, labels):
+    """
+    Calculates average predicted rank of positive sequence(context/passage) for each sample/query
+
+    :param preds: list of numpy arrays of dimension n1 x n2 containing n2 predicted ranks for n1 sequences/queries
+    :type preds: List of numpy array containing similarity scores for each sequence in batch
+    :param labels: list of arrays of dimension n1 x n2 where each array contains n2 labels(0/1) dindicating whether the sequence/passage is a positive(1) passage or hard_negative(0) passage
+    :type labels: List of list containing values(0/1)
+
+    :return: average predicted ranks of positive sequence/passage for each sample/query
+    """
+    positive_idx_per_question = list(reduce(lambda x, y: x + list((y == 1).nonzero()[0]), labels, []))
+    rank = 0
+    for i, idx in enumerate(positive_idx_per_question):
+        # aggregate the rank of the known gold passage in the sorted results for each question
+        gold_idx = (preds[i] == idx).nonzero()[0]
+        rank += gold_idx.item()
+    return float(rank / len(preds))
+
+def text_similarity_metric(preds, labels):
+    """
+    Returns accuracy, F1 scores and average rank scores for text similarity task
+
+    :param preds: list of numpy arrays of dimension n1 x n2 containing n2 predicted ranks for n1 sequences/queries
+    :type preds: List of numpy array containing similarity scores for each sequence in batch
+    :param labels: list of arrays of dimension n1 x n2 where each array contains n2 labels(0/1) indicating whether the sequence/passage is a positive(1) passage or hard_negative(0) passage
+    :type labels: List of list containing values(0/1)
+
+    :return metrics(accuracy, F1, average rank) for text similarity task
+    """
+    scores = text_similarity_acc_and_f1(preds, labels)
+    scores["average_rank"] = text_similarity_avg_ranks(preds, labels)
+    return scores
