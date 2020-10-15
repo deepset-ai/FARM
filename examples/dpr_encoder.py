@@ -50,6 +50,8 @@ def dense_passage_retrieval():
                                        do_lower_case=do_lower_case, use_fast=use_fast)
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
+    # data_dir "data/retriever" should contain DPR training and dev files downloaded from https://github.com/facebookresearch/DPR
+    # i.e., nq-train.json, nq-dev.json or trivia-train.json, trivia-dev.json
     label_list = ["hard_negative", "positive"]
     metric = "text_similarity_metric"
     processor = TextSimilarityProcessor(tokenizer=query_tokenizer,

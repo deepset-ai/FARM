@@ -1654,7 +1654,10 @@ class TextSimilarityHead(PredictionHead):
         """
         label_ids = kwargs.get(self.label_tensor_name)
         labels = torch.zeros(label_ids.size(0), label_ids.numel())
-        postive_indices = range(0, label_ids.numel(), 2)
-        for i, indx in enumerate(postive_indices):
-            labels[i, indx] = 1
+        positive_indices = (label_ids.view(-1) == 1).nonzero()
+        for i, indx in enumerate(positive_indices):
+            labels[i, indx.item()] = 1
         return labels
+
+    def formatted_preds(self, logits, **kwargs):
+        raise NotImplementedError("formatted_preds is not supported in TextSimilarityHead yet!")

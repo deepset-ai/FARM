@@ -1730,7 +1730,69 @@ class RegressionProcessor(Processor):
 
 class TextSimilarityProcessor(Processor):
     """
-    Used to handle the text DPR datasets that come in json format
+    Used to handle the text DPR datasets that come in json format, example: nq-train.json, nq-dev.json, trivia-train.json, trivia-dev.json
+    Datasets can be downloaded from the official DPR github repository (https://github.com/facebookresearch/DPR)
+
+    dataset format: list of dictionaries with keys: 'dataset', 'question', 'answers', 'positive_ctxs', 'negative_ctxs', 'hard_negative_ctxs'
+    Each sample is a dictionary of format:
+    {"dataset": str,
+    "question": str,
+    "answers": list of str
+    "positive_ctxs": list of dictionaries of format {'title': str, 'text': str, 'score': int, 'title_score': int, 'passage_id': str}
+    "negative_ctxs": list of dictionaries of format {'title': str, 'text': str, 'score': int, 'title_score': int, 'passage_id': str}
+    "hard_negative_ctxs": list of dictionaries of format {'title': str, 'text': str, 'score': int, 'title_score': int, 'passage_id': str}
+    }
+
+    Example of 1 sample in DPR data json:
+    {
+    "dataset": "nq_dev_psgs_w100",
+    "question": "who sings does he love me with reba",
+    "answers": ["Linda Davis"],
+    "positive_ctxs": [
+    {
+    "title": "Does He Love You",
+    "text": "Does He Love You \"Does He Love You\" is a song written by Sandy Knox and Billy Stritch, and recorded as a duet by American country music artists Reba McEntire and Linda Davis. It was released in August 1993 as the first single from Reba's album \"Greatest Hits Volume Two\". It is one of country music's several songs about a love triangle. \"Does He Love You\" was written in 1982 by Billy Stritch. He recorded it with a trio in which he performed at the time, because he wanted a song that could be sung by the other two members",
+    "score": 1000,
+    "title_score": 1,
+    "passage_id": "11828866"
+    },
+    {
+    "title": "Does He Love You",
+    "text": "Does He Love You \"Does He Love You\" is a song written by Sandy Knox and Billy Stritch, and recorded as a duet by American country music artists Reba McEntire and Linda Davis. It was released in August 1993 as the first single from Reba's album \"Greatest Hits Volume Two\". It is one of country music's several songs about a love triangle. \"Does He Love You\" was written in 1982 by Billy Stritch. He recorded it with a trio in which he performed at the time, because he wanted a song that could be sung by the other two members",
+    "score": 13.394315,
+    "title_score": 0,
+    "passage_id": "11828866"
+    }, .... ]
+    "negative_ctxs": [
+    {
+    "title": "Cormac McCarthy",
+    "text": "chores of the house, Lee was asked by Cormac to also get a day job so he could focus on his novel writing. Dismayed with the situation, she moved to Wyoming, where she filed for divorce and landed her first job teaching. Cormac McCarthy is fluent in Spanish and lived in Ibiza, Spain, in the 1960s and later settled in El Paso, Texas, where he lived for nearly 20 years. In an interview with Richard B. Woodward from \"The New York Times\", \"McCarthy doesn't drink anymore \u2013 he quit 16 years ago in El Paso, with one of his young",
+    "score": 0,
+    "title_score": 0,
+    "passage_id": "2145653"
+    },
+    {
+    "title": "Pragmatic Sanction of 1549",
+    "text": "one heir, Charles effectively united the Netherlands as one entity. After Charles' abdication in 1555, the Seventeen Provinces passed to his son, Philip II of Spain. The Pragmatic Sanction is said to be one example of the Habsburg contest with particularism that contributed to the Dutch Revolt. Each of the provinces had its own laws, customs and political practices. The new policy, imposed from the outside, angered many inhabitants, who viewed their provinces as distinct entities. It and other monarchical acts, such as the creation of bishoprics and promulgation of laws against heresy, stoked resentments, which fired the eruption of",
+    "score": 0,
+    "title_score": 0,
+    "passage_id": "2271902"
+    }, ..... ]
+    "hard_negative_ctxs": [
+    {
+    "title": "Why Don't You Love Me (Beyonce\u0301 song)",
+    "text": "song. According to the lyrics of \"Why Don't You Love Me\", Knowles impersonates a woman who questions her love interest about the reason for which he does not value her fabulousness, convincing him she's the best thing for him as she sings: \"Why don't you love me... when I make me so damn easy to love?... I got beauty... I got class... I got style and I got ass...\". The singer further tells her love interest that the decision not to choose her is \"entirely foolish\". Originally released as a pre-order bonus track on the deluxe edition of \"I Am...",
+    "score": 14.678405,
+    "title_score": 0,
+    "passage_id": "14525568"
+    },
+    {
+    "title": "Does He Love You",
+    "text": "singing the second chorus. Reba stays behind the wall the whole time, while Linda is in front of her. It then briefly goes back to the dressing room, where Reba continues to smash her lover's picture. The next scene shows Reba approaching Linda's house in the pouring rain at night, while Linda stands on her porch as they sing the bridge. The scene then shifts to the next day, where Reba watches from afar as Linda and the man are seen on a speedboat, where he hugs her, implying that Linda is who he truly loves. Reba finally smiles at",
+    "score": 14.385411,
+    "title_score": 0,
+    "passage_id": "11828871"
+    }, ...]
     """
     def __init__(
         self,
@@ -1780,9 +1842,17 @@ class TextSimilarityProcessor(Processor):
         :param proxies: proxy configuration to allow downloads of remote datasets.
                         Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
         :type proxies: dict
+        :param max_samples: maximum number of samples to use
+        :type max_samples: int
         :param embed_title: Whether to embed title in passages during tensorization (bool),
         :param num_hard_negatives: maximum number to hard negative context passages in a sample
         :param num_positives: maximum number to positive context passages in a sample
+        :param shuffle_negatives: Whether to shuffle all the hard_negative passages before selecting the num_hard_negative number of passages
+        :type shuffle_negatives: bool
+        :param shuffle_positives: Whether to shuffle all the positive passages before selecting the num_positive number of passages
+        :type shuffle_positives: bool
+        :param label_list: list of labels to predict. Usually ["hard_negative", "positive"]
+        :type label_list: list[str]
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
         """
@@ -1904,7 +1974,7 @@ class TextSimilarityProcessor(Processor):
 
     def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
         """
-        dictionary representing 1 sample to Sample for DPR
+        Creates one sample from one dict consisting of the query, positive passages and hard negative passages
         :param dictionary:  {"query": str,
                             "passages": List[
                                             {'title': str,
