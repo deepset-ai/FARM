@@ -3,7 +3,7 @@ import logging
 from transformers import AutoModelForSequenceClassification, AutoModelForQuestionAnswering, AutoModelWithLMHead, \
     AutoModelForTokenClassification
 
-import farm.modeling.adaptive_model as am
+from farm.modeling import adaptive_model as am
 from farm.modeling.language_model import LanguageModel
 from farm.modeling.prediction_head import BertLMHead, QuestionAnsweringHead, RegressionHead, TextClassificationHead, \
     TokenClassificationHead
