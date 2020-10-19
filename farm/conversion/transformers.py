@@ -182,6 +182,8 @@ class Converter:
     def _convert_to_transformers_qa(adaptive_model, prediction_head):
         # TODO add more infos to config
 
+        # remove pooling layer
+        adaptive_model.language_model.model.pooler = None
         # init model
         transformers_model = AutoModelForQuestionAnswering.from_config(adaptive_model.language_model.model.config)
         # transfer weights for language model + prediction head
@@ -193,6 +195,8 @@ class Converter:
 
     @staticmethod
     def _convert_to_transformers_lm(adaptive_model, prediction_head):
+        # remove pooling layer
+        adaptive_model.language_model.model.pooler = None
         # init model
         transformers_model = AutoModelWithLMHead.from_config(adaptive_model.language_model.model.config)
         # transfer weights for language model + prediction head
@@ -211,6 +215,8 @@ class Converter:
 
     @staticmethod
     def _convert_to_transformers_ner(adaptive_model, prediction_head):
+        # remove pooling layer
+        adaptive_model.language_model.model.pooler = None
         # add more info to config
         adaptive_model.language_model.model.config.num_labels = prediction_head.num_labels
         adaptive_model.language_model.model.config.id2label = {id: label for id, label in

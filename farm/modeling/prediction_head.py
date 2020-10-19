@@ -4,7 +4,7 @@ import os
 import numpy as np
 
 from pathlib import Path
-from transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN
+from transformers.modeling_bert import BertForPreTraining, ACT2FN
 from transformers.modeling_auto import AutoModelForQuestionAnswering, AutoModelForTokenClassification, AutoModelForSequenceClassification
 from typing import List
 
@@ -17,6 +17,12 @@ from farm.utils import convert_iob_to_simple_tags, try_get
 from farm.modeling.predictions import QACandidate, QAPred
 
 logger = logging.getLogger(__name__)
+
+try:
+    from apex.normalization.fused_layer_norm import FusedLayerNorm as BertLayerNorm
+except (ImportError, AttributeError) as e:
+    logger.info("Better speed can be achieved with apex installed from https://www.github.com/nvidia/apex .")
+    BertLayerNorm = torch.nn.LayerNorm
 
 
 class PredictionHead(nn.Module):
