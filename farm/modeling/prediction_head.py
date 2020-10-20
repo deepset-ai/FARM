@@ -963,7 +963,7 @@ class QuestionAnsweringHead(PredictionHead):
         :type n_best_per_sample: int
         """
         super(QuestionAnsweringHead, self).__init__()
-        if kwargs is not None:
+        if len(kwargs) > 0:
             logger.warning(f"Some unused parameters are passed to the QuestionAnsweringHead. "
                            f"Might not be a problem. Params: {json.dumps(kwargs)}")
         self.layer_dims = layer_dims
@@ -1010,7 +1010,7 @@ class QuestionAnsweringHead(PredictionHead):
             # load all weights from model
             full_qa_model = AutoModelForQuestionAnswering.from_pretrained(pretrained_model_name_or_path)
             # init empty head
-            head = cls(layer_dims=[full_qa_model.config.hidden_size, 2], loss_ignore_index=-1, task_name="question_answering")
+            head = cls(layer_dims=[full_qa_model.config.hidden_size, 2], task_name="question_answering")
             # transfer weights for head from full model
             head.feed_forward.feed_forward[0].load_state_dict(full_qa_model.qa_outputs.state_dict())
             del full_qa_model
