@@ -1548,11 +1548,3 @@ class DPRContextEncoder(LanguageModel):
 
     def disable_hidden_states_output(self):
         self.model.ctx_encoder.config.output_hidden_states = False
-
-model = LanguageModel.load(pretrained_model_name_or_path="bert-base-uncased",
-                                                language_model_class="DPRQuestionEncoder")
-
-model_passage = LanguageModel.load(pretrained_model_name_or_path="roberta-base",
-                                                language_model_class="DPRContextEncoder")
-
-print(model)
