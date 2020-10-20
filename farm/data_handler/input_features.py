@@ -574,7 +574,7 @@ def combine_vecs(question_vec, passage_vec, tokenizer, spec_tok_val=-1):
 
 
 def answer_in_passage(start_idx, end_idx, passage_len):
-    if passage_len > start_idx > 0 and passage_len > end_idx > 0:
+    if passage_len > start_idx >= 0 and passage_len > end_idx > 0:
         return True
     return False
 
