@@ -6,6 +6,7 @@ import numpy as np
 from pathlib import Path
 from transformers.modeling_bert import BertForPreTraining, ACT2FN
 from transformers.modeling_auto import AutoModelForQuestionAnswering, AutoModelForTokenClassification, AutoModelForSequenceClassification
+from transformers.modeling_dpr import DPRReader as DPRReaderModel
 from typing import List
 
 import torch
@@ -1008,11 +1009,18 @@ class QuestionAnsweringHead(PredictionHead):
         else:
             # b) transformers style
             # load all weights from model
-            full_qa_model = AutoModelForQuestionAnswering.from_pretrained(pretrained_model_name_or_path)
-            # init empty head
-            head = cls(layer_dims=[full_qa_model.config.hidden_size, 2], loss_ignore_index=-1, task_name="question_answering")
-            # transfer weights for head from full model
-            head.feed_forward.feed_forward[0].load_state_dict(full_qa_model.qa_outputs.state_dict())
+            if "dpr-reader" in pretrained_model_name_or_path:
+                full_qa_model = DPRReaderModel.from_pretrained(pretrained_model_name_or_path)
+                # init empty head
+                head = cls(layer_dims=[full_qa_model.config.hidden_size, 2], loss_ignore_index=-1, task_name="question_answering")
+                # transfer weights for head from full model
+                head.feed_forward.feed_forward[0].load_state_dict(full_qa_model.base_model.qa_outputs.state_dict())
+            else:
+                full_qa_model = AutoModelForQuestionAnswering.from_pretrained(pretrained_model_name_or_path)
+                # init empty head
+                head = cls(layer_dims=[full_qa_model.config.hidden_size, 2], loss_ignore_index=-1, task_name="question_answering")
+                # transfer weights for head from full model
+                head.feed_forward.feed_forward[0].load_state_dict(full_qa_model.qa_outputs.state_dict())
             del full_qa_model
 
         return head

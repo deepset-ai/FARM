@@ -32,6 +32,7 @@ from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_xlm_roberta import XLMRobertaTokenizer
 from transformers.tokenization_xlnet import XLNetTokenizer
 from transformers.tokenization_camembert import CamembertTokenizer
+from transformers.tokenization_dpr import DPRReaderTokenizer, DPRReaderTokenizerFast
 from transformers import DPRContextEncoderTokenizer, DPRQuestionEncoderTokenizer
 from transformers import DPRContextEncoderTokenizerFast, DPRQuestionEncoderTokenizerFast
 
@@ -101,6 +102,8 @@ class Tokenizer:
                 tokenizer_class = "DPRQuestionEncoderTokenizer"
             elif "dpr-ctx_encoder" in pretrained_model_name_or_path.lower():
                 tokenizer_class = "DPRContextEncoderTokenizer"
+            elif "dpr-reader" in pretrained_model_name_or_path:
+                tokenizer_class = "DPRReaderTokenizer"
             else:
                 raise ValueError(f"Could not infer tokenizer_class from name '{pretrained_model_name_or_path}'. Set "
                                  f"arg `tokenizer_class` in Tokenizer.load() to one of: AlbertTokenizer, "
@@ -170,6 +173,11 @@ class Tokenizer:
                 ret = DPRContextEncoderTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
                 ret = DPRContextEncoderTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        elif tokenizer_class == "DPRReaderTokenizer":
+            if use_fast:
+                ret = DPRReaderTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            else:
+                ret = DPRReaderTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         if ret is None:
             raise Exception("Unable to load tokenizer")
         else:

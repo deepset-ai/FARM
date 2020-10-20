@@ -42,6 +42,8 @@ from transformers.modeling_xlm_roberta import XLMRobertaModel, XLMRobertaConfig
 from transformers.modeling_distilbert import DistilBertModel, DistilBertConfig
 from transformers.modeling_electra import ElectraModel, ElectraConfig
 from transformers.modeling_camembert import CamembertModel, CamembertConfig
+from transformers.modeling_dpr import DPRReader as DPRReaderModel
+from transformers.modeling_dpr import DPRConfig
 from transformers.modeling_auto import AutoModel
 from transformers.modeling_utils import SequenceSummary
 from transformers.tokenization_bert import load_vocab
@@ -195,6 +197,8 @@ class LanguageModel(nn.Module):
             language_model_class = "DPRQuestionEncoder"
         elif "dpr-ctx_encoder" in model_name_or_path.lower():
             language_model_class = "DPRContextEncoder"
+        elif "dpr-reader" in model_name_or_path:
+            language_model_class = "DPRReader"
         else:
             language_model_class = None
         return language_model_class
@@ -1540,3 +1544,98 @@ class DPRContextEncoder(LanguageModel):
 
     def disable_hidden_states_output(self):
         self.model.ctx_encoder.config.output_hidden_states = False
+
+
+class DPRReader(LanguageModel):
+    """
+    A BERT model that wraps HuggingFace's implementation
+    (https://github.com/huggingface/transformers) to fit the LanguageModel class.
+    Paper: https://arxiv.org/abs/1810.04805
+
+    """
+
+    def __init__(self):
+        super(DPRReader, self).__init__()
+        self.model = None
+        self.name = "dpr_reader"
+
+    @classmethod
+    def from_scratch(cls, vocab_size, name="dpr_reader", language="en"):
+        dpr_reader = cls()
+        dpr_reader.name = name
+        dpr_reader.language = language
+        config = DPRConfig(vocab_size=vocab_size)
+        dpr_reader.model = DPRReaderModel(config)
+        return dpr_reader
+
+    @classmethod
+    def load(cls, pretrained_model_name_or_path, language=None, **kwargs):
+        """
+        Load a pretrained model by supplying
+
+        * the name of a remote model on s3 ("bert-base-cased" ...)
+        * OR a local path of a model trained via transformers ("some_dir/huggingface_model")
+        * OR a local path of a model trained via FARM ("some_dir/farm_model")
+
+        :param pretrained_model_name_or_path: The path of the saved pretrained model or its name.
+        :type pretrained_model_name_or_path: str
+
+        """
+
+        dpr_reader = cls()
+        if "farm_lm_name" in kwargs:
+            dpr_reader.name = kwargs["farm_lm_name"]
+        else:
+            dpr_reader.name = pretrained_model_name_or_path
+        # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
+        farm_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
+        if os.path.exists(farm_lm_config):
+            # FARM style
+            dpr_config = DPRConfig.from_pretrained(farm_lm_config)
+            farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
+            dpr_reader.model = DPRReaderModel.from_pretrained(farm_lm_model, config=dpr_config, **kwargs)
+            dpr_reader.language = dpr_reader.model.config.language
+        else:
+            # Pytorch-transformer Style
+            dpr_reader.model = DPRReaderModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
+            dpr_reader.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
+        return dpr_reader
+
+    def forward(
+        self,
+        input_ids,
+        segment_ids,
+        padding_mask,
+        **kwargs,
+    ):
+        """
+        Perform the forward pass of the BERT model.
+
+        :param input_ids: The ids of each token in the input sequence. Is a tensor of shape [batch_size, max_seq_len]
+        :type input_ids: torch.Tensor
+        :param segment_ids: The id of the segment. For example, in next sentence prediction, the tokens in the
+           first sentence are marked with 0 and those in the second are marked with 1.
+           It is a tensor of shape [batch_size, max_seq_len]
+        :type segment_ids: torch.Tensor
+        :param padding_mask: A mask that assigns a 1 to valid input tokens and 0 to padding tokens
+           of shape [batch_size, max_seq_len]
+        :return: Embeddings for each token in the input sequence.
+
+        """
+        output_tuple = self.model(
+            input_ids,
+            #token_type_ids=segment_ids,
+            attention_mask=padding_mask,
+        )
+        if self.model.base_model.encoder.config.output_hidden_states == True:
+            sequence_output, pooled_output, all_hidden_states = output_tuple[0], output_tuple[1], output_tuple[2]
+            return sequence_output, pooled_output, all_hidden_states
+        else:
+            sequence_output, pooled_output = output_tuple[0], output_tuple[1]
+            return sequence_output, pooled_output
+
+    def enable_hidden_states_output(self):
+        self.model.encoder.config.output_hidden_states = True
+
+    def disable_hidden_states_output(self):
+        self.model.encoder.config.output_hidden_states = False
