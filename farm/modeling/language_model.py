@@ -1275,6 +1275,7 @@ class Electra(LanguageModel):
         config.summary_last_dropout = 0
         config.summary_type = 'first'
         config.summary_activation = 'gelu'
+        config.summary_use_proj = False
         electra.pooler = SequenceSummary(config)
         electra.pooler.apply(electra.model._init_weights)
         return electra
