@@ -42,7 +42,7 @@ from transformers.modeling_xlm_roberta import XLMRobertaModel, XLMRobertaConfig
 from transformers.modeling_distilbert import DistilBertModel, DistilBertConfig
 from transformers.modeling_electra import ElectraModel, ElectraConfig
 from transformers.modeling_camembert import CamembertModel, CamembertConfig
-from transformers.modeling_auto import AutoModel
+from transformers.modeling_auto import AutoModel, AutoConfig
 from transformers.modeling_utils import SequenceSummary
 from transformers.tokenization_bert import load_vocab
 import transformers
@@ -116,7 +116,7 @@ class LanguageModel(nn.Module):
 
         See all supported model variations here: https://huggingface.co/models
 
-        The appropriate language model class is inferred automatically from `pretrained_model_name_or_path`
+        The appropriate language model class is inferred automatically from model config
         or can be manually supplied via `language_model_class`.
 
         :param pretrained_model_name_or_path: The path of the saved pretrained model or its name.
@@ -166,37 +166,37 @@ class LanguageModel(nn.Module):
     def get_language_model_class(cls, model_name_or_path):
         # it's transformers format (either from model hub or local)
         model_name_or_path = str(model_name_or_path)
-        if "xlm" in model_name_or_path and "roberta" in model_name_or_path:
-            language_model_class = 'XLMRoberta'
-        elif 'roberta' in model_name_or_path:
-            language_model_class = 'Roberta'
-        elif 'codebert' in model_name_or_path.lower():
-            if "mlm" in model_name_or_path.lower():
-                raise NotImplementedError("MLM part of codebert is currently not supported in FARM")
-            else:
-                language_model_class = 'Roberta'
-        elif 'camembert' in model_name_or_path or 'umberto' in model_name_or_path:
-            language_model_class = "Camembert"
-        elif 'albert' in model_name_or_path:
-            language_model_class = 'Albert'
-        elif 'distilbert' in model_name_or_path:
-            language_model_class = 'DistilBert'
-        elif 'bert' in model_name_or_path:
-            language_model_class = 'Bert'
-        elif 'xlnet' in model_name_or_path:
-            language_model_class = 'XLNet'
-        elif 'electra' in model_name_or_path:
-            language_model_class = 'Electra'
-        elif "word2vec" in model_name_or_path.lower() or "glove" in model_name_or_path.lower():
+        if "word2vec" in model_name_or_path.lower() or "glove" in model_name_or_path.lower():
             language_model_class = 'WordEmbedding_LM'
-        elif "minilm" in model_name_or_path.lower():
-            language_model_class = "Bert"
-        elif "dpr-question_encoder" in model_name_or_path.lower():
-            language_model_class = "DPRQuestionEncoder"
-        elif "dpr-ctx_encoder" in model_name_or_path.lower():
-            language_model_class = "DPRContextEncoder"
         else:
-            language_model_class = None
+            config = AutoConfig.from_pretrained(model_name_or_path)
+            model_type = config.model_type
+            if model_type == "xlm-roberta":
+                language_model_class = "XLMRoberta"
+            elif model_type == "roberta":
+                if "mlm" in model_name_or_path.lower():
+                    raise NotImplementedError("MLM part of codebert is currently not supported in FARM")
+                language_model_class = "Roberta"
+            elif model_type == "camembert":
+                language_model_class = "Camembert"
+            elif model_type == "albert":
+                language_model_class = "Albert"
+            elif model_type == "distilbert":
+                language_model_class = "DistilBert"
+            elif model_type == "bert":
+                language_model_class = "Bert"
+            elif model_type == "xlnet":
+                language_model_class = "XLNet"
+            elif model_type == "electra":
+                language_model_class = "Electra"
+            elif model_type == "dpr":
+                if "dpr-question_encoder" in model_name_or_path.lower():
+                    language_model_class = "DPRQuestionEncoder"
+                elif "dpr-ctx_encoder" in model_name_or_path.lower():
+                    language_model_class = "DPRContextEncoder"
+            else:
+                language_model_class = None
+
         return language_model_class
 
     def get_output_dims(self):
