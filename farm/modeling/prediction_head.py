@@ -1557,6 +1557,9 @@ def pick_single_fn(heads, fn_name):
 
 
 class TextSimilarityHead(PredictionHead):
+    """
+    Trains a head on predicting the similarity of two texts like in Dense Passage Retrieval.
+    """
     def __init__(self, similarity_function="dot_product", **kwargs):
         super(TextSimilarityHead, self).__init__()
 
@@ -1647,9 +1650,12 @@ class TextSimilarityHead(PredictionHead):
         :return: negative log likelihood loss from similarity scores
         """
         lm_label_ids = kwargs.get(self.label_tensor_name)
-        positive_idx_per_question = (lm_label_ids.view(-1) == 1).nonzero()
-        loss = self.loss_fct(logits,
-                             torch.tensor(positive_idx_per_question).squeeze(-1).to(logits.device))
+        positive_idx_per_question = torch.nonzero((lm_label_ids.view(-1) == 1), as_tuple=False)
+        #TODO gather global tensors from all nodes for DDP
+        global_positive_idx_per_question = positive_idx_per_question
+
+        targets = global_positive_idx_per_question.squeeze(-1).to(logits.device)
+        loss = self.loss_fct(logits,targets)
         return loss
 
     def logits_to_preds(self, logits, **kwargs):

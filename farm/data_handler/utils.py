@@ -183,7 +183,7 @@ def read_ner_file(filename, sep="\t", proxies=None):
         data.append({"text": " ".join(sentence), "ner_label": label})
     return data
 
-def read_dpr_json(file, proxies=None):
+def read_dpr_json(file, max_samples=None, proxies=None):
     """
     Reads a Dense Passage Retrieval (DPR) data file in json format and returns a list of dictionaries.
 
@@ -215,7 +215,8 @@ def read_dpr_json(file, proxies=None):
         logger.info(f" Couldn't find {file} locally. Trying to download ...")
         _download_extract_downstream_data(file, proxies=proxies)
     dicts = json.load(open(file))
-
+    if max_samples:
+        dicts = random.sample(dicts, min(max_samples, len(dicts)))
     # convert DPR dictionary to standard dictionary
     query_json_keys = ["question", "questions", "query"]
     positive_context_json_keys = ["positive_contexts", "positive_ctxs", "positive_context", "positive_ctx"]
