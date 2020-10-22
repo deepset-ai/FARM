@@ -1670,7 +1670,7 @@ class TextSimilarityHead(PredictionHead):
         positive_idx_per_question = torch.nonzero((lm_label_ids.view(-1) == 1), as_tuple=False)
         #TODO gather global tensors from all nodes for DDP
         global_positive_idx_per_question = positive_idx_per_question
-        targets = global_positive_idx_per_question.squeeze(-1).to(logits.device)
+        targets = global_positive_idx_per_question.squeeze(-1).to(softmax_scores.device)
 
         # Calculate loss
         loss = self.loss_fct(softmax_scores, targets)
