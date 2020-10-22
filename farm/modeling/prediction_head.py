@@ -1630,6 +1630,18 @@ class TextSimilarityHead(PredictionHead):
 
         :return: log softmax similarity score of each query with each context/passage (dimension: n1xn2)
         """
+        #TODO update docstrings
+        return (query_vectors, context_vectors)
+
+    def _embeddings_to_scores(self, query_vectors, context_vectors):
+        """
+        Calculates similarity scores between all given query_vectors and context_vectors
+
+        :param query_vectors: tensor of queries encoded by the query encoder model
+        :param context_vectors: tensor of passages encoded by the passage encoder model
+        :return: tensor of log softmax similarity scores of each query with each passage (dimension: n1xn2)
+        """
+
         sim_func = self.get_similarity_function()
         scores = sim_func(query_vectors, context_vectors)
 
@@ -1644,18 +1656,24 @@ class TextSimilarityHead(PredictionHead):
         """
         Computes the loss from similarity scores
 
-        :param logits: tensor of log softmax similarity scores of each query with each context/passage (dimension: n1xn2)
+        :param logits:
         :type logits: torch.Tensor
 
         :return: negative log likelihood loss from similarity scores
         """
+        # Prepare predicted scores
+        query_vectors, context_vectors = logits
+        softmax_scores = self._embeddings_to_scores(query_vectors, context_vectors)
+
+        # Prepare Labels
         lm_label_ids = kwargs.get(self.label_tensor_name)
         positive_idx_per_question = torch.nonzero((lm_label_ids.view(-1) == 1), as_tuple=False)
         #TODO gather global tensors from all nodes for DDP
         global_positive_idx_per_question = positive_idx_per_question
-
         targets = global_positive_idx_per_question.squeeze(-1).to(logits.device)
-        loss = self.loss_fct(logits,targets)
+
+        # Calculate loss
+        loss = self.loss_fct(softmax_scores, targets)
         return loss
 
     def logits_to_preds(self, logits, **kwargs):
@@ -1667,8 +1685,10 @@ class TextSimilarityHead(PredictionHead):
 
         :return: predicted ranks of passages for each query
         """
-        _, logits_sorted_indices = torch.sort(logits, dim=1, descending=True)
-        return logits_sorted_indices
+        query_vectors, context_vectors = logits
+        softmax_scores = self._embeddings_to_scores(query_vectors, context_vectors)
+        _, sorted_scores = torch.sort(softmax_scores, dim=1, descending=True)
+        return sorted_scores
 
     def prepare_labels(self, **kwargs):
         """
