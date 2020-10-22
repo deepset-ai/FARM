@@ -1050,7 +1050,7 @@ class QuestionAnsweringHead(PredictionHead):
         per_sample_loss = (start_loss + end_loss) / 2
         return per_sample_loss
 
-    def logits_to_preds(self, logits, padding_mask, start_of_word, seq_2_start_t, max_answer_length=1000, **kwargs):
+    def logits_to_preds(self, logits, padding_mask, start_of_word, seq_2_start_t, sp_toks_end, max_answer_length=1000, **kwargs):
         """
         Get the predicted index of start and end token of the answer. Note that the output is at token level
         and not word level. Note also that these logits correspond to the tokens of a sample
@@ -1083,17 +1083,20 @@ class QuestionAnsweringHead(PredictionHead):
         indices = torch.tril_indices(max_seq_len, max_seq_len, offset=-1, device=start_end_matrix.device)
         start_end_matrix[:, indices[0][:], indices[1][:]] = -999
 
+        # disqualify answers where span is greater than max_seq_len
+        # (set the upper triangular matrix to low value, excluding diagonal)
+        indices_long_span = torch.triu_indices(max_seq_len, max_seq_len, offset=max_answer_length, device=start_end_matrix.device)
+        start_end_matrix[:, indices_long_span[0][:], indices_long_span[1][:]] = -999
+
         # disqualify answers where start=0, but end != 0
         start_end_matrix[:, 0, 1:] = -999
 
-        # TODO continue vectorization of valid_answer_idxs
-        # # disqualify where answers < seq_2_start_t and idx != 0
-        # # disqualify where answer falls into padding
-        # # seq_2_start_t can be different when 2 different questions are handled within one batch
-        # # n_non_padding can be different on sample level, too
-        # for i in range(batch_size):
-        #     start_end_matrix[i, 1:seq_2_start_t[i], 1:seq_2_start_t[i]] = -888
-        #     start_end_matrix[i, n_non_padding[i]-1:, n_non_padding[i]-1:] = -777
+        # disqualify where answers < seq_2_start_t and idx != 0
+        # disqualify where answer falls into padding
+        for i in range(batch_size):
+            start_end_matrix[i, 1:seq_2_start_t[i], 1:seq_2_start_t[i]] = -888
+            start_end_matrix[i, n_non_padding[i]-sp_toks_end:, :] = -777
+            start_end_matrix[i, :, n_non_padding[i]-sp_toks_end:] = -777
 
 
         # Sort the candidate answers by their score. Sorting happens on the flattened matrix.
@@ -1141,16 +1144,14 @@ class QuestionAnsweringHead(PredictionHead):
                 # Ignore no_answer scores which will be extracted later in this method
                 if start_idx == 0 and end_idx == 0:
                     continue
-                # Check that the candidate's indices are valid and save them if they are
-                if self.valid_answer_idxs(start_idx, end_idx, n_non_padding, max_answer_length, seq_2_start_t):
-                    score = start_end_matrix[start_idx, end_idx].item()
-                    top_candidates.append(QACandidate(offset_answer_start=start_idx,
-                                                      offset_answer_end=end_idx,
-                                                      score=score,
-                                                      answer_type="span",
-                                                      offset_unit="token",
-                                                      aggregation_level="passage",
-                                                      passage_id=sample_idx))
+                score = start_end_matrix[start_idx, end_idx].item()
+                top_candidates.append(QACandidate(offset_answer_start=start_idx,
+                                                  offset_answer_end=end_idx,
+                                                  score=score,
+                                                  answer_type="span",
+                                                  offset_unit="token",
+                                                  aggregation_level="passage",
+                                                  passage_id=sample_idx))
 
         no_answer_score = start_end_matrix[0, 0].item()
         top_candidates.append(QACandidate(offset_answer_start=0,
@@ -1163,41 +1164,41 @@ class QuestionAnsweringHead(PredictionHead):
 
         return top_candidates
 
-    @staticmethod
-    def valid_answer_idxs(start_idx, end_idx, n_non_padding, max_answer_length, seq_2_start_t):
-        """ Returns True if the supplied index span is a valid prediction. The indices being provided
-        should be on sample/passage level (special tokens + question_tokens + passag_tokens)
-        and not document level"""
-
-        # This function can seriously slow down inferencing and eval. In the future this function will be completely vectorized
-        # Continue if start or end label points to a padding token
-        if start_idx < seq_2_start_t and start_idx != 0:
-            return False
-        if end_idx < seq_2_start_t and end_idx != 0:
-            return False
-        # The -1 is to stop the idx falling on a final special token
-        # TODO: this makes the assumption that there is a special token that comes at the end of the second sequence
-        if start_idx >= n_non_padding - 1:
-            return False
-        if end_idx >= n_non_padding - 1:
-            return False
-
-        # # Check if start comes after end
-        # # Handled on matrix level by: start_end_matrix[:, indices[0][1:], indices[1][1:]] = -999
-        # if end_idx < start_idx:
-        #     return False
-
-        # # If one of the two indices is 0, the other must also be 0
-        # # Handled on matrix level by setting: start_end_matrix[:, 0, 1:] = -999
-        # if start_idx == 0 and end_idx != 0:
-        #     return False
-        # if start_idx != 0 and end_idx == 0:
-        #     return False
-
-        length = end_idx - start_idx + 1
-        if length > max_answer_length:
-            return False
-        return True
+    # @staticmethod
+    # def valid_answer_idxs(start_idx, end_idx, n_non_padding, max_answer_length, seq_2_start_t):
+    #     """ Returns True if the supplied index span is a valid prediction. The indices being provided
+    #     should be on sample/passage level (special tokens + question_tokens + passage_tokens)
+    #     and not document level"""
+    #
+    #     # This function can seriously slow down inferencing and eval. In the future this function will be completely vectorized
+    #     # Continue if start or end label points to a padding token
+    #     if start_idx < seq_2_start_t and start_idx != 0:
+    #         return False
+    #     if end_idx < seq_2_start_t and end_idx != 0:
+    #         return False
+    #     # The -1 is to stop the idx falling on a final special token
+    #     # TODO: this makes the assumption that there is a special token that comes at the end of the second sequence
+    #     if start_idx >= n_non_padding - 1:
+    #         return False
+    #     if end_idx >= n_non_padding - 1:
+    #         return False
+    #
+    #     # # Check if start comes after end
+    #     # # Handled on matrix level by: start_end_matrix[:, indices[0][1:], indices[1][1:]] = -999
+    #     # if end_idx < start_idx:
+    #     #     return False
+    #
+    #     # # If one of the two indices is 0, the other must also be 0
+    #     # # Handled on matrix level by setting: start_end_matrix[:, 0, 1:] = -999
+    #     # if start_idx == 0 and end_idx != 0:
+    #     #     return False
+    #     # if start_idx != 0 and end_idx == 0:
+    #     #     return False
+    #
+    #     length = end_idx - start_idx + 1
+    #     if length > max_answer_length:
+    #         return False
+    #     return True
 
     def formatted_preds(self, logits=None, preds=None, baskets=None, **kwargs):
         """ Takes a list of passage level predictions, each corresponding to one sample, and converts them into document level

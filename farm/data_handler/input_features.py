@@ -369,7 +369,7 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
     return [feature_dict]
 
 
-def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks_mid,
+def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks_mid, sp_toks_end,
                           answer_type_list=None, max_answers=6):
     """ Prepares data for processing by the model. Supports cases where there are
     multiple answers for the one question/document pair. max_answers is by default set to 6 since
@@ -500,7 +500,8 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
                     "start_of_word": start_of_word,
                     "labels": labels,
                     "id": sample_id,
-                    "seq_2_start_t": seq_2_start_t}
+                    "seq_2_start_t": seq_2_start_t,
+                    "sp_toks_end": sp_toks_end}
     return [feature_dict]
 
 
