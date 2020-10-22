@@ -30,7 +30,7 @@ def dense_passage_retrieval():
     ##########################
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)
-    batch_size = 2
+    batch_size = 2 # For MultiGPU Training via DataParallel: Only use multiples of 2 to ensure similar batches
     n_epochs = 3
     evaluate_every = 1000
     question_lang_model = "facebook/dpr-question_encoder-single-nq-base"
@@ -56,15 +56,16 @@ def dense_passage_retrieval():
     metric = "text_similarity_metric"
     processor = TextSimilarityProcessor(tokenizer=query_tokenizer,
                              passage_tokenizer=context_tokenizer,
-                             max_seq_len=512,
+                             max_seq_len=256,
                              label_list=label_list,
                              metric=metric,
-                             data_dir="data/retriever",
+                             data_dir="../../DPR/data/retriever",
                              train_filename=train_filename,
                              dev_filename=dev_filename,
                              test_filename=dev_filename,
                              embed_title=embed_title,
-                             num_hard_negatives=num_hard_negatives)
+                             num_hard_negatives=num_hard_negatives,
+                             max_samples=10)
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
     # NOTE: In FARM, the dev set metrics differ from test set metrics in that they are calculated on a token level instead of a word level
