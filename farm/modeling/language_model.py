@@ -132,7 +132,7 @@ class LanguageModel(nn.Module):
             language_model = cls.subclasses[config["name"]].load(pretrained_model_name_or_path)
         else:
             if language_model_class is None:
-                language_model_class = cls._get_language_model_class(pretrained_model_name_or_path)
+                language_model_class = cls.get_language_model_class(pretrained_model_name_or_path)
 
             if language_model_class:
                 language_model = cls.subclasses[language_model_class].load(pretrained_model_name_or_path, **kwargs)
@@ -163,7 +163,7 @@ class LanguageModel(nn.Module):
         return language_model
 
     @staticmethod
-    def _get_language_model_class(model_name_or_path):
+    def get_language_model_class(model_name_or_path):
         # it's transformers format (either from model hub or local)
         model_name_or_path = str(model_name_or_path)
 
