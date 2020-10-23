@@ -1615,7 +1615,7 @@ class TextSimilarityHead(PredictionHead):
         elif "cosine" in self.similarity_function:
             return TextSimilarityHead.cosine_scores
 
-    def forward(self, query_vectors:torch.Tensor, context_vectors:torch.Tensor) -> Tuple[torch.Tensor]:
+    def forward(self, query_vectors:torch.Tensor, context_vectors:torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Only packs the embeddings from both language models into a tuple. No further modification.
         The similarity calculation is handled later to enable distributed training (DDP)
@@ -1654,7 +1654,7 @@ class TextSimilarityHead(PredictionHead):
         softmax_scores = nn.functional.log_softmax(scores, dim=1)
         return softmax_scores
 
-    def logits_to_loss(self, logits: Tuple[torch.Tensor], **kwargs):
+    def logits_to_loss(self, logits: Tuple[torch.Tensor, torch.Tensor], **kwargs):
         """
         Computes the loss (Default: NLLLoss) by applying a similarity function (Default: dot product) to the input
         tuple of (query_vectors, context_vectors) and afterwards applying the loss function on similarity scores.
@@ -1678,7 +1678,7 @@ class TextSimilarityHead(PredictionHead):
         loss = self.loss_fct(softmax_scores, targets)
         return loss
 
-    def logits_to_preds(self, logits: Tuple[torch.Tensor], **kwargs):
+    def logits_to_preds(self, logits: Tuple[torch.Tensor, torch.Tensor], **kwargs):
         """
         Returns predicted ranks(similarity) of passages/context for each query
 
@@ -1705,5 +1705,5 @@ class TextSimilarityHead(PredictionHead):
             labels[i, indx.item()] = 1
         return labels
 
-    def formatted_preds(self, logits: Tuple[torch.Tensor], **kwargs):
+    def formatted_preds(self, logits: Tuple[torch.Tensor, torch.Tensor], **kwargs):
         raise NotImplementedError("formatted_preds is not supported in TextSimilarityHead yet!")
