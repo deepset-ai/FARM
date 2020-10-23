@@ -25,11 +25,11 @@ from pathlib import Path
 import numpy as np
 from transformers.tokenization_albert import AlbertTokenizer
 from transformers.tokenization_albert_fast import AlbertTokenizerFast
-from transformers.tokenization_bert import BertTokenizer, BertTokenizerFast, load_vocab
+from transformers.tokenization_bert import BertTokenizer, load_vocab
 from transformers.tokenization_bert_fast import BertTokenizerFast
-from transformers.tokenization_distilbert import DistilBertTokenizer, DistilBertTokenizerFast
+from transformers.tokenization_distilbert import DistilBertTokenizer
 from transformers.tokenization_distilbert_fast import DistilBertTokenizerFast
-from transformers.tokenization_electra import ElectraTokenizer, ElectraTokenizerFast
+from transformers.tokenization_electra import ElectraTokenizer
 from transformers.tokenization_electra_fast import ElectraTokenizerFast
 from transformers.tokenization_roberta import RobertaTokenizer
 from transformers.tokenization_roberta_fast import RobertaTokenizerFast
