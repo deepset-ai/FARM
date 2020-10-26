@@ -1800,7 +1800,7 @@ class TextSimilarityProcessor(Processor):
         passage_tokenizer,
         max_seq_len_query,
         max_seq_len_context,
-        data_dir,
+        data_dir="",
         metric=None,
         train_filename="train.json",
         dev_filename=None,
