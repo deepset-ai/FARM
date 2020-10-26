@@ -1091,12 +1091,14 @@ class QuestionAnsweringHead(PredictionHead):
         # disqualify answers where start=0, but end != 0
         start_end_matrix[:, 0, 1:] = -999
 
-        # disqualify where answers < seq_2_start_t and idx != 0
-        # disqualify where answer falls into padding
+        first_non_passage_toks = n_non_padding-sp_toks_end
         for i in range(batch_size):
-            start_end_matrix[i, 1:seq_2_start_t[i], 1:seq_2_start_t[i]] = -888
-            start_end_matrix[i, n_non_padding[i]-sp_toks_end:, :] = -777
-            start_end_matrix[i, :, n_non_padding[i]-sp_toks_end:] = -777
+            # disqualify where answers < seq_2_start_t and idx != 0
+            start_end_matrix[i, 1:seq_2_start_t[i], :] = -888
+            start_end_matrix[i, :, 1:seq_2_start_t[i]] = -888
+            # disqualify where answer falls into padding
+            start_end_matrix[i, first_non_passage_toks[i]:, :] = -777
+            start_end_matrix[i, :, first_non_passage_toks[i]:] = -777
 
 
         # Sort the candidate answers by their score. Sorting happens on the flattened matrix.
