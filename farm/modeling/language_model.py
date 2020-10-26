@@ -1373,7 +1373,7 @@ class DPRQuestionEncoder(LanguageModel):
         super(DPRQuestionEncoder, self).__init__()
         self.model = None
         self.name = "dpr_question_encoder"
-        self.transformers_modelhub_path = "facebook/dpr-question_encoder-single-nq-base"
+        self.transformers_modelhub_path = "dpr-question_encoder-single-nq-base"
 
     @classmethod
     def load(cls, pretrained_model_name_or_path, language=None, **kwargs):
@@ -1405,7 +1405,7 @@ class DPRQuestionEncoder(LanguageModel):
         else:
             # Pytorch-transformer Style
             dpr_question_encoder.model = transformers.DPRQuestionEncoder(config=transformers.DPRConfig(**kwargs))
-            if pretrained_model_name_or_path == dpr_question_encoder.transformers_modelhub_path:
+            if pretrained_model_name_or_path in dpr_question_encoder.transformers_modelhub_path:
                 # load transformers modelhub DPRQuestionEncoder weights
                 dpr_question_encoder.model.base_model.bert_model = transformers.DPRQuestionEncoder.from_pretrained(
                     str(pretrained_model_name_or_path), **kwargs)
@@ -1467,7 +1467,7 @@ class DPRContextEncoder(LanguageModel):
         super(DPRContextEncoder, self).__init__()
         self.model = None
         self.name = "dpr_context_encoder"
-        self.transformers_modelhub_path = "facebook/dpr-ctx_encoder-single-nq-base"
+        self.transformers_modelhub_path = "dpr-ctx_encoder-single-nq-base"
 
     @classmethod
     def load(cls, pretrained_model_name_or_path, language=None, **kwargs):
@@ -1498,7 +1498,7 @@ class DPRContextEncoder(LanguageModel):
         else:
             # Pytorch-transformer Style
             dpr_context_encoder.model = transformers.DPRContextEncoder(config=transformers.DPRConfig(**kwargs))
-            if pretrained_model_name_or_path == dpr_context_encoder.transformers_modelhub_path:
+            if pretrained_model_name_or_path in dpr_context_encoder.transformers_modelhub_path:
                 # load transformers modelhub DPRContextEncoder weights
                 dpr_context_encoder.model.base_model.bert_model = transformers.DPRContextEncoder.from_pretrained(
                     str(pretrained_model_name_or_path), **kwargs)
