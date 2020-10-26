@@ -1801,7 +1801,11 @@ class TextSimilarityProcessor(Processor):
         passage_tokenizer,
         max_seq_len_query,
         max_seq_len_context,
+<<<<<<< HEAD
         data_dir="",
+=======
+        data_dir,
+>>>>>>> DPRProcessor, BiAdaptiveModel modified for optional query/passage
         metric=None,
         train_filename="train.json",
         dev_filename=None,
