@@ -1,0 +1,39 @@
+
+<html>
+  <head>
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+    <script type="text/javascript">
+      google.charts.load('current', {'packages':['bar']});
+      google.charts.setOnLoadCallback(drawChart);
+
+      function drawChart() {
+        var data = google.visualization.arrayToDataTable(
+          [
+            ["Name", "preproc","language_model","prediction_head"],
+            ['deepset/minilm-uncased-squad2', 12.277034912109375, 5.79623876953125, 1.5562604980468748], ['deepset/roberta-base-squad2', 12.380782958984376, 13.71148828125, 1.5372104492187502], ['deepset/bert-base-cased-squad2', 9.938722900390625, 15.864041992187499, 1.6085009765625005], ['deepset/bert-large-uncased-whole-word-masking-squad2', 9.692403808593749, 45.28969921875, 1.785435546875], ['deepset/xlm-roberta-large-squad2', 8.079997680664063, 48.489154296875, 1.974138671875]
+          ]);
+
+        var options = {
+          chart: {
+            title: 'QA Model Speed Comparison',
+            subtitle: 'Time per Component',
+          },
+          bars: 'horizontal', // Required for Material Bar Charts.
+          isStacked: true,
+          height: 300,
+          legend: {position: 'top', maxLines: 3},
+          hAxis: {minValue: 0}
+
+        };
+
+        var chart = new google.charts.Bar(document.getElementById('barchart_material'));
+
+        chart.draw(data, google.charts.Bar.convertOptions(options));
+      }
+    </script>
+  </head>
+  <body>
+    <div id="barchart_material" style="width: 900px; height: 500px;"></div>
+  </body>
+</html>
+
