@@ -1956,7 +1956,7 @@ class TextSimilarityProcessor(Processor):
         {"text": document_text, "title": xxx, "label": "hard_negative", "external_id": abb134},
         ...]}
         """
-        dicts = read_dpr_json(file)
+        dicts = read_dpr_json(file, max_samples=self.max_samples)
         return dicts
 
     def _normalize_question(self, question: str) -> str:
