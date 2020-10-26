@@ -354,7 +354,7 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
         """
 
         # Run forward pass of language model
-        pooled_output1, pooled_output2 = self.forward_lm(**kwargs)
+        pooled_output = self.forward_lm(**kwargs)
 
         # Run forward pass of (multiple) prediction heads using the output from above
         all_logits = []
@@ -362,24 +362,28 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
             for head, lm1_out, lm2_out in zip(self.prediction_heads, self.lm1_output_types, self.lm2_output_types):
                 # Choose relevant vectors from LM as output and perform dropout
                 if lm1_out == "per_sequence" or lm1_out == "per_sequence_continuous":
-                    output1 = self.dropout1(pooled_output1)
+                    output1 = self.dropout1(pooled_output["query"])
                 else:
                     raise ValueError(
                         "Unknown extraction strategy from DPR model: {}".format(lm1_out)
                     )
 
                 if lm2_out == "per_sequence" or lm2_out == "per_sequence_continuous":
-                    output2 = self.dropout2(pooled_output2)
+                    output2 = self.dropout2(pooled_output["passages"])
                 else:
                     raise ValueError(
                         "Unknown extraction strategy from DPR model: {}".format(lm2_out)
                     )
 
                 # Do the actual forward pass of a single head
-                all_logits.append(head(output1, output2))
+                # TO-DO: change
+                output = head(output1, output2)
+                # embedding1, embedding2 = head(output1, output2)
+                # output = {"query": embedding1, "passages": embeddings2}
+                all_logits.append(output)
         else:
             # just return LM output (e.g. useful for extracting embeddings at inference time)
-            all_logits.append((pooled_output1, pooled_output2))
+            all_logits.append((pooled_output))
 
         return all_logits
 
@@ -390,10 +394,15 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
         :param kwargs:
         :return: 2 tensors of pooled_output from the 2 language models
         """
-        pooled_output1, hidden_states1 = self.language_model1(**kwargs)
-        pooled_output2, hidden_states2 = self.language_model2(**kwargs)
+        pooled_output = {}
+        if "query_input_ids" in kwargs.keys():
+            pooled_output1, hidden_states1 = self.language_model1(**kwargs)
+            pooled_output["query"] = pooled_output1
+        if "passage_input_ids" in kwargs.keys():
+            pooled_output2, hidden_states2 = self.language_model2(**kwargs)
+            pooled_output["passages"] = pooled_output2
 
-        return pooled_output1, pooled_output2
+        return pooled_output
 
     def log_params(self):
         """
