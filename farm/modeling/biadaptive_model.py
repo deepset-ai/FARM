@@ -150,9 +150,9 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
         self,
         language_model1,
         language_model2,
-        prediction_heads,
-        embeds_dropout_prob,
-        device,
+        prediction_heads=None,
+        embeds_dropout_prob=0.1,
+        device="cuda",
         lm1_output_types=["per_sequence"],
         lm2_output_types=["per_sequence"],
         loss_aggregation_fn=None,
@@ -199,9 +199,10 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
         self.lm1_output_dims = language_model1.get_output_dims()
         self.language_model2 = language_model2.to(device)
         self.lm2_output_dims = language_model2.get_output_dims()
-        self.prediction_heads = nn.ModuleList([ph.to(device) for ph in prediction_heads])
         self.dropout1 = nn.Dropout(embeds_dropout_prob)
         self.dropout2 = nn.Dropout(embeds_dropout_prob)
+        ### TO-DO: change after gpu-compatibility merged
+        self.prediction_heads = nn.ModuleList([ph.to(device) for ph in prediction_heads]) if prediction_heads else None
         self.lm1_output_types = (
             [lm1_output_types] if isinstance(lm1_output_types, str) else lm1_output_types
         )
@@ -358,7 +359,8 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
 
         # Run forward pass of (multiple) prediction heads using the output from above
         all_logits = []
-        if len(self.prediction_heads) > 0:
+        ### TO-DO: change after gpu-compatibiity merged:
+        if self.prediction_heads and len(self.prediction_heads) > 0:
             for head, lm1_out, lm2_out in zip(self.prediction_heads, self.lm1_output_types, self.lm2_output_types):
                 # Choose relevant vectors from LM as output and perform dropout
                 if lm1_out == "per_sequence" or lm1_out == "per_sequence_continuous":
@@ -375,8 +377,7 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
                         "Unknown extraction strategy from DPR model: {}".format(lm2_out)
                     )
 
-                # Do the actual forward pass of a single head
-                # TO-DO: change
+                # TO-DO: change after gpu-compatibility merged
                 output = head(output1, output2)
                 # embedding1, embedding2 = head(output1, output2)
                 # output = {"query": embedding1, "passages": embeddings2}
@@ -417,7 +418,7 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
             "lm2_output_types": ",".join(self.lm2_output_types),
             "prediction_heads": ",".join(
                 [head.__class__.__name__ for head in self.prediction_heads]
-            ),
+            if self.prediction_heads else ""), ## To-DO: change after gpu-compatibility merged
         }
         try:
             MlLogger.log_params(params)
