@@ -150,7 +150,7 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
         self,
         language_model1,
         language_model2,
-        prediction_heads=None,
+        prediction_heads,
         embeds_dropout_prob=0.1,
         device="cuda",
         lm1_output_types=["per_sequence"],
