@@ -26,7 +26,8 @@ def test_dpr_modules(caplog=None):
     processor = TextSimilarityProcessor(
         tokenizer=query_tokenizer,
         passage_tokenizer=context_tokenizer,
-        max_seq_len=256,
+        max_seq_len_query=256,
+        max_seq_len_context=256,
         label_list=["hard_negative", "positive"],
         metric="text_similarity_metric",
         data_dir="data/retriever",
@@ -111,7 +112,7 @@ def test_dpr_modules(caplog=None):
 
     # test logits and loss
     embeddings = model(**features)
-    query_emb, passage_emb = embeddings[0]
+    query_emb, passage_emb = embeddings[0]["query"], embeddings[0]["passages"]
     assert torch.all(torch.eq(query_emb.cpu(), query_vector.cpu()))
     assert torch.all(torch.eq(passage_emb.cpu(), passage_vector.cpu()))
 
@@ -208,7 +209,8 @@ def test_dpr_processor(embed_title, passage_ids, passage_attns, use_fast, num_ha
     context_tokenizer = Tokenizer.load(passage_tok, use_fast=use_fast)
     processor = TextSimilarityProcessor(tokenizer=query_tokenizer,
                                         passage_tokenizer=context_tokenizer,
-                                        max_seq_len=256,
+                                        max_seq_len_query=256,
+                                        max_seq_len_context=256,
                                         data_dir="data/retriever",
                                         train_filename="nq-train.json",
                                         test_filename="nq-dev.json",
