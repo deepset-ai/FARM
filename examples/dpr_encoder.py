@@ -73,13 +73,13 @@ def dense_passage_retrieval():
     data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=False)
 
 
-    # 4. Create an AdaptiveModel+
-    # a) which consists of a pretrained language model as a basis
+    # 4. Create a BiAdaptiveModel+
+    # a) which consists of 2 pretrained language models initialized on bert-base-uncased as a basis
     question_language_model = LanguageModel.load(pretrained_model_name_or_path="bert-base-uncased", language_model_class="DPRQuestionEncoder")
     passage_language_model = LanguageModel.load(pretrained_model_name_or_path="bert-base-uncased", language_model_class="DPRContextEncoder")
 
 
-    # b) and a prediction head on top that is suited for our task => Question Answering
+    # b) and a prediction head on top that is suited for our task => TextSimilarity
     prediction_head = TextSimilarityHead(similarity_function=similarity_function)
 
     model = BiAdaptiveModel(
