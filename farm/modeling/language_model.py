@@ -1406,9 +1406,9 @@ class DPRQuestionEncoder(LanguageModel):
         else:
             # Pytorch-transformer Style
             dpr_question_encoder.model = transformers.DPRQuestionEncoder(config=transformers.DPRConfig(**kwargs))
-            if pretrained_model_name_or_path in dpr_question_encoder.transformers_modelhub_path:
+            if dpr_question_encoder.transformers_modelhub_path in pretrained_model_name_or_path:
                 # load transformers modelhub DPRQuestionEncoder weights
-                dpr_question_encoder.model.base_model.bert_model = transformers.DPRQuestionEncoder.from_pretrained(
+                dpr_question_encoder.model.base_model = transformers.DPRQuestionEncoder.from_pretrained(
                     str(pretrained_model_name_or_path), **kwargs)
             else:
                 # load weights from pretrained_model_name_or_path Language model into DPRQuestionEncoder
@@ -1499,9 +1499,9 @@ class DPRContextEncoder(LanguageModel):
         else:
             # Pytorch-transformer Style
             dpr_context_encoder.model = transformers.DPRContextEncoder(config=transformers.DPRConfig(**kwargs))
-            if pretrained_model_name_or_path in dpr_context_encoder.transformers_modelhub_path:
+            if dpr_context_encoder.transformers_modelhub_path in pretrained_model_name_or_path:
                 # load transformers modelhub DPRContextEncoder weights
-                dpr_context_encoder.model.base_model.bert_model = transformers.DPRContextEncoder.from_pretrained(
+                dpr_context_encoder.model.base_model = transformers.DPRContextEncoder.from_pretrained(
                     str(pretrained_model_name_or_path), **kwargs)
             else:
                 # load weights from pretrained_model_name_or_path Language model into DPRContextEncoder
