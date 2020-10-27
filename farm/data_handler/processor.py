@@ -2006,35 +2006,33 @@ class TextSimilarityProcessor(Processor):
         # extract query, positive context passages and titles, hard-negative passages and titles
         if "query" in dictionary.keys():
             query = self._normalize_question(dictionary["query"])
-        else:
-            query = ""
 
-        # featurize the query
-        query_inputs = self.query_tokenizer.encode_plus(
-            text=query,
-            max_length=self.max_seq_len_query,
-            add_special_tokens=True,
-            truncation_strategy='do_not_truncate',
-            padding="max_length",
-            return_token_type_ids=True,
-        )
+            # featurize the query
+            query_inputs = self.query_tokenizer.encode_plus(
+                text=query,
+                max_length=self.max_seq_len_query,
+                add_special_tokens=True,
+                truncation_strategy='do_not_truncate',
+                padding="max_length",
+                return_token_type_ids=True,
+            )
 
-        query_input_ids, query_segment_ids, query_padding_mask = query_inputs["input_ids"], query_inputs[
-            "token_type_ids"], query_inputs["attention_mask"]
+            query_input_ids, query_segment_ids, query_padding_mask = query_inputs["input_ids"], query_inputs[
+                "token_type_ids"], query_inputs["attention_mask"]
 
-        # tokeize query
-        tokenized_query = self.query_tokenizer.convert_ids_to_tokens(query_input_ids)
+            # tokeize query
+            tokenized_query = self.query_tokenizer.convert_ids_to_tokens(query_input_ids)
 
-        if len(tokenized_query) == 0:
-            logger.warning(
-                f"The query could not be tokenized, likely because it contains a character that the query tokenizer does not recognize")
-            return None
+            if len(tokenized_query) == 0:
+                logger.warning(
+                    f"The query could not be tokenized, likely because it contains a character that the query tokenizer does not recognize")
+                return None
 
-        clear_text["query_text"] = query
-        tokenized["query_tokens"] = tokenized_query
-        features["query_input_ids"] = query_input_ids
-        features["query_segment_ids"] = query_segment_ids
-        features["query_attention_mask"] = query_padding_mask
+            clear_text["query_text"] = query
+            tokenized["query_tokens"] = tokenized_query
+            features["query_input_ids"] = query_input_ids
+            features["query_segment_ids"] = query_segment_ids
+            features["query_attention_mask"] = query_padding_mask
 
         if "passages" in dictionary.keys():
             positive_context = list(filter(lambda x: x["label"] == "positive", dictionary["passages"]))
@@ -2067,39 +2065,35 @@ class TextSimilarityProcessor(Processor):
 
             # assign empty string tuples if hard_negative passages less than num_hard_negatives
             all_ctx += [('', '')] * ((self.num_positives + self.num_hard_negatives)-len(all_ctx))
-        else:
-            all_ctx = [('', '')]
-            positive_context = [{}]
-            hard_negative_context = [{}]
-            ctx_label = []
-
-        ctx_inputs = self.passage_tokenizer.batch_encode_plus(
-            all_ctx,
-            add_special_tokens=True,
-            truncation=True,
-            padding="max_length",
-            max_length=self.max_seq_len_context,
-            return_token_type_ids=True
-        )
 
 
-        ctx_input_ids, ctx_segment_ids_, ctx_padding_mask = ctx_inputs["input_ids"], ctx_inputs["token_type_ids"], \
-                                                           ctx_inputs["attention_mask"]
-        ctx_segment_ids = list(torch.zeros((len(ctx_segment_ids_), len(ctx_segment_ids_[0]))).numpy())
+            ctx_inputs = self.passage_tokenizer.batch_encode_plus(
+                all_ctx,
+                add_special_tokens=True,
+                truncation=True,
+                padding="max_length",
+                max_length=self.max_seq_len_context,
+                return_token_type_ids=True
+            )
 
-        # tokenize query and contexts
-        tokenized_passage = [self.passage_tokenizer.convert_ids_to_tokens(ctx) for ctx in ctx_input_ids]
 
-        if len(tokenized_passage) == 0:
-            logger.warning(f"The context could not be tokenized, likely because it contains a character that the context tokenizer does not recognize")
-            return None
+            ctx_input_ids, ctx_segment_ids_, ctx_padding_mask = ctx_inputs["input_ids"], ctx_inputs["token_type_ids"], \
+                                                               ctx_inputs["attention_mask"]
+            ctx_segment_ids = list(torch.zeros((len(ctx_segment_ids_), len(ctx_segment_ids_[0]))).numpy())
 
-        clear_text["passages"] = positive_context + hard_negative_context
-        tokenized["passages_tokens"] = tokenized_passage
-        features["passage_input_ids"] = ctx_input_ids
-        features["passage_segment_ids"] = ctx_segment_ids
-        features["passage_attention_mask"] = ctx_padding_mask
-        features["label_ids"] = ctx_label
+            # tokenize query and contexts
+            tokenized_passage = [self.passage_tokenizer.convert_ids_to_tokens(ctx) for ctx in ctx_input_ids]
+
+            if len(tokenized_passage) == 0:
+                logger.warning(f"The context could not be tokenized, likely because it contains a character that the context tokenizer does not recognize")
+                return None
+
+            clear_text["passages"] = positive_context + hard_negative_context
+            tokenized["passages_tokens"] = tokenized_passage
+            features["passage_input_ids"] = ctx_input_ids
+            features["passage_segment_ids"] = ctx_segment_ids
+            features["passage_attention_mask"] = ctx_padding_mask
+            features["label_ids"] = ctx_label
 
 
         sample = Sample(id=None,
