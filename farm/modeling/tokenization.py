@@ -32,6 +32,7 @@ from transformers.tokenization_utils import PreTrainedTokenizer
 from transformers.tokenization_xlm_roberta import XLMRobertaTokenizer
 from transformers.tokenization_xlnet import XLNetTokenizer
 from transformers.tokenization_camembert import CamembertTokenizer
+from transformers.modeling_auto import AutoConfig
 from transformers import DPRContextEncoderTokenizer, DPRQuestionEncoderTokenizer
 from transformers import DPRContextEncoderTokenizerFast, DPRQuestionEncoderTokenizerFast
 
@@ -53,7 +54,7 @@ class Tokenizer:
     def load(cls, pretrained_model_name_or_path, tokenizer_class=None, use_fast=False, **kwargs):
         """
         Enables loading of different Tokenizer classes with a uniform interface. Either infer the class from
-        `pretrained_model_name_or_path` or define it manually via `tokenizer_class`.
+        model config or define it manually via `tokenizer_class`.
 
         :param pretrained_model_name_or_path:  The path of the saved pretrained model or its name (e.g. `bert-base-uncased`)
         :type pretrained_model_name_or_path: str
@@ -66,47 +67,12 @@ class Tokenizer:
         :param kwargs:
         :return: Tokenizer
         """
-
         pretrained_model_name_or_path = str(pretrained_model_name_or_path)
-        # guess tokenizer type from name
+
         if tokenizer_class is None:
-            if "albert" in pretrained_model_name_or_path.lower():
-                tokenizer_class = "AlbertTokenizer"
-            elif "xlm-roberta" in pretrained_model_name_or_path.lower():
-                tokenizer_class = "XLMRobertaTokenizer"
-            elif "roberta" in pretrained_model_name_or_path.lower():
-                tokenizer_class = "RobertaTokenizer"
-            elif 'codebert' in pretrained_model_name_or_path.lower():
-                    if "mlm" in pretrained_model_name_or_path.lower():
-                        raise NotImplementedError("MLM part of codebert is currently not supported in FARM")
-                    else:
-                        tokenizer_class = "RobertaTokenizer"
-            elif "camembert" in pretrained_model_name_or_path.lower() or "umberto" in pretrained_model_name_or_path:
-                tokenizer_class = "CamembertTokenizer"
-            elif "distilbert" in pretrained_model_name_or_path.lower():
-                tokenizer_class = "DistilBertTokenizer"
-            elif "bert" in pretrained_model_name_or_path.lower():
-                tokenizer_class = "BertTokenizer"
-            elif "xlnet" in pretrained_model_name_or_path.lower():
-                tokenizer_class = "XLNetTokenizer"
-            elif "electra" in pretrained_model_name_or_path.lower():
-                tokenizer_class = "ElectraTokenizer"
-            elif "word2vec" in pretrained_model_name_or_path.lower() or \
-                    "glove" in pretrained_model_name_or_path.lower() or \
-                    "fasttext" in pretrained_model_name_or_path.lower():
-                tokenizer_class = "EmbeddingTokenizer"
-            elif "minilm" in pretrained_model_name_or_path.lower():
-                tokenizer_class = "BertTokenizer"
-            elif "dpr-question_encoder" in pretrained_model_name_or_path.lower():
-                tokenizer_class = "DPRQuestionEncoderTokenizer"
-            elif "dpr-ctx_encoder" in pretrained_model_name_or_path.lower():
-                tokenizer_class = "DPRContextEncoderTokenizer"
-            else:
-                raise ValueError(f"Could not infer tokenizer_class from name '{pretrained_model_name_or_path}'. Set "
-                                 f"arg `tokenizer_class` in Tokenizer.load() to one of: AlbertTokenizer, "
-                                 f"XLMRobertaTokenizer, RobertaTokenizer, DistilBertTokenizer, BertTokenizer, or "
-                                 f"XLNetTokenizer.")
-            logger.info(f"Loading tokenizer of type '{tokenizer_class}'")
+            tokenizer_class = cls._infer_tokenizer_class(pretrained_model_name_or_path)
+
+        logger.info(f"Loading tokenizer of type '{tokenizer_class}'")
         # return appropriate tokenizer object
         ret = None
         if tokenizer_class == "AlbertTokenizer":
@@ -174,6 +140,99 @@ class Tokenizer:
             raise Exception("Unable to load tokenizer")
         else:
             return ret
+
+    @staticmethod
+    def _infer_tokenizer_class(pretrained_model_name_or_path):
+        # Infer Tokenizer from model type in config
+        try:
+            config = AutoConfig.from_pretrained(pretrained_model_name_or_path)
+        except OSError:
+            # FARM model (no 'config.json' file)
+            try:
+                config = AutoConfig.from_pretrained(pretrained_model_name_or_path + "/language_model_config.json")
+            except Exception as e:
+                logger.warning("No config file found. Trying to infer Tokenizer type from model name")
+                tokenizer_class = Tokenizer._infer_tokenizer_class_from_string(pretrained_model_name_or_path)
+                return tokenizer_class
+
+        model_type = config.model_type
+        if model_type == "xlm-roberta":
+            tokenizer_class = "XLMRobertaTokenizer"
+        elif model_type == "roberta":
+            if "mlm" in pretrained_model_name_or_path.lower():
+                raise NotImplementedError("MLM part of codebert is currently not supported in FARM")
+            tokenizer_class = "RobertaTokenizer"
+        elif model_type == "camembert":
+            tokenizer_class = "CamembertTokenizer"
+        elif model_type == "albert":
+            tokenizer_class = "AlbertTokenizer"
+        elif model_type == "distilbert":
+            tokenizer_class = "DistilBertTokenizer"
+        elif model_type == "bert":
+            tokenizer_class = "BertTokenizer"
+        elif model_type == "xlnet":
+            tokenizer_class = "XLNetTokenizer"
+        elif model_type == "electra":
+            tokenizer_class = "ElectraTokenizer"
+        elif model_type == "dpr":
+            if config.architectures[0] == "DPRQuestionEncoder":
+                tokenizer_class = "DPRQuestionEncoderTokenizer"
+            elif config.architectures[0] == "DPRContextEncoder":
+                tokenizer_class = "DPRContextEncoderTokenizer"
+            elif config.archictectures[0] == "DPRReader":
+                raise NotImplementedError("DPRReader models are currently not supported.")
+        else:
+            # Fall back to inferring type from model name
+            logger.warning("Could not infer Tokenizer type from config. Trying to infer "
+                           "Tokenizer type from model name.")
+            tokenizer_class = Tokenizer._infer_tokenizer_class_from_string(pretrained_model_name_or_path)
+
+        return tokenizer_class
+
+    @staticmethod
+    def _infer_tokenizer_class_from_string(pretrained_model_name_or_path):
+        # If inferring tokenizer class from config doesn't succeed,
+        # fall back to inferring tokenizer class from model name.
+        if "albert" in pretrained_model_name_or_path.lower():
+            tokenizer_class = "AlbertTokenizer"
+        elif "xlm-roberta" in pretrained_model_name_or_path.lower():
+            tokenizer_class = "XLMRobertaTokenizer"
+        elif "roberta" in pretrained_model_name_or_path.lower():
+            tokenizer_class = "RobertaTokenizer"
+        elif "codebert" in pretrained_model_name_or_path.lower():
+            if "mlm" in pretrained_model_name_or_path.lower():
+                raise NotImplementedError("MLM part of codebert is currently not supported in FARM")
+            else:
+                tokenizer_class = "RobertaTokenizer"
+        elif "camembert" in pretrained_model_name_or_path.lower() or "umberto" in pretrained_model_name_or_path.lower():
+            tokenizer_class = "CamembertTokenizer"
+        elif "distilbert" in pretrained_model_name_or_path.lower():
+            tokenizer_class = "DistilBertTokenizer"
+        elif "bert" in pretrained_model_name_or_path.lower():
+            tokenizer_class = "BertTokenizer"
+        elif "xlnet" in pretrained_model_name_or_path.lower():
+            tokenizer_class = "XLNetTokenizer"
+        elif "electra" in pretrained_model_name_or_path.lower():
+            tokenizer_class = "ElectraTokenizer"
+        elif "word2vec" in pretrained_model_name_or_path.lower() or \
+                "glove" in pretrained_model_name_or_path.lower() or \
+                "fasttext" in pretrained_model_name_or_path.lower():
+            tokenizer_class = "EmbeddingTokenizer"
+        elif "minilm" in pretrained_model_name_or_path.lower():
+            tokenizer_class = "BertTokenizer"
+        elif "dpr-question_encoder" in pretrained_model_name_or_path.lower():
+            tokenizer_class = "DPRQuestionEncoderTokenizer"
+        elif "dpr-ctx_encoder" in pretrained_model_name_or_path.lower():
+            tokenizer_class = "DPRContextEncoderTokenizer"
+        else:
+            raise ValueError(f"Could not infer tokenizer_class from model config or "
+                             f"name '{pretrained_model_name_or_path}'. Set arg `tokenizer_class` "
+                             f"in Tokenizer.load() to one of: AlbertTokenizer, XLMRobertaTokenizer, "
+                             f"RobertaTokenizer, DistilBertTokenizer, BertTokenizer, XLNetTokenizer, "
+                             f"CamembertTokenizer, ElectraTokenizer, DPRQuestionEncoderTokenizer,"
+                             f"DPRContextEncoderTokenizer.")
+
+        return tokenizer_class
 
 
 class EmbeddingTokenizer(PreTrainedTokenizer):
