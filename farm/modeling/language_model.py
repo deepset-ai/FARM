@@ -192,6 +192,8 @@ class LanguageModel(nn.Module):
                 language_model_class = "DPRQuestionEncoder"
             elif config.architectures[0] == "DPRContextEncoder":
                 language_model_class = "DPRContextEncoder"
+            elif config.archictectures[0] == "DPRReader":
+                raise NotImplementedError("DPRReader models are currently not supported.")
         else:
             # Fall back to inferring type from model name
             logger.warning("Could not infer LanguageModel class from config. Trying to infer "
