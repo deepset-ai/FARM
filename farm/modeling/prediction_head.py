@@ -1654,7 +1654,7 @@ class TextSimilarityHead(PredictionHead):
         softmax_scores = nn.functional.log_softmax(scores, dim=1)
         return softmax_scores
 
-    def logits_to_loss(self, logits: dict, **kwargs):
+    def logits_to_loss(self, logits: Tuple[torch.Tensor, torch.Tensor], **kwargs):
         """
         Computes the loss (Default: NLLLoss) by applying a similarity function (Default: dot product) to the input
         tuple of (query_vectors, context_vectors) and afterwards applying the loss function on similarity scores.
@@ -1664,7 +1664,7 @@ class TextSimilarityHead(PredictionHead):
         :return: negative log likelihood loss from similarity scores
         """
         # Prepare predicted scores
-        query_vectors, context_vectors = logits["query"], logits["passages"]
+        query_vectors, context_vectors = logits
         softmax_scores = self._embeddings_to_scores(query_vectors, context_vectors)
 
         # Prepare Labels
@@ -1678,7 +1678,7 @@ class TextSimilarityHead(PredictionHead):
         loss = self.loss_fct(softmax_scores, targets)
         return loss
 
-    def logits_to_preds(self, logits: dict, **kwargs):
+    def logits_to_preds(self, logits: Tuple[torch.Tensor, torch.Tensor], **kwargs):
         """
         Returns predicted ranks(similarity) of passages/context for each query
 
@@ -1687,7 +1687,7 @@ class TextSimilarityHead(PredictionHead):
 
         :return: predicted ranks of passages for each query
         """
-        query_vectors, context_vectors = logits["query"], logits["passages"]
+        query_vectors, context_vectors = logits
         softmax_scores = self._embeddings_to_scores(query_vectors, context_vectors)
         _, sorted_scores = torch.sort(softmax_scores, dim=1, descending=True)
         return sorted_scores
