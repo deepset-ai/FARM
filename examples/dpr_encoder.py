@@ -57,7 +57,8 @@ def dense_passage_retrieval():
     metric = "text_similarity_metric"
     processor = TextSimilarityProcessor(tokenizer=query_tokenizer,
                              passage_tokenizer=context_tokenizer,
-                             max_seq_len=256,
+                             max_seq_len_query=256,
+                             max_seq_len_context=256,
                              label_list=label_list,
                              metric=metric,
                              data_dir="data/retriever",
