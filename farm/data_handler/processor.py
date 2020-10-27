@@ -1378,7 +1378,7 @@ class NaturalQuestionsProcessor(QAProcessor):
         if self._is_nq_dict(dictionary):
             dictionary = self._prepare_dict(dictionary=dictionary)
 
-        dictionary_tokenized = _apply_tokenization(dictionary, self.tokenizer)[0]
+        dictionary_tokenized = _apply_tokenization(dictionary, self.tokenizer, self.answer_type_list)[0]
         n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
         samples = create_samples_qa(dictionary_tokenized,
                                     self.max_query_length,
@@ -1729,7 +1729,7 @@ class RegressionProcessor(Processor):
         return features
 
 
-def _apply_tokenization(dictionary, tokenizer):
+def _apply_tokenization(dictionary, tokenizer, answer_types_list=[]):
     raw_baskets = []
     dictionary = convert_qa_input_dict(dictionary)
     dictionary["qas"] = _is_impossible_to_answer_type(dictionary["qas"])
@@ -1745,7 +1745,7 @@ def _apply_tokenization(dictionary, tokenizer):
             external_id = question["id"]
             question_text = question["question"]
             for answer in question["answers"]:
-                if 'answer_type' in answer.keys() and answer['answer_type'] in ['yes', 'no', 'span', 'no_answer']:
+                if 'answer_type' in answer.keys() and answer['answer_type'] in answer_types_list:
                     answer_type = answer['answer_type']
                 else:
                     if answer["text"] == "":
