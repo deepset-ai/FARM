@@ -361,23 +361,28 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
         if len(self.prediction_heads) > 0:
             for head, lm1_out, lm2_out in zip(self.prediction_heads, self.lm1_output_types, self.lm2_output_types):
                 # Choose relevant vectors from LM as output and perform dropout
-                if lm1_out == "per_sequence" or lm1_out == "per_sequence_continuous":
-                    output1 = self.dropout1(pooled_output["query"])
+                if pooled_output[0] is not None:
+                    if lm1_out == "per_sequence" or lm1_out == "per_sequence_continuous":
+                        output1 = self.dropout1(pooled_output[0])
+                    else:
+                        raise ValueError(
+                            "Unknown extraction strategy from BiAdaptive language_model1: {}".format(lm1_out)
+                        )
                 else:
-                    raise ValueError(
-                        "Unknown extraction strategy from DPR model: {}".format(lm1_out)
-                    )
+                    output1 = None
 
-                if lm2_out == "per_sequence" or lm2_out == "per_sequence_continuous":
-                    output2 = self.dropout2(pooled_output["passages"])
+                if pooled_output[1] is not None:
+                    if lm2_out == "per_sequence" or lm2_out == "per_sequence_continuous":
+                        output2 = self.dropout2(pooled_output[1])
+                    else:
+                        raise ValueError(
+                            "Unknown extraction strategy from BiAdaptive language_model2: {}".format(lm2_out)
+                        )
                 else:
-                    raise ValueError(
-                        "Unknown extraction strategy from DPR model: {}".format(lm2_out)
-                    )
+                    output2 = None
 
                 embedding1, embedding2 = head(output1, output2)
-                output = {"query": embedding1, "passages": embedding2}
-                all_logits.append(output)
+                all_logits.append(tuple([embedding1, embedding2]))
         else:
             # just return LM output (e.g. useful for extracting embeddings at inference time)
             all_logits.append((pooled_output))
@@ -391,15 +396,15 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
         :param kwargs:
         :return: 2 tensors of pooled_output from the 2 language models
         """
-        pooled_output = {}
+        pooled_output = [None, None]
         if "query_input_ids" in kwargs.keys():
             pooled_output1, hidden_states1 = self.language_model1(**kwargs)
-            pooled_output["query"] = pooled_output1
+            pooled_output[0] = pooled_output1
         if "passage_input_ids" in kwargs.keys():
             pooled_output2, hidden_states2 = self.language_model2(**kwargs)
-            pooled_output["passages"] = pooled_output2
+            pooled_output[1] = pooled_output2
 
-        return pooled_output
+        return tuple(pooled_output)
 
     def log_params(self):
         """
