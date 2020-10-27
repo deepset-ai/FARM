@@ -112,7 +112,7 @@ def test_dpr_modules(caplog=None):
 
     # test logits and loss
     embeddings = model(**features)
-    query_emb, passage_emb = embeddings[0]["query"], embeddings[0]["passages"]
+    query_emb, passage_emb = embeddings[0]
     assert torch.all(torch.eq(query_emb.cpu(), query_vector.cpu()))
     assert torch.all(torch.eq(passage_emb.cpu(), passage_vector.cpu()))
 
