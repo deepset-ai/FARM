@@ -1539,13 +1539,13 @@ class DPRContextEncoder(LanguageModel):
             dpr_context_encoder.language = dpr_context_encoder.model.config.language
         else:
             # Pytorch-transformer Style
-            dpr_context_encoder.model = transformers.DPRContextEncoder(config=transformers.DPRConfig(**kwargs))
             if dpr_context_encoder.transformers_modelhub_path in pretrained_model_name_or_path:
-                # load transformers modelhub DPRContextEncoder weights
-                dpr_context_encoder.model.base_model = transformers.DPRContextEncoder.from_pretrained(
+                # "pretrained dpr model": load transformers modelhub DPRContextEncoder weights
+                dpr_context_encoder.model = transformers.DPRContextEncoder.from_pretrained(
                     str(pretrained_model_name_or_path), **kwargs)
             else:
-                # load weights from pretrained_model_name_or_path Language model into DPRContextEncoder
+                # "from scratch": load weights from pretrained_model_name_or_path Language model into DPRContextEncoder
+                dpr_context_encoder.model = transformers.DPRContextEncoder(config=transformers.DPRConfig(**kwargs))
                 dpr_context_encoder.model.base_model.bert_model = AutoModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
             dpr_context_encoder.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
 
