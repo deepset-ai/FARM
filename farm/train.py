@@ -13,6 +13,7 @@ from farm.eval import Evaluator
 from farm.data_handler.data_silo import DataSilo
 from farm.visual.ascii.images import GROWING_TREE
 from farm.modeling.adaptive_model import AdaptiveModel
+from farm.modeling.biadaptive_model import BiAdaptiveModel
 from farm.modeling.optimization import get_scheduler
 
 try:
@@ -248,6 +249,7 @@ class Trainer:
         # connect the prediction heads with the right output from processor
         self.model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
         # Check that the tokenizer fits the language model
+        #TODO: make this compliant for DP / DDP where the model class is wrapped
         if self.model._get_name() == 'BiAdaptiveModel':
             self.model.verify_vocab_size(vocab_size1=len(self.data_silo.processor.tokenizer),
                                          vocab_size2=len(self.data_silo.processor.passage_tokenizer))

@@ -9,7 +9,6 @@ from farm.modeling.prediction_head import TextSimilarityHead
 from farm.modeling.tokenization import Tokenizer
 from farm.utils import set_all_seeds, initialize_device_settings
 from farm.data_handler.dataset import convert_features_to_dataset
-from transformers import DPRConfig
 
 def test_dpr_modules(caplog=None):
     if caplog:
@@ -111,9 +110,13 @@ def test_dpr_modules(caplog=None):
                                                                            0.3350, -0.3412]), torch.ones((1, 10)) * 0.0001))
 
     # test logits and loss
-    logits = model(**features)
-    loss = model.logits_to_loss_per_head(logits, **features)
-    similarity_scores = logits[0].cpu()
+    embeddings = model(**features)
+    query_emb, passage_emb = embeddings[0]
+    assert torch.all(torch.eq(query_emb.cpu(), query_vector.cpu()))
+    assert torch.all(torch.eq(passage_emb.cpu(), passage_vector.cpu()))
+
+    loss = model.logits_to_loss_per_head(embeddings, **features)
+    similarity_scores = model.prediction_heads[0]._embeddings_to_scores(query_emb, passage_emb).cpu()
     assert torch.all(torch.le(similarity_scores - torch.tensor([[-1.8311e-03, -6.3016e+00]]), torch.ones((1, 2)) * 0.0001))
     assert (loss[0].item() - 0.0018) <= 0.0001
 
