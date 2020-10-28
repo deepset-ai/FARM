@@ -505,21 +505,25 @@ class Inferencer:
         # Once a process spits out a preprocessed chunk. we feed this dataset directly to the model.
         # So we don't need to wait until all preprocessing has finished before getting first predictions.
         for dataset, tensor_names, baskets in results:
-            # TODO change format of formatted_preds in QA (list of dicts)
-            if aggregate_preds:
-                predictions = self._get_predictions_and_aggregate(
-                    dataset, tensor_names, baskets
-                )
+            if dataset is None:
+                logger.error(f"Part of the dataset could not be converted. Check previous log-messages for unconverted samples. \n"
+                             f"BE AWARE: The order of predictions should not conform with the input order!")
             else:
-                predictions = self._get_predictions(dataset, tensor_names, baskets)
+                # TODO change format of formatted_preds in QA (list of dicts)
+                if aggregate_preds:
+                    predictions = self._get_predictions_and_aggregate(
+                        dataset, tensor_names, baskets
+                    )
+                else:
+                    predictions = self._get_predictions(dataset, tensor_names, baskets)
 
-            if return_json:
-                # TODO this try catch should be removed when all tasks return prediction objects
-                try:
-                    predictions = [x.to_json() for x in predictions]
-                except AttributeError:
-                    pass
-            yield from predictions
+                if return_json:
+                    # TODO this try catch should be removed when all tasks return prediction objects
+                    try:
+                        predictions = [x.to_json() for x in predictions]
+                    except AttributeError:
+                        pass
+                yield from predictions
 
     @classmethod
     def _create_datasets_chunkwise(cls, chunk, processor):
