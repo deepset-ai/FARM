@@ -20,14 +20,14 @@ def test_dpr_modules(caplog=None):
     # 1.Create question and passage tokenizers
     query_tokenizer = Tokenizer.load(pretrained_model_name_or_path="facebook/dpr-question_encoder-single-nq-base",
                                      do_lower_case=True, use_fast=True)
-    context_tokenizer = Tokenizer.load(pretrained_model_name_or_path="facebook/dpr-ctx_encoder-single-nq-base",
+    passage_tokenizer = Tokenizer.load(pretrained_model_name_or_path="facebook/dpr-ctx_encoder-single-nq-base",
                                        do_lower_case=True, use_fast=True)
 
     processor = TextSimilarityProcessor(
         tokenizer=query_tokenizer,
-        passage_tokenizer=context_tokenizer,
+        passage_tokenizer=passage_tokenizer,
         max_seq_len_query=256,
-        max_seq_len_context=256,
+        max_seq_len_passage=256,
         label_list=["hard_negative", "positive"],
         metric="text_similarity_metric",
         data_dir="data/retriever",
@@ -206,11 +206,11 @@ def test_dpr_processor(embed_title, passage_ids, passage_attns, use_fast, num_ha
     query_tok = "facebook/dpr-question_encoder-single-nq-base"
     query_tokenizer = Tokenizer.load(query_tok, use_fast=use_fast)
     passage_tok = "facebook/dpr-ctx_encoder-single-nq-base"
-    context_tokenizer = Tokenizer.load(passage_tok, use_fast=use_fast)
+    passage_tokenizer = Tokenizer.load(passage_tok, use_fast=use_fast)
     processor = TextSimilarityProcessor(tokenizer=query_tokenizer,
-                                        passage_tokenizer=context_tokenizer,
+                                        passage_tokenizer=passage_tokenizer,
                                         max_seq_len_query=256,
-                                        max_seq_len_context=256,
+                                        max_seq_len_passage=256,
                                         data_dir="data/retriever",
                                         train_filename="nq-train.json",
                                         test_filename="nq-dev.json",
