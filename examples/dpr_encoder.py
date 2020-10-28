@@ -23,7 +23,7 @@ def dense_passage_retrieval():
     )
 
     ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
-    ml_logger.init_experiment(experiment_name="FARM-dense_passage_retrieval", run_name="Run_dpr_enocder")
+    ml_logger.init_experiment(experiment_name="FARM-dense_passage_retrieval", run_name="Run_dpr")
 
     ##########################
     ########## Settings
@@ -42,11 +42,13 @@ def dense_passage_retrieval():
     similarity_function = "dot_product"
     train_filename = "nq-train.json"
     dev_filename = "nq-dev.json"
+    test_filename = "nq-dev.json"
+    max_samples = None #load a smaller dataset (e.g. for debugging)
 
     # 1.Create question and passage tokenizers
     query_tokenizer = Tokenizer.load(pretrained_model_name_or_path=question_lang_model,
                                      do_lower_case=do_lower_case, use_fast=use_fast)
-    context_tokenizer = Tokenizer.load(pretrained_model_name_or_path=passage_lang_model,
+    passage_tokenizer = Tokenizer.load(pretrained_model_name_or_path=passage_lang_model,
                                        do_lower_case=do_lower_case, use_fast=use_fast)
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
@@ -55,24 +57,26 @@ def dense_passage_retrieval():
     label_list = ["hard_negative", "positive"]
     metric = "text_similarity_metric"
     processor = TextSimilarityProcessor(tokenizer=query_tokenizer,
-                             passage_tokenizer=context_tokenizer,
-                             max_seq_len=512,
+                             passage_tokenizer=passage_tokenizer,
+                             max_seq_len_query=256,
+                             max_seq_len_passage=256,
                              label_list=label_list,
                              metric=metric,
                              data_dir="data/retriever",
                              train_filename=train_filename,
                              dev_filename=dev_filename,
-                             test_filename=dev_filename,
+                             test_filename=test_filename,
                              embed_title=embed_title,
-                             num_hard_negatives=num_hard_negatives)
+                             num_hard_negatives=num_hard_negatives,
+                             max_samples=max_samples)
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
     # NOTE: In FARM, the dev set metrics differ from test set metrics in that they are calculated on a token level instead of a word level
     data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=False)
 
 
-    # 4. Create an AdaptiveModel+
-    # a) which consists of a pretrained language model as a basis
+    # 4. Create an BiAdaptiveModel+
+    # a) which consists of 2 pretrained language models as a basis
     question_language_model = LanguageModel.load(pretrained_model_name_or_path="bert-base-uncased", language_model_class="DPRQuestionEncoder")
     passage_language_model = LanguageModel.load(pretrained_model_name_or_path="bert-base-uncased", language_model_class="DPRContextEncoder")
 
