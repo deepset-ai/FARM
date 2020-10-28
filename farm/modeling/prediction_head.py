@@ -1056,7 +1056,8 @@ class QuestionAnsweringHead(PredictionHead):
         per_sample_loss = (start_loss + end_loss) / 2
         return per_sample_loss
 
-    def logits_to_preds(self, logits, span_mask, start_of_word, seq_2_start_t, sp_toks_end, max_answer_length=1000, **kwargs):
+    def logits_to_preds(self, logits, span_mask, start_of_word,
+                        seq_2_start_t, max_answer_length=1000, **kwargs):
         """
         Get the predicted index of start and end token of the answer. Note that the output is at token level
         and not word level. Note also that these logits correspond to the tokens of a sample
