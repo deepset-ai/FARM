@@ -472,6 +472,15 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
     # tokens are attended to.
     padding_mask = [1] * len(input_ids)
 
+    # The passage mask has 1 for tokens that are valid start or ends for QA spans.
+    # 0s are assigned to question tokens, mid special tokens, end special tokens and padding
+    # Note that start special tokens are assigned 1 since they can be chosen for a no_answer prediction
+    span_mask = [1] * sp_toks_start
+    span_mask += [0] * len(question_tokens)
+    span_mask += [0] * sp_toks_mid
+    span_mask += [1] * len(passage_tokens)
+    span_mask += [0] * sp_toks_end
+
     # Pad up to the sequence length. For certain models, the pad token id is not 0 (e.g. Roberta where it is 1)
     pad_idx = tokenizer.pad_token_id
     padding = [pad_idx] * (max_seq_len - len(input_ids))
@@ -481,6 +490,7 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
     padding_mask += zero_padding
     segment_ids += zero_padding
     start_of_word += zero_padding
+    span_mask += zero_padding
 
     # The XLM-Roberta tokenizer generates a segment_ids vector that separates the first sequence from the second.
     # However, when this is passed in to the forward fn of the Roberta model, it throws an error since
@@ -501,7 +511,8 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
                     "labels": labels,
                     "id": sample_id,
                     "seq_2_start_t": seq_2_start_t,
-                    "sp_toks_end": sp_toks_end}
+                    "sp_toks_end": sp_toks_end,
+                    "span_mask": span_mask}
     return [feature_dict]
 
 
