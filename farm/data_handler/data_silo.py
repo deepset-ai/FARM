@@ -40,6 +40,7 @@ class DataSilo:
         self,
         processor,
         batch_size,
+        eval_batch_size=None,
         distributed=False,
         automatic_loading=True,
         max_multiprocessing_chunksize=2000,
@@ -50,8 +51,10 @@ class DataSilo:
         """
         :param processor: A dataset specific Processor object which will turn input (file or dict) into a Pytorch Dataset.
         :type processor: Processor
-        :param batch_size: The size of batch that should be returned by the DataLoaders.
+        :param batch_size: The size of batch that should be returned by the DataLoader for the training set.
         :type batch_size: int
+        :param eval_batch_size: The size of batch that should be returned by the DataLoaders for the dev and test set.
+        :type eval_batch_size: int
         :param distributed: Set to True if the program is running in a distributed setting.
         :type distributed: bool
         :param automatic_loading: Set to False, if you don't want to automatically load data at initialization.
@@ -80,6 +83,10 @@ class DataSilo:
         self.caching = caching
         self.cache_path = cache_path
         self.tensor_names = None
+        if eval_batch_size is None:
+            self.eval_batch_size = batch_size
+        else:
+            self.eval_batch_size = eval_batch_size
 
         if len(self.processor.tasks) == 0:
             raise Exception("No task initialized. Try initializing the processor with a metric and a label list. "
@@ -337,7 +344,7 @@ class DataSilo:
             data_loader_dev = NamedDataLoader(
                 dataset=self.data["dev"],
                 sampler=SequentialSampler(self.data["dev"]),
-                batch_size=self.batch_size,
+                batch_size=self.eval_batch_size,
                 tensor_names=self.tensor_names,
             )
         else:
@@ -347,7 +354,7 @@ class DataSilo:
             data_loader_test = NamedDataLoader(
                 dataset=self.data["test"],
                 sampler=SequentialSampler(self.data["test"]),
-                batch_size=self.batch_size,
+                batch_size=self.eval_batch_size,
                 tensor_names=self.tensor_names,
             )
         else:
