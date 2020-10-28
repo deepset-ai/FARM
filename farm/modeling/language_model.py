@@ -1446,11 +1446,11 @@ class DPRQuestionEncoder(LanguageModel):
         else:
             model_type = AutoConfig.from_pretrained(pretrained_model_name_or_path).model_type
             if model_type == "dpr":
-                # "pretrained dpr model": load existing pretrained DPRQuestion model
+                # "pretrained dpr model": load existing pretrained DPRQuestionEncoder model
                 dpr_question_encoder.model = transformers.DPRQuestionEncoder.from_pretrained(
                     str(pretrained_model_name_or_path), **kwargs)
             else:
-                # "from scratch": load weights from different architecture (e.g. bert) into DPRContextEncoder
+                # "from scratch": load weights from different architecture (e.g. bert) into DPRQuestionEncoder
                 dpr_question_encoder.model = transformers.DPRQuestionEncoder(config=transformers.DPRConfig(**kwargs))
                 dpr_question_encoder.model.base_model.bert_model = AutoModel.from_pretrained(
                     str(pretrained_model_name_or_path), **kwargs)
@@ -1540,7 +1540,7 @@ class DPRContextEncoder(LanguageModel):
             # Pytorch-transformer Style
             model_type = AutoConfig.from_pretrained(pretrained_model_name_or_path).model_type
             if model_type == "dpr":
-                # "pretrained dpr model": load existing pretrained DPR model
+                # "pretrained dpr model": load existing pretrained DPRContextEncoder model
                 dpr_context_encoder.model = transformers.DPRContextEncoder.from_pretrained(
                     str(pretrained_model_name_or_path), **kwargs)
             else:
