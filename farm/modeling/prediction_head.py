@@ -1572,23 +1572,23 @@ class TextSimilarityHead(PredictionHead):
         self.generate_config()
 
     @classmethod
-    def dot_product_scores(cls, query_vectors, context_vectors):
+    def dot_product_scores(cls, query_vectors, passage_vectors):
         """
         Calculates dot product similarity scores for two 2-dimensional tensors
 
         :param query_vectors: tensor of query embeddings from BiAdaptive model of dimension n1 x D, where n1 is the number of queries/batch size and D is embedding size
         :type query_vectors: torch.Tensor
-        :param context_vectors: tensor of context/passage embeddings from BiAdaptive model of dimension n2 x D, where n2 is the number of queries/batch size and D is embedding size
-        :type context_vectors: torch.Tensor
+        :param passage_vectors: tensor of context/passage embeddings from BiAdaptive model of dimension n2 x D, where n2 is the number of queries/batch size and D is embedding size
+        :type passage_vectors: torch.Tensor
 
         :return dot_product: similarity score of each query with each context/passage (dimension: n1xn2)
         """
         # q_vector: n1 x D, ctx_vectors: n2 x D, result n1 x n2
-        dot_product = torch.matmul(query_vectors, torch.transpose(context_vectors, 0, 1))
+        dot_product = torch.matmul(query_vectors, torch.transpose(passage_vectors, 0, 1))
         return dot_product
 
     @classmethod
-    def cosine_scores(cls, query_vectors, context_vectors):
+    def cosine_scores(cls, query_vectors, passage_vectors):
         """
         Calculates cosine similarity scores for two 2-dimensional tensors
 
@@ -1596,15 +1596,15 @@ class TextSimilarityHead(PredictionHead):
                           of dimension n1 x D,
                           where n1 is the number of queries/batch size and D is embedding size
         :type query_vectors: torch.Tensor
-        :param context_vectors: tensor of context/passage embeddings from BiAdaptive model
+        :param passage_vectors: tensor of context/passage embeddings from BiAdaptive model
                           of dimension n2 x D,
                           where n2 is the number of queries/batch size and D is embedding size
-        :type context_vectors: torch.Tensor
+        :type passage_vectors: torch.Tensor
 
         :return: cosine similarity score of each query with each context/passage (dimension: n1xn2)
         """
         # q_vector: n1 x D, ctx_vectors: n2 x D, result n1 x n2
-        return nn.functional.cosine_similarity(query_vectors, context_vectors, dim=1)
+        return nn.functional.cosine_similarity(query_vectors, passage_vectors, dim=1)
 
     def get_similarity_function(self):
         """
@@ -1615,7 +1615,7 @@ class TextSimilarityHead(PredictionHead):
         elif "cosine" in self.similarity_function:
             return TextSimilarityHead.cosine_scores
 
-    def forward(self, query_vectors:torch.Tensor, context_vectors:torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, query_vectors:torch.Tensor, passage_vectors:torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         Only packs the embeddings from both language models into a tuple. No further modification.
         The similarity calculation is handled later to enable distributed training (DDP)
@@ -1626,26 +1626,26 @@ class TextSimilarityHead(PredictionHead):
                           of dimension n1 x D,
                           where n1 is the number of queries/batch size and D is embedding size
         :type query_vectors: torch.Tensor
-        :param context_vectors: Tensor of context/passage embeddings from BiAdaptive model
+        :param passage_vectors: Tensor of context/passage embeddings from BiAdaptive model
                           of dimension n2 x D,
                           where n2 is the number of queries/batch size and D is embedding size
-        :type context_vectors: torch.Tensor
+        :type passage_vectors: torch.Tensor
 
-        :return: (query_vectors, context_vectors)
+        :return: (query_vectors, passage_vectors)
         """
-        return (query_vectors, context_vectors)
+        return (query_vectors, passage_vectors)
 
-    def _embeddings_to_scores(self, query_vectors:torch.Tensor, context_vectors:torch.Tensor):
+    def _embeddings_to_scores(self, query_vectors:torch.Tensor, passage_vectors:torch.Tensor):
         """
-        Calculates similarity scores between all given query_vectors and context_vectors
+        Calculates similarity scores between all given query_vectors and passage_vectors
 
         :param query_vectors: Tensor of queries encoded by the query encoder model
-        :param context_vectors: Tensor of passages encoded by the passage encoder model
+        :param passage_vectors: Tensor of passages encoded by the passage encoder model
         :return: Tensor of log softmax similarity scores of each query with each passage (dimension: n1xn2)
         """
 
         sim_func = self.get_similarity_function()
-        scores = sim_func(query_vectors, context_vectors)
+        scores = sim_func(query_vectors, passage_vectors)
 
         if len(query_vectors.size()) > 1:
             q_num = query_vectors.size(0)
@@ -1657,15 +1657,15 @@ class TextSimilarityHead(PredictionHead):
     def logits_to_loss(self, logits: Tuple[torch.Tensor, torch.Tensor], **kwargs):
         """
         Computes the loss (Default: NLLLoss) by applying a similarity function (Default: dot product) to the input
-        tuple of (query_vectors, context_vectors) and afterwards applying the loss function on similarity scores.
+        tuple of (query_vectors, passage_vectors) and afterwards applying the loss function on similarity scores.
 
-        :param logits: Tuple of Tensors (query_embedding, context_embedding) as returned from forward()
+        :param logits: Tuple of Tensors (query_embedding, passage_embedding) as returned from forward()
 
         :return: negative log likelihood loss from similarity scores
         """
         # Prepare predicted scores
-        query_vectors, context_vectors = logits
-        softmax_scores = self._embeddings_to_scores(query_vectors, context_vectors)
+        query_vectors, passage_vectors = logits
+        softmax_scores = self._embeddings_to_scores(query_vectors, passage_vectors)
 
         # Prepare Labels
         lm_label_ids = kwargs.get(self.label_tensor_name)
@@ -1687,8 +1687,8 @@ class TextSimilarityHead(PredictionHead):
 
         :return: predicted ranks of passages for each query
         """
-        query_vectors, context_vectors = logits
-        softmax_scores = self._embeddings_to_scores(query_vectors, context_vectors)
+        query_vectors, passage_vectors = logits
+        softmax_scores = self._embeddings_to_scores(query_vectors, passage_vectors)
         _, sorted_scores = torch.sort(softmax_scores, dim=1, descending=True)
         return sorted_scores
 

@@ -48,7 +48,7 @@ def dense_passage_retrieval():
     # 1.Create question and passage tokenizers
     query_tokenizer = Tokenizer.load(pretrained_model_name_or_path=question_lang_model,
                                      do_lower_case=do_lower_case, use_fast=use_fast)
-    context_tokenizer = Tokenizer.load(pretrained_model_name_or_path=passage_lang_model,
+    passage_tokenizer = Tokenizer.load(pretrained_model_name_or_path=passage_lang_model,
                                        do_lower_case=do_lower_case, use_fast=use_fast)
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
@@ -57,9 +57,9 @@ def dense_passage_retrieval():
     label_list = ["hard_negative", "positive"]
     metric = "text_similarity_metric"
     processor = TextSimilarityProcessor(tokenizer=query_tokenizer,
-                             passage_tokenizer=context_tokenizer,
+                             passage_tokenizer=passage_tokenizer,
                              max_seq_len_query=256,
-                             max_seq_len_context=256,
+                             max_seq_len_passage=256,
                              label_list=label_list,
                              metric=metric,
                              data_dir="data/retriever",

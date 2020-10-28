@@ -1800,7 +1800,7 @@ class TextSimilarityProcessor(Processor):
         tokenizer,
         passage_tokenizer,
         max_seq_len_query,
-        max_seq_len_context,
+        max_seq_len_passage,
         data_dir="",
         metric=None,
         train_filename="train.json",
@@ -1822,8 +1822,8 @@ class TextSimilarityProcessor(Processor):
         :param passage_tokenizer: Used to split a passage (str) into tokens.
         :param max_seq_len_query: Query samples are truncated after this many tokens.
         :type max_seq_len_query: int
-        :param max_seq_len_context: Context/Passage Samples are truncated after this many tokens.
-        :type max_seq_len_context: int
+        :param max_seq_len_passage: Context/Passage Samples are truncated after this many tokens.
+        :type max_seq_len_passage: int
         :param data_dir: The directory in which the train and dev files can be found.
                          If not available the dataset will be loaded automaticaly
                          if the last directory has the same name as a predefined dataset.
@@ -1872,11 +1872,11 @@ class TextSimilarityProcessor(Processor):
         self.shuffle_negatives = shuffle_negatives
         self.shuffle_positives = shuffle_positives
         self.max_seq_len_query = max_seq_len_query
-        self.max_seq_len_context = max_seq_len_context
+        self.max_seq_len_passage = max_seq_len_passage
 
         super(TextSimilarityProcessor, self).__init__(
             tokenizer=tokenizer,
-            max_seq_len=max_seq_len_context,
+            max_seq_len=max_seq_len_query,
             train_filename=train_filename,
             dev_filename=dev_filename,
             test_filename=test_filename,
@@ -2072,7 +2072,7 @@ class TextSimilarityProcessor(Processor):
                 add_special_tokens=True,
                 truncation=True,
                 padding="max_length",
-                max_length=self.max_seq_len_context,
+                max_length=self.max_seq_len_passage,
                 return_token_type_ids=True
             )
 
