@@ -9,7 +9,6 @@ from farm.modeling.prediction_head import TextSimilarityHead
 from farm.modeling.tokenization import Tokenizer
 from farm.utils import set_all_seeds, initialize_device_settings
 from farm.data_handler.dataset import convert_features_to_dataset
-from transformers import DPRConfig
 
 def test_dpr_modules(caplog=None):
     if caplog:
@@ -21,13 +20,14 @@ def test_dpr_modules(caplog=None):
     # 1.Create question and passage tokenizers
     query_tokenizer = Tokenizer.load(pretrained_model_name_or_path="facebook/dpr-question_encoder-single-nq-base",
                                      do_lower_case=True, use_fast=True)
-    context_tokenizer = Tokenizer.load(pretrained_model_name_or_path="facebook/dpr-ctx_encoder-single-nq-base",
+    passage_tokenizer = Tokenizer.load(pretrained_model_name_or_path="facebook/dpr-ctx_encoder-single-nq-base",
                                        do_lower_case=True, use_fast=True)
 
     processor = TextSimilarityProcessor(
         tokenizer=query_tokenizer,
-        passage_tokenizer=context_tokenizer,
-        max_seq_len=256,
+        passage_tokenizer=passage_tokenizer,
+        max_seq_len_query=256,
+        max_seq_len_passage=256,
         label_list=["hard_negative", "positive"],
         metric="text_similarity_metric",
         data_dir="data/retriever",
@@ -111,9 +111,13 @@ def test_dpr_modules(caplog=None):
                                                                            0.3350, -0.3412]), torch.ones((1, 10)) * 0.0001))
 
     # test logits and loss
-    logits = model(**features)
-    loss = model.logits_to_loss_per_head(logits, **features)
-    similarity_scores = logits[0].cpu()
+    embeddings = model(**features)
+    query_emb, passage_emb = embeddings[0]
+    assert torch.all(torch.eq(query_emb.cpu(), query_vector.cpu()))
+    assert torch.all(torch.eq(passage_emb.cpu(), passage_vector.cpu()))
+
+    loss = model.logits_to_loss_per_head(embeddings, **features)
+    similarity_scores = model.prediction_heads[0]._embeddings_to_scores(query_emb, passage_emb).cpu()
     assert torch.all(torch.le(similarity_scores - torch.tensor([[-1.8311e-03, -6.3016e+00]]), torch.ones((1, 2)) * 0.0001))
     assert (loss[0].item() - 0.0018) <= 0.0001
 
@@ -202,10 +206,11 @@ def test_dpr_processor(embed_title, passage_ids, passage_attns, use_fast, num_ha
     query_tok = "facebook/dpr-question_encoder-single-nq-base"
     query_tokenizer = Tokenizer.load(query_tok, use_fast=use_fast)
     passage_tok = "facebook/dpr-ctx_encoder-single-nq-base"
-    context_tokenizer = Tokenizer.load(passage_tok, use_fast=use_fast)
+    passage_tokenizer = Tokenizer.load(passage_tok, use_fast=use_fast)
     processor = TextSimilarityProcessor(tokenizer=query_tokenizer,
-                                        passage_tokenizer=context_tokenizer,
-                                        max_seq_len=256,
+                                        passage_tokenizer=passage_tokenizer,
+                                        max_seq_len_query=256,
+                                        max_seq_len_passage=256,
                                         data_dir="data/retriever",
                                         train_filename="nq-train.json",
                                         test_filename="nq-dev.json",
