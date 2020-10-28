@@ -1380,7 +1380,7 @@ class NaturalQuestionsProcessor(QAProcessor):
         if self._is_nq_dict(dictionary):
             dictionary = self._prepare_dict(dictionary=dictionary)
 
-        dictionary_tokenized = _apply_tokenization(dictionary, self.tokenizer)[0]
+        dictionary_tokenized = _apply_tokenization(dictionary, self.tokenizer, self.answer_type_list)[0]
         n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
         samples = create_samples_qa(dictionary_tokenized,
                                     self.max_query_length,
@@ -1485,6 +1485,7 @@ class NaturalQuestionsProcessor(QAProcessor):
             answer_type = dictionary["annotations"][0]["yes_no_answer"].lower()
             if answer_type == "none":
                 answer_type = "span"
+        # TODO: answer_type should be in answers since in NQ, each annotator can give either a span, no_answer, yes or no
         converted = {"id": dictionary["example_id"],
                      "context": doc_text,
                      "qas": [{"question": dictionary["question_text"],
@@ -1958,7 +1959,7 @@ class TextSimilarityProcessor(Processor):
         {"text": document_text, "title": xxx, "label": "hard_negative", "external_id": abb134},
         ...]}
         """
-        dicts = read_dpr_json(file)
+        dicts = read_dpr_json(file, max_samples=self.max_samples)
         return dicts
 
     def _normalize_question(self, question: str) -> str:
@@ -2087,7 +2088,7 @@ class TextSimilarityProcessor(Processor):
         return [sample.features]
 
 
-def _apply_tokenization(dictionary, tokenizer):
+def _apply_tokenization(dictionary, tokenizer, answer_types_list=[]):
     raw_baskets = []
     dictionary = convert_qa_input_dict(dictionary)
     dictionary["qas"] = _is_impossible_to_answer_type(dictionary["qas"])
@@ -2103,10 +2104,13 @@ def _apply_tokenization(dictionary, tokenizer):
             external_id = question["id"]
             question_text = question["question"]
             for answer in question["answers"]:
-                if answer["text"] == "":
-                    answer_type = "no_answer"
+                if 'answer_type' in answer.keys() and answer['answer_type'] in answer_types_list:
+                    answer_type = answer['answer_type']
                 else:
-                    answer_type = "span"
+                    if answer["text"] == "":
+                        answer_type = "no_answer"
+                    else:
+                        answer_type = "span"
                 a = {"text": answer["text"],
                      "offset": answer["answer_start"],
                      "answer_type": answer_type}

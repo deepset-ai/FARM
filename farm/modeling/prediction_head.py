@@ -4,9 +4,9 @@ import os
 import numpy as np
 
 from pathlib import Path
-from transformers.modeling_bert import BertForPreTraining, BertLayerNorm, ACT2FN
+from transformers.modeling_bert import BertForPreTraining, ACT2FN
 from transformers.modeling_auto import AutoModelForQuestionAnswering, AutoModelForTokenClassification, AutoModelForSequenceClassification
-from typing import List
+from typing import List, Tuple
 
 import torch
 from torch import nn
@@ -17,6 +17,12 @@ from farm.utils import convert_iob_to_simple_tags, try_get
 from farm.modeling.predictions import QACandidate, QAPred
 
 logger = logging.getLogger(__name__)
+
+try:
+    from apex.normalization.fused_layer_norm import FusedLayerNorm as BertLayerNorm
+except (ImportError, AttributeError) as e:
+    logger.info("Better speed can be achieved with apex installed from https://www.github.com/nvidia/apex .")
+    BertLayerNorm = torch.nn.LayerNorm
 
 
 class PredictionHead(nn.Module):
@@ -957,7 +963,7 @@ class QuestionAnsweringHead(PredictionHead):
         :type n_best_per_sample: int
         """
         super(QuestionAnsweringHead, self).__init__()
-        if kwargs is not None:
+        if len(kwargs) > 0:
             logger.warning(f"Some unused parameters are passed to the QuestionAnsweringHead. "
                            f"Might not be a problem. Params: {json.dumps(kwargs)}")
         self.layer_dims = layer_dims
@@ -1004,7 +1010,7 @@ class QuestionAnsweringHead(PredictionHead):
             # load all weights from model
             full_qa_model = AutoModelForQuestionAnswering.from_pretrained(pretrained_model_name_or_path)
             # init empty head
-            head = cls(layer_dims=[full_qa_model.config.hidden_size, 2], loss_ignore_index=-1, task_name="question_answering")
+            head = cls(layer_dims=[full_qa_model.config.hidden_size, 2], task_name="question_answering")
             # transfer weights for head from full model
             head.feed_forward.feed_forward[0].load_state_dict(full_qa_model.qa_outputs.state_dict())
             del full_qa_model
@@ -1554,6 +1560,9 @@ def pick_single_fn(heads, fn_name):
 
 
 class TextSimilarityHead(PredictionHead):
+    """
+    Trains a head on predicting the similarity of two texts like in Dense Passage Retrieval.
+    """
     def __init__(self, similarity_function="dot_product", **kwargs):
         super(TextSimilarityHead, self).__init__()
 
@@ -1609,21 +1618,35 @@ class TextSimilarityHead(PredictionHead):
         elif "cosine" in self.similarity_function:
             return TextSimilarityHead.cosine_scores
 
-    def forward(self, query_vectors, context_vectors):
+    def forward(self, query_vectors:torch.Tensor, context_vectors:torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Computes the log softmax similarity scores between two 2-dimensional tensors
+        Only packs the embeddings from both language models into a tuple. No further modification.
+        The similarity calculation is handled later to enable distributed training (DDP)
+        while keeping the support for in-batch negatives.
+        (Gather all embeddings from nodes => then do similarity scores + loss)
 
-        :param query_vectors: tensor of query embeddings from BiAdaptive model
+        :param query_vectors: Tensor of query embeddings from BiAdaptive model
                           of dimension n1 x D,
                           where n1 is the number of queries/batch size and D is embedding size
         :type query_vectors: torch.Tensor
-        :param context_vectors: tensor of context/passage embeddings from BiAdaptive model
+        :param context_vectors: Tensor of context/passage embeddings from BiAdaptive model
                           of dimension n2 x D,
                           where n2 is the number of queries/batch size and D is embedding size
         :type context_vectors: torch.Tensor
 
-        :return: log softmax similarity score of each query with each context/passage (dimension: n1xn2)
+        :return: (query_vectors, context_vectors)
         """
+        return (query_vectors, context_vectors)
+
+    def _embeddings_to_scores(self, query_vectors:torch.Tensor, context_vectors:torch.Tensor):
+        """
+        Calculates similarity scores between all given query_vectors and context_vectors
+
+        :param query_vectors: Tensor of queries encoded by the query encoder model
+        :param context_vectors: Tensor of passages encoded by the passage encoder model
+        :return: Tensor of log softmax similarity scores of each query with each passage (dimension: n1xn2)
+        """
+
         sim_func = self.get_similarity_function()
         scores = sim_func(query_vectors, context_vectors)
 
@@ -1634,22 +1657,31 @@ class TextSimilarityHead(PredictionHead):
         softmax_scores = nn.functional.log_softmax(scores, dim=1)
         return softmax_scores
 
-    def logits_to_loss(self, logits, **kwargs):
+    def logits_to_loss(self, logits: Tuple[torch.Tensor, torch.Tensor], **kwargs):
         """
-        Computes the loss from similarity scores
+        Computes the loss (Default: NLLLoss) by applying a similarity function (Default: dot product) to the input
+        tuple of (query_vectors, context_vectors) and afterwards applying the loss function on similarity scores.
 
-        :param logits: tensor of log softmax similarity scores of each query with each context/passage (dimension: n1xn2)
-        :type logits: torch.Tensor
+        :param logits: Tuple of Tensors (query_embedding, context_embedding) as returned from forward()
 
         :return: negative log likelihood loss from similarity scores
         """
+        # Prepare predicted scores
+        query_vectors, context_vectors = logits
+        softmax_scores = self._embeddings_to_scores(query_vectors, context_vectors)
+
+        # Prepare Labels
         lm_label_ids = kwargs.get(self.label_tensor_name)
-        positive_idx_per_question = (lm_label_ids.view(-1) == 1).nonzero()
-        loss = self.loss_fct(logits,
-                             torch.tensor(positive_idx_per_question).squeeze(-1).to(logits.device))
+        positive_idx_per_question = torch.nonzero((lm_label_ids.view(-1) == 1), as_tuple=False)
+        #TODO gather global tensors from all nodes for DDP
+        global_positive_idx_per_question = positive_idx_per_question
+        targets = global_positive_idx_per_question.squeeze(-1).to(softmax_scores.device)
+
+        # Calculate loss
+        loss = self.loss_fct(softmax_scores, targets)
         return loss
 
-    def logits_to_preds(self, logits, **kwargs):
+    def logits_to_preds(self, logits: Tuple[torch.Tensor, torch.Tensor], **kwargs):
         """
         Returns predicted ranks(similarity) of passages/context for each query
 
@@ -1658,8 +1690,10 @@ class TextSimilarityHead(PredictionHead):
 
         :return: predicted ranks of passages for each query
         """
-        _, logits_sorted_indices = torch.sort(logits, dim=1, descending=True)
-        return logits_sorted_indices
+        query_vectors, context_vectors = logits
+        softmax_scores = self._embeddings_to_scores(query_vectors, context_vectors)
+        _, sorted_scores = torch.sort(softmax_scores, dim=1, descending=True)
+        return sorted_scores
 
     def prepare_labels(self, **kwargs):
         """
@@ -1674,5 +1708,5 @@ class TextSimilarityHead(PredictionHead):
             labels[i, indx.item()] = 1
         return labels
 
-    def formatted_preds(self, logits, **kwargs):
+    def formatted_preds(self, logits: Tuple[torch.Tensor, torch.Tensor], **kwargs):
         raise NotImplementedError("formatted_preds is not supported in TextSimilarityHead yet!")

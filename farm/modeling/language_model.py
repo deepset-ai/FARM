@@ -42,7 +42,7 @@ from transformers.modeling_xlm_roberta import XLMRobertaModel, XLMRobertaConfig
 from transformers.modeling_distilbert import DistilBertModel, DistilBertConfig
 from transformers.modeling_electra import ElectraModel, ElectraConfig
 from transformers.modeling_camembert import CamembertModel, CamembertConfig
-from transformers.modeling_auto import AutoModel
+from transformers.modeling_auto import AutoModel, AutoConfig
 from transformers.modeling_utils import SequenceSummary
 from transformers.tokenization_bert import load_vocab
 import transformers
@@ -116,7 +116,7 @@ class LanguageModel(nn.Module):
 
         See all supported model variations here: https://huggingface.co/models
 
-        The appropriate language model class is inferred automatically from `pretrained_model_name_or_path`
+        The appropriate language model class is inferred automatically from model config
         or can be manually supplied via `language_model_class`.
 
         :param pretrained_model_name_or_path: The path of the saved pretrained model or its name.
@@ -162,30 +162,70 @@ class LanguageModel(nn.Module):
 
         return language_model
 
-    @classmethod
-    def get_language_model_class(cls, model_name_or_path):
+    @staticmethod
+    def get_language_model_class(model_name_or_path):
         # it's transformers format (either from model hub or local)
         model_name_or_path = str(model_name_or_path)
-        if "xlm" in model_name_or_path and "roberta" in model_name_or_path:
-            language_model_class = 'XLMRoberta'
-        elif 'roberta' in model_name_or_path:
-            language_model_class = 'Roberta'
-        elif 'codebert' in model_name_or_path.lower():
+
+        config = AutoConfig.from_pretrained(model_name_or_path)
+        model_type = config.model_type
+        if model_type == "xlm-roberta":
+            language_model_class = "XLMRoberta"
+        elif model_type == "roberta":
+            if "mlm" in model_name_or_path.lower():
+                raise NotImplementedError("MLM part of codebert is currently not supported in FARM")
+            language_model_class = "Roberta"
+        elif model_type == "camembert":
+            language_model_class = "Camembert"
+        elif model_type == "albert":
+            language_model_class = "Albert"
+        elif model_type == "distilbert":
+            language_model_class = "DistilBert"
+        elif model_type == "bert":
+            language_model_class = "Bert"
+        elif model_type == "xlnet":
+            language_model_class = "XLNet"
+        elif model_type == "electra":
+            language_model_class = "Electra"
+        elif model_type == "dpr":
+            if config.architectures[0] == "DPRQuestionEncoder":
+                language_model_class = "DPRQuestionEncoder"
+            elif config.architectures[0] == "DPRContextEncoder":
+                language_model_class = "DPRContextEncoder"
+            elif config.archictectures[0] == "DPRReader":
+                raise NotImplementedError("DPRReader models are currently not supported.")
+        else:
+            # Fall back to inferring type from model name
+            logger.warning("Could not infer LanguageModel class from config. Trying to infer "
+                           "LanguageModel class from model name.")
+            language_model_class = LanguageModel._infer_language_model_class_from_string(model_name_or_path)
+
+        return language_model_class
+
+    @staticmethod
+    def _infer_language_model_class_from_string(model_name_or_path):
+        # If inferring Language model class from config doesn't succeed,
+        # fall back to inferring Language model class from model name.
+        if "xlm" in model_name_or_path.lower() and "roberta" in model_name_or_path.lower():
+            language_model_class = "XLMRoberta"
+        elif "roberta" in model_name_or_path.lower():
+            language_model_class = "Roberta"
+        elif "codebert" in model_name_or_path.lower():
             if "mlm" in model_name_or_path.lower():
                 raise NotImplementedError("MLM part of codebert is currently not supported in FARM")
             else:
-                language_model_class = 'Roberta'
-        elif 'camembert' in model_name_or_path or 'umberto' in model_name_or_path:
+                language_model_class = "Roberta"
+        elif "camembert" in model_name_or_path.lower() or "umberto" in model_name_or_path.lower():
             language_model_class = "Camembert"
-        elif 'albert' in model_name_or_path:
+        elif "albert" in model_name_or_path.lower():
             language_model_class = 'Albert'
-        elif 'distilbert' in model_name_or_path:
+        elif "distilbert" in model_name_or_path.lower():
             language_model_class = 'DistilBert'
-        elif 'bert' in model_name_or_path:
+        elif "bert" in model_name_or_path.lower():
             language_model_class = 'Bert'
-        elif 'xlnet' in model_name_or_path:
+        elif "xlnet" in model_name_or_path.lower():
             language_model_class = 'XLNet'
-        elif 'electra' in model_name_or_path:
+        elif "electra" in model_name_or_path.lower():
             language_model_class = 'Electra'
         elif "word2vec" in model_name_or_path.lower() or "glove" in model_name_or_path.lower():
             language_model_class = 'WordEmbedding_LM'
@@ -197,6 +237,7 @@ class LanguageModel(nn.Module):
             language_model_class = "DPRContextEncoder"
         else:
             language_model_class = None
+
         return language_model_class
 
     def get_output_dims(self):
@@ -1275,6 +1316,7 @@ class Electra(LanguageModel):
         config.summary_last_dropout = 0
         config.summary_type = 'first'
         config.summary_activation = 'gelu'
+        config.summary_use_proj = False
         electra.pooler = SequenceSummary(config)
         electra.pooler.apply(electra.model._init_weights)
         return electra

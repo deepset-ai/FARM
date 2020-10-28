@@ -42,6 +42,7 @@ def dense_passage_retrieval():
     similarity_function = "dot_product"
     train_filename = "nq-train.json"
     dev_filename = "nq-dev.json"
+    max_samples = None #load a smaller dataset (e.g. for debugging)
 
     # 1.Create question and passage tokenizers
     query_tokenizer = Tokenizer.load(pretrained_model_name_or_path=question_lang_model,
@@ -56,7 +57,7 @@ def dense_passage_retrieval():
     metric = "text_similarity_metric"
     processor = TextSimilarityProcessor(tokenizer=query_tokenizer,
                              passage_tokenizer=context_tokenizer,
-                             max_seq_len=512,
+                             max_seq_len=256,
                              label_list=label_list,
                              metric=metric,
                              data_dir="data/retriever",
@@ -64,7 +65,8 @@ def dense_passage_retrieval():
                              dev_filename=dev_filename,
                              test_filename=dev_filename,
                              embed_title=embed_title,
-                             num_hard_negatives=num_hard_negatives)
+                             num_hard_negatives=num_hard_negatives,
+                             max_samples=max_samples)
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
     # NOTE: In FARM, the dev set metrics differ from test set metrics in that they are calculated on a token level instead of a word level
