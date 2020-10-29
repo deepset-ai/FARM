@@ -1268,6 +1268,7 @@ class SquadProcessor(QAProcessor):
                                          max_seq_len=self.max_seq_len,
                                          sp_toks_start=self.sp_toks_start,
                                          sp_toks_mid=self.sp_toks_mid,
+                                         sp_toks_end=self.sp_toks_end,
                                          max_answers=self.max_answers)
         return features
 
@@ -1572,6 +1573,7 @@ class NaturalQuestionsProcessor(QAProcessor):
                                          max_seq_len=self.max_seq_len,
                                          sp_toks_start=self.sp_toks_start,
                                          sp_toks_mid=self.sp_toks_mid,
+                                         sp_toks_end=self.sp_toks_end,
                                          answer_type_list=self.answer_type_list,
                                          max_answers=self.max_answers)
         return features
