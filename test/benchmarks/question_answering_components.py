@@ -10,16 +10,18 @@ import pandas as pd
 from tqdm import tqdm
 import logging
 import json
+from datetime import date
+
 
 logger = logging.getLogger(__name__)
-
 
 task_type = "question_answering"
 sample_file = "samples/question_answering_sample.txt"
 questions_file = "samples/question_answering_questions.txt"
 num_processes = 1
 passages_per_char = 2400 / 1000000      # numerator is number of passages when 1mill chars paired with one of the questions, msl 384, doc stride 128
-output_file = "results_component_test_24_09_20.csv"
+date_str = date.today().strftime("%d_%m_%Y")
+output_file = f"results_component_test_{date_str}.csv"
 
 params = {
     "modelname": ["deepset/bert-base-cased-squad2", "deepset/minilm-uncased-squad2", "deepset/roberta-base-squad2", "deepset/bert-large-uncased-whole-word-masking-squad2", "deepset/xlm-roberta-large-squad2"],

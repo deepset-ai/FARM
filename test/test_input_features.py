@@ -9,6 +9,7 @@ from farm.modeling.tokenization import Tokenizer
 MODEL = "roberta-base"
 SP_TOKENS_START = 1
 SP_TOKENS_MID = 2
+SP_TOKENS_END = 1
 
 def to_list(x):
     try:
@@ -32,7 +33,7 @@ def test_sample_to_features_qa(caplog):
         curr_id = "-".join([str(x) for x in features_gold["id"]])
 
         s = Sample(id=curr_id, clear_text=clear_text, tokenized=tokenized)
-        features = sample_to_features_qa(s, tokenizer, max_seq_len, SP_TOKENS_START, SP_TOKENS_MID)[0]
+        features = sample_to_features_qa(s, tokenizer, max_seq_len, SP_TOKENS_START, SP_TOKENS_MID, SP_TOKENS_END)[0]
         features = to_list(features)
 
         keys = features_gold.keys()
