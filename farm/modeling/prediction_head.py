@@ -14,7 +14,7 @@ from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss, NLLLoss
 
 from farm.data_handler.utils import is_json
 from farm.utils import convert_iob_to_simple_tags, try_get
-from farm.modeling.predictions import QACandidate, QAPred
+from farm.modeling.predictions import QACandidate, QAPred, TextSimilarityPred, TextSimilarityPassage
 
 logger = logging.getLogger(__name__)
 
@@ -1706,4 +1706,42 @@ class TextSimilarityHead(PredictionHead):
         return labels
 
     def formatted_preds(self, logits: Tuple[torch.Tensor, torch.Tensor], **kwargs):
-        raise NotImplementedError("formatted_preds is not supported in TextSimilarityHead yet!")
+        """
+        Returns predicted ranks(similarity) of passages/context for each query
+
+        :param logits: tensor of log softmax similarity scores of each query with each context/passage (dimension: n1xn2)
+        :type logits: torch.Tensor
+
+        :return: predicted ranks of passages for each query
+        """
+        k = kwargs.get("k", 1)
+        query_embedding, passage_embedding = logits
+        scores = self._embeddings_to_scores(query_embedding, passage_embedding)
+        sorted_scores, ranks = torch.sort(scores, dim=1, descending=True)
+        top_k_ranks = ranks[:, :k]
+        predictions = []
+        positive_passages = []
+        all_passages = []
+        for sample in kwargs["samples"]:
+            positive_passages.append([p for p in sample.clear_text["passages"] if p["label"] == "positive"])
+            all_passages.extend(sample.clear_text["passages"])
+
+        assert(len(all_passages) == scores.shape[1])
+
+        for i, passage_indices in enumerate(top_k_ranks):
+            query = kwargs["samples"][i].clear_text["query_text"]
+            top_k_passages = []
+            for idx in passage_indices:
+                top_k_passages.append(TextSimilarityPassage(
+                    text=all_passages[idx]["text"],
+                    label=all_passages[idx]["label"],
+                    score=sorted_scores[i][idx].item(),
+                    title=all_passages[idx]["title"],
+                    passage_id=all_passages[idx]["external_id"]))
+            predictions.append(TextSimilarityPred(id=None,
+                                            prediction=top_k_passages,
+                                            query=query,
+                                            positive_passage=positive_passages[i]))
+        return predictions
+
+
