@@ -69,7 +69,7 @@ class BaseBiAdaptiveModel:
             all_preds.append(preds)
         return all_preds
 
-    def formatted_preds(self, logits, language_model1, language_model2, **kwargs):
+    def formatted_preds(self, logits, **kwargs):
         """
         Format predictions to strings for inference output
 
@@ -81,8 +81,8 @@ class BaseBiAdaptiveModel:
         """
         n_heads = len(self.prediction_heads)
 
+        preds_final = []
         if n_heads == 1:
-            preds_final = []
             # This try catch is to deal with the fact that sometimes we collect preds before passing it to
             # formatted_preds (see Inferencer._get_predictions_and_aggregate()) and sometimes we don't
             # (see Inferencer._get_predictions())
@@ -101,6 +101,8 @@ class BaseBiAdaptiveModel:
                 preds_final += preds
             elif type(preds) == dict and "predictions" in preds:
                 preds_final.append(preds)
+        else:
+            logger.warning("BiAdaptive model supports only 1 prediction head!")
         return preds_final
 
     def connect_heads_with_processor(self, tasks, require_labels=True):

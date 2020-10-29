@@ -315,3 +315,77 @@ class QAPred(Pred):
 
     def to_squad_eval(self):
         return self.to_json(squad=True)
+
+class TextSimilarityPassage:
+    """
+    A single TextSimilarity passage/context.
+    """
+
+    def __init__(self,
+                 text: str,
+                 label: str,
+                 score: str=None,
+                 title: str=None,
+                 passage_id: str=None,
+                 ):
+        """
+        :param text: The passage content
+        :param label: Whether the passage is a positive(contains answer to query) or negative(does not contain answer)
+        :param score: The similarity score of the query and passage assigned by the model
+        :param title: The title of the document the passage is extracted from
+        :param passage_id: The id of the passage
+        """
+
+        self.score = score
+        self.text = text
+        self.title = title
+        self.label = label
+        self.passage_id = passage_id
+
+        # This attribute is used by Haystack to store sample metadata
+        self.meta = None
+
+
+    def to_list(self):
+        return [self.label, self.text, self.passage_id, self.score, self.title]
+
+class TextSimilarityPred(Pred):
+    """ A set of TextSimilarity predictions for a query and set of documents. The candidates are stored in TextSimilarityPred.prediction which is a
+    list of TextSimilarityCandidate objects. Also contains all attributes needed to convert the object into json format and also
+    to create a context window for a UI
+    """
+
+    def __init__(self,
+                 id: str,
+                 prediction: List[TextSimilarityPassage],
+                 query: str,
+                 positive_passage: str = None):
+        """
+        :param id: The id of the passage or document
+        :param prediction: A list of TextSimilarityCandidate objects(top-k similar documents) for the given query
+        :param query: The question being posed
+        :param positive_passage: passage/document containing the answer to the query
+        """
+        super().__init__(id, prediction, context=query)
+        self.id = id
+        self.query = query
+        self.positive_passage = positive_passage
+        self.prediction = prediction
+
+    def to_json(self):
+        """
+        Converts the information stored in the object into a json format.
+
+        :return:
+        """
+        ret = {
+            "task": "text_similarity",
+            "query": self.query,
+            "predictions": [
+                {
+                    "id": self.id,
+                    "positive_passages": self.positive_passage,
+                    "top_k_predictions": self.prediction,
+                }
+            ],
+        }
