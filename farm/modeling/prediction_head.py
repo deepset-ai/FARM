@@ -1089,7 +1089,7 @@ class QuestionAnsweringHead(PredictionHead):
         indices = torch.tril_indices(max_seq_len, max_seq_len, offset=-1, device=start_end_matrix.device)
         start_end_matrix[:, indices[0][:], indices[1][:]] = -888
 
-        # disqualify answers where span is greater than max_seq_len
+        # disqualify answers where answer span is greater than max_answer_length
         # (set the upper triangular matrix to low value, excluding diagonal)
         indices_long_span = torch.triu_indices(max_seq_len, max_seq_len, offset=max_answer_length, device=start_end_matrix.device)
         start_end_matrix[:, indices_long_span[0][:], indices_long_span[1][:]] = -777
