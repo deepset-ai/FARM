@@ -1240,6 +1240,14 @@ class SquadProcessor(QAProcessor):
 
         for index, document in zip(indices, dicts_tokenized):
             for q_idx, raw in enumerate(document):
+                # ignore samples with empty context
+                if raw["document_text"] == "":
+                    logger.warning("Ignoring sample with empty context.")
+                    continue
+                # check if answer string can be found in context
+                for answer in raw["answers"]:
+                    if answer["text"] not in raw["document_text"]:
+                        logger.warning(f"Answer '{answer['text']}' not contained in context.")
                 # In case of Question Answering the external ID is used for document IDs
                 id_external = try_get(ID_NAMES, raw)
                 id_internal = f"{index}-{q_idx}"
