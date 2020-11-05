@@ -33,6 +33,7 @@ class EarlyStopping:
 
     def __init__(
             self,
+            head=0,
             metric="loss",
             save_dir=None,
             mode="min",
@@ -41,6 +42,7 @@ class EarlyStopping:
             min_evals=0,
     ):
         """
+        :param head: the prediction head referenced by the metric.
         :param save_dir: the directory where to save the final best model, if None, no saving.
         :param metric: name of dev set metric to monitor (default: loss) to get extracted from the 0th head or
                        a function that extracts a value from the trainer dev evaluation result.
@@ -53,7 +55,7 @@ class EarlyStopping:
         :param min_delta: minimum difference to a previous best value to count as an improvement.
         :param min_evals: minimum number of evaluations to wait before using eval value
         """
-
+        self.head = head
         self.metric = metric
         self.save_dir = save_dir
         self.mode = mode
@@ -80,7 +82,7 @@ class EarlyStopping:
         """
 
         if isinstance(self.metric, str):
-            eval_value = eval_result[0][self.metric]
+            eval_value = eval_result[self.head][self.metric]
         else:
             eval_value = self.metric(eval_result)
         self.eval_values.append(float(eval_value))
