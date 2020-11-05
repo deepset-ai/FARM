@@ -2196,7 +2196,6 @@ def _check_valid_answer(sample):
         end = answer["end_c"]
         # Cases where the answer is not within the current passage will be turned into no answers by the featurization fn
         if start < 0 or end >= len_passage:
-            logger.warning(f"Answer of sample '{sample.id}' will be turned into 'no answer' as answer offsets exceed context length.")
             continue
         answer_indices = passage_text[start: end + 1]
         answer_text = answer["text"]
