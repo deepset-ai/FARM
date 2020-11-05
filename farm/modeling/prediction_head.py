@@ -11,9 +11,9 @@ from typing import List, Tuple
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss, NLLLoss
-
+from torch.distributed import all_gather
 from farm.data_handler.utils import is_json
-from farm.utils import convert_iob_to_simple_tags, try_get
+from farm.utils import convert_iob_to_simple_tags, try_get, all_gather_list
 from farm.modeling.predictions import QACandidate, QAPred
 
 logger = logging.getLogger(__name__)
@@ -1627,14 +1627,62 @@ class TextSimilarityHead(PredictionHead):
 
         :return: negative log likelihood loss from similarity scores
         """
+
+        #TODO
+        # Buffer size DDP all_gather. Increase if errors like "encoded data exceeds max_size ..." come up
+        global_loss_buf_sz = 150000
+        distributed_world_size = 2
+
         # Prepare predicted scores
         query_vectors, passage_vectors = logits
-        softmax_scores = self._embeddings_to_scores(query_vectors, passage_vectors)
+        #softmax_scores = self._embeddings_to_scores(query_vectors, passage_vectors)
 
         # Prepare Labels
         lm_label_ids = kwargs.get(self.label_tensor_name)
         positive_idx_per_question = torch.nonzero((lm_label_ids.view(-1) == 1), as_tuple=False)
         #TODO gather global tensors from all nodes for DDP
+
+
+        # Gather global embeddings from all distributed nodes (DDP)
+        if distributed_world_size > 1:
+            q_vector_to_send = torch.empty_like(query_vectors).cpu().copy_(query_vectors).detach_()
+            ctx_vector_to_send = torch.empty_like(passage_vectors).cpu().copy_(passage_vectors).detach_()
+
+            global_question_ctx_vectors = all_gather_list(
+                [q_vector_to_send, ctx_vector_to_send, positive_idx_per_question],
+                max_size=global_loss_buf_sz)
+
+            global_query_vectors = []
+            global_context_vectors = []
+            global_positive_idx_per_question = []
+            total_ctxs = 0
+            for i, item in enumerate(global_question_ctx_vectors):
+                q_vector, ctx_vectors, positive_idx, hard_negatives_idxs = item
+
+                if i != self.local_rank:
+                    global_query_vectors.append(q_vector.to(query_vectors.device))
+                    global_context_vectors.append(ctx_vectors.to(passage_vectors.device))
+                    global_positive_idx_per_question.extend([v + total_ctxs for v in positive_idx])
+                else:
+                    global_query_vectors.append(query_vectors)
+                    global_context_vectors.append(passage_vectors)
+                    global_positive_idx_per_question.extend([v + total_ctxs for v in positive_idx_per_question])
+                total_ctxs += ctx_vectors.size(0)
+
+            global_query_vectors = torch.cat(global_query_vectors, dim=0)
+            global_context_vectors = torch.cat(global_context_vectors, dim=0)
+
+        else:
+            global_query_vectors = query_vectors
+            global_context_vectors = passage_vectors
+            global_positive_idx_per_question = positive_idx_per_question
+
+        # Get similarity scores
+        softmax_scores = self._embeddings_to_scores(global_query_vectors, global_context_vectors)
+
+
+
+
         global_positive_idx_per_question = positive_idx_per_question
         targets = global_positive_idx_per_question.squeeze(-1).to(softmax_scores.device)
 
