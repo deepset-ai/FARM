@@ -353,7 +353,9 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
         :return: all logits as torch.tensor or multiple tensors.
         """
 
-        # Run forward pass of language model
+        logger.info(f"Rank: {torch.distributed.get_rank()}, before LM forward")
+
+        # Run forward pass of both language models
         pooled_output = self.forward_lm(**kwargs)
 
         # Run forward pass of (multiple) prediction heads using the output from above

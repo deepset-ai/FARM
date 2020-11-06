@@ -250,11 +250,11 @@ class Trainer:
         self.model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
         # Check that the tokenizer fits the language model
         #TODO: make this compliant for DP / DDP where the model class is wrapped
-        if self.model._get_name() == 'BiAdaptiveModel':
-            self.model.verify_vocab_size(vocab_size1=len(self.data_silo.processor.tokenizer),
-                                         vocab_size2=len(self.data_silo.processor.passage_tokenizer))
-        else:
-            self.model.verify_vocab_size(vocab_size=len(self.data_silo.processor.tokenizer))
+        # if self.model._get_name() == 'BiAdaptiveModel':
+        #     self.model.verify_vocab_size(vocab_size1=len(self.data_silo.processor.tokenizer),
+        #                                  vocab_size2=len(self.data_silo.processor.passage_tokenizer))
+        # else:
+        #     self.model.verify_vocab_size(vocab_size=len(self.data_silo.processor.tokenizer))
         self.model.train()
 
         do_stopping = False
@@ -295,8 +295,9 @@ class Trainer:
 
                 # Move batch of samples to device
                 batch = {key: batch[key].to(self.device) for key in batch}
-
+                logger.info(f"Rank: {torch.distributed.get_rank()}, self.device = {self.device}")
                 # Forward & backward pass through model
+                logger.info(f"Rank: {torch.distributed.get_rank()}, before train => forward()")
                 logits = self.model.forward(**batch)
                 per_sample_loss = self.model.logits_to_loss(logits=logits, global_step=self.global_step, **batch)
                 loss = self.backward_propagate(per_sample_loss, step)
