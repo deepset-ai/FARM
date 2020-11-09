@@ -1641,7 +1641,6 @@ class TextSimilarityHead(PredictionHead):
         positive_idx_per_question = torch.nonzero((lm_label_ids.view(-1) == 1), as_tuple=False)
 
         rank = torch.distributed.get_rank()
-        logger.info(f"Rank: {rank}, before gathering")
         # Gather global embeddings from all distributed nodes (DDP)
         if distributed_world_size > 1:
             q_vector_to_send = torch.empty_like(query_vectors).cpu().copy_(query_vectors).detach_()
@@ -1656,9 +1655,9 @@ class TextSimilarityHead(PredictionHead):
             global_positive_idx_per_question = []
             total_passages = 0
             for i, item in enumerate(global_question_passage_vectors):
-                q_vector, p_vectors, positive_idx, hard_negatives_idxs = item
+                q_vector, p_vectors, positive_idx = item
 
-                if i != self.local_rank:
+                if i != rank:
                     global_query_vectors.append(q_vector.to(query_vectors.device))
                     global_passage_vectors.append(p_vectors.to(passage_vectors.device))
                     global_positive_idx_per_question.extend([v + total_passages for v in positive_idx])
@@ -1670,12 +1669,12 @@ class TextSimilarityHead(PredictionHead):
 
             global_query_vectors = torch.cat(global_query_vectors, dim=0)
             global_passage_vectors = torch.cat(global_passage_vectors, dim=0)
-
+            global_positive_idx_per_question = torch.LongTensor(global_positive_idx_per_question)
         else:
             global_query_vectors = query_vectors
             global_passage_vectors = passage_vectors
+            #TODO verify conversion
             global_positive_idx_per_question = positive_idx_per_question
-        logger.info(f"Rank: {rank}, after gathering")
 
         # Get similarity scores
         softmax_scores = self._embeddings_to_scores(global_query_vectors, global_passage_vectors)

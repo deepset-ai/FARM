@@ -295,9 +295,7 @@ class Trainer:
 
                 # Move batch of samples to device
                 batch = {key: batch[key].to(self.device) for key in batch}
-                logger.info(f"Rank: {torch.distributed.get_rank()}, self.device = {self.device}")
                 # Forward & backward pass through model
-                logger.info(f"Rank: {torch.distributed.get_rank()}, before train => forward()")
                 logits = self.model.forward(**batch)
                 per_sample_loss = self.model.logits_to_loss(logits=logits, global_step=self.global_step, **batch)
                 loss = self.backward_propagate(per_sample_loss, step)
