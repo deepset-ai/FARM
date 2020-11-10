@@ -1716,7 +1716,9 @@ class TextSimilarityHead(PredictionHead):
         """
         label_ids = kwargs.get(self.label_tensor_name)
         labels = torch.zeros(label_ids.size(0), label_ids.numel())
-        positive_indices = (label_ids.view(-1) == 1).nonzero()
+        
+        positive_indices = torch.nonzero(label_ids.view(-1) == 1, as_tuple=False)
+
         for i, indx in enumerate(positive_indices):
             labels[i, indx.item()] = 1
         return labels
