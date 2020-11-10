@@ -1524,7 +1524,18 @@ class TextSimilarityHead(PredictionHead):
     """
     Trains a head on predicting the similarity of two texts like in Dense Passage Retrieval.
     """
-    def __init__(self, similarity_function="dot_product", **kwargs):
+    def __init__(self, similarity_function: str = "dot_product", global_loss_buffer_size: int = 150000, **kwargs):
+        """
+        Init the TextSimilarityHead.
+
+        :param similarity_function: Function to calculate similarity between queries and passage embeddings.
+                                    Choose either "dot_product" (Default) or "cosine".
+        :param global_loss_buffer_size: Buffer size for all_gather() in DDP.
+                                        Increase if errors like "encoded data exceeds max_size ..." come up
+
+        :param kwargs:
+        """
+
         super(TextSimilarityHead, self).__init__()
 
         self.similarity_function = similarity_function
@@ -1532,7 +1543,7 @@ class TextSimilarityHead(PredictionHead):
         self.task_name = "text_similarity"
         self.model_type = "text_similarity"
         self.ph_output_type = "per_sequence"
-
+        self.global_loss_buffer_size = global_loss_buffer_size
         self.generate_config()
 
     @classmethod
@@ -1628,10 +1639,11 @@ class TextSimilarityHead(PredictionHead):
         :return: negative log likelihood loss from similarity scores
         """
 
-        #TODO
-        # Buffer size DDP all_gather. Increase if errors like "encoded data exceeds max_size ..." come up
-        global_loss_buf_sz = 150000
-        distributed_world_size = 2
+        # Check if DDP is initialized
+        try:
+            rank = torch.distributed.get_rank()
+        except AssertionError:
+            rank = -1
 
         # Prepare predicted scores
         query_vectors, passage_vectors = logits
@@ -1640,15 +1652,14 @@ class TextSimilarityHead(PredictionHead):
         lm_label_ids = kwargs.get(self.label_tensor_name)
         positive_idx_per_question = torch.nonzero((lm_label_ids.view(-1) == 1), as_tuple=False)
 
-        rank = torch.distributed.get_rank()
         # Gather global embeddings from all distributed nodes (DDP)
-        if distributed_world_size > 1:
+        if rank != -1:
             q_vector_to_send = torch.empty_like(query_vectors).cpu().copy_(query_vectors).detach_()
             p_vector_to_send = torch.empty_like(passage_vectors).cpu().copy_(passage_vectors).detach_()
 
             global_question_passage_vectors = all_gather_list(
                 [q_vector_to_send, p_vector_to_send, positive_idx_per_question],
-                max_size=global_loss_buf_sz)
+                max_size=self.global_loss_buffer_size)
 
             global_query_vectors = []
             global_passage_vectors = []
@@ -1673,7 +1684,6 @@ class TextSimilarityHead(PredictionHead):
         else:
             global_query_vectors = query_vectors
             global_passage_vectors = passage_vectors
-            #TODO verify conversion
             global_positive_idx_per_question = positive_idx_per_question
 
         # Get similarity scores
