@@ -299,7 +299,7 @@ def write_squad_predictions(predictions, out_filename, predictions_filename=None
         for d in temp["data"]:
             for p in d["paragraphs"]:
                 for q in p["qas"]:
-                    if q["is_impossible"]:
+                    if q.get("is_impossible",False):
                         dev_labels[q["id"]] = "is_impossible"
                     else:
                         dev_labels[q["id"]] = q["answers"][0]["text"]
