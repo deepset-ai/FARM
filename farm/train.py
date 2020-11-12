@@ -250,9 +250,8 @@ class Trainer:
 
         # connect the prediction heads with the right output from processor
         self.model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
-        # Check that the tokenizer fits the language model
-        #TODO: make this compliant for DP / DDP where the model class is wrapped
-        if self.model._get_name() == 'BiAdaptiveModel':
+        # Check that the tokenizer(s) fits the language model(s)
+        if hasattr(self.model, "language_model2"):
             self.model.verify_vocab_size(vocab_size1=len(self.data_silo.processor.tokenizer),
                                          vocab_size2=len(self.data_silo.processor.passage_tokenizer))
         else:
@@ -297,7 +296,6 @@ class Trainer:
 
                 # Move batch of samples to device
                 batch = {key: batch[key].to(self.device) for key in batch}
-
                 # Forward & backward pass through model
                 logits = self.model.forward(**batch)
                 per_sample_loss = self.model.logits_to_loss(logits=logits, global_step=self.global_step, **batch)
@@ -367,7 +365,7 @@ class Trainer:
             self.model.connect_heads_with_processor(self.data_silo.processor.tasks, require_labels=True)
 
         # Eval on test set
-        if self.evaluator_test:
+        if self.evaluator_test and self.local_rank in [0, -1]:
             test_data_loader = self.data_silo.get_data_loader("test")
             if test_data_loader is not None:
                 evaluator_test = Evaluator(

@@ -240,7 +240,7 @@ def text_similarity_avg_ranks(preds, labels):
 
     :param preds: list of numpy arrays of dimension n1 x n2 containing n2 predicted ranks for n1 sequences/queries
     :type preds: List of numpy array containing similarity scores for each sequence in batch
-    :param labels: list of arrays of dimension n1 x n2 where each array contains n2 labels(0/1) dindicating whether the sequence/passage is a positive(1) passage or hard_negative(0) passage
+    :param labels: list of arrays of dimension n1 x n2 where each array contains n2 labels(0/1) indicating whether the sequence/passage is a positive(1) passage or hard_negative(0) passage
     :type labels: List of list containing values(0/1)
 
     :return: average predicted ranks of positive sequence/passage for each sample/query

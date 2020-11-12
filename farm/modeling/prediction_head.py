@@ -11,9 +11,9 @@ from typing import List, Tuple
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss, NLLLoss
-
+from torch.distributed import all_gather
 from farm.data_handler.utils import is_json
-from farm.utils import convert_iob_to_simple_tags, try_get
+from farm.utils import convert_iob_to_simple_tags, try_get, all_gather_list
 from farm.modeling.predictions import QACandidate, QAPred
 
 logger = logging.getLogger(__name__)
@@ -1524,7 +1524,18 @@ class TextSimilarityHead(PredictionHead):
     """
     Trains a head on predicting the similarity of two texts like in Dense Passage Retrieval.
     """
-    def __init__(self, similarity_function="dot_product", **kwargs):
+    def __init__(self, similarity_function: str = "dot_product", global_loss_buffer_size: int = 150000, **kwargs):
+        """
+        Init the TextSimilarityHead.
+
+        :param similarity_function: Function to calculate similarity between queries and passage embeddings.
+                                    Choose either "dot_product" (Default) or "cosine".
+        :param global_loss_buffer_size: Buffer size for all_gather() in DDP.
+                                        Increase if errors like "encoded data exceeds max_size ..." come up
+
+        :param kwargs:
+        """
+
         super(TextSimilarityHead, self).__init__()
 
         self.similarity_function = similarity_function
@@ -1532,7 +1543,7 @@ class TextSimilarityHead(PredictionHead):
         self.task_name = "text_similarity"
         self.model_type = "text_similarity"
         self.ph_output_type = "per_sequence"
-
+        self.global_loss_buffer_size = global_loss_buffer_size
         self.generate_config()
 
     @classmethod
@@ -1627,15 +1638,56 @@ class TextSimilarityHead(PredictionHead):
 
         :return: negative log likelihood loss from similarity scores
         """
+
+        # Check if DDP is initialized
+        try:
+            rank = torch.distributed.get_rank()
+        except AssertionError:
+            rank = -1
+
         # Prepare predicted scores
         query_vectors, passage_vectors = logits
-        softmax_scores = self._embeddings_to_scores(query_vectors, passage_vectors)
 
         # Prepare Labels
         lm_label_ids = kwargs.get(self.label_tensor_name)
         positive_idx_per_question = torch.nonzero((lm_label_ids.view(-1) == 1), as_tuple=False)
-        #TODO gather global tensors from all nodes for DDP
-        global_positive_idx_per_question = positive_idx_per_question
+
+        # Gather global embeddings from all distributed nodes (DDP)
+        if rank != -1:
+            q_vector_to_send = torch.empty_like(query_vectors).cpu().copy_(query_vectors).detach_()
+            p_vector_to_send = torch.empty_like(passage_vectors).cpu().copy_(passage_vectors).detach_()
+
+            global_question_passage_vectors = all_gather_list(
+                [q_vector_to_send, p_vector_to_send, positive_idx_per_question],
+                max_size=self.global_loss_buffer_size)
+
+            global_query_vectors = []
+            global_passage_vectors = []
+            global_positive_idx_per_question = []
+            total_passages = 0
+            for i, item in enumerate(global_question_passage_vectors):
+                q_vector, p_vectors, positive_idx = item
+
+                if i != rank:
+                    global_query_vectors.append(q_vector.to(query_vectors.device))
+                    global_passage_vectors.append(p_vectors.to(passage_vectors.device))
+                    global_positive_idx_per_question.extend([v + total_passages for v in positive_idx])
+                else:
+                    global_query_vectors.append(query_vectors)
+                    global_passage_vectors.append(passage_vectors)
+                    global_positive_idx_per_question.extend([v + total_passages for v in positive_idx_per_question])
+                total_passages += p_vectors.size(0)
+
+            global_query_vectors = torch.cat(global_query_vectors, dim=0)
+            global_passage_vectors = torch.cat(global_passage_vectors, dim=0)
+            global_positive_idx_per_question = torch.LongTensor(global_positive_idx_per_question)
+        else:
+            global_query_vectors = query_vectors
+            global_passage_vectors = passage_vectors
+            global_positive_idx_per_question = positive_idx_per_question
+
+        # Get similarity scores
+        softmax_scores = self._embeddings_to_scores(global_query_vectors, global_passage_vectors)
         targets = global_positive_idx_per_question.squeeze(-1).to(softmax_scores.device)
 
         # Calculate loss
@@ -1664,7 +1716,9 @@ class TextSimilarityHead(PredictionHead):
         """
         label_ids = kwargs.get(self.label_tensor_name)
         labels = torch.zeros(label_ids.size(0), label_ids.numel())
-        positive_indices = (label_ids.view(-1) == 1).nonzero()
+        
+        positive_indices = torch.nonzero(label_ids.view(-1) == 1, as_tuple=False)
+
         for i, indx in enumerate(positive_indices):
             labels[i, indx.item()] = 1
         return labels

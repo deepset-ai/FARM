@@ -55,7 +55,8 @@ class DataSilo:
         :type batch_size: int
         :param eval_batch_size: The size of batch that should be returned by the DataLoaders for the dev and test set.
         :type eval_batch_size: int
-        :param distributed: Set to True if the program is running in a distributed setting.
+        :param distributed: Set to True if you are running in a distributed evn, e.g. using DistributedDataParallel.
+                            The DataSilo will init the DataLoader with a DistributedSampler() to distribute batches.
         :type distributed: bool
         :param automatic_loading: Set to False, if you don't want to automatically load data at initialization.
         :type automatic_loading: bool
