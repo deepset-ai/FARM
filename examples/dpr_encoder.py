@@ -41,8 +41,9 @@ def dense_passage_retrieval():
     ########## Settings
     ##########################
     set_all_seeds(seed=42)
-    batch_size = 2
+    batch_size = 4
     n_epochs = 3
+    distributed = False # enable for multi GPU training via DDP
     evaluate_every = 1000
     question_lang_model = "facebook/dpr-question_encoder-single-nq-base"
     passage_lang_model = "facebook/dpr-ctx_encoder-single-nq-base"
@@ -54,8 +55,7 @@ def dense_passage_retrieval():
     train_filename = "nq-train.json"
     dev_filename = "nq-dev.json"
     test_filename = "nq-dev.json"
-    max_samples = 80 #load a smaller dataset (e.g. for debugging)
-    distributed = True
+    max_samples = None # load a smaller dataset (e.g. for debugging)
 
     # For multi GPU Training via DDP we need to get the local rank
     args = parse_arguments()
@@ -78,7 +78,7 @@ def dense_passage_retrieval():
                              max_seq_len_passage=256,
                              label_list=label_list,
                              metric=metric,
-                             data_dir="../../DPR/data/retriever",
+                             data_dir="../data/retriever",
                              train_filename=train_filename,
                              dev_filename=dev_filename,
                              test_filename=test_filename,
@@ -88,7 +88,7 @@ def dense_passage_retrieval():
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
     # NOTE: In FARM, the dev set metrics differ from test set metrics in that they are calculated on a token level instead of a word level
-    data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=False)
+    data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=distributed)
 
 
     # 4. Create an BiAdaptiveModel+
