@@ -3,6 +3,8 @@ import logging
 import os
 import pprint
 from pathlib import Path
+import argparse
+
 
 from farm.data_handler.data_silo import DataSilo
 from farm.data_handler.processor import TextSimilarityProcessor
@@ -14,6 +16,16 @@ from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer
 from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
 from farm.eval import Evaluator
+
+def parse_arguments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--local_rank",
+                        type=int,
+                        default=-1,
+                        help="local_rank for distributed training on GPUs")
+    args = parser.parse_args()
+    return args
+
 
 def dense_passage_retrieval():
     logging.basicConfig(
@@ -29,9 +41,9 @@ def dense_passage_retrieval():
     ########## Settings
     ##########################
     set_all_seeds(seed=42)
-    device, n_gpu = initialize_device_settings(use_cuda=True)
-    batch_size = 2
+    batch_size = 4
     n_epochs = 3
+    distributed = False # enable for multi GPU training via DDP
     evaluate_every = 1000
     question_lang_model = "facebook/dpr-question_encoder-single-nq-base"
     passage_lang_model = "facebook/dpr-ctx_encoder-single-nq-base"
@@ -43,7 +55,11 @@ def dense_passage_retrieval():
     train_filename = "nq-train.json"
     dev_filename = "nq-dev.json"
     test_filename = "nq-dev.json"
-    max_samples = None #load a smaller dataset (e.g. for debugging)
+    max_samples = None # load a smaller dataset (e.g. for debugging)
+
+    # For multi GPU Training via DDP we need to get the local rank
+    args = parse_arguments()
+    device, n_gpu = initialize_device_settings(use_cuda=True, local_rank=args.local_rank)
 
     # 1.Create question and passage tokenizers
     query_tokenizer = Tokenizer.load(pretrained_model_name_or_path=question_lang_model,
@@ -58,11 +74,11 @@ def dense_passage_retrieval():
     metric = "text_similarity_metric"
     processor = TextSimilarityProcessor(tokenizer=query_tokenizer,
                              passage_tokenizer=passage_tokenizer,
-                             max_seq_len_query=256,
+                             max_seq_len_query=64,
                              max_seq_len_passage=256,
                              label_list=label_list,
                              metric=metric,
-                             data_dir="data/retriever",
+                             data_dir="../data/retriever",
                              train_filename=train_filename,
                              dev_filename=dev_filename,
                              test_filename=test_filename,
@@ -72,7 +88,7 @@ def dense_passage_retrieval():
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
     # NOTE: In FARM, the dev set metrics differ from test set metrics in that they are calculated on a token level instead of a word level
-    data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=False)
+    data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=distributed)
 
 
     # 4. Create an BiAdaptiveModel+
@@ -104,7 +120,8 @@ def dense_passage_retrieval():
         n_batches=len(data_silo.loaders["train"]),
         n_epochs=n_epochs,
         grad_acc_steps=1,
-        device=device
+        device=device,
+        distributed=distributed
     )
 
     # 6. Feed everything to the Trainer, which keeps care of growing our model and evaluates it from time to time
