@@ -1,8 +1,7 @@
 import logging
 import pytest
 import re
-from transformers import BertTokenizer, BertTokenizerFast, RobertaTokenizer, XLNetTokenizer, RobertaTokenizerFast
-from transformers import ElectraTokenizerFast
+from transformers import BertTokenizer, BertTokenizerFast, RobertaTokenizer, XLNetTokenizer, ElectraTokenizerFast
 
 from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
 
@@ -272,8 +271,8 @@ def test_fast_bert_tokenizer_strip_accents(caplog):
                                use_fast=True,
                                strip_accents=False)
     assert type(tokenizer) is BertTokenizerFast
+    assert tokenizer.do_lower_case
     assert tokenizer._tokenizer._parameters['strip_accents'] is False
-    assert tokenizer._tokenizer._parameters['lowercase']
 
 
 def test_fast_electra_tokenizer(caplog):

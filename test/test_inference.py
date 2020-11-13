@@ -3,6 +3,7 @@ import numpy as np
 import transformers
 
 from farm.infer import Inferencer
+from transformers import BertTokenizerFast
 
 
 @pytest.mark.parametrize("streaming", [True, False])
@@ -105,7 +106,7 @@ def test_inferencer_with_fast_bert_tokenizer():
     model = Inferencer.load("bert-base-german-cased", task_type='text_classification',
                             use_fast=True, num_processes=0)
     tokenizer = model.processor.tokenizer
-    assert type(tokenizer) is transformers.tokenization_bert.BertTokenizerFast
+    assert type(tokenizer) is BertTokenizerFast
 
 
 if __name__ == "__main__":
