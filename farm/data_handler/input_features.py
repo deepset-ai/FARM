@@ -245,7 +245,7 @@ def samples_to_features_ner(
     return [feature_dict]
 
 
-def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=True):
+def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=True, masked_lm_prob=0.15):
     """
     Convert a raw sample (pair of sentences as tokenized strings) into a proper training sample with
     IDs, LM labels, padding_mask, CLS and SEP tokens etc.
@@ -255,6 +255,8 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
     :param max_seq_len: Maximum length of sequence.
     :type max_seq_len: int
     :param tokenizer: Tokenizer
+    :param masked_lm_prob: probability of masking a token
+    :type masked_lm_prob: float
     :return: InputFeatures, containing all inputs and labels of one sample as IDs (as used for model training)
     """
 
@@ -264,10 +266,10 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
 
         # mask random words
         tokens_a, t1_label = mask_random_words(tokens_a, tokenizer.vocab,
-                                               token_groups=sample.tokenized["text_a"]["start_of_word"])
+                                               token_groups=sample.tokenized["text_a"]["start_of_word"], masked_lm_prob=masked_lm_prob)
 
         tokens_b, t2_label = mask_random_words(tokens_b, tokenizer.vocab,
-                                               token_groups=sample.tokenized["text_b"]["start_of_word"])
+                                               token_groups=sample.tokenized["text_b"]["start_of_word"], masked_lm_prob=masked_lm_prob)
 
         if tokenizer.is_fast:
             # Detokenize input as fast tokenizer can't handle tokenized input
@@ -290,7 +292,7 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
         tokens_a = sample.tokenized["text_a"]["tokens"]
         tokens_b = None
         tokens_a, t1_label = mask_random_words(tokens_a, tokenizer.vocab,
-                                               token_groups=sample.tokenized["text_a"]["start_of_word"])
+                                               token_groups=sample.tokenized["text_a"]["start_of_word"], masked_lm_prob=masked_lm_prob)
         if tokenizer.is_fast:
             # Detokenize input as fast tokenizer can't handle tokenized input
             tokens_a = " ".join(tokens_a)
