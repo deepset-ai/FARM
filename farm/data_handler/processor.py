@@ -2022,7 +2022,8 @@ class TextSimilarityProcessor(Processor):
                 text=query,
                 max_length=self.max_seq_len_query,
                 add_special_tokens=True,
-                truncation_strategy='do_not_truncate',
+                truncation=True,
+                truncation_strategy='longest_first',
                 padding="max_length",
                 return_token_type_ids=True,
             )
