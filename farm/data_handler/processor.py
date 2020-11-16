@@ -845,6 +845,8 @@ class BertStyleLMProcessor(Processor):
         next_sent_pred_style="sentence",
         max_docs=None,
         proxies=None,
+        masked_lm_prob=0.15,
+        
         **kwargs
     ):
         """
@@ -885,6 +887,8 @@ class BertStyleLMProcessor(Processor):
         :param proxies: proxy configuration to allow downloads of remote datasets.
                         Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
         :type proxies: dict
+        :param masked_lm_prob: probability of masking a token
+        :type masked_lm_prob: float
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
         """
@@ -910,6 +914,8 @@ class BertStyleLMProcessor(Processor):
         self.add_task("lm", "acc", list(self.tokenizer.vocab) + added_tokens)
         if self.next_sent_pred:
             self.add_task("nextsentence", "acc", ["False", "True"])
+        self.masked_lm_prob = masked_lm_prob
+
 
     def get_added_tokens(self):
         dictionary = self.tokenizer.added_tokens_encoder
@@ -1064,7 +1070,7 @@ class BertStyleLMProcessor(Processor):
     def _sample_to_features(self, sample) -> dict:
         features = samples_to_features_bert_lm(
             sample=sample, max_seq_len=self.max_seq_len, tokenizer=self.tokenizer,
-            next_sent_pred=self.next_sent_pred
+            next_sent_pred=self.next_sent_pred, masked_lm_prob=self.masked_lm_prob
         )
         return features
 
@@ -1205,7 +1211,6 @@ class SquadProcessor(QAProcessor):
             tasks={},
             proxies=proxies
         )
-
         if metric and label_list:
             self.add_task("question_answering", metric, label_list)
         else:
