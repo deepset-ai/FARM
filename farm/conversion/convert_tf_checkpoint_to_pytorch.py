@@ -21,7 +21,7 @@ from __future__ import print_function
 import argparse
 
 import torch
-from farm.modeling.bert.modeling import (
+from transformers.modeling_bert import (
     BertConfig,
     BertForPreTraining,
     load_tf_weights_in_bert,
