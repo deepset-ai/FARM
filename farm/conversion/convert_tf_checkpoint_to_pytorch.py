@@ -37,7 +37,7 @@ def convert_tf_checkpoint_to_pytorch(
     model = BertForPreTraining(config)
 
     # Load weights from tf checkpoint
-    load_tf_weights_in_bert(model, tf_checkpoint_path)
+    load_tf_weights_in_bert(model, config, tf_checkpoint_path)
 
     # Save pytorch-model
     print("Save PyTorch model to {}".format(pytorch_dump_path))
