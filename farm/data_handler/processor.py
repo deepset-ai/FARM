@@ -1245,10 +1245,15 @@ class SquadProcessor(QAProcessor):
 
         for index, document in zip(indices, dicts_tokenized):
             for q_idx, raw in enumerate(document):
+                # TODO: These checks dont exist in NQProcessor
                 # ignore samples with empty context
                 if raw["document_text"] == "":
                     logger.warning("Ignoring sample with empty context.")
                     continue
+
+                # Removes answers where text = "". True no_answers should have raw["answers"] = []
+                raw["answers"] = [a for a in raw["answers"] if a["text"]]
+
                 # check if answer string can be found in context
                 for answer in raw["answers"]:
                     if answer["text"] not in raw["document_text"]:
