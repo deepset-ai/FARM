@@ -116,7 +116,7 @@ def read_jsonl(file, proxies=None):
     if not (os.path.exists(file)):
         logger.info(f" Couldn't find {file} locally. Trying to download ...")
         _download_extract_downstream_data(file, proxies=proxies)
-    dicts = [json.loads(l) for l in open(file)]
+    dicts = [json.loads(l) for l in open(file, encoding="utf-8")]
     return dicts
 
 def read_ner_file(filename, sep="\t", proxies=None):
