@@ -59,7 +59,7 @@ class Tokenizer:
     """
 
     @classmethod
-    def load(cls, pretrained_model_name_or_path, tokenizer_class=None, use_fast=False, **kwargs):
+    def load(cls, pretrained_model_name_or_path, tokenizer_class=None, use_fast=True, **kwargs):
         """
         Enables loading of different Tokenizer classes with a uniform interface. Either infer the class from
         model config or define it manually via `tokenizer_class`.
@@ -83,37 +83,37 @@ class Tokenizer:
         logger.info(f"Loading tokenizer of type '{tokenizer_class}'")
         # return appropriate tokenizer object
         ret = None
-        if tokenizer_class == "AlbertTokenizer":
+        if "AlbertTokenizer" in tokenizer_class:
             if use_fast:
                 ret = AlbertTokenizerFast.from_pretrained(pretrained_model_name_or_path, keep_accents=True, **kwargs)
             else:
                 ret = AlbertTokenizer.from_pretrained(pretrained_model_name_or_path, keep_accents=True,  **kwargs)
-        elif tokenizer_class == "XLMRobertaTokenizer":
+        elif "XLMRobertaTokenizer" in tokenizer_class:
             if use_fast:
                 ret = XLMRobertaTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
                 ret = XLMRobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
-        elif "RobertaTokenizer" in tokenizer_class:  # because it also might be fast tokekenizer we use "in"
+        elif "RobertaTokenizer" in tokenizer_class:
             if use_fast:
                 ret = RobertaTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
                 ret = RobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
-        elif "DistilBertTokenizer" in tokenizer_class:  # because it also might be fast tokekenizer we use "in"
+        elif "DistilBertTokenizer" in tokenizer_class:
             if use_fast:
                 ret = DistilBertTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
                 ret = DistilBertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
-        elif "BertTokenizer" in tokenizer_class:  # because it also might be fast tokekenizer we use "in"
+        elif "BertTokenizer" in tokenizer_class:
             if use_fast:
                 ret = BertTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
                 ret = BertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
-        elif tokenizer_class == "XLNetTokenizer":
+        elif "XLNetTokenizer" in tokenizer_class:
             if use_fast:
                 ret = XLNetTokenizerFast.from_pretrained(pretrained_model_name_or_path, keep_accents=True, **kwargs)
             else:
                 ret = XLNetTokenizer.from_pretrained(pretrained_model_name_or_path, keep_accents=True, **kwargs)
-        elif "ElectraTokenizer" in tokenizer_class:  # because it also might be fast tokekenizer we use "in"
+        elif "ElectraTokenizer" in tokenizer_class:
             if use_fast:
                 ret = ElectraTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
@@ -124,18 +124,18 @@ class Tokenizer:
                 ret = EmbeddingTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
                 ret = EmbeddingTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
-        elif tokenizer_class == "CamembertTokenizer":
+        elif "CamembertTokenizer" in tokenizer_class:
             if use_fast:
-                ret = CamembertTokenizerFast._from_pretrained(pretrained_model_name_or_path, **kwargs)
+                ret = CamembertTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
-                ret = CamembertTokenizer._from_pretrained(pretrained_model_name_or_path, **kwargs)
-        elif tokenizer_class == "DPRQuestionEncoderTokenizer" or tokenizer_class == "DPRQuestionEncoderTokenizerFast":
-            if use_fast or tokenizer_class == "DPRQuestionEncoderTokenizerFast":
+                ret = CamembertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        elif "DPRQuestionEncoderTokenizer" in tokenizer_class:
+            if use_fast:
                 ret = DPRQuestionEncoderTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
                 ret = DPRQuestionEncoderTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
-        elif tokenizer_class == "DPRContextEncoderTokenizer" or tokenizer_class == "DPRContextEncoderTokenizerFast":
-            if use_fast or tokenizer_class == "DPRContextEncoderTokenizerFast":
+        elif "DPRContextEncoderTokenizer"  in tokenizer_class:
+            if use_fast:
                 ret = DPRContextEncoderTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
                 ret = DPRContextEncoderTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)

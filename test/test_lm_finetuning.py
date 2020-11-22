@@ -197,8 +197,8 @@ def test_lm_finetuning_custom_vocab(caplog):
     )
     data_silo = DataSilo(processor=processor, batch_size=batch_size, max_processes=1)
 
-    language_model = LanguageModel.load(lang_model, n_added_tokens=len(tokenizer.added_tokens_decoder))
-    lm_prediction_head = BertLMHead.load(lang_model, n_added_tokens=len(tokenizer.added_tokens_decoder))
+    language_model = LanguageModel.load(lang_model, n_added_tokens=len(tokenizer.get_added_vocab()))
+    lm_prediction_head = BertLMHead.load(lang_model, n_added_tokens=len(tokenizer.get_added_vocab()))
     next_sentence_head = NextSentenceHead.load(lang_model)
 
     model = AdaptiveModel(

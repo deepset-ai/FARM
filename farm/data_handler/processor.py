@@ -912,7 +912,7 @@ class BertStyleLMProcessor(Processor):
             self.add_task("nextsentence", "acc", ["False", "True"])
 
     def get_added_tokens(self):
-        dictionary = self.tokenizer.added_tokens_encoder
+        dictionary = self.tokenizer.get_added_vocab()
         sorted_tuples = sorted(dictionary.items(), key=lambda x: x[0])
         return [x[1] for x in sorted_tuples]
 
