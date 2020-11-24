@@ -335,8 +335,8 @@ class Processor(ABC):
         raise NotImplementedError()
 
     def _init_samples_in_baskets(self):
+        all_dicts = [b.raw for b in self.baskets]
         for basket in self.baskets:
-            all_dicts = [b.raw for b in self.baskets]
             try:
                 basket.samples = self._dict_to_samples(dictionary=basket.raw, all_dicts=all_dicts)
                 for num, sample in enumerate(basket.samples):
