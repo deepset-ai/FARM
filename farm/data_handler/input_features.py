@@ -292,7 +292,7 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
 
     if tokenizer.is_fast:
         seq_a_input_ids = tokenizer.convert_tokens_to_ids(tokens_a)
-        seq_b_input_ids = tokenizer.convert_tokens_to_ids(tokens_b) if tokens_b is not None else None
+        seq_b_input_ids = tokenizer.convert_tokens_to_ids(tokens_b) if next_sent_pred else None
 
         input_ids = tokenizer.build_inputs_with_special_tokens(token_ids_0=seq_a_input_ids,
                                                                token_ids_1=seq_b_input_ids)
@@ -301,14 +301,14 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
         # FastTokenizers do not support get_special_tokens_mask, so special_tokens_mask is created manually
         a_token_id = tokenizer.convert_tokens_to_ids("a")
         special_tokens = tokenizer.encode_plus(text="a",
-                                               text_pair="a" if tokens_b is not None else None,
+                                               text_pair="a" if next_sent_pred else None,
                                                add_special_tokens=True,
                                                return_special_tokens_mask=True,
                                                return_token_type_ids=True,
                                                return_tensors=None)
         special_tokens_grid = special_tokens["special_tokens_mask"]
         seq_a_position = special_tokens["input_ids"].index(a_token_id)
-        try:
+        if next_sent_pred:
             seq_b_position = special_tokens["input_ids"].index(a_token_id, seq_a_position + 1)
             special_tokens_mask = special_tokens_grid[:seq_a_position] \
                                   + [0] * len(seq_a_input_ids) \
@@ -316,7 +316,7 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
                                   + [0] * len(seq_b_input_ids) \
                                   + special_tokens_grid[seq_b_position + 1:]
         # No next sentence prediction task, therefore no seq_b
-        except ValueError:
+        else:
             special_tokens_mask = special_tokens_grid[:seq_a_position] \
                                   + [0] * len(seq_a_input_ids) \
                                   + special_tokens_grid[seq_a_position + 1:]
