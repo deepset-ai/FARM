@@ -77,7 +77,7 @@ def sample_to_features_text(
     # Normal case: adding multiple 0 to the right
     # Special cases:
     # a) xlnet pads on the left and uses  "4"  for padding token_type_ids
-    if "XLNetTokenizer" in tokenizer.__class__.__name__:
+    if tokenizer.__class__.__name__ == "XLNetTokenizer":
         pad_on_left = True
         segment_ids = pad(segment_ids, max_seq_len, 4, pad_on_left=pad_on_left)
     else:
@@ -245,7 +245,7 @@ def samples_to_features_ner(
     return [feature_dict]
 
 
-def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=True):
+def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=True, masked_lm_prob=0.15):
     """
     Convert a raw sample (pair of sentences as tokenized strings) into a proper training sample with
     IDs, LM labels, padding_mask, CLS and SEP tokens etc.
@@ -255,6 +255,8 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
     :param max_seq_len: Maximum length of sequence.
     :type max_seq_len: int
     :param tokenizer: Tokenizer
+    :param masked_lm_prob: probability of masking a token
+    :type masked_lm_prob: float
     :return: InputFeatures, containing all inputs and labels of one sample as IDs (as used for model training)
     """
 
@@ -264,10 +266,10 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
 
         # mask random words
         tokens_a, t1_label = mask_random_words(tokens_a, tokenizer.vocab,
-                                               token_groups=sample.tokenized["text_a"]["start_of_word"])
+                                               token_groups=sample.tokenized["text_a"]["start_of_word"], masked_lm_prob=masked_lm_prob)
 
         tokens_b, t2_label = mask_random_words(tokens_b, tokenizer.vocab,
-                                               token_groups=sample.tokenized["text_b"]["start_of_word"])
+                                               token_groups=sample.tokenized["text_b"]["start_of_word"], masked_lm_prob=masked_lm_prob)
 
         # convert lm labels to ids
         t1_label_ids = [-1 if tok == '' else tokenizer.convert_tokens_to_ids(tok) for tok in t1_label]
@@ -283,7 +285,7 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
         tokens_a = sample.tokenized["text_a"]["tokens"]
         tokens_b = None
         tokens_a, t1_label = mask_random_words(tokens_a, tokenizer.vocab,
-                                               token_groups=sample.tokenized["text_a"]["start_of_word"])
+                                               token_groups=sample.tokenized["text_a"]["start_of_word"], masked_lm_prob=masked_lm_prob)
 
         # convert lm labels to ids
         lm_label_ids = [-1 if tok == '' else tokenizer.convert_tokens_to_ids(tok) for tok in t1_label]

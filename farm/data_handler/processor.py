@@ -342,8 +342,8 @@ class Processor(ABC):
         raise NotImplementedError()
 
     def _init_samples_in_baskets(self):
+        all_dicts = [b.raw for b in self.baskets]
         for basket in self.baskets:
-            all_dicts = [b.raw for b in self.baskets]
             try:
                 basket.samples = self._dict_to_samples(dictionary=basket.raw, all_dicts=all_dicts)
                 for num, sample in enumerate(basket.samples):
@@ -1234,6 +1234,8 @@ class BertStyleLMProcessor(Processor):
         next_sent_pred_style="sentence",
         max_docs=None,
         proxies=None,
+        masked_lm_prob=0.15,
+        
         **kwargs
     ):
         """
@@ -1274,6 +1276,8 @@ class BertStyleLMProcessor(Processor):
         :param proxies: proxy configuration to allow downloads of remote datasets.
                         Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
         :type proxies: dict
+        :param masked_lm_prob: probability of masking a token
+        :type masked_lm_prob: float
         :param kwargs: placeholder for passing generic parameters
         :type kwargs: object
         """
@@ -1299,6 +1303,8 @@ class BertStyleLMProcessor(Processor):
         self.add_task("lm", "acc", list(self.tokenizer.vocab) + added_tokens)
         if self.next_sent_pred:
             self.add_task("nextsentence", "acc", ["False", "True"])
+        self.masked_lm_prob = masked_lm_prob
+
 
     def get_added_tokens(self):
         dictionary = self.tokenizer.get_added_vocab()
@@ -1453,7 +1459,7 @@ class BertStyleLMProcessor(Processor):
     def _sample_to_features(self, sample) -> dict:
         features = samples_to_features_bert_lm(
             sample=sample, max_seq_len=self.max_seq_len, tokenizer=self.tokenizer,
-            next_sent_pred=self.next_sent_pred
+            next_sent_pred=self.next_sent_pred, masked_lm_prob=self.masked_lm_prob
         )
         return features
 
@@ -1621,7 +1627,6 @@ class SquadProcessor(QAProcessor):
             tasks={},
             proxies=proxies
         )
-
         if metric and label_list:
             self.add_task("question_answering", metric, label_list)
         else:
@@ -1659,10 +1664,15 @@ class SquadProcessor(QAProcessor):
 
         for index, document in zip(indices, dicts_tokenized):
             for q_idx, raw in enumerate(document):
+                # TODO: These checks dont exist in NQProcessor
                 # ignore samples with empty context
                 if raw["document_text"] == "":
                     logger.warning("Ignoring sample with empty context.")
                     continue
+
+                # Removes answers where text = "". True no_answers should have raw["answers"] = []
+                raw["answers"] = [a for a in raw["answers"] if a["text"]]
+
                 # check if answer string can be found in context
                 for answer in raw["answers"]:
                     if answer["text"] not in raw["document_text"]:
@@ -2590,7 +2600,8 @@ class TextSimilarityProcessor(Processor):
                 text=query,
                 max_length=self.max_seq_len_query,
                 add_special_tokens=True,
-                truncation_strategy='do_not_truncate',
+                truncation=True,
+                truncation_strategy='longest_first',
                 padding="max_length",
                 return_token_type_ids=True,
             )
