@@ -362,6 +362,10 @@ def tokenize_with_metadata(text, tokenizer):
     :rtype: dict
 
     """
+    # normalize all other whitespace characters to " "
+    # Note: using text.split() directly would destroy the offset,
+    # since \n\n\n would be treated similarly as a single \n
+    text = re.sub(r"\s", " ", text)
     # Fast Tokenizers return offsets, so we don't need to calculate them ourselves
     if tokenizer.is_fast:
         tokenized = tokenizer(text, return_offsets_mapping=True, return_special_tokens_mask=True)
@@ -369,20 +373,32 @@ def tokenize_with_metadata(text, tokenizer):
         offsets = []
         start_of_word = []
         previous_token_end = -1
+        # Remove whitespace tokens for RobertaTokenizers (only if multiple whitespaces occur)
+        if "RobertaTokenizer" in tokenizer.__class__.__name__:
+            if "  " in text:
+                whitespace_id = tokenizer.convert_tokens_to_ids('Ġ')
+                while whitespace_id in tokenized["input_ids"]:
+                    whitespace_pos = tokenized["input_ids"].index(whitespace_id)
+                    tokenized["input_ids"].pop(whitespace_pos)
+                    tokenized["special_tokens_mask"].pop(whitespace_pos)
+                    tokenized["offset_mapping"].pop(whitespace_pos)
         for token_id, is_special_token, offset in zip(tokenized["input_ids"],
                                                       tokenized["special_tokens_mask"],
                                                       tokenized["offset_mapping"]):
             if is_special_token == 0:
-                tokens.append(tokenizer.decode([token_id]))
+                # For unknown tokens, XLNetTokenizer's tokenize fn returns the original token string
+                # instead of an [UNK]-token
+                if "XLNetTokenizer" in tokenizer.__class__.__name__ and token_id == tokenizer.unk_token_id:
+                    token_start = offset[0]
+                    token_end = offset[1]
+                    tokens.append(text[token_start:token_end])
+                else:
+                    tokens.append(tokenizer.convert_ids_to_tokens(token_id))
                 offsets.append(offset[0])
                 start_of_word.append(True if offset[0] != previous_token_end else False)
                 previous_token_end = offset[1]
         tokenized = {"tokens": tokens, "offsets": offsets, "start_of_word": start_of_word}
     else:
-        # normalize all other whitespace characters to " "
-        # Note: using text.split() directly would destroy the offset,
-        # since \n\n\n would be treated similarly as a single \n
-        text = re.sub(r"\s", " ", text)
         # split text into "words" (here: simple whitespace tokenizer).
         words = text.split(" ")
         word_offsets = []

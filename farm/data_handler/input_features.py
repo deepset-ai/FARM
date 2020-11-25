@@ -219,7 +219,7 @@ def samples_to_features_ner(
         # Normal case: adding multiple 0 to the right
         # Special cases:
         # a) xlnet pads on the left and uses  "4" for padding token_type_ids
-        if tokenizer.__class__.__name__ == "XLNetTokenizer":
+        if "XLNetTokenizer" in tokenizer.__class__.__name__:
             pad_on_left = True
             segment_ids = pad(segment_ids, max_seq_len, 4, pad_on_left=pad_on_left)
         else:
@@ -269,13 +269,6 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
         tokens_b, t2_label = mask_random_words(tokens_b, tokenizer.vocab,
                                                token_groups=sample.tokenized["text_b"]["start_of_word"])
 
-        if tokenizer.is_fast:
-            # Detokenize input as fast tokenizer can't handle tokenized input
-            tokens_a = " ".join(tokens_a)
-            tokens_a = re.sub(r"(^|\s)(##)", "", tokens_a)
-            tokens_b = " ".join(tokens_b)
-            tokens_b = re.sub(r"(^|\s)(##)", "", tokens_b)
-
         # convert lm labels to ids
         t1_label_ids = [-1 if tok == '' else tokenizer.convert_tokens_to_ids(tok) for tok in t1_label]
         t2_label_ids = [-1 if tok == '' else tokenizer.convert_tokens_to_ids(tok) for tok in t2_label]
@@ -291,28 +284,41 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
         tokens_b = None
         tokens_a, t1_label = mask_random_words(tokens_a, tokenizer.vocab,
                                                token_groups=sample.tokenized["text_a"]["start_of_word"])
-        if tokenizer.is_fast:
-            # Detokenize input as fast tokenizer can't handle tokenized input
-            tokens_a = " ".join(tokens_a)
-            tokens_a = re.sub(r"(^|\s)(##)", "", tokens_a)
 
         # convert lm labels to ids
         lm_label_ids = [-1 if tok == '' else tokenizer.convert_tokens_to_ids(tok) for tok in t1_label]
 
     if tokenizer.is_fast:
-        inputs = tokenizer(text=tokens_a,
-                           text_pair=tokens_b,
-                           add_special_tokens=True,
-                           return_special_tokens_mask=True,
-                           return_token_type_ids=True)
+        seq_a_input_ids = tokenizer.convert_tokens_to_ids(tokens_a)
+        seq_b_input_ids = tokenizer.convert_tokens_to_ids(tokens_b) if tokens_b is not None else None
 
-        seq_b_len = len(sample.tokenized["text_b"]["tokens"]) if "text_b" in sample.tokenized else 0
-        if (len(inputs["input_ids"]) - inputs["special_tokens_mask"].count(1)) != \
-           (len(sample.tokenized["text_a"]["tokens"]) + seq_b_len):
-            logger.error(f"FastTokenizer encoded sample {sample.clear_text['text']} to "
-                         f"{len(inputs['input_ids']) - inputs['special_tokens_mask'].count(1)} tokens, which differs "
-                         f"from number of tokens produced in tokenize_with_metadata(). \n"
-                         f"Further processing is likely to be wrong.")
+        input_ids = tokenizer.build_inputs_with_special_tokens(token_ids_0=seq_a_input_ids,
+                                                               token_ids_1=seq_b_input_ids)
+        segment_ids = tokenizer.create_token_type_ids_from_sequences(token_ids_0=seq_a_input_ids,
+                                                                     token_ids_1=seq_b_input_ids)
+        # FastTokenizers do not support get_special_tokens_mask, so special_tokens_mask is created manually
+        a_token_id = tokenizer.convert_tokens_to_ids("a")
+        special_tokens = tokenizer.encode_plus(text="a",
+                                               text_pair="a" if tokens_b is not None else None,
+                                               add_special_tokens=True,
+                                               return_special_tokens_mask=True,
+                                               return_token_type_ids=True,
+                                               return_tensors=None)
+        special_tokens_grid = special_tokens["special_tokens_mask"]
+        seq_a_position = special_tokens["input_ids"].index(a_token_id)
+        try:
+            seq_b_position = special_tokens["input_ids"].index(a_token_id, seq_a_position + 1)
+            special_tokens_mask = special_tokens_grid[:seq_a_position] \
+                                  + [0] * len(seq_a_input_ids) \
+                                  + special_tokens_grid[seq_a_position + 1:seq_b_position] \
+                                  + [0] * len(seq_b_input_ids) \
+                                  + special_tokens_grid[seq_b_position + 1:]
+        # No next sentence prediction task, therefore no seq_b
+        except ValueError:
+            special_tokens_mask = special_tokens_grid[:seq_a_position] \
+                                  + [0] * len(seq_a_input_ids) \
+                                  + special_tokens_grid[seq_a_position + 1:]
+
     else:
         # encode string tokens to input_ids and add special tokens
         inputs = tokenizer.encode_plus(text=tokens_a,
@@ -325,8 +331,9 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
                                        return_token_type_ids=True
                                        )
 
-    input_ids, segment_ids, special_tokens_mask = inputs["input_ids"], inputs["token_type_ids"], inputs[
-        "special_tokens_mask"]
+        input_ids = inputs["input_ids"]
+        segment_ids = inputs["token_type_ids"]
+        special_tokens_mask = inputs["special_tokens_mask"]
 
     # account for special tokens (CLS, SEP, SEP..) in lm_label_ids
     lm_label_ids = insert_at_special_tokens_pos(lm_label_ids, special_tokens_mask, insert_element=-1)
@@ -421,32 +428,17 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
     # (c.f. create_samples_squad() )
 
     if tokenizer.is_fast:
-        # Use raw text input as fast tokenizer can't handle tokenized input
-        encoded = tokenizer.encode_plus(text=sample.clear_text["question_text"].strip(),
-                                        text_pair=sample.clear_text["passage_text"].strip(),
-                                        add_special_tokens=True,
-                                        truncation=False,
-                                        truncation_strategy='do_not_truncate',
-                                        return_token_type_ids=True,
-                                        return_special_tokens_mask=True,
-                                        return_tensors=None)
+        # Fast Tokenizer does not support encode_plus with pretokenized input, so we just concatenate the input ids
+        question_input_ids = tokenizer.convert_tokens_to_ids(sample.tokenized["question_tokens"])
+        passage_input_ids = tokenizer.convert_tokens_to_ids(sample.tokenized["passage_tokens"])
 
-        n_tokens_encoded = len(encoded["input_ids"]) - encoded["special_tokens_mask"].count(1)
-        n_tokens_with_metadata = len(sample.tokenized["question_tokens"]) + len(sample.tokenized["passage_tokens"])
+        input_ids = tokenizer.build_inputs_with_special_tokens(token_ids_0=question_input_ids,
+                                                               token_ids_1=passage_input_ids)
+        segment_ids = tokenizer.create_token_type_ids_from_sequences(token_ids_0=question_input_ids,
+                                                                     token_ids_1=passage_input_ids)
 
-        if n_tokens_encoded != n_tokens_with_metadata:
-            tokens_encoded = tokenizer.convert_ids_to_tokens(encoded["input_ids"])
-            logger.error(f"FastTokenizer encoded sample to {n_tokens_encoded} tokens,"
-                         f" while the previous tokenize_with_metadata produced {n_tokens_with_metadata} tokens. \n"
-                         f"Further processing is likely to be wrong.\n"
-                         f"FastTokenizer: {tokens_encoded} \n"
-                         f"tokenize_with_metadata: {sample.tokenized['question_tokens'] + sample.tokenized['passage_tokens']}")
-
-        start_of_word = combine_vecs(question_start_of_word,
-                                     passage_start_of_word,
-                                     tokenizer,
-                                     spec_tok_val=0,
-                                     spec_toks_mask=encoded["special_tokens_mask"])
+        len_mid_sep_tokens = len(input_ids) - len(question_input_ids) - len(passage_input_ids) - 2
+        start_of_word = [0] + question_start_of_word + ([0] * len_mid_sep_tokens) + passage_start_of_word + [0]
 
     else:
         encoded = tokenizer.encode_plus(text=sample.tokenized["question_tokens"],
@@ -462,8 +454,8 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
         # Note that in the current implementation, special tokens do not count as start of word.
         start_of_word = combine_vecs(question_start_of_word, passage_start_of_word, tokenizer, spec_tok_val=0)
 
-    input_ids = encoded["input_ids"]
-    segment_ids = encoded["token_type_ids"]
+        input_ids = encoded["input_ids"]
+        segment_ids = encoded["token_type_ids"]
 
     # seq_2_start_t is the index of the first token in the second text sequence (e.g. passage)
     if "RobertaTokenizer" in tokenizer.__class__.__name__:
