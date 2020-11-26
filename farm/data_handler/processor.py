@@ -346,14 +346,17 @@ class Processor(ABC):
                 logger.error(f"Error message: {e}")
 
     def _featurize_samples(self):
+        problematic_samples = []
         for basket in self.baskets:
             for sample in basket.samples:
                 try:
                     sample.features = self._sample_to_features(sample=sample)
                 except Exception as e:
-                    logger.error(f"Could not convert this sample to features: \n {sample}")
-                    logger.error(f"Basket id: id_internal: {basket.id_internal}, id_external: {basket.id_external}")
-                    logger.error(f"Error message: {e}")
+                    problematic_samples.append(sample)
+        if problematic_samples:
+            n_problematic = len(problematic_samples)
+            problematic_id_str = ", ".join([x.id for x in problematic_samples])
+            logger.error(f"Unable to convert {n_problematic} samples to features. Their external ids are : {problematic_id_str}")
 
     @staticmethod
     def _check_sample_features(basket):
@@ -383,10 +386,7 @@ class Processor(ABC):
                 basket_to_remove.append(basket)
         if len(basket_to_remove) > 0:
             # if basket_to_remove is not empty remove the related baskets
-            logger.warning(f"Removing the following baskets because of errors in computing features:")
-            for basket in basket_to_remove:
-                logger.warning(f"Basket id: id_internal: {basket.id_internal}, id_external: {basket.id_external}")
-                self.baskets.remove(basket)
+            self.baskets.remove(basket)
 
         if not keep_baskets:
             # free up some RAM, we don't need baskets from here on
@@ -416,9 +416,9 @@ class Processor(ABC):
         self._featurize_samples()
         if indices:
             if 0 in indices:
-                self._log_samples(2)
+                self._log_samples(1)
         else:
-            self._log_samples(2)
+            self._log_samples(1)
         if return_baskets:
             dataset, tensor_names = self._create_dataset(keep_baskets=True)
             return dataset, tensor_names, self.baskets
@@ -753,7 +753,7 @@ class NERProcessor(Processor):
                          These predefined datasets are defined as the keys in the dict at
                          `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
         :type data_dir: str
-        :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
+        :param label_list: list of labels to predict (strings).
         :type label_list: list
         :param metric: name of metric that shall be used for evaluation, e.g. "seq_f1".
                  Alternatively you can also supply a custom function, that takes preds and labels as args and returns a numerical value.
@@ -790,7 +790,8 @@ class NERProcessor(Processor):
             tasks={},
             proxies=proxies
         )
-
+        if not label_list:
+            raise Exception(f"The NERProcessor needs to be initialized with a non-empty label list ({label_list} was supplied)")
         if metric and label_list:
             self.add_task("ner", metric, label_list)
         else:

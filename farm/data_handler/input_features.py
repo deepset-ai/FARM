@@ -191,25 +191,13 @@ def samples_to_features_ner(
     assert len(initial_mask) == len(input_ids)
 
     for task_name, task in tasks.items():
-        try:
-            label_list = task["label_list"]
-            label_name = task["label_name"]
-            label_tensor_name = task["label_tensor_name"]
-            labels_word = sample.clear_text[label_name]
-            labels_token = expand_labels(labels_word, initial_mask, non_initial_token)
-            # labels_token = add_cls_sep(labels_token, cls_token, sep_token)
-            label_ids = [label_list.index(lt) for lt in labels_token]
-        except ValueError:
-            label_ids = None
-            problematic_labels = set(labels_token).difference(set(label_list))
-            logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
-                           f"\nWe found a problem with labels {str(problematic_labels)}")
-        except KeyError:
-            # For inference mode we don't expect labels
-            label_ids = None
-            logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
-                           "\nIf your are running in *inference* mode: Don't worry!"
-                           "\nIf you are running in *training* mode: Verify you are supplying a proper label list to your processor and check that labels in input data are correct.")
+        label_list = task["label_list"]
+        label_name = task["label_name"]
+        label_tensor_name = task["label_tensor_name"]
+        labels_word = sample.clear_text[label_name]
+        labels_token = expand_labels(labels_word, initial_mask, non_initial_token)
+        # labels_token = add_cls_sep(labels_token, cls_token, sep_token)
+        label_ids = [label_list.index(lt) for lt in labels_token]
 
         # This mask has 1 for real tokens and 0 for padding tokens. Only real
         # tokens are attended to.
