@@ -191,13 +191,22 @@ def samples_to_features_ner(
     assert len(initial_mask) == len(input_ids)
 
     for task_name, task in tasks.items():
-        label_list = task["label_list"]
-        label_name = task["label_name"]
-        label_tensor_name = task["label_tensor_name"]
-        labels_word = sample.clear_text[label_name]
-        labels_token = expand_labels(labels_word, initial_mask, non_initial_token)
-        # labels_token = add_cls_sep(labels_token, cls_token, sep_token)
-        label_ids = [label_list.index(lt) for lt in labels_token]
+        try:
+            label_list = task["label_list"]
+            label_name = task["label_name"]
+            label_tensor_name = task["label_tensor_name"]
+            labels_word = sample.clear_text[label_name]
+            labels_token = expand_labels(labels_word, initial_mask, non_initial_token)
+            # labels_token = add_cls_sep(labels_token, cls_token, sep_token)
+            label_ids = [label_list.index(lt) for lt in labels_token]
+        except ValueError:
+            # Usually triggered if label is not in label list
+            label_ids = None
+        except KeyError:
+            # Usually triggered if there is no label in the sample
+            # This is expected during inference since there are no labels
+            # During training, this is a problem
+            label_ids = None
 
         # This mask has 1 for real tokens and 0 for padding tokens. Only real
         # tokens are attended to.

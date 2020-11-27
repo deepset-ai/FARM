@@ -385,8 +385,9 @@ class Processor(ABC):
                 # remove the entire basket
                 basket_to_remove.append(basket)
         if len(basket_to_remove) > 0:
-            # if basket_to_remove is not empty remove the related baskets
-            self.baskets.remove(basket)
+            for basket in basket_to_remove:
+                # if basket_to_remove is not empty remove the related baskets
+                self.baskets.remove(basket)
 
         if not keep_baskets:
             # free up some RAM, we don't need baskets from here on
