@@ -202,11 +202,17 @@ def samples_to_features_ner(
         except ValueError:
             # Usually triggered if label is not in label list
             label_ids = None
+            problematic_labels = set(labels_token).difference(set(label_list))
+            logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
+                           f"\nWe found a problem with labels {str(problematic_labels)}")
         except KeyError:
             # Usually triggered if there is no label in the sample
             # This is expected during inference since there are no labels
             # During training, this is a problem
             label_ids = None
+            logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
+                           "\nIf your are running in *inference* mode: Don't worry!"
+                           "\nIf you are running in *training* mode: Verify you are supplying a proper label list to your processor and check that labels in input data are correct.")
 
         # This mask has 1 for real tokens and 0 for padding tokens. Only real
         # tokens are attended to.
