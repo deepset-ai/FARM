@@ -256,7 +256,6 @@ class Inferencer:
 
         # b) or from remote transformers model hub
         else:
-            logger.info(f"Could not find `{model_name_or_path}` locally. Try to download from model hub ...")
             if not task_type:
                 raise ValueError("Please specify the 'task_type' of the model you want to load from transformers. "
                                  "Valid options for arg `task_type`:"
