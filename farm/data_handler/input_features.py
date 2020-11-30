@@ -502,7 +502,7 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
     # Roberta has only a single token embedding (!!!). To get around this, we want to have a segment_ids
     # vec that is only 0s
     if tokenizer.__class__.__name__ in ["XLMRobertaTokenizer", "RobertaTokenizer"]:
-        segment_ids = np.zeros_like(segment_ids)
+        segment_ids = list(np.zeros_like(segment_ids))
 
     # The first of the labels will be used in train, and the full array will be used in eval.
     # start of word and spec_tok_mask are not actually needed by model.forward() but are needed for model.formatted_preds()
