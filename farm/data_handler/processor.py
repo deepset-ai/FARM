@@ -429,12 +429,12 @@ class Processor(ABC):
             self._log_samples(1)
         if return_baskets:
             dataset, tensor_names = self._create_dataset(keep_baskets=True)
-            ret = (dataset, tensor_names, self.baskets)
+            ret = [dataset, tensor_names, self.baskets]
         else:
             dataset, tensor_names = self._create_dataset()
             ret = [dataset, tensor_names]
         if return_problematic:
-            ret.append[self.problematic_sample_ids]
+            ret.append(self.problematic_sample_ids)
         return ret
 
     def _log_samples(self, n_samples):
@@ -1243,8 +1243,11 @@ class SquadProcessor(QAProcessor):
             dataset, tensor_names = self._create_dataset(keep_baskets=True)
             ret = [dataset, tensor_names]
         # This mode is for training where we can free ram by removing baskets
+        if return_baskets:
+            dataset, tensor_names = self._create_dataset(keep_baskets=True)
+            ret = [dataset, tensor_names, self.baskets]
         else:
-            dataset, tensor_names = self._create_dataset(keep_baskets=False)
+            dataset, tensor_names = self._create_dataset()
             ret = [dataset, tensor_names]
         if return_problematic:
             ret.append(self.problematic_sample_ids)
