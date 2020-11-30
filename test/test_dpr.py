@@ -236,6 +236,33 @@ def test_dpr_processor(embed_title, passage_ids, passage_attns, use_fast, num_ha
         assert (len(torch.tensor(feat[0]["passage_segment_ids"]).nonzero()) == 0)
 
 
+#TODO add "use_fast" = True, once we update to tokenizers >= 0.9.0,
+# which includes a fix for https://github.com/huggingface/tokenizers/pull/389
+@pytest.mark.parametrize("use_fast", [False])
+@pytest.mark.parametrize("embed_title", [True, False])
+def test_dpr_processor_empty_title(use_fast, embed_title):
+        dict = {'passages': [{'title': '',
+                               'text': '"director Radio Iași); Dragoș-Liviu Vîlceanu; Mihnea-Adrian Vîlceanu; Nathalie-Teona Vîlceanu; Peter Lupu-Volcinschi. Aurora Contescu (n. Volcinschi) (author) Cristian Ion Contescu (scientist, USA); Vlad Adrian (Dusi) Contescu (engineer, Romania); 1. Books Bălan, T. - Documente bucovinene, Cernăuți, 1934, V, p, 39, p. 351, p. 384, pp. 417–418; Bălan, T. - Tezaur documentar sucevean. Catalog de documente 1393-1849, București, 1983, p. 388; Documente și însemnări românești din secolul XVI, București, 1979, doc. XCIV; Ghibănescu, Gheorghe - Surete și izvoade, IX, p. 144; Groholski-Miclescu, Sergiu - Arhiva Genealogica SEVER I. ZOTTA, VI (XI), 1999, 1-4, p. 59-72; Loghin, Constantin - Istoria literaturii române din"',
+                               'label': 'positive',
+                               'external_id': 'b21eaeff-e08b-4548-b5e0-a280f6f4efef'}]}
+
+        passage_tok = "facebook/dpr-ctx_encoder-single-nq-base"
+        passage_tokenizer = Tokenizer.load(passage_tok, use_fast=use_fast)
+        processor = TextSimilarityProcessor(tokenizer=None,
+                                            passage_tokenizer=passage_tokenizer,
+                                            max_seq_len_query=256,
+                                            max_seq_len_passage=256,
+                                            data_dir="data/retriever",
+                                            train_filename="nq-train.json",
+                                            test_filename="nq-dev.json",
+                                            embed_title=embed_title,
+                                            num_hard_negatives=1,
+                                            label_list=["hard_negative", "positive"],
+                                            metric="text_similarity_metric",
+                                            shuffle_negatives=False)
+        _ = processor._dict_to_samples(dict)
+
+
 if __name__=="__main__":
     test_dpr_processor()
-    test_dpr_modules()
+    # test_dpr_modules()
