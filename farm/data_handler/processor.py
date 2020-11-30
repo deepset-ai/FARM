@@ -117,6 +117,7 @@ class Processor(ABC):
         self.baskets = []
 
         self._log_params()
+        self.problematic_sample_ids = set()
 
     def __init_subclass__(cls, **kwargs):
         """ This automatically keeps track of all available subclasses.
@@ -346,17 +347,23 @@ class Processor(ABC):
                 logger.error(f"Error message: {e}")
 
     def _featurize_samples(self):
-        problematic_samples = []
+        curr_problematic_sample_ids = []
         for basket in self.baskets:
             for sample in basket.samples:
                 try:
                     sample.features = self._sample_to_features(sample=sample)
                 except Exception as e:
-                    problematic_samples.append(sample)
-        if problematic_samples:
-            n_problematic = len(problematic_samples)
-            problematic_id_str = ", ".join([x.id for x in problematic_samples])
-            logger.error(f"Unable to convert {n_problematic} samples to features. Their external ids are : {problematic_id_str}")
+                    curr_problematic_sample_ids.append(sample.id)
+        if curr_problematic_sample_ids:
+            self.problematic_sample_ids.update(curr_problematic_sample_ids)
+
+    def log_problematic(self):
+        if self.problematic_sample_ids:
+            n_problematic = len(self.problematic_sample_ids)
+            problematic_id_str = ", ".join(self.problematic_sample_ids)
+            logger.error(
+                f"Unable to convert {n_problematic} samples to features. Their external ids are : {problematic_id_str}")
+            self.problematic_sample_ids = set()
 
     @staticmethod
     def _check_sample_features(basket):
@@ -395,7 +402,7 @@ class Processor(ABC):
         dataset, tensor_names = convert_features_to_dataset(features=features_flat)
         return dataset, tensor_names
 
-    def dataset_from_dicts(self, dicts, indices=None, return_baskets = False):
+    def dataset_from_dicts(self, dicts, indices=None, return_baskets = False, return_problematic=False):
         """
         Contains all the functionality to turn a list of dict objects into a PyTorch Dataset and a
         list of tensor names. This can be used for inference mode.
@@ -422,10 +429,13 @@ class Processor(ABC):
             self._log_samples(1)
         if return_baskets:
             dataset, tensor_names = self._create_dataset(keep_baskets=True)
-            return dataset, tensor_names, self.baskets
+            ret = (dataset, tensor_names, self.baskets)
         else:
             dataset, tensor_names = self._create_dataset()
-            return dataset, tensor_names
+            ret = [dataset, tensor_names]
+        if return_problematic:
+            ret.append[self.problematic_sample_ids]
+        return ret
 
     def _log_samples(self, n_samples):
         logger.info("*** Show {} random examples ***".format(n_samples))
@@ -1217,7 +1227,7 @@ class SquadProcessor(QAProcessor):
             logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
                         "using the default task or add a custom task later via processor.add_task()")
 
-    def dataset_from_dicts(self, dicts, indices=None, return_baskets=False):
+    def dataset_from_dicts(self, dicts, indices=None, return_baskets=False, return_problematic=False):
         """ Overwrites the method from the base class since Question Answering processing is quite different.
         This method allows for documents and questions to be tokenized earlier. Then SampleBaskets are initialized
         with one document and one question. """
@@ -1231,11 +1241,14 @@ class SquadProcessor(QAProcessor):
         # This mode is for inference where we need to keep baskets
         if return_baskets:
             dataset, tensor_names = self._create_dataset(keep_baskets=True)
-            return dataset, tensor_names, self.baskets
+            ret = [dataset, tensor_names]
         # This mode is for training where we can free ram by removing baskets
         else:
             dataset, tensor_names = self._create_dataset(keep_baskets=False)
-            return dataset, tensor_names
+            ret = [dataset, tensor_names]
+        if return_problematic:
+            ret.append(self.problematic_sample_ids)
+        return ret
 
     def _dicts_to_baskets(self, dicts, indices):
         # Perform tokenization on documents and questions resulting in an unnested list of doc-question pairs

@@ -129,7 +129,7 @@ class DataSilo:
         """
         dicts = [d[1] for d in chunk]
         indices = [x[0] for x in chunk]
-        dataset = processor.dataset_from_dicts(dicts=dicts, indices=indices)
+        dataset = processor.dataset_from_dicts(dicts=dicts, indices=indices, return_problematic=True)
         return dataset
 
     def _get_dataset(self, filename, dicts=None):
@@ -181,10 +181,12 @@ class DataSilo:
             if filename:
                 desc += f" {filename}"
             with tqdm(total=len(dicts), unit=' Dicts', desc=desc) as pbar:
-                for dataset, tensor_names in results:
+                for dataset, tensor_names, problematic_samples in results:
                     datasets.append(dataset)
                     # update progress bar (last step can have less dicts than actual chunk_size)
                     pbar.update(min(multiprocessing_chunk_size, pbar.total-pbar.n))
+                    self.processor.problematic_sample_ids.update(problematic_samples)
+            self.processor.log_problematic()
             # _dataset_from_chunk can return a None in cases where downsampling has occurred
             datasets = [d for d in datasets if d]
             concat_datasets = ConcatDataset(datasets)
@@ -201,6 +203,7 @@ class DataSilo:
         :param test_dicts: (Optional) dicts containing examples for test.
         :return: None
         """
+
         logger.info("\nLoading data into the data silo ..."
                     "{}".format(TRACTOR_SMALL))
         # train data
@@ -218,6 +221,7 @@ class DataSilo:
         else:
             logger.info("No train set is being loaded")
             self.data["train"] = None
+        self.processor.log_problematic()
 
         # dev data
         logger.info("")
@@ -239,6 +243,7 @@ class DataSilo:
         else:
             logger.info("No dev set is being loaded")
             self.data["dev"] = None
+        self.processor.log_problematic()
 
         logger.info("")
         logger.info("LOADING TEST DATA")
@@ -259,6 +264,7 @@ class DataSilo:
         else:
             logger.info("No test set is being loaded")
             self.data["test"] = None
+        self.processor.log_problematic()
 
         if self.caching:
             self._save_dataset_to_cache()
