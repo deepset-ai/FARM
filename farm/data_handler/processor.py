@@ -791,8 +791,6 @@ class NERProcessor(Processor):
             tasks={},
             proxies=proxies
         )
-        if not label_list:
-            raise Exception(f"The NERProcessor needs to be initialized with a non-empty label list ({label_list} was supplied)")
         if metric and label_list:
             self.add_task("ner", metric, label_list)
         else:
