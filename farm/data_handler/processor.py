@@ -427,15 +427,17 @@ class Processor(ABC):
                 self._log_samples(1)
         else:
             self._log_samples(1)
+        # This mode is for inference where we need to keep baskets
         if return_baskets:
             dataset, tensor_names = self._create_dataset(keep_baskets=True)
             ret = [dataset, tensor_names, self.baskets]
+        # This mode is for training where we can free ram by removing baskets
         else:
             dataset, tensor_names = self._create_dataset()
             ret = [dataset, tensor_names]
         if return_problematic:
             ret.append(self.problematic_sample_ids)
-        return ret
+        return tuple(ret)
 
     def _log_samples(self, n_samples):
         logger.info("*** Show {} random examples ***".format(n_samples))
@@ -1241,17 +1243,14 @@ class SquadProcessor(QAProcessor):
         # This mode is for inference where we need to keep baskets
         if return_baskets:
             dataset, tensor_names = self._create_dataset(keep_baskets=True)
-            ret = [dataset, tensor_names]
-        # This mode is for training where we can free ram by removing baskets
-        if return_baskets:
-            dataset, tensor_names = self._create_dataset(keep_baskets=True)
             ret = [dataset, tensor_names, self.baskets]
+        # This mode is for training where we can free ram by removing baskets
         else:
             dataset, tensor_names = self._create_dataset()
             ret = [dataset, tensor_names]
         if return_problematic:
             ret.append(self.problematic_sample_ids)
-        return ret
+        return tuple(ret)
 
     def _dicts_to_baskets(self, dicts, indices):
         # Perform tokenization on documents and questions resulting in an unnested list of doc-question pairs
