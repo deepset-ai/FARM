@@ -362,7 +362,7 @@ class Processor(ABC):
             n_problematic = len(self.problematic_sample_ids)
             problematic_id_str = ", ".join(self.problematic_sample_ids)
             logger.error(
-                f"Unable to convert {n_problematic} samples to features. Their external ids are : {problematic_id_str}")
+                f"Unable to convert {n_problematic} samples to features. Their ids are : {problematic_id_str}")
             self.problematic_sample_ids = set()
 
     @staticmethod

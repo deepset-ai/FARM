@@ -129,8 +129,8 @@ class DataSilo:
         """
         dicts = [d[1] for d in chunk]
         indices = [x[0] for x in chunk]
-        dataset = processor.dataset_from_dicts(dicts=dicts, indices=indices, return_problematic=True)
-        return dataset
+        dataset, tensor_names, problematic_sample_ids = processor.dataset_from_dicts(dicts=dicts, indices=indices, return_problematic=True)
+        return dataset, tensor_names, problematic_sample_ids
 
     def _get_dataset(self, filename, dicts=None):
         if not filename and not dicts:
