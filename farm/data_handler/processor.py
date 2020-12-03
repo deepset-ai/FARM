@@ -28,6 +28,8 @@ from farm.data_handler.samples import (
 )
 
 from farm.data_handler.utils import (
+    pad,
+    expand_labels,
     read_tsv,
     read_tsv_sentence_pair,
     read_docs_from_txt,
@@ -43,7 +45,9 @@ from farm.data_handler.utils import (
     join_sentences
 )
 
-from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
+from farm.data_handler.input_features import get_roberta_seq_2_start, get_camembert_seq_2_start
+
+from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences, insert_at_special_tokens_pos
 from farm.utils import MLFlowLogger as MlLogger
 from farm.utils import try_get
 
@@ -334,6 +338,9 @@ class Processor(ABC):
     def _sample_to_features(cls, sample: Sample) -> dict:
         raise NotImplementedError()
 
+    def _dict_to_samples_and_features(self, dictionary: dict, all_dicts=None) -> [Sample]:
+        raise NotImplementedError()
+
     def _init_samples_in_baskets(self):
         all_dicts = [b.raw for b in self.baskets]
         for basket in self.baskets:
@@ -354,6 +361,20 @@ class Processor(ABC):
                     logger.error(f"Could not convert this sample to features: \n {sample}")
                     logger.error(f"Basket id: id_internal: {basket.id_internal}, id_external: {basket.id_external}")
                     logger.error(f"Error message: {e}")
+
+    def _init_and_featurize_samples_in_baskets(self):
+        for basket in self.baskets:
+            all_dicts = [b.raw for b in self.baskets]
+            try:
+                basket.samples = self._dict_to_samples_and_features(dictionary=basket.raw,
+                                                                    all_dicts=all_dicts,
+                                                                    basket_id_internal=basket.id_internal)
+                for num, sample in enumerate(basket.samples):
+                    sample.id = f"{basket.id_internal}-{num}"
+            except Exception as e:
+                logger.error(f"Could not create sample(s) from this dict: \n {basket.raw}")
+                logger.error(f"Error message: {e}")
+
 
     @staticmethod
     def _check_sample_features(basket):
@@ -411,9 +432,11 @@ class Processor(ABC):
             if indices:
                 id_internal = indices[id_internal]
             self.baskets.append(SampleBasket(raw=d, id_external=id_external, id_internal=id_internal))
-
-        self._init_samples_in_baskets()
-        self._featurize_samples()
+        if self.tokenizer.is_fast:
+            self._init_and_featurize_samples_in_baskets()
+        else:
+            self._init_samples_in_baskets()
+            self._featurize_samples()
         if indices:
             if 0 in indices:
                 self._log_samples(2)
@@ -603,6 +626,97 @@ class TextClassificationProcessor(Processor):
         )
         return features
 
+    def _dict_to_samples_and_features(self, dictionary: dict, **kwargs) -> [Sample]:
+        """This method is used so that we need to tokenize only once when using a fast tokenizer."""
+        text = dictionary["text"]
+        inputs = self.tokenizer.encode_plus(
+            text=text,
+            max_length=self.max_seq_len,
+            truncation=True,
+            add_special_tokens=True,
+            return_offsets_mapping=True,
+            return_token_type_ids=True,
+            return_special_tokens_mask=True,
+        )
+
+        # Get tokens as text with metadata
+        tokens = []
+        offsets = []
+        start_of_word = []
+        previous_token_end = -1
+        for token_id, is_special_token, offset in zip(inputs["input_ids"],
+                                                      inputs["special_tokens_mask"],
+                                                      inputs["offset_mapping"]):
+            if not is_special_token:
+                tokens.append(self.tokenizer.convert_ids_to_tokens(token_id))
+                offsets.append(offset[0])
+                start_of_word.append(True if offset[0] != previous_token_end else False)
+                previous_token_end = offset[1]
+
+        token_dict = {"tokens": tokens,
+                      "offsets": offsets,
+                      "start_of_word": start_of_word}
+
+        if len(token_dict["tokens"]) == 0:
+            logger.warning(f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text}")
+            return []
+
+        # Build feature dict
+        input_ids, segment_ids = inputs["input_ids"], inputs["token_type_ids"]
+
+        # The mask has 1 for real tokens and 0 for padding tokens. Only real
+        # tokens are attended to.
+        padding_mask = [1] * len(input_ids)
+        # Padding up to the sequence length.
+        # Normal case: adding multiple 0 to the right
+        # Special cases:
+        # a) xlnet pads on the left and uses  "4"  for padding token_type_ids
+        if "XLNetTokenizer" in self.tokenizer.__class__.__name__:
+            pad_on_left = True
+            segment_ids = pad(segment_ids, self.max_seq_len, 4, pad_on_left=pad_on_left)
+        else:
+            pad_on_left = False
+            segment_ids = pad(segment_ids, self.max_seq_len, 0, pad_on_left=pad_on_left)
+
+        input_ids = pad(input_ids, self.max_seq_len, self.tokenizer.pad_token_id, pad_on_left=pad_on_left)
+        padding_mask = pad(padding_mask, self.max_seq_len, 0, pad_on_left=pad_on_left)
+
+        assert len(input_ids) == self.max_seq_len
+        assert len(padding_mask) == self.max_seq_len
+        assert len(segment_ids) == self.max_seq_len
+
+        feat_dict = {"input_ids": input_ids,
+                     "padding_mask": padding_mask,
+                     "segment_ids": segment_ids}
+
+        # Add labels for different tasks
+        for task_name, task in self.tasks.items():
+            try:
+                label_name = task["label_name"]
+                label_raw = dictionary[label_name]
+                label_list = task["label_list"]
+                if task["task_type"] == "classification":
+                    # id of label
+                    try:
+                        label_ids = [label_list.index(label_raw)]
+                    except ValueError as e:
+                        raise ValueError(f'[Task: {task_name}] Observed label {label_raw} not in defined label_list')
+                elif task["task_type"] == "multilabel_classification":
+                    # multi-hot-format
+                    label_ids = [0] * len(label_list)
+                    for l in label_raw.split(","):
+                        if l != "":
+                            label_ids[label_list.index(l)] = 1
+                else:
+                    raise ValueError(task["task_type"])
+            except KeyError:
+                # For inference mode we don't expect labels
+                label_ids = None
+            if label_ids is not None:
+                feat_dict[task["label_tensor_name"]] = label_ids
+
+        return [Sample(id=None, clear_text=dictionary, tokenized=token_dict, features=[feat_dict])]
+
 class TextPairClassificationProcessor(TextClassificationProcessor):
     """
     Used to handle text pair classification datasets (e.g. Answer Selection or Natural Inference) that come in
@@ -642,6 +756,112 @@ class TextPairClassificationProcessor(TextClassificationProcessor):
                                                                            tokenizer=self.tokenizer,
                                                                            max_seq_len=self.max_seq_len)
         return [Sample(id=None, clear_text=dictionary, tokenized=tokenized)]
+
+    def _dict_to_samples_and_features(self, dictionary: dict, **kwargs) -> [Sample]:
+        """This method is used so that we need to tokenize only once when using a fast tokenizer."""
+        seq_a = dictionary["text"]
+        seq_b = dictionary["text_b"]
+
+        inputs = self.tokenizer.encode_plus(
+            text=seq_a,
+            text_pair=seq_b,
+            max_length=self.max_seq_len,
+            truncation=True,
+            add_special_tokens=True,
+            return_offsets_mapping=False,
+            return_token_type_ids=True,
+            return_special_tokens_mask=True,
+        )
+        input_ids, segment_ids = inputs["input_ids"], inputs["token_type_ids"]
+
+        # Find position of [SEP]-token
+        # seq_2_start_t is the index of the first token in the second text sequence (e.g. passage)
+        if "RobertaTokenizer" in self.tokenizer.__class__.__name__:
+            seq_2_start_t = get_roberta_seq_2_start(input_ids)
+        elif "CamembertTokenizer" in self.tokenizer.__class__.__name__:
+            seq_2_start_t = get_camembert_seq_2_start(input_ids)
+        else:
+            seq_2_start_t = segment_ids.index(1)
+
+        # Get tokens as text with metadata
+        tokens_a = []
+        tokens_b = []
+        for idx, (token_id, is_special_token) in enumerate(zip(input_ids,
+                                                               inputs["special_tokens_mask"])):
+            if not is_special_token:
+                if idx < seq_2_start_t:
+                    tokens_a.append(self.tokenizer.convert_ids_to_tokens(token_id))
+                else:
+                    tokens_b.append(self.tokenizer.convert_ids_to_tokens(token_id))
+
+        token_dict = {"tokens": tokens_a,
+                      "tokens_b": tokens_b}
+
+        if len(token_dict["tokens"]) == 0:
+            logger.warning(f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {seq_a}")
+            return []
+        if len(token_dict["tokens_b"]) == 0:
+            logger.warning(f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {seq_b}")
+            return []
+
+        # Build feature dict
+
+        # The mask has 1 for real tokens and 0 for padding tokens. Only real
+        # tokens are attended to.
+        padding_mask = [1] * len(input_ids)
+        # Padding up to the sequence length.
+        # Normal case: adding multiple 0 to the right
+        # Special cases:
+        # a) xlnet pads on the left and uses  "4"  for padding token_type_ids
+        if "XLNetTokenizer" in self.tokenizer.__class__.__name__:
+            pad_on_left = True
+            segment_ids = pad(segment_ids, self.max_seq_len, 4, pad_on_left=pad_on_left)
+        else:
+            pad_on_left = False
+            segment_ids = pad(segment_ids, self.max_seq_len, 0, pad_on_left=pad_on_left)
+
+        input_ids = pad(input_ids, self.max_seq_len, self.tokenizer.pad_token_id, pad_on_left=pad_on_left)
+        padding_mask = pad(padding_mask, self.max_seq_len, 0, pad_on_left=pad_on_left)
+
+        assert len(input_ids) == self.max_seq_len
+        assert len(padding_mask) == self.max_seq_len
+        assert len(segment_ids) == self.max_seq_len
+
+        feat_dict = {"input_ids": input_ids,
+                     "padding_mask": padding_mask,
+                     "segment_ids": segment_ids}
+
+        # Add labels for different tasks
+        for task_name, task in self.tasks.items():
+            try:
+                label_name = task["label_name"]
+                label_raw = dictionary[label_name]
+                label_list = task["label_list"]
+                if task["task_type"] == "classification":
+                    # id of label
+                    try:
+                        label_ids = [label_list.index(label_raw)]
+                    except ValueError as e:
+                        raise ValueError(f'[Task: {task_name}] Observed label {label_raw} not in defined label_list')
+                elif task["task_type"] == "multilabel_classification":
+                    # multi-hot-format
+                    label_ids = [0] * len(label_list)
+                    for l in label_raw.split(","):
+                        if l != "":
+                            label_ids[label_list.index(l)] = 1
+                elif task["task_type"] == "regression":
+                    label_ids = [float(label_raw)]
+                else:
+                    raise ValueError(task["task_type"])
+            except KeyError:
+                # For inference mode we don't expect labels
+                label_ids = None
+            if label_ids is not None:
+                feat_dict[task["label_tensor_name"]] = label_ids
+
+        return [Sample(id=None, clear_text=dictionary, tokenized=token_dict, features=[feat_dict])]
+
+
 
 
 #########################################
@@ -719,6 +939,73 @@ class InferenceProcessor(Processor):
             tokenizer=self.tokenizer,
         )
         return features
+
+    def _dict_to_samples_and_features(self, dictionary: dict, **kwargs) -> [Sample]:
+        """This method is used so that we need to tokenize only once when using a fast tokenizer."""
+        text = dictionary["text"]
+        inputs = self.tokenizer.encode_plus(
+            text=text,
+            max_length=self.max_seq_len,
+            truncation=True,
+            add_special_tokens=True,
+            return_offsets_mapping=True,
+            return_token_type_ids=True,
+            return_special_tokens_mask=True,
+        )
+
+        # Get tokens as text with metadata
+        tokens = []
+        offsets = []
+        start_of_word = []
+        previous_token_end = -1
+        for token_id, is_special_token, offset in zip(inputs["input_ids"],
+                                                      inputs["special_tokens_mask"],
+                                                      inputs["offset_mapping"]):
+            if not is_special_token:
+                tokens.append(self.tokenizer.convert_ids_to_tokens(token_id))
+                offsets.append(offset[0])
+                start_of_word.append(True if offset[0] != previous_token_end else False)
+                previous_token_end = offset[1]
+
+        token_dict = {"tokens": tokens,
+                      "offsets": offsets,
+                      "start_of_word": start_of_word}
+
+        if len(token_dict["tokens"]) == 0:
+            logger.warning(
+                f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text}")
+            return []
+
+        # Build feature dict
+        input_ids, segment_ids = inputs["input_ids"], inputs["token_type_ids"]
+
+        # The mask has 1 for real tokens and 0 for padding tokens. Only real
+        # tokens are attended to.
+        padding_mask = [1] * len(input_ids)
+        # Padding up to the sequence length.
+        # Normal case: adding multiple 0 to the right
+        # Special cases:
+        # a) xlnet pads on the left and uses  "4"  for padding token_type_ids
+        if "XLNetTokenizer" in self.tokenizer.__class__.__name__:
+            pad_on_left = True
+            segment_ids = pad(segment_ids, self.max_seq_len, 4, pad_on_left=pad_on_left)
+        else:
+            pad_on_left = False
+            segment_ids = pad(segment_ids, self.max_seq_len, 0, pad_on_left=pad_on_left)
+
+        input_ids = pad(input_ids, self.max_seq_len, self.tokenizer.pad_token_id, pad_on_left=pad_on_left)
+        padding_mask = pad(padding_mask, self.max_seq_len, 0, pad_on_left=pad_on_left)
+
+        assert len(input_ids) == self.max_seq_len
+        assert len(padding_mask) == self.max_seq_len
+        assert len(segment_ids) == self.max_seq_len
+
+        feat_dict = {"input_ids": input_ids,
+                     "padding_mask": padding_mask,
+                     "segment_ids": segment_ids}
+
+        return [Sample(id=None, clear_text=dictionary, tokenized=token_dict, features=[feat_dict])]
+
 
 #########################################
 # Processors for NER data ####
@@ -823,6 +1110,108 @@ class NERProcessor(Processor):
         )
         return features
 
+    def _dict_to_samples_and_features(self, dictionary: dict, **kwargs) -> [Sample]:
+        """This method is used so that we need to tokenize only once when using a fast tokenizer."""
+        text = dictionary["text"]
+        inputs = self.tokenizer.encode_plus(
+            text=text,
+            max_length=self.max_seq_len,
+            truncation=True,
+            add_special_tokens=True,
+            return_offsets_mapping=True,
+            return_token_type_ids=True,
+            return_special_tokens_mask=True,
+        )
+
+        # Get tokens as text with metadata
+        tokens = []
+        offsets = []
+        start_of_word = []
+        previous_token_end = -1
+        for token_id, is_special_token, offset in zip(inputs["input_ids"],
+                                                      inputs["special_tokens_mask"],
+                                                      inputs["offset_mapping"]):
+            if not is_special_token:
+                tokens.append(self.tokenizer.convert_ids_to_tokens(token_id))
+                offsets.append(offset[0])
+                start_of_word.append(True if offset[0] != previous_token_end else False)
+                previous_token_end = offset[1]
+
+        token_dict = {"tokens": tokens,
+                      "offsets": offsets,
+                      "start_of_word": start_of_word}
+
+        if len(token_dict["tokens"]) == 0:
+            logger.warning(
+                f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text}")
+            return []
+
+        # Build feature dict
+        input_ids = inputs["input_ids"]
+        segment_ids = inputs["token_type_ids"]
+        special_tokens_mask = inputs["special_tokens_mask"]
+
+        # We construct a mask to identify the first token of a word. We will later only use them for predicting entities.
+        # Special tokens don't count as initial tokens => we add 0 at the positions of special tokens
+        # For BERT we add a 0 in the start and end (for CLS and SEP)
+        initial_mask = [int(x) for x in token_dict["start_of_word"]]
+        initial_mask = insert_at_special_tokens_pos(initial_mask, special_tokens_mask, insert_element=0)
+        assert len(initial_mask) == len(input_ids)
+
+        for task_name, task in self.tasks.items():
+            try:
+                label_list = task["label_list"]
+                label_name = task["label_name"]
+                label_tensor_name = task["label_tensor_name"]
+                labels_word = dictionary[label_name]
+                labels_token = expand_labels(labels_word, initial_mask, "X")
+                label_ids = [label_list.index(lt) for lt in labels_token]
+            except ValueError:
+                label_ids = None
+                problematic_labels = set(labels_token).difference(set(label_list))
+                logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
+                               f"\nWe found a problem with labels {str(problematic_labels)}")
+            except KeyError:
+                # For inference mode we don't expect labels
+                label_ids = None
+                logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
+                               "\nIf your are running in *inference* mode: Don't worry!"
+                               "\nIf you are running in *training* mode: Verify you are supplying a proper label list to "
+                               "your processor and check that labels in input data are correct.")
+
+        # This mask has 1 for real tokens and 0 for padding tokens. Only real
+        # tokens are attended to.
+        padding_mask = [1] * len(input_ids)
+
+        # Padding up to the sequence length.
+        # Normal case: adding multiple 0 to the right
+        # Special cases:
+        # a) xlnet pads on the left and uses  "4" for padding token_type_ids
+        if "XLNetTokenizer" in self.tokenizer.__class__.__name__:
+            pad_on_left = True
+            segment_ids = pad(segment_ids, self.max_seq_len, 4, pad_on_left=pad_on_left)
+        else:
+            pad_on_left = False
+            segment_ids = pad(segment_ids, self.max_seq_len, 0, pad_on_left=pad_on_left)
+
+        input_ids = pad(input_ids, self.max_seq_len, self.tokenizer.pad_token_id, pad_on_left=pad_on_left)
+        padding_mask = pad(padding_mask, self.max_seq_len, 0, pad_on_left=pad_on_left)
+        initial_mask = pad(initial_mask, self.max_seq_len, 0, pad_on_left=pad_on_left)
+        if label_ids:
+            label_ids = pad(label_ids, self.max_seq_len, 0, pad_on_left=pad_on_left)
+
+        feature_dict = {
+            "input_ids": input_ids,
+            "padding_mask": padding_mask,
+            "segment_ids": segment_ids,
+            "initial_mask": initial_mask,
+        }
+
+        if label_ids:
+            feature_dict[label_tensor_name] = label_ids
+
+        return [Sample(id=None, clear_text=dictionary, tokenized=token_dict, features=[feature_dict])]
+
 
 #####################
 # LM Processors ####
@@ -918,7 +1307,7 @@ class BertStyleLMProcessor(Processor):
 
 
     def get_added_tokens(self):
-        dictionary = self.tokenizer.added_tokens_encoder
+        dictionary = self.tokenizer.get_added_vocab()
         sorted_tuples = sorted(dictionary.items(), key=lambda x: x[0])
         return [x[1] for x in sorted_tuples]
 
@@ -1074,6 +1463,33 @@ class BertStyleLMProcessor(Processor):
         )
         return features
 
+    def _dict_to_samples_and_features(self, dictionary: dict, all_dicts=None, **kwargs) -> [Sample]:
+        doc = dictionary["doc"]
+
+        # Initialize samples
+        # next sentence prediction...
+        if self.next_sent_pred:
+            assert len(all_dicts) > 1, "Need at least 2 documents to sample random sentences from"
+            # ...with single sentences
+            if self.next_sent_pred_style == "sentence":
+                samples = self._dict_to_samples_single_sentence(doc, all_dicts)
+            # ...bert style
+            elif self.next_sent_pred_style == "bert-style":
+                samples = self._dict_to_samples_bert_style(doc, all_dicts)
+            else:
+                raise NotImplementedError("next_sent_pred_style has to be 'sentence' or 'bert-style'")
+
+        # no next sentence prediction
+        else:
+            samples = self._dict_to_samples_no_next_sent(doc)
+
+        # Get features
+        for sample in samples:
+            features = self._sample_to_features(sample)
+            sample.features = features
+
+        return samples
+
     def estimate_n_samples(self, filepath, max_docs=500):
         """
         Estimates the number of samples from a given file BEFORE preprocessing.
@@ -1223,9 +1639,12 @@ class SquadProcessor(QAProcessor):
         with one document and one question. """
 
         dicts = [convert_qa_input_dict(x) for x in dicts]
-        self.baskets = self._dicts_to_baskets(dicts, indices)
-        self._init_samples_in_baskets()
-        self._featurize_samples()
+        if self.tokenizer.is_fast:
+            self.baskets = self._dicts_to_baskets_samples_and_features(dicts, indices)
+        else:
+            self.baskets = self._dicts_to_baskets(dicts, indices)
+            self._init_samples_in_baskets()
+            self._featurize_samples()
         if 0 in indices:
             self._log_samples(2)
         # This mode is for inference where we need to keep baskets
@@ -1289,6 +1708,44 @@ class SquadProcessor(QAProcessor):
                                          sp_toks_end=self.sp_toks_end,
                                          max_answers=self.max_answers)
         return features
+
+    def _dicts_to_baskets_samples_and_features(self, dicts, indices) -> [SampleBasket]:
+        """This method is used so that we need to tokenize only once when using a fast tokenizer."""
+        # Perform tokenization on documents and questions resulting in an unnested list of doc-question pairs
+        dicts_tokenized = [_apply_tokenization(d, self.tokenizer) for d in dicts]
+        n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
+
+        baskets = []
+
+        for index, document in zip(indices, dicts_tokenized):
+            for q_idx, raw in enumerate(document):
+                # ignore samples with empty context
+                if raw["document_text"] == "":
+                    logger.warning("Ignoring sample with empty context")
+                    continue
+                # check if answer string can be found in context
+                for answer in raw["answers"]:
+                    if answer["text"] not in raw["document_text"]:
+                        logger.warning(f"Answer '{answer['text']}' not contained in context.")
+                # In case of Question Answering the external ID is used for document IDs
+                id_external = try_get(ID_NAMES, raw)
+                id_internal = f"{index}-{q_idx}"
+
+                # create out of each Question-Document pair samples of Question-Passage pairs
+                samples = create_samples_qa(dictionary=raw,
+                                            max_query_len=self.max_query_length,
+                                            max_seq_len=self.max_seq_len,
+                                            doc_stride=self.doc_stride,
+                                            n_special_tokens=n_special_tokens)
+                # Add features to samples
+                for num, sample in enumerate(samples):
+                    sample.id = f"{id_internal}-{num}"
+                    sample.features = self._sample_to_features(sample)
+                basket = SampleBasket(raw=raw, id_internal=id_internal, id_external=id_external, samples=samples)
+                baskets.append(basket)
+
+        return baskets
+
 
 class NaturalQuestionsProcessor(QAProcessor):
     """ Used to handle the Natural Question QA dataset"""
@@ -1382,7 +1839,6 @@ class NaturalQuestionsProcessor(QAProcessor):
     def file_to_dicts(self, file: str) -> [dict]:
         dicts = read_jsonl(file, proxies=self.proxies)
         return dicts
-
 
     def _dict_to_samples(self, dictionary: dict, all_dicts=None) -> [Sample]:
         """
@@ -1596,6 +2052,37 @@ class NaturalQuestionsProcessor(QAProcessor):
                                          max_answers=self.max_answers)
         return features
 
+    def _dict_to_samples_and_features(self, dictionary: dict, **kwargs) -> [Sample]:
+        """
+            This method will split the question-document pair from the dictionary into question-passage pairs which will
+        each form one sample. The "t" and "c" in variables stand for token and character respectively.
+        Input dictionaries can have either ["context", "qas"] (internal format) as keys or ["text", "questions"]
+        (api format). Both are supported.
+        """
+        if self._is_nq_dict(dictionary):
+            dictionary = self._prepare_dict(dictionary=dictionary)
+        basket_id_internal = kwargs["basket_id_internal"]
+
+        dictionary_tokenized = _apply_tokenization(dictionary, self.tokenizer, self.answer_type_list)[0]
+        n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
+        samples = create_samples_qa(dictionary_tokenized,
+                                    self.max_query_length,
+                                    self.max_seq_len,
+                                    self.doc_stride,
+                                    n_special_tokens)
+        # Downsample the number of samples with an no_answer label. This fn will always return at least one sample
+        # so that we don't end up with a basket with 0 samples.
+        if not self.inference:
+            samples = self._downsample(samples, self.keep_no_answer)
+
+        # Get features for each sample
+        for num, sample in enumerate(samples):
+            sample.id = f"{basket_id_internal}-{num}"
+            features = self._sample_to_features(sample)
+            sample.features = features
+
+        return samples
+
 
 class RegressionProcessor(Processor):
     """
@@ -1748,6 +2235,87 @@ class RegressionProcessor(Processor):
             tokenizer=self.tokenizer
         )
         return features
+
+    def _dict_to_samples_and_features(self, dictionary: dict, **kwargs) -> [Sample]:
+        """This method is used so that we need to tokenize only once when using a fast tokenizer."""
+        text = dictionary["text"]
+        inputs = self.tokenizer.encode_plus(
+            text=text,
+            max_length=self.max_seq_len,
+            truncation=True,
+            add_special_tokens=True,
+            return_offsets_mapping=True,
+            return_token_type_ids=True,
+            return_special_tokens_mask=True,
+        )
+
+        # Get tokens as text with metadata
+        tokens = []
+        offsets = []
+        start_of_word = []
+        previous_token_end = -1
+        for token_id, is_special_token, offset in zip(inputs["input_ids"],
+                                                      inputs["special_tokens_mask"],
+                                                      inputs["offset_mapping"]):
+            if not is_special_token:
+                tokens.append(self.tokenizer.convert_ids_to_tokens(token_id))
+                offsets.append(offset[0])
+                start_of_word.append(True if offset[0] != previous_token_end else False)
+                previous_token_end = offset[1]
+
+        token_dict = {"tokens": tokens,
+                      "offsets": offsets,
+                      "start_of_word": start_of_word}
+
+        if len(token_dict["tokens"]) == 0:
+            logger.warning(f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text}")
+            return []
+
+        # Build feature dict
+        input_ids, segment_ids = inputs["input_ids"], inputs["token_type_ids"]
+
+        # The mask has 1 for real tokens and 0 for padding tokens. Only real
+        # tokens are attended to.
+        padding_mask = [1] * len(input_ids)
+        # Padding up to the sequence length.
+        # Normal case: adding multiple 0 to the right
+        # Special cases:
+        # a) xlnet pads on the left and uses  "4"  for padding token_type_ids
+        if "XLNetTokenizer" in self.tokenizer.__class__.__name__:
+            pad_on_left = True
+            segment_ids = pad(segment_ids, self.max_seq_len, 4, pad_on_left=pad_on_left)
+        else:
+            pad_on_left = False
+            segment_ids = pad(segment_ids, self.max_seq_len, 0, pad_on_left=pad_on_left)
+
+        input_ids = pad(input_ids, self.max_seq_len, self.tokenizer.pad_token_id, pad_on_left=pad_on_left)
+        padding_mask = pad(padding_mask, self.max_seq_len, 0, pad_on_left=pad_on_left)
+
+        assert len(input_ids) == self.max_seq_len
+        assert len(padding_mask) == self.max_seq_len
+        assert len(segment_ids) == self.max_seq_len
+
+        feat_dict = {"input_ids": input_ids,
+                     "padding_mask": padding_mask,
+                     "segment_ids": segment_ids}
+
+        # Add labels for different tasks
+        for task_name, task in self.tasks.items():
+            try:
+                label_name = task["label_name"]
+                label_raw = dictionary[label_name]
+                if task["task_type"] == "regression":
+                    label_ids = [float(label_raw)]
+                else:
+                    raise ValueError(task["task_type"])
+            except KeyError:
+                # For inference mode we don't expect labels
+                label_ids = None
+            if label_ids is not None:
+                feat_dict[task["label_tensor_name"]] = label_ids
+
+        return [Sample(id=None, clear_text=dictionary, tokenized=token_dict, features=[feat_dict])]
+
 
 class TextSimilarityProcessor(Processor):
     """
@@ -2041,7 +2609,7 @@ class TextSimilarityProcessor(Processor):
             query_input_ids, query_segment_ids, query_padding_mask = query_inputs["input_ids"], query_inputs[
                 "token_type_ids"], query_inputs["attention_mask"]
 
-            # tokeize query
+            # tokenize query
             tokenized_query = self.query_tokenizer.convert_ids_to_tokens(query_input_ids)
 
             if len(tokenized_query) == 0:
@@ -2125,6 +2693,13 @@ class TextSimilarityProcessor(Processor):
 
     def _sample_to_features(self, sample) -> dict:
         return [sample.features]
+
+    def _dict_to_samples_and_features(self, dictionary: dict, **kwargs) -> [Sample]:
+        samples = self._dict_to_samples(dictionary, **kwargs)
+        for sample in samples:
+            sample.features = self._sample_to_features(sample)
+
+        return samples
 
 
 def _apply_tokenization(dictionary, tokenizer, answer_types_list=[]):
