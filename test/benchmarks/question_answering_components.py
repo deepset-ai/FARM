@@ -45,7 +45,7 @@ def benchmark(params, output=output_file):
         df.to_csv(output)
         logger.info("\n\n" + pformat(result) + "\n")
         with open(output_file.replace(".csv", ".md"), "w") as f:
-            f.write(str(retriever_df.to_markdown()))
+            f.write(str(df.to_markdown()))
 
 def warmup_run():
     """ This run warms up the gpu. We saw cases where the first run in the loop took longer or showed different
