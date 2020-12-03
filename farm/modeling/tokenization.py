@@ -59,7 +59,7 @@ class Tokenizer:
     """
 
     @classmethod
-    def load(cls, pretrained_model_name_or_path, tokenizer_class=None, use_fast=False, **kwargs):
+    def load(cls, pretrained_model_name_or_path, tokenizer_class=None, use_fast=True, **kwargs):
         """
         Enables loading of different Tokenizer classes with a uniform interface. Either infer the class from
         model config or define it manually via `tokenizer_class`.
@@ -83,37 +83,37 @@ class Tokenizer:
         logger.info(f"Loading tokenizer of type '{tokenizer_class}'")
         # return appropriate tokenizer object
         ret = None
-        if tokenizer_class == "AlbertTokenizer":
+        if "AlbertTokenizer" in tokenizer_class:
             if use_fast:
                 ret = AlbertTokenizerFast.from_pretrained(pretrained_model_name_or_path, keep_accents=True, **kwargs)
             else:
                 ret = AlbertTokenizer.from_pretrained(pretrained_model_name_or_path, keep_accents=True,  **kwargs)
-        elif tokenizer_class == "XLMRobertaTokenizer":
+        elif "XLMRobertaTokenizer" in tokenizer_class:
             if use_fast:
                 ret = XLMRobertaTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
                 ret = XLMRobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
-        elif "RobertaTokenizer" in tokenizer_class:  # because it also might be fast tokekenizer we use "in"
+        elif "RobertaTokenizer" in tokenizer_class:
             if use_fast:
                 ret = RobertaTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
                 ret = RobertaTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
-        elif "DistilBertTokenizer" in tokenizer_class:  # because it also might be fast tokekenizer we use "in"
+        elif "DistilBertTokenizer" in tokenizer_class:
             if use_fast:
                 ret = DistilBertTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
                 ret = DistilBertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
-        elif "BertTokenizer" in tokenizer_class:  # because it also might be fast tokekenizer we use "in"
+        elif "BertTokenizer" in tokenizer_class:
             if use_fast:
                 ret = BertTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
                 ret = BertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
-        elif tokenizer_class == "XLNetTokenizer":
+        elif "XLNetTokenizer" in tokenizer_class:
             if use_fast:
                 ret = XLNetTokenizerFast.from_pretrained(pretrained_model_name_or_path, keep_accents=True, **kwargs)
             else:
                 ret = XLNetTokenizer.from_pretrained(pretrained_model_name_or_path, keep_accents=True, **kwargs)
-        elif "ElectraTokenizer" in tokenizer_class:  # because it also might be fast tokekenizer we use "in"
+        elif "ElectraTokenizer" in tokenizer_class:
             if use_fast:
                 ret = ElectraTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
@@ -124,18 +124,18 @@ class Tokenizer:
                 ret = EmbeddingTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
                 ret = EmbeddingTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
-        elif tokenizer_class == "CamembertTokenizer":
+        elif "CamembertTokenizer" in tokenizer_class:
             if use_fast:
-                ret = CamembertTokenizerFast._from_pretrained(pretrained_model_name_or_path, **kwargs)
+                ret = CamembertTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
-                ret = CamembertTokenizer._from_pretrained(pretrained_model_name_or_path, **kwargs)
-        elif tokenizer_class == "DPRQuestionEncoderTokenizer" or tokenizer_class == "DPRQuestionEncoderTokenizerFast":
-            if use_fast or tokenizer_class == "DPRQuestionEncoderTokenizerFast":
+                ret = CamembertTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        elif "DPRQuestionEncoderTokenizer" in tokenizer_class:
+            if use_fast:
                 ret = DPRQuestionEncoderTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
                 ret = DPRQuestionEncoderTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
-        elif tokenizer_class == "DPRContextEncoderTokenizer" or tokenizer_class == "DPRContextEncoderTokenizerFast":
-            if use_fast or tokenizer_class == "DPRContextEncoderTokenizerFast":
+        elif "DPRContextEncoderTokenizer"  in tokenizer_class:
+            if use_fast:
                 ret = DPRContextEncoderTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
                 ret = DPRContextEncoderTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
@@ -362,6 +362,10 @@ def tokenize_with_metadata(text, tokenizer):
     :rtype: dict
 
     """
+    # normalize all other whitespace characters to " "
+    # Note: using text.split() directly would destroy the offset,
+    # since \n\n\n would be treated similarly as a single \n
+    text = re.sub(r"\s", " ", text)
     # Fast Tokenizers return offsets, so we don't need to calculate them ourselves
     if tokenizer.is_fast:
         tokenized = tokenizer(text, return_offsets_mapping=True, return_special_tokens_mask=True)
@@ -369,20 +373,32 @@ def tokenize_with_metadata(text, tokenizer):
         offsets = []
         start_of_word = []
         previous_token_end = -1
+        # Remove whitespace tokens for RobertaTokenizers (only if multiple whitespaces occur)
+        if "RobertaTokenizer" in tokenizer.__class__.__name__:
+            if "  " in text:
+                whitespace_id = tokenizer.convert_tokens_to_ids('Ġ')
+                while whitespace_id in tokenized["input_ids"]:
+                    whitespace_pos = tokenized["input_ids"].index(whitespace_id)
+                    tokenized["input_ids"].pop(whitespace_pos)
+                    tokenized["special_tokens_mask"].pop(whitespace_pos)
+                    tokenized["offset_mapping"].pop(whitespace_pos)
         for token_id, is_special_token, offset in zip(tokenized["input_ids"],
                                                       tokenized["special_tokens_mask"],
                                                       tokenized["offset_mapping"]):
             if is_special_token == 0:
-                tokens.append(tokenizer.decode([token_id]))
+                # For unknown tokens, XLNetTokenizer's tokenize fn returns the original token string
+                # instead of an [UNK]-token
+                if "XLNetTokenizer" in tokenizer.__class__.__name__ and token_id == tokenizer.unk_token_id:
+                    token_start = offset[0]
+                    token_end = offset[1]
+                    tokens.append(text[token_start:token_end])
+                else:
+                    tokens.append(tokenizer.convert_ids_to_tokens(token_id))
                 offsets.append(offset[0])
                 start_of_word.append(True if offset[0] != previous_token_end else False)
                 previous_token_end = offset[1]
         tokenized = {"tokens": tokens, "offsets": offsets, "start_of_word": start_of_word}
     else:
-        # normalize all other whitespace characters to " "
-        # Note: using text.split() directly would destroy the offset,
-        # since \n\n\n would be treated similarly as a single \n
-        text = re.sub(r"\s", " ", text)
         # split text into "words" (here: simple whitespace tokenizer).
         words = text.split(" ")
         word_offsets = []

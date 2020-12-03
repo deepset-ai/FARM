@@ -1,7 +1,8 @@
 import logging
 import pytest
 import re
-from transformers import BertTokenizer, BertTokenizerFast, RobertaTokenizer, XLNetTokenizer, ElectraTokenizerFast
+from transformers import BertTokenizer, BertTokenizerFast, RobertaTokenizer, RobertaTokenizerFast, \
+    XLNetTokenizer, XLNetTokenizerFast, ElectraTokenizerFast
 
 from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
 
@@ -29,24 +30,48 @@ TEXTS = [
 
 def test_basic_loading(caplog):
     caplog.set_level(logging.CRITICAL)
+    # slow tokenizers
     tokenizer = Tokenizer.load(
         pretrained_model_name_or_path="bert-base-cased",
-        do_lower_case=True
+        do_lower_case=True,
+        use_fast=False,
         )
     assert type(tokenizer) == BertTokenizer
     assert tokenizer.basic_tokenizer.do_lower_case == True
 
     tokenizer = Tokenizer.load(
         pretrained_model_name_or_path="xlnet-base-cased",
-        do_lower_case=True
+        do_lower_case=True,
+        use_fast=False
         )
     assert type(tokenizer) == XLNetTokenizer
     assert tokenizer.do_lower_case == True
 
     tokenizer = Tokenizer.load(
-        pretrained_model_name_or_path="roberta-base"
+        pretrained_model_name_or_path="roberta-base",
+        use_fast=False
         )
     assert type(tokenizer) == RobertaTokenizer
+
+    # fast tokenizers
+    tokenizer = Tokenizer.load(
+        pretrained_model_name_or_path="bert-base-cased",
+        do_lower_case=True
+    )
+    assert type(tokenizer) == BertTokenizerFast
+    assert tokenizer.do_lower_case == True
+
+    tokenizer = Tokenizer.load(
+        pretrained_model_name_or_path="xlnet-base-cased",
+        do_lower_case=True
+    )
+    assert type(tokenizer) == XLNetTokenizerFast
+    assert tokenizer.do_lower_case == True
+
+    tokenizer = Tokenizer.load(
+        pretrained_model_name_or_path="roberta-base"
+    )
+    assert type(tokenizer) == RobertaTokenizerFast
 
 
 def test_bert_tokenizer_all_meta(caplog):
