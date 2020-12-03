@@ -143,3 +143,5 @@ mlruns/
 
 # cache
 *cache*
+
+sandbox/
