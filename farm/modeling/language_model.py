@@ -81,7 +81,7 @@ class LanguageModel(nn.Module):
         return model.from_scratch(vocab_size)
 
     @classmethod
-    def load(cls, pretrained_model_name_or_path, n_added_tokens=0, language_model_class=None, **kwargs):
+    def load(cls, pretrained_model_name_or_path, revision=None, n_added_tokens=0, language_model_class=None, **kwargs):
         """
         Load a pretrained language model either by
 
@@ -121,10 +121,13 @@ class LanguageModel(nn.Module):
 
         :param pretrained_model_name_or_path: The path of the saved pretrained model or its name.
         :type pretrained_model_name_or_path: str
+        :param revision: The version of model to use from the HuggingFace model hub. Can be tag name, branch name, or commit hash.
+        :type revision: str
         :param language_model_class: (Optional) Name of the language model class to load (e.g. `Bert`)
         :type language_model_class: str
 
         """
+        kwargs["revision"] = revision
         logger.info("")
         logger.info("LOADING MODEL")
         logger.info("=============")

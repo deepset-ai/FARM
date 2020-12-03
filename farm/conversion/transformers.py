@@ -62,7 +62,7 @@ class Converter:
         return converted_models
 
     @staticmethod
-    def convert_from_transformers(model_name_or_path, device, task_type=None, processor=None):
+    def convert_from_transformers(model_name_or_path, device, revision=None, task_type=None, processor=None):
         """
         Load a (downstream) model from huggingface's transformers format. Use cases:
          - continue training in FARM (e.g. take a squad QA model and fine-tune on your own data)
@@ -76,6 +76,8 @@ class Converter:
 
                                               See https://huggingface.co/models for full list
         :param device: "cpu" or "cuda"
+        :param revision: The version of model to use from the HuggingFace model hub. Can be tag name, branch name, or commit hash.
+        :type revision: str
         :param task_type: One of :
                           - 'question_answering'
                           - 'text_classification'
@@ -86,7 +88,7 @@ class Converter:
         :return: AdaptiveModel
         """
 
-        lm = LanguageModel.load(model_name_or_path)
+        lm = LanguageModel.load(model_name_or_path, revision=revision)
         if task_type is None:
             # Infer task type from config
             architecture = lm.model.config.architectures[0]
@@ -106,12 +108,12 @@ class Converter:
                              "('lm', 'question_answering', 'regression', 'text_classification', 'ner' or 'embeddings')")
 
         if task_type == "lm":
-            ph = BertLMHead.load(model_name_or_path)
+            ph = BertLMHead.load(model_name_or_path, revision=revision)
             adaptive_model = am.AdaptiveModel(language_model=lm, prediction_heads=[ph], embeds_dropout_prob=0.1,
                                               lm_output_types="per_token", device=device)
 
         elif task_type == "question_answering":
-            ph = QuestionAnsweringHead.load(model_name_or_path)
+            ph = QuestionAnsweringHead.load(model_name_or_path, revision=revision)
             adaptive_model = am.AdaptiveModel(language_model=lm, prediction_heads=[ph], embeds_dropout_prob=0.1,
                                               lm_output_types="per_token", device=device)
 
@@ -132,12 +134,12 @@ class Converter:
                 logger.error(
                     "Conversion for Text Classification with Roberta or XLMRoberta not possible at the moment.")
                 raise NotImplementedError
-            ph = TextClassificationHead.load(model_name_or_path)
+            ph = TextClassificationHead.load(model_name_or_path, revision=revision)
             adaptive_model = am.AdaptiveModel(language_model=lm, prediction_heads=[ph], embeds_dropout_prob=0.1,
                                               lm_output_types="per_sequence", device=device)
 
         elif task_type == "ner":
-            ph = TokenClassificationHead.load(model_name_or_path)
+            ph = TokenClassificationHead.load(model_name_or_path, revision=revision)
             adaptive_model = am.AdaptiveModel(language_model=lm, prediction_heads=[ph], embeds_dropout_prob=0.1,
                                               lm_output_types="per_token", device=device)
 
