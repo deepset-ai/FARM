@@ -51,13 +51,15 @@ class Tokenizer:
     """
 
     @classmethod
-    def load(cls, pretrained_model_name_or_path, tokenizer_class=None, use_fast=False, **kwargs):
+    def load(cls, pretrained_model_name_or_path, revision=None, tokenizer_class=None, use_fast=False, **kwargs):
         """
         Enables loading of different Tokenizer classes with a uniform interface. Either infer the class from
         model config or define it manually via `tokenizer_class`.
 
         :param pretrained_model_name_or_path:  The path of the saved pretrained model or its name (e.g. `bert-base-uncased`)
         :type pretrained_model_name_or_path: str
+        :param revision: The version of model to use from the HuggingFace model hub. Can be tag name, branch name, or commit hash.
+        :type revision: str
         :param tokenizer_class: (Optional) Name of the tokenizer class to load (e.g. `BertTokenizer`)
         :type tokenizer_class: str
         :param use_fast: (Optional, False by default) Indicate if FARM should try to load the fast version of the tokenizer (True) or
@@ -68,6 +70,7 @@ class Tokenizer:
         :return: Tokenizer
         """
         pretrained_model_name_or_path = str(pretrained_model_name_or_path)
+        kwargs["revision"] = revision
 
         if tokenizer_class is None:
             tokenizer_class = cls._infer_tokenizer_class(pretrained_model_name_or_path)
