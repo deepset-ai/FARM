@@ -1,8 +1,7 @@
 import logging
 import pytest
 import re
-from transformers import BertTokenizer, BertTokenizerFast, RobertaTokenizer, XLNetTokenizer, RobertaTokenizerFast
-from transformers import ElectraTokenizerFast
+from transformers import BertTokenizer, BertTokenizerFast, RobertaTokenizer, XLNetTokenizer, ElectraTokenizerFast
 
 from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
 
@@ -264,16 +263,16 @@ def test_fast_tokenizer_type(caplog, model_name, tokenizer_type):
     tokenizer = Tokenizer.load(model_name, use_fast=True)
     assert type(tokenizer) is tokenizer_type
 
-
-def test_fast_bert_tokenizer_strip_accents(caplog):
-    caplog.set_level(logging.CRITICAL)
-
-    tokenizer = Tokenizer.load("dbmdz/bert-base-german-uncased",
-                               use_fast=True,
-                               strip_accents=False)
-    assert type(tokenizer) is BertTokenizerFast
-    assert tokenizer._tokenizer._parameters['strip_accents'] is False
-    assert tokenizer._tokenizer._parameters['lowercase']
+# See discussion in https://github.com/deepset-ai/FARM/pull/624 for reason to remove the test
+# def test_fast_bert_tokenizer_strip_accents(caplog):
+#     caplog.set_level(logging.CRITICAL)
+#
+#     tokenizer = Tokenizer.load("dbmdz/bert-base-german-uncased",
+#                                use_fast=True,
+#                                strip_accents=False)
+#     assert type(tokenizer) is BertTokenizerFast
+#     assert tokenizer.do_lower_case
+#     assert tokenizer._tokenizer._parameters['strip_accents'] is False
 
 
 def test_fast_electra_tokenizer(caplog):
