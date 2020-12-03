@@ -129,8 +129,8 @@ class DataSilo:
         """
         dicts = [d[1] for d in chunk]
         indices = [x[0] for x in chunk]
-        dataset = processor.dataset_from_dicts(dicts=dicts, indices=indices)
-        return dataset
+        dataset, tensor_names, problematic_sample_ids = processor.dataset_from_dicts(dicts=dicts, indices=indices, return_problematic=True)
+        return dataset, tensor_names, problematic_sample_ids
 
     def _get_dataset(self, filename, dicts=None):
         if not filename and not dicts:
@@ -181,10 +181,12 @@ class DataSilo:
             if filename:
                 desc += f" {filename}"
             with tqdm(total=len(dicts), unit=' Dicts', desc=desc) as pbar:
-                for dataset, tensor_names in results:
+                for dataset, tensor_names, problematic_samples in results:
                     datasets.append(dataset)
                     # update progress bar (last step can have less dicts than actual chunk_size)
                     pbar.update(min(multiprocessing_chunk_size, pbar.total-pbar.n))
+                    self.processor.problematic_sample_ids.update(problematic_samples)
+            self.processor.log_problematic()
             # _dataset_from_chunk can return a None in cases where downsampling has occurred
             datasets = [d for d in datasets if d]
             concat_datasets = ConcatDataset(datasets)
@@ -201,9 +203,12 @@ class DataSilo:
         :param test_dicts: (Optional) dicts containing examples for test.
         :return: None
         """
+
         logger.info("\nLoading data into the data silo ..."
                     "{}".format(TRACTOR_SMALL))
         # train data
+        logger.info("LOADING TRAIN DATA")
+        logger.info("==================")
         if train_dicts:
             # either from supplied dicts
             logger.info("Loading train set from supplied dicts ")
@@ -216,8 +221,12 @@ class DataSilo:
         else:
             logger.info("No train set is being loaded")
             self.data["train"] = None
+        self.processor.log_problematic()
 
         # dev data
+        logger.info("")
+        logger.info("LOADING DEV DATA")
+        logger.info("=================")
         if dev_dicts:
             # either from supplied dicts
             logger.info("Loading train set from supplied dicts ")
@@ -234,7 +243,11 @@ class DataSilo:
         else:
             logger.info("No dev set is being loaded")
             self.data["dev"] = None
+        self.processor.log_problematic()
 
+        logger.info("")
+        logger.info("LOADING TEST DATA")
+        logger.info("=================")
         # test data
         if test_dicts:
             # either from supplied dicts
@@ -251,6 +264,7 @@ class DataSilo:
         else:
             logger.info("No test set is being loaded")
             self.data["test"] = None
+        self.processor.log_problematic()
 
         if self.caching:
             self._save_dataset_to_cache()
@@ -413,6 +427,9 @@ class DataSilo:
 
     def _calculate_statistics(self):
         """ Calculate and log simple summary statistics of the datasets """
+        logger.info("")
+        logger.info("DATASETS SUMMARY")
+        logger.info("================")
 
         self.counts = {}
 
@@ -493,7 +510,8 @@ class DataSilo:
                 observed_labels += [label_list[x[tensor_idx].item()] for x in dataset]
 
         #TODO scale e.g. via logarithm to avoid crazy spikes for rare classes
-        class_weights = compute_class_weight("balanced", np.asarray(label_list), observed_labels)
+        class_weights = compute_class_weight("balanced", classes=np.asarray(label_list), y=observed_labels)
+
         # conversion necessary to have class weights of same type as model weights
         class_weights = class_weights.astype(np.float32)
         return class_weights
