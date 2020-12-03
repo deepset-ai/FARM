@@ -64,7 +64,7 @@ def sample_to_features_text(
             add_special_tokens=True,
             truncation=False,  # truncation_strategy is deprecated
             return_token_type_ids=True,
-            is_pretokenized=False,
+            is_split_into_words=False,
         )
 
     input_ids, segment_ids = inputs["input_ids"], inputs["token_type_ids"]
@@ -178,7 +178,7 @@ def samples_to_features_ner(
                                        truncation=False,
                                        return_special_tokens_mask=True,
                                        return_token_type_ids=True,
-                                       is_pretokenized=False
+                                       is_split_into_words=False
                                        )
 
     input_ids, segment_ids, special_tokens_mask = inputs["input_ids"], inputs["token_type_ids"], inputs["special_tokens_mask"]
@@ -200,12 +200,15 @@ def samples_to_features_ner(
             # labels_token = add_cls_sep(labels_token, cls_token, sep_token)
             label_ids = [label_list.index(lt) for lt in labels_token]
         except ValueError:
+            # Usually triggered if label is not in label list
             label_ids = None
             problematic_labels = set(labels_token).difference(set(label_list))
             logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
                            f"\nWe found a problem with labels {str(problematic_labels)}")
         except KeyError:
-            # For inference mode we don't expect labels
+            # Usually triggered if there is no label in the sample
+            # This is expected during inference since there are no labels
+            # During training, this is a problem
             label_ids = None
             logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
                            "\nIf your are running in *inference* mode: Don't worry!"
@@ -499,7 +502,7 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
     # Roberta has only a single token embedding (!!!). To get around this, we want to have a segment_ids
     # vec that is only 0s
     if tokenizer.__class__.__name__ in ["XLMRobertaTokenizer", "RobertaTokenizer"]:
-        segment_ids = np.zeros_like(segment_ids)
+        segment_ids = list(np.zeros_like(segment_ids))
 
     # The first of the labels will be used in train, and the full array will be used in eval.
     # start of word and spec_tok_mask are not actually needed by model.forward() but are needed for model.formatted_preds()
