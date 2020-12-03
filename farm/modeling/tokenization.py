@@ -368,52 +368,74 @@ def tokenize_with_metadata(text, tokenizer):
     text = re.sub(r"\s", " ", text)
     # Fast Tokenizers return offsets, so we don't need to calculate them ourselves
     if tokenizer.is_fast:
-        tokenized = tokenizer(text, return_offsets_mapping=True, return_special_tokens_mask=True)
-        tokens = []
-        offsets = []
-        start_of_word = []
-        previous_token_end = -1
-        # Remove whitespace tokens for RobertaTokenizers (only if multiple whitespaces occur)
-        if "RobertaTokenizer" in tokenizer.__class__.__name__:
-            if "  " in text:
-                whitespace_id = tokenizer.convert_tokens_to_ids('Ġ')
-                while whitespace_id in tokenized["input_ids"]:
-                    whitespace_pos = tokenized["input_ids"].index(whitespace_id)
-                    tokenized["input_ids"].pop(whitespace_pos)
-                    tokenized["special_tokens_mask"].pop(whitespace_pos)
-                    tokenized["offset_mapping"].pop(whitespace_pos)
-        for token_id, is_special_token, offset in zip(tokenized["input_ids"],
-                                                      tokenized["special_tokens_mask"],
-                                                      tokenized["offset_mapping"]):
-            if is_special_token == 0:
-                # For unknown tokens, XLNetTokenizer's tokenize fn returns the original token string
-                # instead of an [UNK]-token
-                if "XLNetTokenizer" in tokenizer.__class__.__name__ and token_id == tokenizer.unk_token_id:
-                    token_start = offset[0]
-                    token_end = offset[1]
-                    tokens.append(text[token_start:token_end])
-                else:
-                    tokens.append(tokenizer.convert_ids_to_tokens(token_id))
-                offsets.append(offset[0])
-                start_of_word.append(True if offset[0] != previous_token_end else False)
-                previous_token_end = offset[1]
-        tokenized = {"tokens": tokens, "offsets": offsets, "start_of_word": start_of_word}
-    else:
-        # split text into "words" (here: simple whitespace tokenizer).
-        words = text.split(" ")
-        word_offsets = []
-        cumulated = 0
-        for idx, word in enumerate(words):
-            word_offsets.append(cumulated)
-            cumulated += len(word) + 1  # 1 because we so far have whitespace tokenizer
+        #tokenized = tokenizer(text, return_offsets_mapping=True, return_special_tokens_mask=True)
+        tokenized2 = tokenizer.encode_plus(text, return_offsets_mapping=True, return_special_tokens_mask=True)
 
-        # split "words" into "subword tokens"
-        tokens, offsets, start_of_word = _words_to_tokens(
-            words, word_offsets, tokenizer
-        )
+        tokens2 = tokenized2["input_ids"]
+        offsets2 = [x[0] for x in tokenized2["offset_mapping"]]
+        words = np.array(tokenized2.encodings[0].words)
+        words[0] = 0
+        start_of_word2 = np.ediff1d(words[:-1])
+        tokenized_dict = {"tokens": tokens2, "offsets": offsets2, "start_of_word": start_of_word2}
+        # start_of_word3 = []
+        # last_word = -1
+        # for word_id in tokenized2.encodings[0].words:
+        #     if word_id is None or word_id == last_word:
+        #         start_of_word3.append(0)
+        #     else:
+        #         start_of_word3.append(1)
+        #         last_word = word_id
 
-        tokenized = {"tokens": tokens, "offsets": offsets, "start_of_word": start_of_word}
-    return tokenized
+    #     tokens = []
+    #     offsets = []
+    #     start_of_word = []
+    #     previous_token_end = -1
+    #     # Remove whitespace tokens for RobertaTokenizers (only if multiple whitespaces occur)
+    #     if "RobertaTokenizer" in tokenizer.__class__.__name__:
+    #         if "  " in text:
+    #             whitespace_id = tokenizer.convert_tokens_to_ids('Ġ')
+    #             while whitespace_id in tokenized["input_ids"]:
+    #                 whitespace_pos = tokenized["input_ids"].index(whitespace_id)
+    #                 tokenized["input_ids"].pop(whitespace_pos)
+    #                 tokenized["special_tokens_mask"].pop(whitespace_pos)
+    #                 tokenized["offset_mapping"].pop(whitespace_pos)
+    #     for token_id, is_special_token, offset in zip(tokenized["input_ids"],
+    #                                                   tokenized["special_tokens_mask"],
+    #                                                   tokenized["offset_mapping"]):
+    #         if is_special_token == 0:
+    #             # For unknown tokens, XLNetTokenizer's tokenize fn returns the original token string
+    #             # instead of an [UNK]-token
+    #             if "XLNetTokenizer" in tokenizer.__class__.__name__ and token_id == tokenizer.unk_token_id:
+    #                 token_start = offset[0]
+    #                 token_end = offset[1]
+    #                 tokens.append(text[token_start:token_end])
+    #             else:
+    #                 tokens.append(tokenizer.convert_ids_to_tokens(token_id))
+    #             offsets.append(offset[0])
+    #             start_of_word.append(True if offset[0] != previous_token_end else False)
+    #             previous_token_end = offset[1]
+    #     tokenized = {"tokens": tokens, "offsets": offsets, "start_of_word": start_of_word}
+    # else:
+    #     # split text into "words" (here: simple whitespace tokenizer).
+    #     words = text.split(" ")
+    #     word_offsets = []
+    #     cumulated = 0
+    #     for idx, word in enumerate(words):
+    #         word_offsets.append(cumulated)
+    #         cumulated += len(word) + 1  # 1 because we so far have whitespace tokenizer
+    #
+    #     # split "words" into "subword tokens"
+    #     tokens, offsets, start_of_word = _words_to_tokens(
+    #         words, word_offsets, tokenizer
+    #     )
+    #
+    #     tokenized = {"tokens": tokens, "offsets": offsets, "start_of_word": start_of_word}
+    #
+    # print("muh")
+    # print(np.array(start_of_word).astype(int)[:15])
+    # print(start_of_word2[:15])
+    # print(np.array(start_of_word3).astype(int)[:15])
+    return tokenized_dict
 
 
 def _words_to_tokens(words, word_offsets, tokenizer):
