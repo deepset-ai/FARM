@@ -431,8 +431,8 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
 
     if tokenizer.is_fast:
         # Fast Tokenizer does not support encode_plus with pretokenized input, so we just concatenate the input ids
-        question_input_ids = tokenizer.convert_tokens_to_ids(sample.tokenized["question_tokens"])
-        passage_input_ids = tokenizer.convert_tokens_to_ids(sample.tokenized["passage_tokens"])
+        question_input_ids = sample.tokenized["question_tokens"]
+        passage_input_ids = sample.tokenized["passage_tokens"]
 
         input_ids = tokenizer.build_inputs_with_special_tokens(token_ids_0=question_input_ids,
                                                                token_ids_1=passage_input_ids)
