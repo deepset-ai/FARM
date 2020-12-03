@@ -330,11 +330,11 @@ class Processor(ABC):
     def file_to_dicts(self, file: str) -> [dict]:
         raise NotImplementedError()
 
-    @abc.abstractmethod
+    #@abc.abstractmethod
     def _dict_to_samples(cls, dictionary: dict, all_dicts=None) -> [Sample]:
         raise NotImplementedError()
 
-    @abc.abstractmethod
+    #@abc.abstractmethod
     def _sample_to_features(cls, sample: Sample) -> dict:
         raise NotImplementedError()
 
@@ -1638,13 +1638,16 @@ class SquadProcessor(QAProcessor):
         This method allows for documents and questions to be tokenized earlier. Then SampleBaskets are initialized
         with one document and one question. """
 
+
+        # convert to standard format
         dicts = [convert_qa_input_dict(x) for x in dicts]
-        if self.tokenizer.is_fast:
-            self.baskets = self._dicts_to_baskets_samples_and_features(dicts, indices)
-        else:
-            self.baskets = self._dicts_to_baskets(dicts, indices)
-            self._init_samples_in_baskets()
-            self._featurize_samples()
+
+        #tokenize
+        dicts_tokenized = _apply_tokenization_batch(dicts, self.tokenizer)
+
+        # split into passages and featurize
+        self.baskets = self._fill_baskets(dicts_tokenized, indices)
+
         if 0 in indices:
             self._log_samples(2)
         # This mode is for inference where we need to keep baskets
@@ -1656,67 +1659,66 @@ class SquadProcessor(QAProcessor):
             dataset, tensor_names = self._create_dataset(keep_baskets=False)
             return dataset, tensor_names
 
-    def _dicts_to_baskets(self, dicts, indices):
-        # Perform tokenization on documents and questions resulting in an unnested list of doc-question pairs
-        dicts_tokenized = [_apply_tokenization(d, self.tokenizer) for d in dicts]
-
-        baskets = []
-
-        for index, document in zip(indices, dicts_tokenized):
-            for q_idx, raw in enumerate(document):
-                # TODO: These checks dont exist in NQProcessor
-                # ignore samples with empty context
-                if raw["document_text"] == "":
-                    logger.warning("Ignoring sample with empty context.")
-                    continue
-
-                # Removes answers where text = "". True no_answers should have raw["answers"] = []
-                raw["answers"] = [a for a in raw["answers"] if a["text"]]
-
-                # check if answer string can be found in context
-                for answer in raw["answers"]:
-                    if answer["text"] not in raw["document_text"]:
-                        logger.warning(f"Answer '{answer['text']}' not contained in context.")
-                # In case of Question Answering the external ID is used for document IDs
-                id_external = try_get(ID_NAMES, raw)
-                id_internal = f"{index}-{q_idx}"
-                basket = SampleBasket(raw=raw, id_internal=id_internal, id_external=id_external)
-                baskets.append(basket)
-        return baskets
+    # def _dicts_to_baskets(self, dicts, indices):
+    #     # Perform tokenization on documents and questions resulting in an unnested list of doc-question pairs
+    #     dicts_tokenized = [_apply_tokenization(d, self.tokenizer) for d in dicts]
+    #
+    #     baskets = []
+    #
+    #     for index, document in zip(indices, dicts_tokenized):
+    #         for q_idx, raw in enumerate(document):
+    #             # TODO: These checks dont exist in NQProcessor
+    #             # ignore samples with empty context
+    #             if raw["document_text"] == "":
+    #                 logger.warning("Ignoring sample with empty context.")
+    #                 continue
+    #
+    #             # Removes answers where text = "". True no_answers should have raw["answers"] = []
+    #             raw["answers"] = [a for a in raw["answers"] if a["text"]]
+    #
+    #             # check if answer string can be found in context
+    #             for answer in raw["answers"]:
+    #                 if answer["text"] not in raw["document_text"]:
+    #                     logger.warning(f"Answer '{answer['text']}' not contained in context.")
+    #             # In case of Question Answering the external ID is used for document IDs
+    #             id_external = try_get(ID_NAMES, raw)
+    #             id_internal = f"{index}-{q_idx}"
+    #             basket = SampleBasket(raw=raw, id_internal=id_internal, id_external=id_external)
+    #             baskets.append(basket)
+    #     return baskets
 
     def file_to_dicts(self, file: str) -> [dict]:
         nested_dicts = read_squad_file(filename=file)
         dicts = [y for x in nested_dicts for y in x["paragraphs"]]
         return dicts
 
-    def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
-        n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
-        samples = create_samples_qa(dictionary=dictionary,
-                                       max_query_len=self.max_query_length,
-                                       max_seq_len=self.max_seq_len,
-                                       doc_stride=self.doc_stride,
-                                       n_special_tokens=n_special_tokens)
-        return samples
+    # def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
+    #     n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
+    #     samples = create_samples_qa(dictionary=dictionary,
+    #                                    max_query_len=self.max_query_length,
+    #                                    max_seq_len=self.max_seq_len,
+    #                                    doc_stride=self.doc_stride,
+    #                                    n_special_tokens=n_special_tokens)
+    #     return samples
 
-    def _sample_to_features(self, sample) -> dict:
-        _check_valid_answer(sample)
-        features = sample_to_features_qa(sample=sample,
-                                         tokenizer=self.tokenizer,
-                                         max_seq_len=self.max_seq_len,
-                                         sp_toks_start=self.sp_toks_start,
-                                         sp_toks_mid=self.sp_toks_mid,
-                                         sp_toks_end=self.sp_toks_end,
-                                         max_answers=self.max_answers)
-        return features
+    # def _sample_to_features(self, sample) -> dict:
+    #     _check_valid_answer(sample)
+    #     features = sample_to_features_qa(sample=sample,
+    #                                      tokenizer=self.tokenizer,
+    #                                      max_seq_len=self.max_seq_len,
+    #                                      sp_toks_start=self.sp_toks_start,
+    #                                      sp_toks_mid=self.sp_toks_mid,
+    #                                      sp_toks_end=self.sp_toks_end,
+    #                                      max_answers=self.max_answers)
+    #     return features
 
-    def _dicts_to_baskets_samples_and_features(self, dicts, indices) -> [SampleBasket]:
+    def _fill_baskets(self, dicts_tokenized, indices) -> [SampleBasket]:
         """This method is used so that we need to tokenize only once when using a fast tokenizer."""
         # Perform tokenization on documents and questions resulting in an unnested list of doc-question pairs
-        dicts_tokenized = [_apply_tokenization(d, self.tokenizer) for d in dicts]
-        n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
-
+        #dicts_tokenized2 = [_apply_tokenization(d, self.tokenizer) for d in dicts]
         baskets = []
 
+        n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
         for index, document in zip(indices, dicts_tokenized):
             for q_idx, raw in enumerate(document):
                 # ignore samples with empty context
@@ -1740,7 +1742,15 @@ class SquadProcessor(QAProcessor):
                 # Add features to samples
                 for num, sample in enumerate(samples):
                     sample.id = f"{id_internal}-{num}"
-                    sample.features = self._sample_to_features(sample)
+                    _check_valid_answer(sample)
+                    features = sample_to_features_qa(sample=sample,
+                                                     tokenizer=self.tokenizer,
+                                                     max_seq_len=self.max_seq_len,
+                                                     sp_toks_start=self.sp_toks_start,
+                                                     sp_toks_mid=self.sp_toks_mid,
+                                                     sp_toks_end=self.sp_toks_end,
+                                                     max_answers=self.max_answers)
+                    sample.features = features
                 basket = SampleBasket(raw=raw, id_internal=id_internal, id_external=id_external, samples=samples)
                 baskets.append(basket)
 
@@ -2701,6 +2711,57 @@ class TextSimilarityProcessor(Processor):
 
         return samples
 
+def _get_start_of_word(word_ids):
+    words = np.array(word_ids)
+    # TODO check for validity for all tokenizer and special token types
+    words[0] = -1
+    words[-1] = words[-2]
+    words += 1
+    start_of_word_single = [0] + list(np.ediff1d(words))
+    return start_of_word_single
+
+def _apply_tokenization_batch(dicts,tokenizer):
+    raw_baskets_batch = []
+    texts = [d["context"] for d in dicts]
+    tokenized_batch = tokenizer.batch_encode_plus(texts, return_offsets_mapping=True, return_special_tokens_mask=True)
+
+    tokenids_batch = tokenized_batch["input_ids"]
+    offsets_batch = []
+    for o in tokenized_batch["offset_mapping"]:
+        offsets_batch.append([x[0] for x in o])
+
+    start_of_words_batch = []
+    for e in tokenized_batch.encodings:
+        start_of_words_batch.append(_get_start_of_word(e.words))
+
+    for i,d in enumerate(dicts):
+        raw_basket = []
+        document_text = d["context"]
+        for q in d["qas"]:
+            # tokenize questions
+            question_text = q["question"]
+            tokenized_q = tokenizer.encode_plus(question_text, return_offsets_mapping=True, return_special_tokens_mask=True)
+
+            question_tokenids = tokenized_q["input_ids"]
+            question_offsets = [x[0] for x in tokenized_q["offset_mapping"]]
+            question_sow = _get_start_of_word(tokenized_q.encodings[0].words)
+            answers = q["answers"]
+            external_id = q["id"]
+            answer_type = "span"
+            raw = {"document_text": document_text,
+                   "document_tokens": tokenids_batch[i],
+                   "document_offsets": offsets_batch[i],
+                   "document_start_of_word": start_of_words_batch[i],
+                   "question_text": question_text,
+                   "question_tokens": question_tokenids,
+                   "question_offsets": question_offsets,
+                   "question_start_of_word": question_sow,
+                   "answers": answers,
+                   "answer_type": answer_type,
+                   "external_id": external_id}
+            raw_basket.append(raw)
+        raw_baskets_batch.append(raw_basket)
+    return raw_baskets_batch
 
 def _apply_tokenization(dictionary, tokenizer, answer_types_list=[]):
     raw_baskets = []

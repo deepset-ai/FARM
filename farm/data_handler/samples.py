@@ -116,7 +116,7 @@ def process_answers(answers, doc_offsets, passage_start_c, passage_start_t):
         # This section calculates start and end relative to document
         answer_text = answer["text"]
         answer_len_c = len(answer_text)
-        answer_start_c = answer["offset"]
+        answer_start_c = answer["answer_start"]
         answer_end_c = answer_start_c + answer_len_c - 1
         answer_start_t = offset_to_token_idx(doc_offsets, answer_start_c)
         answer_end_t = offset_to_token_idx(doc_offsets, answer_end_c)
@@ -135,7 +135,7 @@ def process_answers(answers, doc_offsets, passage_start_c, passage_start_t):
                              "end_c": answer_end_c}
         curr_answer_tokenized = {"start_t": answer_start_t,
                                  "end_t": answer_end_t,
-                                 "answer_type": answer["answer_type"]}
+                                 "answer_type": answer.get("answer_type","span")}
 
         answers_clear.append(curr_answer_clear)
         answers_tokenized.append(curr_answer_tokenized)
