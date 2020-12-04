@@ -147,55 +147,52 @@ class MLFlowLogger(BaseMLLogger):
     """
 
     def init_experiment(self, experiment_name, run_name=None, nested=True):
-        if self.disable:
-            return
-        try:
-            mlflow.set_tracking_uri(self.tracking_uri)
-            mlflow.set_experiment(experiment_name)
-            mlflow.start_run(run_name=run_name, nested=nested)
-        except ConnectionError:
-            raise Exception(
-                f"MLFlow cannot connect to the remote server at {self.tracking_uri}.\n"
-                f"MLFlow also supports logging runs locally to files. Set the MLFlowLogger "
-                f"tracking_uri to an empty string to use that."
-            )
+        if not self.disable:
+            try:
+                mlflow.set_tracking_uri(self.tracking_uri)
+                mlflow.set_experiment(experiment_name)
+                mlflow.start_run(run_name=run_name, nested=nested)
+            except ConnectionError:
+                raise Exception(
+                    f"MLFlow cannot connect to the remote server at {self.tracking_uri}.\n"
+                    f"MLFlow also supports logging runs locally to files. Set the MLFlowLogger "
+                    f"tracking_uri to an empty string to use that."
+                )
 
     @classmethod
     def log_metrics(cls, metrics, step):
-        if cls.disable:
-            return
-        try:
-            mlflow.log_metrics(metrics, step=step)
-        except ConnectionError:
-            logger.warning(f"ConnectionError in logging metrics to MLFlow.")
-        except Exception as e:
-            logger.warning(f"Failed to log metrics: {e}")
+        if not cls.disable:
+            try:
+                mlflow.log_metrics(metrics, step=step)
+            except ConnectionError:
+                logger.warning(f"ConnectionError in logging metrics to MLFlow.")
+            except Exception as e:
+                logger.warning(f"Failed to log metrics: {e}")
 
     @classmethod
     def log_params(cls, params):
-        if cls.disable:
-            return
-        try:
-            mlflow.log_params(params)
-        except ConnectionError:
-            logger.warning("ConnectionError in logging params to MLFlow")
-        except Exception as e:
-            logger.warning(f"Failed to log params: {e}")
+        if not cls.disable:
+            try:
+                mlflow.log_params(params)
+            except ConnectionError:
+                logger.warning("ConnectionError in logging params to MLFlow")
+            except Exception as e:
+                logger.warning(f"Failed to log params: {e}")
 
     @classmethod
     def log_artifacts(cls, dir_path, artifact_path=None):
-        if cls.disable:
-            return
-        try:
-            mlflow.log_artifacts(dir_path, artifact_path)
-        except ConnectionError:
-            logger.warning(f"ConnectionError in logging artifacts to MLFlow")
-        except Exception as e:
-            logger.warning(f"Failed to log artifacts: {e}")
+        if not cls.disable:
+            try:
+                mlflow.log_artifacts(dir_path, artifact_path)
+            except ConnectionError:
+                logger.warning(f"ConnectionError in logging artifacts to MLFlow")
+            except Exception as e:
+                logger.warning(f"Failed to log artifacts: {e}")
 
     @classmethod
     def end_run(cls):
-        mlflow.end_run()
+        if not cls.disable:
+            mlflow.end_run()
 
     @classmethod
     def disable(cls):
