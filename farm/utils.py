@@ -95,7 +95,7 @@ class BaseMLLogger:
     This class can be extended to implement custom logging backends like MLFlow, Tensorboard, or Sacred.
     """
 
-    disable = False
+    disable_logging = False
 
     def __init__(self, tracking_uri, **kwargs):
         self.tracking_uri = tracking_uri
@@ -147,7 +147,7 @@ class MLFlowLogger(BaseMLLogger):
     """
 
     def init_experiment(self, experiment_name, run_name=None, nested=True):
-        if not self.disable:
+        if not self.disable_logging:
             try:
                 mlflow.set_tracking_uri(self.tracking_uri)
                 mlflow.set_experiment(experiment_name)
@@ -161,7 +161,7 @@ class MLFlowLogger(BaseMLLogger):
 
     @classmethod
     def log_metrics(cls, metrics, step):
-        if not cls.disable:
+        if not cls.disable_logging:
             try:
                 mlflow.log_metrics(metrics, step=step)
             except ConnectionError:
@@ -171,7 +171,7 @@ class MLFlowLogger(BaseMLLogger):
 
     @classmethod
     def log_params(cls, params):
-        if not cls.disable:
+        if not cls.disable_logging:
             try:
                 mlflow.log_params(params)
             except ConnectionError:
@@ -181,7 +181,7 @@ class MLFlowLogger(BaseMLLogger):
 
     @classmethod
     def log_artifacts(cls, dir_path, artifact_path=None):
-        if not cls.disable:
+        if not cls.disable_logging:
             try:
                 mlflow.log_artifacts(dir_path, artifact_path)
             except ConnectionError:
@@ -191,13 +191,13 @@ class MLFlowLogger(BaseMLLogger):
 
     @classmethod
     def end_run(cls):
-        if not cls.disable:
+        if not cls.disable_logging:
             mlflow.end_run()
 
     @classmethod
     def disable(cls):
         logger.warning("ML Logging is turned off. No parameters, metrics or artifacts will be logged to MLFlow.")
-        cls.disable = True
+        cls.disable_logging = True
 
 
 class TensorBoardLogger(BaseMLLogger):
