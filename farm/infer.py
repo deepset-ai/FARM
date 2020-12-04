@@ -15,12 +15,11 @@ from farm.data_handler.utils import grouper
 from farm.data_handler.inputs import QAInput
 from farm.modeling.adaptive_model import AdaptiveModel, BaseAdaptiveModel, ONNXAdaptiveModel
 from farm.modeling.optimization import optimize_model
-from farm.utils import initialize_device_settings
+from farm.utils import initialize_device_settings, MLFlowLogger
 from farm.utils import set_all_seeds, calc_chunksize, log_ascii_workers, Benchmarker
 from farm.modeling.predictions import QAPred
 
 logger = logging.getLogger(__name__)
-
 
 class Inferencer:
     """
@@ -109,6 +108,8 @@ class Inferencer:
         :return: An instance of the Inferencer.
 
         """
+        MLFlowLogger.disable()
+
         # For benchmarking
         if dummy_ph:
             model.bypass_ph()
