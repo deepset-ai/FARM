@@ -608,66 +608,98 @@ class TextClassificationProcessor(Processor):
 
         return dicts
 
-    def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
-        # this tokenization also stores offsets and a start_of_word mask
-        text = dictionary["text"]
-        tokenized = tokenize_with_metadata(text, self.tokenizer)
-        if len(tokenized["tokens"]) == 0:
-            logger.warning(f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text}")
-            return []
-        # truncate tokens, offsets and start_of_word to max_seq_len that can be handled by the model
-        for seq_name in tokenized.keys():
-            tokenized[seq_name], _, _ = truncate_sequences(seq_a=tokenized[seq_name], seq_b=None, tokenizer=self.tokenizer,
-                                                max_seq_len=self.max_seq_len)
-        return [Sample(id=None, clear_text=dictionary, tokenized=tokenized)]
-
-    def _sample_to_features(self, sample) -> dict:
-        features = sample_to_features_text(
-            sample=sample,
-            tasks=self.tasks,
-            max_seq_len=self.max_seq_len,
-            tokenizer=self.tokenizer,
-        )
-        return features
-
-    def _dict_to_samples_and_features(self, dictionary: dict, **kwargs) -> [Sample]:
-        """This method is used so that we need to tokenize only once when using a fast tokenizer."""
-        text = dictionary["text"]
-        inputs = self.tokenizer.encode_plus(
-            text=text,
-            max_length=self.max_seq_len,
-            truncation=True,
-            add_special_tokens=True,
+    def dataset_from_dicts(self, dicts, indices=None, return_baskets=False, inference=False, debug=False):
+        # Tokenize in batches
+        texts = [x["text"] for x in dicts]
+        tokenized_batch = self.tokenizer.batch_encode_plus(
+            texts,
             return_offsets_mapping=True,
-            return_token_type_ids=True,
-            return_special_tokens_mask=True,
+            return_special_tokens_mask=True
         )
+        token_ids_batch = tokenized_batch["input_ids"]
+        segment_ids_batch = tokenized_batch["token_type_ids"]
 
-        # Get tokens as text with metadata
-        tokens = []
-        offsets = []
-        start_of_word = []
-        previous_token_end = -1
-        for token_id, is_special_token, offset in zip(inputs["input_ids"],
-                                                      inputs["special_tokens_mask"],
-                                                      inputs["offset_mapping"]):
-            if not is_special_token:
-                tokens.append(self.tokenizer.convert_ids_to_tokens(token_id))
-                offsets.append(offset[0])
-                start_of_word.append(True if offset[0] != previous_token_end else False)
-                previous_token_end = offset[1]
+        # From here we operate on a per sample basis
+        for dictionary, token_ids, segment_ids in zip(
+                dicts, token_ids_batch, segment_ids_batch
+        ):
 
-        token_dict = {"tokens": tokens,
-                      "offsets": offsets,
-                      "start_of_word": start_of_word}
+            # TODO Build tokenized dict for debug mode
+            tokenized = {}
 
-        if len(token_dict["tokens"]) == 0:
-            logger.warning(f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text}")
-            return []
+            # Truncate results
+            token_ids = self.truncate(token_ids)
+            segment_ids = self.truncate(segment_ids)
 
-        # Build feature dict
-        input_ids, segment_ids = inputs["input_ids"], inputs["token_type_ids"]
+            # Pad results
+            input_ids, padding_mask, segment_ids = self.pad_sequences(token_ids, segment_ids)
 
+            feat_dict = {"input_ids": input_ids,
+                         "padding_mask": padding_mask,
+                         "segment_ids": segment_ids}
+
+            # Create labels
+            if not inference:
+                label_dict = self.generate_labels(dictionary)
+                feat_dict.update(label_dict)
+
+            self.add_basket(dictionary, tokenized, feat_dict)
+
+        if 0 in indices:
+            self._log_samples(2)
+
+        dataset, tensornames = self._create_dataset()
+        ret = [dataset, tensornames]
+        if return_baskets:
+            ret.append(self.baskets)
+        return ret
+
+    def _create_dataset(self):
+        # TODO this is the proposed new version to replace the mother function
+        features_flat = []
+        basket_to_remove = []
+        for basket in self.baskets:
+            if self._check_sample_features(basket):
+                for sample in basket.samples:
+                    features_flat.extend(sample.features)
+            else:
+                # remove the entire basket
+                basket_to_remove.append(basket)
+        dataset, tensor_names = convert_features_to_dataset(features=features_flat)
+        return dataset, tensor_names
+
+    def add_basket(self, dictionary, tokenized, feat_dict):
+        curr_sample = Sample(id=None,
+                             clear_text=dictionary,
+                             tokenized=tokenized,
+                             features=[feat_dict])
+        curr_basket = SampleBasket(id_internal=None,
+                                   raw=dictionary,
+                                   id_external=None,
+                                   samples=[curr_sample])
+        self.baskets.append(curr_basket)
+
+
+    def generate_labels(self, dictionary):
+        ret = {}
+        # Add labels for different tasks
+        for task_name, task in self.tasks.items():
+            label_name = task["label_name"]
+            label_raw = dictionary[label_name]
+            label_list = task["label_list"]
+            if task["task_type"] == "classification":
+                # id of label
+                label_ids = [label_list.index(label_raw)]
+            elif task["task_type"] == "multilabel_classification":
+                # multi-hot-format
+                label_ids = [0] * len(label_list)
+                for l in label_raw.split(","):
+                    if l != "":
+                        label_ids[label_list.index(l)] = 1
+            ret[task["label_tensor_name"]] = label_ids
+        return ret
+
+    def pad_sequences(self, input_ids, segment_ids):
         # The mask has 1 for real tokens and 0 for padding tokens. Only real
         # tokens are attended to.
         padding_mask = [1] * len(input_ids)
@@ -689,37 +721,18 @@ class TextClassificationProcessor(Processor):
         assert len(padding_mask) == self.max_seq_len
         assert len(segment_ids) == self.max_seq_len
 
-        feat_dict = {"input_ids": input_ids,
-                     "padding_mask": padding_mask,
-                     "segment_ids": segment_ids}
+        return input_ids, padding_mask, segment_ids
 
-        # Add labels for different tasks
-        for task_name, task in self.tasks.items():
-            try:
-                label_name = task["label_name"]
-                label_raw = dictionary[label_name]
-                label_list = task["label_list"]
-                if task["task_type"] == "classification":
-                    # id of label
-                    try:
-                        label_ids = [label_list.index(label_raw)]
-                    except ValueError as e:
-                        raise ValueError(f'[Task: {task_name}] Observed label {label_raw} not in defined label_list')
-                elif task["task_type"] == "multilabel_classification":
-                    # multi-hot-format
-                    label_ids = [0] * len(label_list)
-                    for l in label_raw.split(","):
-                        if l != "":
-                            label_ids[label_list.index(l)] = 1
-                else:
-                    raise ValueError(task["task_type"])
-            except KeyError:
-                # For inference mode we don't expect labels
-                label_ids = None
-            if label_ids is not None:
-                feat_dict[task["label_tensor_name"]] = label_ids
+    def truncate(self, sequence):
+        total_len = len(sequence)
+        seq_a, _, _ = self.tokenizer.truncate_sequences(
+            sequence,
+            pair_ids=None,
+            num_tokens_to_remove=total_len - self.max_seq_len,
+            truncation_strategy="only_first"
+        )
+        return seq_a
 
-        return [Sample(id=None, clear_text=dictionary, tokenized=token_dict, features=[feat_dict])]
 
 class TextPairClassificationProcessor(TextClassificationProcessor):
     """
