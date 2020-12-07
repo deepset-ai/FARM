@@ -454,7 +454,7 @@ class Inferencer:
         :rtype: list
         """
         dataset, tensor_names, baskets = self.processor.dataset_from_dicts(
-            dicts, indices=[i for i in range(len(dicts))], return_baskets=True, inference=True
+            dicts, indices=[i for i in range(len(dicts))], return_baskets=True
         )
 
         if self.benchmarking:
@@ -532,7 +532,7 @@ class Inferencer:
         The resulting datasets of the processes are merged together afterwards"""
         dicts = [d[1] for d in chunk]
         indices = [d[0] for d in chunk]
-        dataset, tensor_names, baskets = processor.dataset_from_dicts(dicts, indices, return_baskets=True, inference=True)
+        dataset, tensor_names, baskets = processor.dataset_from_dicts(dicts, indices, return_baskets=True)
         return dataset, tensor_names, baskets
 
     def _get_predictions(self, dataset, tensor_names, baskets):
