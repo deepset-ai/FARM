@@ -608,7 +608,8 @@ class TextClassificationProcessor(Processor):
 
         return dicts
 
-    def dataset_from_dicts(self, dicts, indices=None, return_baskets=False, inference=False, debug=False):
+    def dataset_from_dicts(self, dicts, indices=None, return_baskets=False, debug=False):
+        self.baskets = []
         # Tokenize in batches
         texts = [x["text"] for x in dicts]
         tokenized_batch = self.tokenizer.batch_encode_plus(
@@ -639,7 +640,8 @@ class TextClassificationProcessor(Processor):
                          "segment_ids": segment_ids}
 
             # Create labels
-            if not inference:
+            # i.e. not inference
+            if not return_baskets:
                 label_dict = self.generate_labels(dictionary)
                 feat_dict.update(label_dict)
 
