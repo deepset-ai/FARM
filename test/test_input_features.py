@@ -29,7 +29,7 @@ def test_sample_to_features_qa(caplog):
         features_gold = json.load(open(f"samples/qa/{sample_type}/features.json"))
         max_seq_len = len(features_gold["input_ids"])
 
-        tokenizer = Tokenizer.load(pretrained_model_name_or_path=MODEL, do_lower_case=False)
+        tokenizer = Tokenizer.load(pretrained_model_name_or_path=MODEL, do_lower_case=False, use_fast=False)
         curr_id = "-".join([str(x) for x in features_gold["id"]])
 
         s = Sample(id=curr_id, clear_text=clear_text, tokenized=tokenized)
