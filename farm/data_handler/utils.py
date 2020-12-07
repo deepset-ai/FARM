@@ -305,7 +305,7 @@ def write_squad_predictions(predictions, out_filename, predictions_filename=None
                         dev_labels[q["id"]] = q["answers"][0]["text"]
         not_included = set(list(dev_labels.keys())) - set(list(predictions_json.keys()))
         if len(not_included) > 0:
-            logger.info(f"There were missing predicitons for question ids: {str(set(list(dev_labels.keys())))}")
+            logger.info(f"There were missing predicitons for question ids: {list(not_included)}")
         for x in not_included:
             predictions_json[x] = ""
 

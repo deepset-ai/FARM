@@ -15,12 +15,11 @@ from farm.data_handler.utils import grouper
 from farm.data_handler.inputs import QAInput
 from farm.modeling.adaptive_model import AdaptiveModel, BaseAdaptiveModel, ONNXAdaptiveModel
 from farm.modeling.optimization import optimize_model
-from farm.utils import initialize_device_settings
+from farm.utils import initialize_device_settings, MLFlowLogger
 from farm.utils import set_all_seeds, calc_chunksize, log_ascii_workers, Benchmarker
 from farm.modeling.predictions import QAPred
 
 logger = logging.getLogger(__name__)
-
 
 class Inferencer:
     """
@@ -109,6 +108,8 @@ class Inferencer:
         :return: An instance of the Inferencer.
 
         """
+        MLFlowLogger.disable()
+
         # For benchmarking
         if dummy_ph:
             model.bypass_ph()
@@ -256,7 +257,6 @@ class Inferencer:
 
         # b) or from remote transformers model hub
         else:
-            logger.info(f"Could not find `{model_name_or_path}` locally. Try to download from model hub ...")
             if not task_type:
                 raise ValueError("Please specify the 'task_type' of the model you want to load from transformers. "
                                  "Valid options for arg `task_type`:"
@@ -456,6 +456,7 @@ class Inferencer:
         dataset, tensor_names, baskets = self.processor.dataset_from_dicts(
             dicts, indices=[i for i in range(len(dicts))], return_baskets=True
         )
+        self.processor.log_problematic()
 
         if self.benchmarking:
             self.benchmarker.record("dataset_single_proc")
@@ -504,10 +505,12 @@ class Inferencer:
 
         # Once a process spits out a preprocessed chunk. we feed this dataset directly to the model.
         # So we don't need to wait until all preprocessing has finished before getting first predictions.
-        for dataset, tensor_names, baskets in results:
+        for dataset, tensor_names, baskets, problematic_sample_ids in results:
+            self.processor.problematic_sample_ids.update(problematic_sample_ids)
+            self.processor.log_problematic()
             if dataset is None:
-                logger.error(f"Part of the dataset could not be converted. Check previous log-messages for unconverted samples. \n"
-                             f"BE AWARE: The order of predictions should not conform with the input order!")
+                logger.error(f"Part of the dataset could not be converted! \n"
+                             f"BE AWARE: The order of predictions will not conform with the input order!")
             else:
                 # TODO change format of formatted_preds in QA (list of dicts)
                 if aggregate_preds:
@@ -532,8 +535,8 @@ class Inferencer:
         The resulting datasets of the processes are merged together afterwards"""
         dicts = [d[1] for d in chunk]
         indices = [d[0] for d in chunk]
-        dataset, tensor_names, baskets = processor.dataset_from_dicts(dicts, indices, return_baskets=True)
-        return dataset, tensor_names, baskets
+        dataset, tensor_names, baskets, problematic_sample_ids = processor.dataset_from_dicts(dicts, indices, return_baskets=True, return_problematic=True)
+        return dataset, tensor_names, baskets, problematic_sample_ids
 
     def _get_predictions(self, dataset, tensor_names, baskets):
         """
@@ -680,6 +683,7 @@ class QAInferencer(Inferencer):
                                multiprocessing_chunksize=None,
                                streaming=False) -> Union[List[QAPred], Generator[QAPred, None, None]]:
         dicts = [o.to_dict() for o in objects]
+        logger.warning("QAInferencer.inference_from_objects() will soon be deprecated. Use QAInferencer.inference_from_dicts() instead")
         return self.inference_from_dicts(dicts, return_json=return_json,
                                          multiprocessing_chunksize=multiprocessing_chunksize, streaming=streaming)
 
