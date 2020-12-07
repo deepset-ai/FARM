@@ -1642,12 +1642,12 @@ class SquadProcessor(QAProcessor):
         dicts_tokenized = [_apply_tokenization(d, self.tokenizer) for d in dicts]
 
         # splitting documents into smaller passages to fit max_seq_len and doc_stride
-        baskets = self._split_docs_in_passages(dicts_tokenized, indices)
+        baskets = self._split_docs_into_passages(dicts_tokenized, indices)
 
         # joining question with passages + convert labels
         self.baskets = self._join_question_with_passages(baskets)
 
-        # converting to pytorch dataset
+        # converting into pytorch dataset
         dataset, tensor_names = self._create_dataset()
 
         # logging
@@ -1668,7 +1668,7 @@ class SquadProcessor(QAProcessor):
         dicts = [y for x in nested_dicts for y in x["paragraphs"]]
         return dicts
 
-    def _split_docs_in_passages(self, dicts_tokenized, indices):
+    def _split_docs_into_passages(self, dicts_tokenized, indices):
         """This method is used so that we need to tokenize only once when using a fast tokenizer."""
         # Perform tokenization on documents and questions resulting in an unnested list of doc-question pairs
         #dicts_tokenized2 = [_apply_tokenization(d, self.tokenizer) for d in dicts]
