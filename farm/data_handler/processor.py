@@ -51,10 +51,6 @@ from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, trunca
 from farm.utils import MLFlowLogger as MlLogger
 from farm.utils import try_get
 
-
-import os
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
 ID_NAMES = ["example_id", "external_id", "doc_id", "id"]
 
 
@@ -1669,31 +1665,33 @@ class SquadProcessor(QAProcessor):
 
         #tokenize
         start = time.time()
-        dicts_tokenized = _apply_tokenization_batch(dicts, self.tokenizer)
+        #dicts_tokenized = _apply_tokenization_batch(dicts, self.tokenizer)
+        dicts_tokenized = [_apply_tokenization(d, self.tokenizer) for d in dicts]
         print(f"tokenized after {time.time() - start} seconds")
+
         # split into passages and featurize
         ###################
         ######## TRY multiprocessing here
-        import torch.multiprocessing as mp
-        from contextlib import ExitStack
-        from functools import partial
-        from farm.data_handler.utils import grouper
-        with ExitStack() as stack:
-            p = stack.enter_context(mp.Pool(processes=8))
-            results = p.imap(
-                partial(self._fill_baskets_from_chunk),
-                grouper(dicts_tokenized, 5),
-                chunksize=1,
-            )
-        baskets = []
-        for b in results:
-            baskets.extend(b)
-        self.baskets = baskets
+        # import torch.multiprocessing as mp
+        # from contextlib import ExitStack
+        # from functools import partial
+        # from farm.data_handler.utils import grouper
+        # with ExitStack() as stack:
+        #     p = stack.enter_context(mp.Pool(processes=8))
+        #     results = p.imap(
+        #         partial(self._fill_baskets_from_chunk),
+        #         grouper(dicts_tokenized, 5),
+        #         chunksize=1,
+        #     )
+        # baskets = []
+        # for b in results:
+        #     baskets.extend(b)
+        # self.baskets = baskets
         ########## END OF try multiprocessing
         #######################
 
         #without mp
-        #self.baskets = self._fill_baskets(dicts_tokenized, indices)
+        self.baskets = self._fill_baskets(dicts_tokenized, indices)
         print(f"featurized after {time.time() - start} seconds")
         if 0 in indices:
             self._log_samples(2)
