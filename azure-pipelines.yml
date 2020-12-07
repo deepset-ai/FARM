@@ -6,6 +6,11 @@
 trigger:
   - master
 
+pr:
+  branches:
+    include:
+    - refactor_processor_qa
+
 jobs:
   - job: 'Test'
     pool:
