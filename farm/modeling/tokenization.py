@@ -372,7 +372,8 @@ def tokenize_with_metadata(text, tokenizer):
         tokenized2 = tokenizer.encode_plus(text, return_offsets_mapping=True, return_special_tokens_mask=True)
 
         tokens2 = tokenized2["input_ids"]
-        offsets2 = [x[0] for x in tokenized2["offset_mapping"]]
+        offsets2 = np.array([x[0] for x in tokenized2["offset_mapping"]])
+        #offsets2 = [x[0] for x in tokenized2["offset_mapping"]]
         words = np.array(tokenized2.encodings[0].words)
 
         # TODO check for validity for all tokenizer and special token types

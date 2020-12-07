@@ -1,5 +1,6 @@
 from transformers.tokenization_bert import whitespace_tokenize
 from farm.visual.ascii.images import SAMPLE
+import numpy as np
 
 import logging
 
@@ -118,8 +119,13 @@ def process_answers(answers, doc_offsets, passage_start_c, passage_start_t):
         answer_len_c = len(answer_text)
         answer_start_c = answer["offset"]
         answer_end_c = answer_start_c + answer_len_c - 1
-        answer_start_t = offset_to_token_idx(doc_offsets, answer_start_c)
-        answer_end_t = offset_to_token_idx(doc_offsets, answer_end_c)
+        answer_start_t = offset_to_token_idx_vecorized(doc_offsets, answer_start_c)
+        answer_end_t = offset_to_token_idx_vecorized(doc_offsets, answer_end_c)
+
+        # answer_start_t2 = offset_to_token_idx(doc_offsets, answer_start_c)
+        # answer_end_t2 = offset_to_token_idx(doc_offsets, answer_end_c)
+        # if (answer_start_t != answer_start_t2) or (answer_end_t != answer_end_t2):
+        #     print("maeh")
 
         # TODO: Perform check that answer can be recovered from document?
 
@@ -262,3 +268,23 @@ def offset_to_token_idx(token_offsets, ch_idx):
     for i in range(n_tokens):
         if (i + 1 == n_tokens) or (token_offsets[i] <= ch_idx < token_offsets[i + 1]):
             return i
+
+def offset_to_token_idx_vecorized(token_offsets, ch_idx):
+    """ Returns the idx of the token at the given character idx"""
+    ################
+    ################
+    ##################
+    # TODO CHECK THIS fct thoroughly - This must be bulletproof and inlcude start and end of sequence checks
+    ################
+    ################
+    ##################
+    # case ch_idx is at end of tokens
+    if ch_idx >= np.max(token_offsets):
+        # TODO check "+ 1" (it is needed for making end indices compliant with prev version)
+        # check weather end token is incluse or exclusive
+        idx = np.argmax(token_offsets) + 1
+    # looking for the first occurence of token_offsets larger than ch_idx and taking one position to the left.
+    # This is needed to overcome n x special_tokens at start of sequence with n x 0s in token_offsets
+    else:
+        idx = np.argmax(token_offsets > ch_idx) - 1
+    return idx

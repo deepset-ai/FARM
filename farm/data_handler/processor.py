@@ -392,7 +392,7 @@ class Processor(ABC):
                 return False
         return True
 
-    def _create_dataset(self, keep_baskets=False):
+    def _create_dataset(self):
         features_flat = []
         basket_to_remove = []
         for basket in self.baskets:
@@ -409,9 +409,6 @@ class Processor(ABC):
                 logger.warning(f"Basket id: id_internal: {basket.id_internal}, id_external: {basket.id_external}")
                 self.baskets.remove(basket)
 
-        if not keep_baskets:
-            # free up some RAM, we don't need baskets from here on
-            self.baskets = None
         dataset, tensor_names = convert_features_to_dataset(features=features_flat)
         return dataset, tensor_names
 
@@ -437,9 +434,8 @@ class Processor(ABC):
         else:
             self._init_samples_in_baskets()
             self._featurize_samples()
-        if indices:
-            if 0 in indices:
-                self._log_samples(2)
+        if indices and 0 in indices:
+            self._log_samples(2)
         else:
             self._log_samples(2)
         if return_baskets:
@@ -1634,130 +1630,45 @@ class SquadProcessor(QAProcessor):
                         "using the default task or add a custom task later via processor.add_task()")
 
 
-
-    def _fill_baskets_from_chunk(self, chunk):
-        """
-        Creating a dataset for a chunk (= subset) of dicts. In multiprocessing:
-          * we read in all dicts from a file
-          * split all dicts into chunks
-          * feed *one chunk* to *one process*
-          => the *one chunk*  gets converted to *one dataset* (that's what we do here)
-          * all datasets get collected and concatenated
-        :param chunk: Instead of only having a list of dicts here we also supply an index (ascending int) for each.
-            => [(0, dict), (1, dict) ...]
-        :type chunk: list of tuples
-        :param processor: FARM Processor (e.g. TextClassificationProcessor)
-        :return: PyTorch Dataset
-        """
-        dicts_tokenized = [d[1] for d in chunk]
-        indices = [x[0] for x in chunk]
-        baskets = self._fill_baskets(dicts_tokenized, indices)
-        return baskets
-
     def dataset_from_dicts(self, dicts, indices=None, return_baskets=False):
         """ Overwrites the method from the base class since Question Answering processing is quite different.
         This method allows for documents and questions to be tokenized earlier. Then SampleBaskets are initialized
         with one document and one question. """
 
-        import time
         # convert to standard format
         dicts = [convert_qa_input_dict(x) for x in dicts]
 
         #tokenize
-        start = time.time()
-        #dicts_tokenized = _apply_tokenization_batch(dicts, self.tokenizer)
         dicts_tokenized = [_apply_tokenization(d, self.tokenizer) for d in dicts]
-        print(f"tokenized after {time.time() - start} seconds")
 
-        # split into passages and featurize
-        ###################
-        ######## TRY multiprocessing here
-        # import torch.multiprocessing as mp
-        # from contextlib import ExitStack
-        # from functools import partial
-        # from farm.data_handler.utils import grouper
-        # with ExitStack() as stack:
-        #     p = stack.enter_context(mp.Pool(processes=8))
-        #     results = p.imap(
-        #         partial(self._fill_baskets_from_chunk),
-        #         grouper(dicts_tokenized, 5),
-        #         chunksize=1,
-        #     )
-        # baskets = []
-        # for b in results:
-        #     baskets.extend(b)
-        # self.baskets = baskets
-        ########## END OF try multiprocessing
-        #######################
+        # splitting documents into smaller passages to fit max_seq_len and doc_stride
+        baskets = self._split_docs_in_passages(dicts_tokenized, indices)
 
-        #without mp
-        self.baskets = self._fill_baskets(dicts_tokenized, indices)
-        print(f"featurized after {time.time() - start} seconds")
+        # joining question with passages + convert labels
+        self.baskets = self._join_question_with_passages(baskets)
+
+        # converting to pytorch dataset
+        dataset, tensor_names = self._create_dataset()
+
+        # logging
         if 0 in indices:
             self._log_samples(2)
+
         # This mode is for inference where we need to keep baskets
         if return_baskets:
-            dataset, tensor_names = self._create_dataset(keep_baskets=True)
             return dataset, tensor_names, self.baskets
         # This mode is for training where we can free ram by removing baskets
         else:
-            dataset, tensor_names = self._create_dataset(keep_baskets=False)
+            #TODO check if needed or handled by GC
+            self.baskets = None
             return dataset, tensor_names
-
-    # def _dicts_to_baskets(self, dicts, indices):
-    #     # Perform tokenization on documents and questions resulting in an unnested list of doc-question pairs
-    #     dicts_tokenized = [_apply_tokenization(d, self.tokenizer) for d in dicts]
-    #
-    #     baskets = []
-    #
-    #     for index, document in zip(indices, dicts_tokenized):
-    #         for q_idx, raw in enumerate(document):
-    #             # TODO: These checks dont exist in NQProcessor
-    #             # ignore samples with empty context
-    #             if raw["document_text"] == "":
-    #                 logger.warning("Ignoring sample with empty context.")
-    #                 continue
-    #
-    #             # Removes answers where text = "". True no_answers should have raw["answers"] = []
-    #             raw["answers"] = [a for a in raw["answers"] if a["text"]]
-    #
-    #             # check if answer string can be found in context
-    #             for answer in raw["answers"]:
-    #                 if answer["text"] not in raw["document_text"]:
-    #                     logger.warning(f"Answer '{answer['text']}' not contained in context.")
-    #             # In case of Question Answering the external ID is used for document IDs
-    #             id_external = try_get(ID_NAMES, raw)
-    #             id_internal = f"{index}-{q_idx}"
-    #             basket = SampleBasket(raw=raw, id_internal=id_internal, id_external=id_external)
-    #             baskets.append(basket)
-    #     return baskets
 
     def file_to_dicts(self, file: str) -> [dict]:
         nested_dicts = read_squad_file(filename=file)
         dicts = [y for x in nested_dicts for y in x["paragraphs"]]
         return dicts
 
-    # def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
-    #     n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
-    #     samples = create_samples_qa(dictionary=dictionary,
-    #                                    max_query_len=self.max_query_length,
-    #                                    max_seq_len=self.max_seq_len,
-    #                                    doc_stride=self.doc_stride,
-    #                                    n_special_tokens=n_special_tokens)
-    #     return samples
-
-    # def _sample_to_features(self, sample) -> dict:
-    #     _check_valid_answer(sample)
-    #     features = sample_to_features_qa(sample=sample,
-    #                                      tokenizer=self.tokenizer,
-    #                                      max_seq_len=self.max_seq_len,
-    #                                      sp_toks_start=self.sp_toks_start,
-    #                                      sp_toks_mid=self.sp_toks_mid,
-    #                                      sp_toks_end=self.sp_toks_end,
-    #                                      max_answers=self.max_answers)
-    #     return features
-
-    def _fill_baskets(self, dicts_tokenized, indices) -> [SampleBasket]:
+    def _split_docs_in_passages(self, dicts_tokenized, indices):
         """This method is used so that we need to tokenize only once when using a fast tokenizer."""
         # Perform tokenization on documents and questions resulting in an unnested list of doc-question pairs
         #dicts_tokenized2 = [_apply_tokenization(d, self.tokenizer) for d in dicts]
@@ -1784,21 +1695,25 @@ class SquadProcessor(QAProcessor):
                                             max_seq_len=self.max_seq_len,
                                             doc_stride=self.doc_stride,
                                             n_special_tokens=n_special_tokens)
-                # Add features to samples
-                for num, sample in enumerate(samples):
-                    sample.id = f"{id_internal}-{num}"
-                    _check_valid_answer(sample)
-                    features = sample_to_features_qa(sample=sample,
-                                                     tokenizer=self.tokenizer,
-                                                     max_seq_len=self.max_seq_len,
-                                                     sp_toks_start=self.sp_toks_start,
-                                                     sp_toks_mid=self.sp_toks_mid,
-                                                     sp_toks_end=self.sp_toks_end,
-                                                     max_answers=self.max_answers)
-                    sample.features = features
+
                 basket = SampleBasket(raw=raw, id_internal=id_internal, id_external=id_external, samples=samples)
                 baskets.append(basket)
+        return baskets
 
+    def _join_question_with_passages(self, baskets):
+        for b in baskets:
+            # Add features to samples
+            for num, sample in enumerate(b.samples):
+                sample.id = f"{b.id_internal}-{num}"
+                _check_valid_answer(sample)
+                features = sample_to_features_qa(sample=sample,
+                                                 tokenizer=self.tokenizer,
+                                                 max_seq_len=self.max_seq_len,
+                                                 sp_toks_start=self.sp_toks_start,
+                                                 sp_toks_mid=self.sp_toks_mid,
+                                                 sp_toks_end=self.sp_toks_end,
+                                                 max_answers=self.max_answers)
+                sample.features = features
         return baskets
 
 
