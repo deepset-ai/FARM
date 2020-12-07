@@ -615,25 +615,24 @@ class TextClassificationProcessor(Processor):
         tokenized_batch = self.tokenizer.batch_encode_plus(
             texts,
             return_offsets_mapping=True,
-            return_special_tokens_mask=True
+            return_special_tokens_mask=True,
+            return_token_type_ids=True,
+            return_attention_mask=True,
+            truncation=True,
+            max_length=self.max_seq_len,
+            padding="max_length"
         )
-        token_ids_batch = tokenized_batch["input_ids"]
+        input_ids_batch = tokenized_batch["input_ids"]
         segment_ids_batch = tokenized_batch["token_type_ids"]
+        padding_masks_batch = tokenized_batch["attention_mask"]
 
         # From here we operate on a per sample basis
-        for dictionary, token_ids, segment_ids in zip(
-                dicts, token_ids_batch, segment_ids_batch
+        for dictionary, input_ids, segment_ids, padding_mask in zip(
+                dicts, input_ids_batch, segment_ids_batch, padding_masks_batch
         ):
 
             # TODO Build tokenized dict for debug mode
             tokenized = {}
-
-            # Truncate results
-            token_ids = self.truncate(token_ids)
-            segment_ids = self.truncate(segment_ids)
-
-            # Pad results
-            input_ids, padding_mask, segment_ids = self.pad_sequences(token_ids, segment_ids)
 
             feat_dict = {"input_ids": input_ids,
                          "padding_mask": padding_mask,
@@ -645,7 +644,16 @@ class TextClassificationProcessor(Processor):
                 label_dict = self.generate_labels(dictionary)
                 feat_dict.update(label_dict)
 
-            self.add_basket(dictionary, tokenized, feat_dict)
+            # Add Basket to self.baskets
+            curr_sample = Sample(id=None,
+                                 clear_text=dictionary,
+                                 tokenized=tokenized,
+                                 features=[feat_dict])
+            curr_basket = SampleBasket(id_internal=None,
+                                       raw=dictionary,
+                                       id_external=None,
+                                       samples=[curr_sample])
+            self.baskets.append(curr_basket)
 
         if 0 in indices:
             self._log_samples(2)
@@ -669,18 +677,6 @@ class TextClassificationProcessor(Processor):
                 basket_to_remove.append(basket)
         dataset, tensor_names = convert_features_to_dataset(features=features_flat)
         return dataset, tensor_names
-
-    def add_basket(self, dictionary, tokenized, feat_dict):
-        curr_sample = Sample(id=None,
-                             clear_text=dictionary,
-                             tokenized=tokenized,
-                             features=[feat_dict])
-        curr_basket = SampleBasket(id_internal=None,
-                                   raw=dictionary,
-                                   id_external=None,
-                                   samples=[curr_sample])
-        self.baskets.append(curr_basket)
-
 
     def generate_labels(self, dictionary):
         ret = {}
@@ -724,16 +720,6 @@ class TextClassificationProcessor(Processor):
         assert len(segment_ids) == self.max_seq_len
 
         return input_ids, padding_mask, segment_ids
-
-    def truncate(self, sequence):
-        total_len = len(sequence)
-        seq_a, _, _ = self.tokenizer.truncate_sequences(
-            sequence,
-            pair_ids=None,
-            num_tokens_to_remove=total_len - self.max_seq_len,
-            truncation_strategy="only_first"
-        )
-        return seq_a
 
 
 class TextPairClassificationProcessor(TextClassificationProcessor):
