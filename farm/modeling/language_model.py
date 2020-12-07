@@ -125,12 +125,18 @@ class LanguageModel(nn.Module):
         :type language_model_class: str
 
         """
+        logger.info("")
+        logger.info("LOADING MODEL")
+        logger.info("=============")
         config_file = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(config_file):
+            logger.info(f"Model found locally at {pretrained_model_name_or_path}")
             # it's a local directory in FARM format
             config = json.load(open(config_file))
             language_model = cls.subclasses[config["name"]].load(pretrained_model_name_or_path)
         else:
+            logger.info(f"Could not find {pretrained_model_name_or_path} locally.")
+            logger.info(f"Looking on Transformers Model Hub (in local cache and online)...")
             if language_model_class is None:
                 language_model_class = cls.get_language_model_class(pretrained_model_name_or_path)
 
@@ -147,6 +153,8 @@ class LanguageModel(nn.Module):
                 f"Transformers' model. Here's a list of available models: "
                 f"https://farm.deepset.ai/api/modeling.html#farm.modeling.language_model.LanguageModel.load"
             )
+        else:
+            logger.info(f"Loaded {pretrained_model_name_or_path}")
 
         # resize embeddings in case of custom vocab
         if n_added_tokens != 0:
@@ -311,18 +319,7 @@ class LanguageModel(nn.Module):
             )
         elif len(matches) == 0:
             language = "english"
-            logger.warning(
-                "Could not automatically detect from language model name what language it is. \n"
-                "\t We guess it's an *ENGLISH* model ... \n"
-                "\t If not: Init the language model by supplying the 'language' param."
-            )
         elif len(matches) > 1:
-            logger.warning(
-                "Could not automatically detect from language model name what language it is.\n"
-                f"\t Found multiple matches: {matches}\n"
-                "\t Please init the language model by manually supplying the 'language' as a parameter.\n"
-                f"\t Using {matches[0]} as language parameter for now.\n"
-            )
             language = matches[0]
         else:
             language = matches[0]

@@ -121,6 +121,7 @@ class Processor(ABC):
         self.baskets = []
 
         self._log_params()
+        self.problematic_sample_ids = set()
 
     def __init_subclass__(cls, **kwargs):
         """ This automatically keeps track of all available subclasses.
@@ -330,11 +331,9 @@ class Processor(ABC):
     def file_to_dicts(self, file: str) -> [dict]:
         raise NotImplementedError()
 
-    #@abc.abstractmethod
     def _dict_to_samples(cls, dictionary: dict, all_dicts=None) -> [Sample]:
         raise NotImplementedError()
 
-    #@abc.abstractmethod
     def _sample_to_features(cls, sample: Sample) -> dict:
         raise NotImplementedError()
 
@@ -353,14 +352,23 @@ class Processor(ABC):
                 logger.error(f"Error message: {e}")
 
     def _featurize_samples(self):
+        curr_problematic_sample_ids = []
         for basket in self.baskets:
             for sample in basket.samples:
                 try:
                     sample.features = self._sample_to_features(sample=sample)
                 except Exception as e:
-                    logger.error(f"Could not convert this sample to features: \n {sample}")
-                    logger.error(f"Basket id: id_internal: {basket.id_internal}, id_external: {basket.id_external}")
-                    logger.error(f"Error message: {e}")
+                    curr_problematic_sample_ids.append(sample.id)
+        if curr_problematic_sample_ids:
+            self.problematic_sample_ids.update(curr_problematic_sample_ids)
+
+    def log_problematic(self):
+        if self.problematic_sample_ids:
+            n_problematic = len(self.problematic_sample_ids)
+            problematic_id_str = ", ".join(self.problematic_sample_ids)
+            logger.error(
+                f"Unable to convert {n_problematic} samples to features. Their ids are : {problematic_id_str}")
+            self.problematic_sample_ids = set()
 
     def _init_and_featurize_samples_in_baskets(self):
         for basket in self.baskets:
@@ -403,16 +411,14 @@ class Processor(ABC):
                 # remove the entire basket
                 basket_to_remove.append(basket)
         if len(basket_to_remove) > 0:
-            # if basket_to_remove is not empty remove the related baskets
-            logger.warning(f"Removing the following baskets because of errors in computing features:")
             for basket in basket_to_remove:
-                logger.warning(f"Basket id: id_internal: {basket.id_internal}, id_external: {basket.id_external}")
+                # if basket_to_remove is not empty remove the related baskets
                 self.baskets.remove(basket)
 
         dataset, tensor_names = convert_features_to_dataset(features=features_flat)
         return dataset, tensor_names
 
-    def dataset_from_dicts(self, dicts, indices=None, return_baskets = False):
+    def dataset_from_dicts(self, dicts, indices=None, return_baskets = False, return_problematic=False):
         """
         Contains all the functionality to turn a list of dict objects into a PyTorch Dataset and a
         list of tensor names. This can be used for inference mode.
@@ -429,21 +435,26 @@ class Processor(ABC):
             if indices:
                 id_internal = indices[id_internal]
             self.baskets.append(SampleBasket(raw=d, id_external=id_external, id_internal=id_internal))
-        if self.tokenizer.is_fast:
-            self._init_and_featurize_samples_in_baskets()
+
+        self._init_samples_in_baskets()
+        self._featurize_samples()
+        if indices:
+            if 0 in indices:
+                self._log_samples(1)
         else:
-            self._init_samples_in_baskets()
-            self._featurize_samples()
-        if indices and 0 in indices:
-            self._log_samples(2)
-        else:
-            self._log_samples(2)
+            self._log_samples(1)
+        # This mode is for inference where we need to keep baskets
         if return_baskets:
-            dataset, tensor_names = self._create_dataset(keep_baskets=True)
-            return dataset, tensor_names, self.baskets
+            #TODO simplify
+            dataset, tensor_names = self._create_dataset()
+            ret = [dataset, tensor_names, self.baskets]
+        # This mode is for training where we can free ram by removing baskets
         else:
             dataset, tensor_names = self._create_dataset()
-            return dataset, tensor_names
+            ret = [dataset, tensor_names]
+        if return_problematic:
+            ret.append(self.problematic_sample_ids)
+        return tuple(ret)
 
     def _log_samples(self, n_samples):
         logger.info("*** Show {} random examples ***".format(n_samples))
@@ -1037,7 +1048,7 @@ class NERProcessor(Processor):
                          These predefined datasets are defined as the keys in the dict at
                          `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
         :type data_dir: str
-        :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
+        :param label_list: list of labels to predict (strings).
         :type label_list: list
         :param metric: name of metric that shall be used for evaluation, e.g. "seq_f1".
                  Alternatively you can also supply a custom function, that takes preds and labels as args and returns a numerical value.
@@ -1074,7 +1085,6 @@ class NERProcessor(Processor):
             tasks={},
             proxies=proxies
         )
-
         if metric and label_list:
             self.add_task("ner", metric, label_list)
         else:
@@ -1631,7 +1641,7 @@ class SquadProcessor(QAProcessor):
                         "using the default task or add a custom task later via processor.add_task()")
 
 
-    def dataset_from_dicts(self, dicts, indices=None, return_baskets=False):
+    def dataset_from_dicts(self, dicts, indices=None, return_baskets=False, return_problematic=False):
         """ Overwrites the method from the base class since Question Answering processing is quite different.
         This method allows for documents and questions to be tokenized earlier. Then SampleBaskets are initialized
         with one document and one question. """
@@ -1672,7 +1682,6 @@ class SquadProcessor(QAProcessor):
     def _split_docs_into_passages(self, dicts_tokenized, indices):
         """This method is used so that we need to tokenize only once when using a fast tokenizer."""
         # Perform tokenization on documents and questions resulting in an unnested list of doc-question pairs
-        #dicts_tokenized2 = [_apply_tokenization(d, self.tokenizer) for d in dicts]
         baskets = []
 
         n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
