@@ -575,7 +575,7 @@ class TokenClassificationHead(PredictionHead):
         self.generate_config()
 
     @classmethod
-    def load(cls, pretrained_model_name_or_path):
+    def load(cls, pretrained_model_name_or_path, revision=None):
         """
         Load a prediction head from a saved FARM or transformers model. `pretrained_model_name_or_path`
         can be one of the following:
@@ -600,7 +600,7 @@ class TokenClassificationHead(PredictionHead):
         else:
             # b) transformers style
             # load all weights from model
-            full_model = AutoModelForTokenClassification.from_pretrained(pretrained_model_name_or_path)
+            full_model = AutoModelForTokenClassification.from_pretrained(pretrained_model_name_or_path, revision=revision)
             # init empty head
             head = cls(layer_dims=[full_model.config.hidden_size, len(full_model.config.label2id)])
             # transfer weights for head from full model
