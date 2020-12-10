@@ -382,7 +382,7 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
 
 
 def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks_mid, sp_toks_end,
-                          answer_type_list=None, max_answers=6):
+                          labels, answer_types=None):
     """ Prepares data for processing by the model. Supports cases where there are
     multiple answers for the one question/document pair. max_answers is by default set to 6 since
     that is the most number of answers in the squad2.0 dev set.
@@ -418,13 +418,13 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
     # Generates a numpy array of shape (max_answers, 2) where (i, 2) indexes into the start and end indices
     # of the ith answer. The array is filled with -1 since the number of answers is often less than max_answers
     # no answer labels are represented by (0,0)
-    labels, answer_types = generate_labels(answers,
-                                           passage_len_t,
-                                           question_len_t,
-                                           max_answers,
-                                           sp_toks_start,
-                                           sp_toks_mid,
-                                           answer_type_list)
+    # labels, answer_types = generate_labels(answers,
+    #                                        passage_len_t,
+    #                                        question_len_t,
+    #                                        max_answers,
+    #                                        sp_toks_start,
+    #                                        sp_toks_mid,
+    #                                        answer_type_list)
 
     # Combines question_tokens and passage_tokens (str) into a single encoded vector of token indices (int)
     # called input_ids. This encoded vector also contains special tokens (e.g. [CLS]). It will have length =
