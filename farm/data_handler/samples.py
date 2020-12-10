@@ -117,7 +117,10 @@ def process_answers(answers, doc_offsets, passage_start_c, passage_start_t):
         # This section calculates start and end relative to document
         answer_text = answer["text"]
         answer_len_c = len(answer_text)
-        answer_start_c = answer["offset"]
+        if "offset" in answer:
+            answer_start_c = answer["offset"]
+        else:
+            answer_start_c = answer["answer_start"]
         answer_end_c = answer_start_c + answer_len_c - 1
         answer_start_t = offset_to_token_idx_vecorized(doc_offsets, answer_start_c)
         answer_end_t = offset_to_token_idx_vecorized(doc_offsets, answer_end_c)

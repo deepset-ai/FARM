@@ -1649,14 +1649,18 @@ class SquadProcessor(QAProcessor):
         # convert to standard format
         dicts = [convert_qa_input_dict(x) for x in dicts]
 
-        #tokenize
-        dicts_tokenized = [_apply_tokenization(d, self.tokenizer) for d in dicts]
+        # tokenize
+        #dicts_tokenized = [_apply_tokenization(d, self.tokenizer) for d in dicts]
+        dicts_tokenized = _apply_tokenization_batch(dicts, self.tokenizer)
 
         # splitting documents into smaller passages to fit max_seq_len and doc_stride
         baskets = self._split_docs_into_passages(dicts_tokenized, indices)
 
-        # joining question with passages + convert labels
-        self.baskets = self._join_question_with_passages(baskets)
+        # create labels
+        labels, answer_types = self._create_labels(baskets)
+
+        # joining question with passages + labels
+        self.baskets = self._join_question_with_passages(baskets, labels, answer_types)
 
         # converting into pytorch dataset
         dataset, tensor_names = self._create_dataset()
@@ -1666,13 +1670,16 @@ class SquadProcessor(QAProcessor):
             self._log_samples(2)
 
         # This mode is for inference where we need to keep baskets
+        ret = [dataset, tensor_names]
         if return_baskets:
-            return dataset, tensor_names, self.baskets
+            ret.append(self.baskets)
         # This mode is for training where we can free ram by removing baskets
         else:
             #TODO check if needed or handled by GC
             self.baskets = None
-            return dataset, tensor_names
+        if return_problematic:
+            ret.append(self.problematic_sample_ids)
+        return tuple(ret)
 
     def file_to_dicts(self, file: str) -> [dict]:
         nested_dicts = read_squad_file(filename=file)
@@ -1710,7 +1717,31 @@ class SquadProcessor(QAProcessor):
                 baskets.append(basket)
         return baskets
 
-    def _join_question_with_passages(self, baskets):
+    def _create_labels(self, baskets):
+        from farm.data_handler.input_features import generate_labels
+        for b in baskets:
+            # Add features to samples
+            for num, sample in enumerate(b.samples):
+                # Initialize some basic variables
+                question_tokens = sample.tokenized["question_tokens"]
+                question_len_t = len(question_tokens)
+                passage_tokens = sample.tokenized["passage_tokens"]
+                passage_len_t = len(passage_tokens)
+                answers = sample.tokenized["answers"]
+
+                # Generates a numpy array of shape (max_answers, 2) where (i, 2) indexes into the start and end indices
+                # of the ith answer. The array is filled with -1 since the number of answers is often less than max_answers
+                # no answer labels are represented by (0,0)
+                labels, answer_types = generate_labels(answers,
+                                                       passage_len_t,
+                                                       question_len_t,
+                                                       self.max_answers,
+                                                       self.sp_toks_start,
+                                                       self.sp_toks_mid,
+                                                       answer_type_list=None)
+                return labels, answer_types
+
+    def _join_question_with_passages(self, baskets, labels, answer_types):
         for b in baskets:
             # Add features to samples
             for num, sample in enumerate(b.samples):
@@ -1722,7 +1753,8 @@ class SquadProcessor(QAProcessor):
                                                  sp_toks_start=self.sp_toks_start,
                                                  sp_toks_mid=self.sp_toks_mid,
                                                  sp_toks_end=self.sp_toks_end,
-                                                 max_answers=self.max_answers)
+                                                 labels=labels,
+                                                 answer_types=answer_types)
                 sample.features = features
         return baskets
 
@@ -2698,7 +2730,7 @@ def _apply_tokenization_batch(dicts,tokenizer):
     tokenids_batch = tokenized_batch["input_ids"]
     offsets_batch = []
     for o in tokenized_batch["offset_mapping"]:
-        offsets_batch.append([x[0] for x in o])
+        offsets_batch.append(np.array([x[0] for x in o]))
 
     start_of_words_batch = []
     for e in tokenized_batch.encodings:
