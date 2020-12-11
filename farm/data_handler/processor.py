@@ -21,6 +21,7 @@ from farm.data_handler.input_features import (
     sample_to_features_text,
     sample_to_features_qa,
 )
+from farm.data_handler.nq_utils import sample_to_features_qa_Natural_Questions, create_samples_qa_Natural_Question
 from farm.data_handler.samples import (
     Sample,
     SampleBasket,
@@ -1868,7 +1869,7 @@ class NaturalQuestionsProcessor(QAProcessor):
 
         dictionary_tokenized = _apply_tokenization(dictionary, self.tokenizer, self.answer_type_list)[0]
         n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
-        samples = create_samples_qa(dictionary_tokenized,
+        samples = create_samples_qa_Natural_Question(dictionary_tokenized,
                                     self.max_query_length,
                                     self.max_seq_len,
                                     self.doc_stride,
@@ -2054,7 +2055,7 @@ class NaturalQuestionsProcessor(QAProcessor):
 
     def _sample_to_features(self, sample: Sample) -> dict:
         _check_valid_answer(sample)
-        features = sample_to_features_qa(sample=sample,
+        features = sample_to_features_qa_Natural_Questions(sample=sample,
                                          tokenizer=self.tokenizer,
                                          max_seq_len=self.max_seq_len,
                                          sp_toks_start=self.sp_toks_start,
@@ -2077,7 +2078,7 @@ class NaturalQuestionsProcessor(QAProcessor):
 
         dictionary_tokenized = _apply_tokenization(dictionary, self.tokenizer, self.answer_type_list)[0]
         n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
-        samples = create_samples_qa(dictionary_tokenized,
+        samples = create_samples_qa_Natural_Question(dictionary_tokenized,
                                     self.max_query_length,
                                     self.max_seq_len,
                                     self.doc_stride,
