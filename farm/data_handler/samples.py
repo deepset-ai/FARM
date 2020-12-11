@@ -278,6 +278,7 @@ def offset_to_token_idx_vecorized(token_offsets, ch_idx):
     ################
     ##################
     # TODO CHECK THIS fct thoroughly - This must be bulletproof and inlcude start and end of sequence checks
+    # todo Possibly this function does not work for Natural Questions and needs adjustments
     ################
     ################
     ##################
