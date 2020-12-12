@@ -552,14 +552,14 @@ def tokenize_batch_question_answering(dicts, tokenizer):
     raw_baskets_batch = []
     # tokenize texts in batch mode
     texts = [d["context"] for d in dicts]
-    tokenized_batch = tokenizer.batch_encode_plus(texts, return_offsets_mapping=True, return_special_tokens_mask=True)
+    tokenized_docs_batch = tokenizer.batch_encode_plus(texts, return_offsets_mapping=True, return_special_tokens_mask=True)
 
-    tokenids_batch = tokenized_batch["input_ids"]
+    tokenids_batch = tokenized_docs_batch["input_ids"]
     offsets_batch = []
-    for o in tokenized_batch["offset_mapping"]:
+    for o in tokenized_docs_batch["offset_mapping"]:
         offsets_batch.append(np.array([x[0] for x in o]))
     start_of_words_batch = []
-    for e in tokenized_batch.encodings:
+    for e in tokenized_docs_batch.encodings:
         start_of_words_batch.append(_get_start_of_word(e.words))
 
     # tokenize questions individually
@@ -588,6 +588,9 @@ def tokenize_batch_question_answering(dicts, tokenizer):
                    "answers": answers,
                    "answer_type": answer_type,
                    "external_id": external_id}
+            # TODO create debug mode for squadprocessor and during inference (adding debug mode to inference is the hard part)
+            raw["document_tokens_strings"] = tokenized_docs_batch.encodings[i].tokens
+            raw["question_tokens_strings"] = tokenized_q.encodings[0].tokens
             raw_basket.append(raw)
         raw_baskets_batch.append(raw_basket)
     return raw_baskets_batch

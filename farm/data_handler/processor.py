@@ -1624,7 +1624,7 @@ class QAProcessor(Processor):
         self.sp_toks_end = len(vec) - vec.index("b") - 1
 
 
-class SquadProcessor(QAProcessor):
+class SquadProcessor(Processor):
     """ Used to handle the SQuAD dataset"""
 
     def __init__(
@@ -1685,7 +1685,6 @@ class SquadProcessor(QAProcessor):
         self.doc_stride = doc_stride
         self.max_query_length = max_query_length
         self.max_answers = max_answers
-
         super(SquadProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
@@ -1697,12 +1696,19 @@ class SquadProcessor(QAProcessor):
             tasks={},
             proxies=proxies
         )
+        self.initialize_special_tokens_count()
         if metric and label_list:
             self.add_task("question_answering", metric, label_list)
         else:
             logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
                         "using the default task or add a custom task later via processor.add_task()")
 
+    def initialize_special_tokens_count(self):
+        vec = self.tokenizer.build_inputs_with_special_tokens(token_ids_0=["a"],
+                                                              token_ids_1=["b"])
+        self.sp_toks_start = vec.index("a")
+        self.sp_toks_mid = vec.index("b") - self.sp_toks_start - 1
+        self.sp_toks_end = len(vec) - vec.index("b") - 1
 
     def dataset_from_dicts(self, dicts, indices=None, return_baskets=False, return_problematic=False):
         """ todo write comment.
