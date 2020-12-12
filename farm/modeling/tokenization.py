@@ -552,7 +552,7 @@ def tokenize_batch_question_answering(dicts, tokenizer):
     raw_baskets_batch = []
     # tokenize texts in batch mode
     texts = [d["context"] for d in dicts]
-    tokenized_docs_batch = tokenizer.batch_encode_plus(texts, return_offsets_mapping=True, return_special_tokens_mask=True)
+    tokenized_docs_batch = tokenizer.batch_encode_plus(texts, return_offsets_mapping=True, return_special_tokens_mask=True, add_special_tokens=False)
 
     tokenids_batch = tokenized_docs_batch["input_ids"]
     offsets_batch = []
@@ -569,7 +569,7 @@ def tokenize_batch_question_answering(dicts, tokenizer):
         for q in d["qas"]:
             # tokenize questions
             question_text = q["question"]
-            tokenized_q = tokenizer.encode_plus(question_text, return_offsets_mapping=True, return_special_tokens_mask=True)
+            tokenized_q = tokenizer.encode_plus(question_text, return_offsets_mapping=True, return_special_tokens_mask=True, add_special_tokens=False)
 
             question_tokenids = tokenized_q["input_ids"]
             question_offsets = [x[0] for x in tokenized_q["offset_mapping"]]
@@ -597,9 +597,5 @@ def tokenize_batch_question_answering(dicts, tokenizer):
 
 def _get_start_of_word(word_ids):
     words = np.array(word_ids)
-    # TODO check for validity for all tokenizer and special token types
-    words[0] = -1
-    words[-1] = words[-2]
-    words += 1
-    start_of_word_single = [0] + list(np.ediff1d(words))
+    start_of_word_single = [1] + list(np.ediff1d(words))
     return start_of_word_single
