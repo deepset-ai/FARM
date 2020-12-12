@@ -155,6 +155,8 @@ def samples_to_features_ner(
 
     tokens = sample.tokenized["tokens"]
 
+    raise NotImplementedError()
+
     if tokenizer.is_fast:
         text = sample.clear_text["text"]
         # Here, we tokenize the sample for the second time to get all relevant ids
