@@ -413,19 +413,7 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
     passage_tokens = sample.tokenized["passage_tokens"]
     passage_start_of_word = sample.tokenized["passage_start_of_word"]
     passage_len_t = len(passage_tokens)
-    answers = sample.tokenized["answers"]
     sample_id = [int(x) for x in sample.id.split("-")]
-
-    # Generates a numpy array of shape (max_answers, 2) where (i, 2) indexes into the start and end indices
-    # of the ith answer. The array is filled with -1 since the number of answers is often less than max_answers
-    # no answer labels are represented by (0,0)
-    # labels, answer_types = generate_labels(answers,
-    #                                        passage_len_t,
-    #                                        question_len_t,
-    #                                        max_answers,
-    #                                        sp_toks_start,
-    #                                        sp_toks_mid,
-    #                                        answer_type_list)
 
     # Combines question_tokens and passage_tokens (str) into a single encoded vector of token indices (int)
     # called input_ids. This encoded vector also contains special tokens (e.g. [CLS]). It will have length =
