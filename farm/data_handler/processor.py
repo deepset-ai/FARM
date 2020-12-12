@@ -1717,10 +1717,10 @@ class SquadProcessor(QAProcessor):
         baskets = self._split_docs_into_passages(dicts_tokenized, indices)
 
         # create labels
-        labels, answer_types = self._create_labels(baskets)
+        baskets = self._create_labels(baskets)
 
         # joining question with passages + labels
-        self.baskets = self._join_question_with_passages(baskets, labels, answer_types)
+        self.baskets = self._join_question_with_passages(baskets)
 
         # converting into pytorch dataset
         dataset, tensor_names = self._create_dataset()
@@ -1858,9 +1858,11 @@ class SquadProcessor(QAProcessor):
                                                        self.sp_toks_start,
                                                        self.sp_toks_mid,
                                                        answer_type_list=None)
-                return labels, answer_types
+                sample.tokenized["labels"] = labels
+                sample.tokenized["answer_types"] = answer_types
+        return baskets
 
-    def _join_question_with_passages(self, baskets, labels, answer_types):
+    def _join_question_with_passages(self, baskets):
         for b in baskets:
             # Add features to samples
             for num, sample in enumerate(b.samples):
@@ -1870,9 +1872,7 @@ class SquadProcessor(QAProcessor):
                                                  max_seq_len=self.max_seq_len,
                                                  sp_toks_start=self.sp_toks_start,
                                                  sp_toks_mid=self.sp_toks_mid,
-                                                 sp_toks_end=self.sp_toks_end,
-                                                 labels=labels,
-                                                 answer_types=answer_types)
+                                                 sp_toks_end=self.sp_toks_end)
                 sample.features = features
         return baskets
 
