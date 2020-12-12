@@ -125,13 +125,14 @@ def process_answers(answers, doc_offsets, passage_start_c, passage_start_t):
         answer_start_t = offset_to_token_idx_vecorized(doc_offsets, answer_start_c)
         answer_end_t = offset_to_token_idx_vecorized(doc_offsets, answer_end_c)
 
+        # # Leaving this code for potentially debugging 'offset_to_token_idx_vecorized()'
         # answer_start_t2 = offset_to_token_idx(doc_offsets, answer_start_c)
         # answer_end_t2 = offset_to_token_idx(doc_offsets, answer_end_c)
         # if (answer_start_t != answer_start_t2) or (answer_end_t != answer_end_t2):
-        #     print("maeh")
+        #     pass
+
 
         # TODO: Perform check that answer can be recovered from document?
-
         # This section converts start and end so that they are relative to the passage
         # TODO: Is this actually necessary on character level?
         answer_start_c -= passage_start_c
@@ -151,82 +152,85 @@ def process_answers(answers, doc_offsets, passage_start_c, passage_start_t):
     return answers_clear, answers_tokenized
 
 
-def create_samples_qa(dictionary, max_query_len, max_seq_len, doc_stride, n_special_tokens):
-    """
-    This method will split question-document pairs from the SampleBasket into question-passage pairs which will
-    each form one sample. The "t" and "c" in variables stand for token and character respectively.
-    """
+# def create_samples_qa(dictionary, max_query_len, max_seq_len, doc_stride, n_special_tokens):
+#     """
+#     This method will split question-document pairs from the SampleBasket into question-passage pairs which will
+#     each form one sample. The "t" and "c" in variables stand for token and character respectively.
+#     """
+#
+#     # Initialize some basic variables
+#     # is_training = check_if_training(dictionary)
+#     question_tokens = dictionary["question_tokens"][:max_query_len]
+#     question_len_t = len(question_tokens)
+#     question_offsets = dictionary["question_offsets"]
+#     doc_tokens = dictionary["document_tokens"]
+#     doc_offsets = dictionary["document_offsets"]
+#     doc_text = dictionary["document_text"]
+#     doc_start_of_word = dictionary["document_start_of_word"]
+#     samples = []
+#
+#     # Calculate the number of tokens that can be reserved for the passage. This is calculated by considering
+#     # the max_seq_len, the number of tokens in the question and the number of special tokens that will be added
+#     # when the question and passage are joined (e.g. [CLS] and [SEP])
+#     passage_len_t = max_seq_len - question_len_t - n_special_tokens
+#
+#     # Perform chunking of document into passages. The sliding window moves in steps of doc_stride.
+#     # passage_spans is a list of dictionaries where each defines the start and end of each passage
+#     # on both token and character level
+#     passage_spans = _slide_window_over_documents(doc_offsets,
+#                                                  doc_stride,
+#                                                  passage_len_t,
+#                                                  doc_text)
+#     for passage_span in passage_spans:
+#         # Unpack each variable in the dictionary. The "_t" and "_c" indicate
+#         # whether the index is on the token or character level
+#         passage_start_t = passage_span["passage_start_t"]
+#         passage_end_t = passage_span["passage_end_t"]
+#         passage_start_c = passage_span["passage_start_c"]
+#         passage_end_c = passage_span["passage_end_c"]
+#         passage_id = passage_span["passage_id"]
+#
+#         # passage_offsets will be relative to the start of the passage (i.e. they will start at 0)
+#         # TODO: Is passage offsets actually needed? At this point, maybe we only care about token level
+#         passage_offsets = doc_offsets[passage_start_t: passage_end_t]
+#         passage_start_of_word = doc_start_of_word[passage_start_t: passage_end_t]
+#         passage_offsets = [x - passage_offsets[0] for x in passage_offsets]
+#         passage_tokens = doc_tokens[passage_start_t: passage_end_t]
+#         passage_text = dictionary["document_text"][passage_start_c: passage_end_c]
+#
+#         # Deal with the potentially many answers (e.g. Squad or NQ dev set)
+#         answers_clear, answers_tokenized = process_answers(dictionary["answers"],
+#                                                            doc_offsets,
+#                                                            passage_start_c,
+#                                                            passage_start_t)
+#
+#         clear_text = {"passage_text": passage_text,
+#                       "question_text": dictionary["question_text"],
+#                       "passage_id": passage_id,
+#                       "answers": answers_clear}
+#         tokenized = {"passage_start_t": passage_start_t,
+#                      "passage_tokens": passage_tokens,
+#                      "passage_offsets": passage_offsets,
+#                      "passage_start_of_word": passage_start_of_word,
+#                      "question_tokens": question_tokens,
+#                      "question_offsets": question_offsets,
+#                      "question_start_of_word": dictionary["question_start_of_word"][:max_query_len],
+#                      "answers": answers_tokenized,
+#                      "document_offsets": doc_offsets}   # So that to_doc_preds can access them
+#         samples.append(Sample(id=passage_id,
+#                               clear_text=clear_text,
+#                               tokenized=tokenized))
+#     return samples
 
-    # Initialize some basic variables
-    # is_training = check_if_training(dictionary)
-    question_tokens = dictionary["question_tokens"][:max_query_len]
-    question_len_t = len(question_tokens)
-    question_offsets = dictionary["question_offsets"]
-    doc_tokens = dictionary["document_tokens"]
-    doc_offsets = dictionary["document_offsets"]
-    doc_text = dictionary["document_text"]
-    doc_start_of_word = dictionary["document_start_of_word"]
-    samples = []
 
-    # Calculate the number of tokens that can be reserved for the passage. This is calculated by considering
-    # the max_seq_len, the number of tokens in the question and the number of special tokens that will be added
-    # when the question and passage are joined (e.g. [CLS] and [SEP])
-    passage_len_t = max_seq_len - question_len_t - n_special_tokens
-
-    # Perform chunking of document into passages. The sliding window moves in steps of doc_stride.
-    # passage_spans is a list of dictionaries where each defines the start and end of each passage
-    # on both token and character level
-    passage_spans = chunk_into_passages(doc_offsets,
-                                        doc_stride,
-                                        passage_len_t,
-                                        doc_text)
-    for passage_span in passage_spans:
-        # Unpack each variable in the dictionary. The "_t" and "_c" indicate
-        # whether the index is on the token or character level
-        passage_start_t = passage_span["passage_start_t"]
-        passage_end_t = passage_span["passage_end_t"]
-        passage_start_c = passage_span["passage_start_c"]
-        passage_end_c = passage_span["passage_end_c"]
-        passage_id = passage_span["passage_id"]
-
-        # passage_offsets will be relative to the start of the passage (i.e. they will start at 0)
-        # TODO: Is passage offsets actually needed? At this point, maybe we only care about token level
-        passage_offsets = doc_offsets[passage_start_t: passage_end_t]
-        passage_start_of_word = doc_start_of_word[passage_start_t: passage_end_t]
-        passage_offsets = [x - passage_offsets[0] for x in passage_offsets]
-        passage_tokens = doc_tokens[passage_start_t: passage_end_t]
-        passage_text = dictionary["document_text"][passage_start_c: passage_end_c]
-
-        # Deal with the potentially many answers (e.g. Squad or NQ dev set)
-        answers_clear, answers_tokenized = process_answers(dictionary["answers"],
-                                                           doc_offsets,
-                                                           passage_start_c,
-                                                           passage_start_t)
-
-        clear_text = {"passage_text": passage_text,
-                      "question_text": dictionary["question_text"],
-                      "passage_id": passage_id,
-                      "answers": answers_clear}
-        tokenized = {"passage_start_t": passage_start_t,
-                     "passage_tokens": passage_tokens,
-                     "passage_offsets": passage_offsets,
-                     "passage_start_of_word": passage_start_of_word,
-                     "question_tokens": question_tokens,
-                     "question_offsets": question_offsets,
-                     "question_start_of_word": dictionary["question_start_of_word"][:max_query_len],
-                     "answers": answers_tokenized,
-                     "document_offsets": doc_offsets}   # So that to_doc_preds can access them
-        samples.append(Sample(id=passage_id,
-                              clear_text=clear_text,
-                              tokenized=tokenized))
-    return samples
-
-
-def chunk_into_passages(doc_offsets,
+def get_passage_offsets(doc_offsets,
                         doc_stride,
                         passage_len_t,
                         doc_text):
-    """ Returns a list of dictionaries which each describe the start, end and id of a passage
+    """
+    Get spans (start and end offsets) for passages by applying a sliding window function.
+    The sliding window moves in steps of doc_stride.
+    Returns a list of dictionaries which each describe the start, end and id of a passage
     that is formed when chunking a document using a sliding window approach. """
 
     assert doc_stride < passage_len_t, "doc_stride is longer than passage_len_t. This means that there will be gaps " \

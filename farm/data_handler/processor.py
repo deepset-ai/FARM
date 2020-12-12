@@ -25,7 +25,8 @@ from farm.data_handler.nq_utils import sample_to_features_qa_Natural_Questions, 
 from farm.data_handler.samples import (
     Sample,
     SampleBasket,
-    create_samples_qa
+    get_passage_offsets,
+    process_answers
 )
 
 from farm.data_handler.utils import (
@@ -1688,33 +1689,83 @@ class SquadProcessor(QAProcessor):
         return dicts
 
     def _split_docs_into_passages(self, dicts_tokenized, indices):
-        """This method is used so that we need to tokenize only once when using a fast tokenizer."""
-        # Perform tokenization on documents and questions resulting in an unnested list of doc-question pairs
+        """
+        Because of the sequence length limitation of Language Models, the documents need to be divided into smaller
+        parts, called passages.
+        This function creates out of each Question-Document pair many Question-Passage pairs and collects them in
+        SampleBaskets. One SampleBasket represents one Question-Document pair."""
         baskets = []
 
         n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
         for index, document in zip(indices, dicts_tokenized):
-            for q_idx, raw in enumerate(document):
+            for q_idx, dictionary in enumerate(document):
+                # # perform some basic checking
+                # TODO, eventually move checking into input validation functions
                 # ignore samples with empty context
-                if raw["document_text"] == "":
+                if dictionary["document_text"] == "":
                     logger.warning("Ignoring sample with empty context")
                     continue
                 # check if answer string can be found in context
-                for answer in raw["answers"]:
-                    if answer["text"] not in raw["document_text"]:
+                for answer in dictionary["answers"]:
+                    if answer["text"] not in dictionary["document_text"]:
                         logger.warning(f"Answer '{answer['text']}' not contained in context.")
+
+
+                # # create out of each Question-Document pair samples of Question-Passage pairs
                 # In case of Question Answering the external ID is used for document IDs
-                id_external = try_get(ID_NAMES, raw)
+                id_external = try_get(ID_NAMES, dictionary)
                 id_internal = f"{index}-{q_idx}"
+                samples = []
 
-                # create out of each Question-Document pair samples of Question-Passage pairs
-                samples = create_samples_qa(dictionary=raw,
-                                            max_query_len=self.max_query_length,
-                                            max_seq_len=self.max_seq_len,
-                                            doc_stride=self.doc_stride,
-                                            n_special_tokens=n_special_tokens)
+                # Calculate the number of tokens that can be reserved for the passage. This is calculated by considering
+                # the max_seq_len, the number of tokens in the question and the number of special tokens that will be added
+                # when the question and passage are joined (e.g. [CLS] and [SEP])
+                passage_len_t = self.max_seq_len - len(dictionary["question_tokens"][:self.max_query_length]) - n_special_tokens
 
-                basket = SampleBasket(raw=raw, id_internal=id_internal, id_external=id_external, samples=samples)
+
+                # passage_spans is a list of dictionaries where each defines the start and end of each passage
+                # on both token and character level
+                passage_spans = get_passage_offsets(dictionary["document_offsets"],
+                                                    self.doc_stride,
+                                                    passage_len_t,
+                                                    dictionary["document_text"])
+                for passage_span in passage_spans:
+                    # Unpack each variable in the dictionary. The "_t" and "_c" indicate
+                    # whether the index is on the token or character level
+                    passage_start_t = passage_span["passage_start_t"]
+                    passage_end_t = passage_span["passage_end_t"]
+                    passage_start_c = passage_span["passage_start_c"]
+                    passage_end_c = passage_span["passage_end_c"]
+
+                    passage_start_of_word = dictionary["document_start_of_word"][passage_start_t: passage_end_t]
+                    passage_tokens = dictionary["document_tokens"][passage_start_t: passage_end_t]
+                    passage_text = dictionary["document_text"][passage_start_c: passage_end_c]
+
+                    # # Deal with the potentially many answers (e.g. Squad or NQ dev set)
+                    # answers_clear, answers_tokenized = process_answers(dictionary["answers"],
+                    #                                                    dictionary["document_offsets"],
+                    #                                                    passage_start_c,
+                    #                                                    passage_start_t)
+
+                    clear_text = {"passage_text": passage_text,
+                                  "question_text": dictionary["question_text"],
+                                  "passage_id": passage_span["passage_id"],
+                                  "answers": None}
+                    tokenized = {"passage_start_t": passage_start_t,
+                                 "passage_start_c": passage_start_c,
+                                 "passage_tokens": passage_tokens,
+                                 "passage_start_of_word": passage_start_of_word,
+                                 "question_tokens": dictionary["question_tokens"][:self.max_query_length],
+                                 "question_offsets": dictionary["question_offsets"],
+                                 "question_start_of_word": dictionary["question_start_of_word"][:self.max_query_length],
+                                 "answers": None,
+                                 "document_offsets": dictionary["document_offsets"]}  # So that to_doc_preds can access them
+                    samples.append(Sample(id=passage_span["passage_id"],
+                                          clear_text=clear_text,
+                                          tokenized=tokenized))
+
+
+                basket = SampleBasket(raw=dictionary, id_internal=id_internal, id_external=id_external, samples=samples)
                 baskets.append(basket)
         return baskets
 
@@ -1723,6 +1774,15 @@ class SquadProcessor(QAProcessor):
         for b in baskets:
             # Add features to samples
             for num, sample in enumerate(b.samples):
+                # Deal with the potentially many answers (e.g. Squad or NQ dev set)
+                answers_clear, answers_tokenized = process_answers(b.raw["answers"],
+                                                                   b.raw["document_offsets"],
+                                                                   sample.tokenized["passage_start_c"],
+                                                                   sample.tokenized["passage_start_t"])
+                sample.tokenized["answers"] = answers_tokenized
+                sample.clear_text["answers"] = answers_clear
+                _check_valid_answer(sample)
+
                 # Initialize some basic variables
                 question_tokens = sample.tokenized["question_tokens"]
                 question_len_t = len(question_tokens)
@@ -1747,7 +1807,6 @@ class SquadProcessor(QAProcessor):
             # Add features to samples
             for num, sample in enumerate(b.samples):
                 sample.id = f"{b.id_internal}-{num}"
-                _check_valid_answer(sample)
                 features = sample_to_features_qa(sample=sample,
                                                  tokenizer=self.tokenizer,
                                                  max_seq_len=self.max_seq_len,
@@ -2725,6 +2784,7 @@ def _get_start_of_word(word_ids):
 
 def _apply_tokenization_batch(dicts,tokenizer):
     raw_baskets_batch = []
+    # tokenize texts in batch mode
     texts = [d["context"] for d in dicts]
     tokenized_batch = tokenizer.batch_encode_plus(texts, return_offsets_mapping=True, return_special_tokens_mask=True)
 
@@ -2732,11 +2792,11 @@ def _apply_tokenization_batch(dicts,tokenizer):
     offsets_batch = []
     for o in tokenized_batch["offset_mapping"]:
         offsets_batch.append(np.array([x[0] for x in o]))
-
     start_of_words_batch = []
     for e in tokenized_batch.encodings:
         start_of_words_batch.append(_get_start_of_word(e.words))
 
+    # tokenize questions individually
     for i,d in enumerate(dicts):
         raw_basket = []
         document_text = d["context"]
