@@ -28,7 +28,6 @@ from farm.data_handler.samples import (
     get_passage_offsets,
     process_answers
 )
-
 from farm.data_handler.utils import (
     pad,
     expand_labels,
@@ -46,10 +45,14 @@ from farm.data_handler.utils import (
     get_sequence_pair,
     join_sentences
 )
-
 from farm.data_handler.input_features import get_roberta_seq_2_start, get_camembert_seq_2_start
-
-from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences, insert_at_special_tokens_pos
+from farm.modeling.tokenization import (
+    Tokenizer,
+    tokenize_with_metadata,
+    truncate_sequences,
+    insert_at_special_tokens_pos,
+    tokenize_batch_question_answering,
+)
 from farm.utils import MLFlowLogger as MlLogger
 from farm.utils import try_get
 
@@ -1702,18 +1705,18 @@ class SquadProcessor(QAProcessor):
 
 
     def dataset_from_dicts(self, dicts, indices=None, return_baskets=False, return_problematic=False):
-        """ Overwrites the method from the base class since Question Answering processing is quite different.
-        This method allows for documents and questions to be tokenized earlier. Then SampleBaskets are initialized
-        with one document and one question. """
+        """ todo write comment.
+        SampleBaskets are initialized with one document and one question."""
 
         # convert to standard format
         dicts = [convert_qa_input_dict(x) for x in dicts]
 
         # tokenize
         #dicts_tokenized = [_apply_tokenization(d, self.tokenizer) for d in dicts]
-        dicts_tokenized = _apply_tokenization_batch(dicts, self.tokenizer)
+        dicts_tokenized = tokenize_batch_question_answering(dicts, self.tokenizer)
 
         # splitting documents into smaller passages to fit max_seq_len and doc_stride
+        # todo explain what baskets are and how we add info to baskets at each stage
         baskets = self._split_docs_into_passages(dicts_tokenized, indices)
 
         # create labels
@@ -1749,15 +1752,15 @@ class SquadProcessor(QAProcessor):
     def _split_docs_into_passages(self, dicts_tokenized, indices):
         """
         Because of the sequence length limitation of Language Models, the documents need to be divided into smaller
-        parts, called passages.
-        This function creates out of each Question-Document pair many Question-Passage pairs and collects them in
+        parts that we call passages.
+        This function creates per Question-Document pair many Question-Passage pairs and collects them in
         SampleBaskets. One SampleBasket represents one Question-Document pair."""
         baskets = []
 
         n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
         for index, document in zip(indices, dicts_tokenized):
             for q_idx, dictionary in enumerate(document):
-                # # perform some basic checking
+                ########## perform some basic checking
                 # TODO, eventually move checking into input validation functions
                 # ignore samples with empty context
                 if dictionary["document_text"] == "":
@@ -1767,7 +1770,7 @@ class SquadProcessor(QAProcessor):
                 for answer in dictionary["answers"]:
                     if answer["text"] not in dictionary["document_text"]:
                         logger.warning(f"Answer '{answer['text']}' not contained in context.")
-
+                ########## end checking
 
                 # # create out of each Question-Document pair samples of Question-Passage pairs
                 # In case of Question Answering the external ID is used for document IDs
@@ -1799,12 +1802,6 @@ class SquadProcessor(QAProcessor):
                     passage_tokens = dictionary["document_tokens"][passage_start_t: passage_end_t]
                     passage_text = dictionary["document_text"][passage_start_c: passage_end_c]
 
-                    # # Deal with the potentially many answers (e.g. Squad or NQ dev set)
-                    # answers_clear, answers_tokenized = process_answers(dictionary["answers"],
-                    #                                                    dictionary["document_offsets"],
-                    #                                                    passage_start_c,
-                    #                                                    passage_start_t)
-
                     clear_text = {"passage_text": passage_text,
                                   "question_text": dictionary["question_text"],
                                   "passage_id": passage_span["passage_id"],
@@ -1828,7 +1825,11 @@ class SquadProcessor(QAProcessor):
         return baskets
 
     def _create_labels(self, baskets):
-        from farm.data_handler.input_features import generate_labels
+        """
+        TODO docstring
+        :param baskets:
+        :return:
+        """
         for b in baskets:
             # Add features to samples
             for num, sample in enumerate(b.samples):
@@ -1839,27 +1840,51 @@ class SquadProcessor(QAProcessor):
                                                                    sample.tokenized["passage_start_t"])
                 sample.tokenized["answers"] = answers_tokenized
                 sample.clear_text["answers"] = answers_clear
-                _check_valid_answer(sample)
 
-                # Initialize some basic variables
-                question_tokens = sample.tokenized["question_tokens"]
-                question_len_t = len(question_tokens)
-                passage_tokens = sample.tokenized["passage_tokens"]
-                passage_len_t = len(passage_tokens)
-                answers = sample.tokenized["answers"]
+                ########## perform some answer vs offset checking
+                # TODO, eventually move checking into input validation functions
+                passage_text = sample.clear_text["passage_text"]
+                for answer in answers_clear:
+                    len_passage = len(passage_text)
+                    start = answer["start_c"]
+                    end = answer["end_c"]
+                    # Cases where the answer is not within the current passage will be turned into no answers by the featurization fn
+                    if start < 0 or end >= len_passage:
+                        continue
+                    answer_indices = passage_text[start: end + 1]
+                    answer_text = answer["text"]
+                    if answer_indices != answer_text:
+                        raise ValueError(
+                            f"""Answer using start/end indices is '{answer_indices}' while gold label text is '{answer_text}'""")
+                ########## end checking
+
 
                 # Generates a numpy array of shape (max_answers, 2) where (i, 2) indexes into the start and end indices
                 # of the ith answer. The array is filled with -1 since the number of answers is often less than max_answers
-                # no answer labels are represented by (0,0)
-                labels, answer_types = generate_labels(answers,
-                                                       passage_len_t,
-                                                       question_len_t,
-                                                       self.max_answers,
-                                                       self.sp_toks_start,
-                                                       self.sp_toks_mid,
-                                                       answer_type_list=None)
-                sample.tokenized["labels"] = labels
-                sample.tokenized["answer_types"] = answer_types
+                label_idxs = np.full((self.max_answers, 2), fill_value=-1)
+                # If there are no answers
+                if len(answers_tokenized) == 0:
+                    label_idxs[0, :] = 0
+                else:
+                    # Initialize some basic variables
+                    question_len_t = len(sample.tokenized["question_tokens"])
+                    passage_len_t = len(sample.tokenized["passage_tokens"])
+                    # Iterate over the multiple possible answers for one sample
+                    for i, answer in enumerate(answers_tokenized):
+                        start_idx = answer["start_t"]
+                        end_idx = answer["end_t"]
+
+                        # Check that the start and end are contained within this passage
+                        if passage_len_t > start_idx >= 0 and passage_len_t > end_idx > 0:
+                            label_idxs[i][0] = self.sp_toks_start + question_len_t + self.sp_toks_mid + start_idx
+                            label_idxs[i][1] = self.sp_toks_start + question_len_t + self.sp_toks_mid + end_idx
+                        # If the start or end of the span answer is outside the passage, treat passage as no_answer
+                        else:
+                            label_idxs[i][0] = 0
+                            label_idxs[i][1] = 0
+
+                sample.tokenized["labels"] = label_idxs
+                #sample.tokenized["answer_types"] = answer_types
         return baskets
 
     def _join_question_with_passages(self, baskets):
@@ -2830,60 +2855,6 @@ class TextSimilarityProcessor(Processor):
             sample.features = self._sample_to_features(sample)
 
         return samples
-
-def _get_start_of_word(word_ids):
-    words = np.array(word_ids)
-    # TODO check for validity for all tokenizer and special token types
-    words[0] = -1
-    words[-1] = words[-2]
-    words += 1
-    start_of_word_single = [0] + list(np.ediff1d(words))
-    return start_of_word_single
-
-def _apply_tokenization_batch(dicts,tokenizer):
-    raw_baskets_batch = []
-    # tokenize texts in batch mode
-    texts = [d["context"] for d in dicts]
-    tokenized_batch = tokenizer.batch_encode_plus(texts, return_offsets_mapping=True, return_special_tokens_mask=True)
-
-    tokenids_batch = tokenized_batch["input_ids"]
-    offsets_batch = []
-    for o in tokenized_batch["offset_mapping"]:
-        offsets_batch.append(np.array([x[0] for x in o]))
-    start_of_words_batch = []
-    for e in tokenized_batch.encodings:
-        start_of_words_batch.append(_get_start_of_word(e.words))
-
-    # tokenize questions individually
-    for i,d in enumerate(dicts):
-        raw_basket = []
-        document_text = d["context"]
-        for q in d["qas"]:
-            # tokenize questions
-            question_text = q["question"]
-            tokenized_q = tokenizer.encode_plus(question_text, return_offsets_mapping=True, return_special_tokens_mask=True)
-
-            question_tokenids = tokenized_q["input_ids"]
-            question_offsets = [x[0] for x in tokenized_q["offset_mapping"]]
-            question_sow = _get_start_of_word(tokenized_q.encodings[0].words)
-            answers = q["answers"]
-            external_id = q["id"]
-            answer_type = "span"
-            raw = {"document_text": document_text,
-                   "document_tokens": tokenids_batch[i],
-                   "document_offsets": offsets_batch[i],
-                   "document_start_of_word": start_of_words_batch[i],
-                   "question_text": question_text,
-                   "question_tokens": question_tokenids,
-                   "question_offsets": question_offsets,
-                   "question_start_of_word": question_sow,
-                   "answers": answers,
-                   "answer_type": answer_type,
-                   "external_id": external_id}
-            raw_basket.append(raw)
-        raw_baskets_batch.append(raw_basket)
-
-    return raw_baskets_batch
 
 def _apply_tokenization(dictionary, tokenizer, answer_types_list=[]):
     raw_baskets = []

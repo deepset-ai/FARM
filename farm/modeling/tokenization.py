@@ -546,3 +546,57 @@ def insert_at_special_tokens_pos(seq, special_tokens_mask, insert_element):
     for idx in special_tokens_indices:
         new_seq.insert(idx, insert_element)
     return new_seq
+
+
+def tokenize_batch_question_answering(dicts, tokenizer):
+    raw_baskets_batch = []
+    # tokenize texts in batch mode
+    texts = [d["context"] for d in dicts]
+    tokenized_batch = tokenizer.batch_encode_plus(texts, return_offsets_mapping=True, return_special_tokens_mask=True)
+
+    tokenids_batch = tokenized_batch["input_ids"]
+    offsets_batch = []
+    for o in tokenized_batch["offset_mapping"]:
+        offsets_batch.append(np.array([x[0] for x in o]))
+    start_of_words_batch = []
+    for e in tokenized_batch.encodings:
+        start_of_words_batch.append(_get_start_of_word(e.words))
+
+    # tokenize questions individually
+    for i,d in enumerate(dicts):
+        raw_basket = []
+        document_text = d["context"]
+        for q in d["qas"]:
+            # tokenize questions
+            question_text = q["question"]
+            tokenized_q = tokenizer.encode_plus(question_text, return_offsets_mapping=True, return_special_tokens_mask=True)
+
+            question_tokenids = tokenized_q["input_ids"]
+            question_offsets = [x[0] for x in tokenized_q["offset_mapping"]]
+            question_sow = _get_start_of_word(tokenized_q.encodings[0].words)
+            answers = q["answers"]
+            external_id = q["id"]
+            answer_type = "span"
+            raw = {"document_text": document_text,
+                   "document_tokens": tokenids_batch[i],
+                   "document_offsets": offsets_batch[i],
+                   "document_start_of_word": start_of_words_batch[i],
+                   "question_text": question_text,
+                   "question_tokens": question_tokenids,
+                   "question_offsets": question_offsets,
+                   "question_start_of_word": question_sow,
+                   "answers": answers,
+                   "answer_type": answer_type,
+                   "external_id": external_id}
+            raw_basket.append(raw)
+        raw_baskets_batch.append(raw_basket)
+    return raw_baskets_batch
+
+def _get_start_of_word(word_ids):
+    words = np.array(word_ids)
+    # TODO check for validity for all tokenizer and special token types
+    words[0] = -1
+    words[-1] = words[-2]
+    words += 1
+    start_of_word_single = [0] + list(np.ediff1d(words))
+    return start_of_word_single

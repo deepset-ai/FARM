@@ -508,7 +508,7 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
     feature_dict = {"input_ids": input_ids,
                     "padding_mask": padding_mask,
                     "segment_ids": segment_ids,
-                    "answer_type_ids": sample.tokenized["answer_types"],
+                    #"answer_type_ids": sample.tokenized["answer_types"],
                     "passage_start_t": passage_start_t,
                     "start_of_word": start_of_word,
                     "labels": sample.tokenized["labels"],
@@ -550,7 +550,7 @@ def generate_labels(answers, passage_len_t, question_len_t, max_answers,
         end_idx = answer["end_t"]
 
         # Check that the start and end are contained within this passage
-        if answer_in_passage(start_idx, end_idx, passage_len_t):
+        if passage_len_t > start_idx >= 0 and passage_len_t > end_idx > 0:
             label_idxs[i][0] = sp_toks_start + question_len_t + sp_toks_mid + start_idx
             label_idxs[i][1] = sp_toks_start + question_len_t + sp_toks_mid + end_idx
             answer_str = answer["answer_type"]
@@ -585,11 +585,6 @@ def combine_vecs(question_vec, passage_vec, tokenizer, spec_tok_val=-1, spec_tok
     return combined
 
 
-def answer_in_passage(start_idx, end_idx, passage_len):
-    if passage_len > start_idx >= 0 and passage_len > end_idx > 0:
-        return True
-    return False
-
 def get_roberta_seq_2_start(input_ids):
     # This commit (https://github.com/huggingface/transformers/commit/dfe012ad9d6b6f0c9d30bc508b9f1e4c42280c07)from
     # huggingface transformers now means that RobertaTokenizer.encode_plus returns only zeros in token_type_ids. Therefore, we need
@@ -613,39 +608,39 @@ def get_camembert_seq_2_start(input_ids):
     return second_backslash_s + 1
 
 
-def _SQUAD_improve_answer_span(
-    doc_tokens, input_start, input_end, tokenizer, orig_answer_text
-):
-    """Returns tokenized answer spans that better match the annotated answer."""
-
-    # The SQuAD annotations are character based. We first project them to
-    # whitespace-tokenized words. But then after WordPiece tokenization, we can
-    # often find a "better match". For example:
-    #
-    #   Question: What year was John Smith born?
-    #   Context: The leader was John Smith (1895-1943).
-    #   Answer: 1895
-    #
-    # The original whitespace-tokenized answer will be "(1895-1943).". However
-    # after tokenization, our tokens will be "( 1895 - 1943 ) .". So we can match
-    # the exact answer, 1895.
-    #
-    # However, this is not always possible. Consider the following:
-    #
-    #   Question: What country is the top exporter of electornics?
-    #   Context: The Japanese electronics industry is the lagest in the world.
-    #   Answer: Japan
-    #
-    # In this case, the annotator chose "Japan" as a character sub-span of
-    # the word "Japanese". Since our WordPiece tokenizer does not split
-    # "Japanese", we just use "Japanese" as the annotation. This is fairly rare
-    # in SQuAD, but does happen.
-    tok_answer_text = " ".join(tokenizer.tokenize(orig_answer_text))
-
-    for new_start in range(input_start, input_end + 1):
-        for new_end in range(input_end, new_start - 1, -1):
-            text_span = " ".join(doc_tokens[new_start : (new_end + 1)])
-            if text_span == tok_answer_text:
-                return (new_start, new_end)
-
-    return (input_start, input_end)
+# def _SQUAD_improve_answer_span(
+#     doc_tokens, input_start, input_end, tokenizer, orig_answer_text
+# ):
+#     """Returns tokenized answer spans that better match the annotated answer."""
+#
+#     # The SQuAD annotations are character based. We first project them to
+#     # whitespace-tokenized words. But then after WordPiece tokenization, we can
+#     # often find a "better match". For example:
+#     #
+#     #   Question: What year was John Smith born?
+#     #   Context: The leader was John Smith (1895-1943).
+#     #   Answer: 1895
+#     #
+#     # The original whitespace-tokenized answer will be "(1895-1943).". However
+#     # after tokenization, our tokens will be "( 1895 - 1943 ) .". So we can match
+#     # the exact answer, 1895.
+#     #
+#     # However, this is not always possible. Consider the following:
+#     #
+#     #   Question: What country is the top exporter of electornics?
+#     #   Context: The Japanese electronics industry is the lagest in the world.
+#     #   Answer: Japan
+#     #
+#     # In this case, the annotator chose "Japan" as a character sub-span of
+#     # the word "Japanese". Since our WordPiece tokenizer does not split
+#     # "Japanese", we just use "Japanese" as the annotation. This is fairly rare
+#     # in SQuAD, but does happen.
+#     tok_answer_text = " ".join(tokenizer.tokenize(orig_answer_text))
+#
+#     for new_start in range(input_start, input_end + 1):
+#         for new_end in range(input_end, new_start - 1, -1):
+#             text_span = " ".join(doc_tokens[new_start : (new_end + 1)])
+#             if text_span == tok_answer_text:
+#                 return (new_start, new_end)
+#
+#     return (input_start, input_end)
