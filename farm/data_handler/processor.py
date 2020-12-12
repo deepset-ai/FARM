@@ -26,7 +26,7 @@ from farm.data_handler.samples import (
     Sample,
     SampleBasket,
     get_passage_offsets,
-    process_answers
+    offset_to_token_idx_vecorized
 )
 from farm.data_handler.utils import (
     pad,
@@ -1708,38 +1708,35 @@ class SquadProcessor(QAProcessor):
         """ todo write comment.
         SampleBaskets are initialized with one document and one question."""
 
-        # convert to standard format
+        # Convert to standard format
+        # TODO add input objects here and start populating baskets
+        # TODO explain what baskets are and how we add info to baskets at each stage
         dicts = [convert_qa_input_dict(x) for x in dicts]
 
-        # tokenize
+        # Tokenize documents and questions
         #dicts_tokenized = [_apply_tokenization(d, self.tokenizer) for d in dicts]
         dicts_tokenized = tokenize_batch_question_answering(dicts, self.tokenizer)
 
-        # splitting documents into smaller passages to fit max_seq_len and doc_stride
-        # todo explain what baskets are and how we add info to baskets at each stage
+        # Splitting documents into smaller passages to fit max_seq_len and doc_stride
         baskets = self._split_docs_into_passages(dicts_tokenized, indices)
 
         # create labels
         baskets = self._create_labels(baskets)
 
         # joining question with passages + labels
-        self.baskets = self._join_question_with_passages(baskets)
+        baskets = self._join_question_with_passages(baskets)
 
         # converting into pytorch dataset
-        dataset, tensor_names = self._create_dataset()
+        dataset, tensor_names, baskets = self._create_dataset(baskets)
 
         # logging
         if 0 in indices:
-            self._log_samples(2)
+            self._log_samples(2, baskets)
 
         # This mode is for inference where we need to keep baskets
         ret = [dataset, tensor_names]
         if return_baskets:
-            ret.append(self.baskets)
-        # This mode is for training where we can free ram by removing baskets
-        else:
-            #TODO check if needed or handled by GC
-            self.baskets = None
+            ret.append(baskets)
         if return_problematic:
             ret.append(self.problematic_sample_ids)
         return tuple(ret)
@@ -1830,61 +1827,66 @@ class SquadProcessor(QAProcessor):
         :param baskets:
         :return:
         """
-        for b in baskets:
-            # Add features to samples
-            for num, sample in enumerate(b.samples):
-                # Deal with the potentially many answers (e.g. Squad or NQ dev set)
-                answers_clear, answers_tokenized = process_answers(b.raw["answers"],
-                                                                   b.raw["document_offsets"],
-                                                                   sample.tokenized["passage_start_c"],
-                                                                   sample.tokenized["passage_start_t"])
-                sample.tokenized["answers"] = answers_tokenized
-                sample.clear_text["answers"] = answers_clear
-
-                ########## perform some answer vs offset checking
-                # TODO, eventually move checking into input validation functions
-                passage_text = sample.clear_text["passage_text"]
-                for answer in answers_clear:
-                    len_passage = len(passage_text)
-                    start = answer["start_c"]
-                    end = answer["end_c"]
-                    # Cases where the answer is not within the current passage will be turned into no answers by the featurization fn
-                    if start < 0 or end >= len_passage:
-                        continue
-                    answer_indices = passage_text[start: end + 1]
-                    answer_text = answer["text"]
-                    if answer_indices != answer_text:
-                        raise ValueError(
-                            f"""Answer using start/end indices is '{answer_indices}' while gold label text is '{answer_text}'""")
-                ########## end checking
-
-
-                # Generates a numpy array of shape (max_answers, 2) where (i, 2) indexes into the start and end indices
-                # of the ith answer. The array is filled with -1 since the number of answers is often less than max_answers
+        for basket in baskets:
+            for num, sample in enumerate(basket.samples):
+                # Dealing with potentially multiple answers (e.g. Squad dev set)
+                # Initializing a numpy array of shape (max_answers, 2), filled with -1 for missing values
                 label_idxs = np.full((self.max_answers, 2), fill_value=-1)
-                # If there are no answers
-                if len(answers_tokenized) == 0:
+
+                if len(basket.raw["answers"]) == 0:
+                    # If there are no answers we set
                     label_idxs[0, :] = 0
                 else:
-                    # Initialize some basic variables
-                    question_len_t = len(sample.tokenized["question_tokens"])
-                    passage_len_t = len(sample.tokenized["passage_tokens"])
-                    # Iterate over the multiple possible answers for one sample
-                    for i, answer in enumerate(answers_tokenized):
-                        start_idx = answer["start_t"]
-                        end_idx = answer["end_t"]
+                    # For all other cases we use start and end token indices, that are relative to the passage
+                    for i, answer in enumerate(basket.raw["answers"]):
+                        # Calculate start and end relative to document
+                        answer_len_c = len(answer["text"])
+                        answer_start_c = answer["answer_start"]
+                        answer_end_c = answer_start_c + answer_len_c - 1
+                        # Convert character offsets to token offsets on document level
+                        answer_start_t = offset_to_token_idx_vecorized(basket.raw["document_offsets"], answer_start_c)
+                        answer_end_t = offset_to_token_idx_vecorized(basket.raw["document_offsets"], answer_end_c)
 
-                        # Check that the start and end are contained within this passage
-                        if passage_len_t > start_idx >= 0 and passage_len_t > end_idx > 0:
-                            label_idxs[i][0] = self.sp_toks_start + question_len_t + self.sp_toks_mid + start_idx
-                            label_idxs[i][1] = self.sp_toks_start + question_len_t + self.sp_toks_mid + end_idx
+
+
+                        # Adjust token offsets to be relative to the passage
+                        answer_start_t -= sample.tokenized["passage_start_t"]
+                        answer_end_t -= sample.tokenized["passage_start_t"]
+                        # Initialize some basic variables
+                        question_len_t = len(sample.tokenized["question_tokens"])
+                        passage_len_t = len(sample.tokenized["passage_tokens"])
+
+                        # Check that start and end are contained within this passage
+                        if passage_len_t > answer_start_t >= 0 and passage_len_t > answer_end_t > 0:
+                            label_idxs[i][0] = self.sp_toks_start + question_len_t + self.sp_toks_mid + answer_start_t
+                            label_idxs[i][1] = self.sp_toks_start + question_len_t + self.sp_toks_mid + answer_end_t
                         # If the start or end of the span answer is outside the passage, treat passage as no_answer
                         else:
                             label_idxs[i][0] = 0
                             label_idxs[i][1] = 0
 
+                        ########## perform some answer vs offset checking
+                        # TODO, eventually move checking into input validation functions and delete wrong examples there
+                        passage_text = sample.clear_text["passage_text"]
+                        # Cases where the answer is not within the current passage will be turned into no answers by the featurization fn
+                        if answer_start_c < 0 or answer_end_c >= len(passage_text):
+                            pass
+                        else:
+                            answer_indices = passage_text[answer_start_c: answer_end_c + 1]
+                            answer_text = answer["text"]
+                            if answer_indices != answer_text:
+                                logger.warning(f"""Answer using start/end indices is '{answer_indices}' while gold label text is '{answer_text}'""")
+                        ########## end checking
+
+                        # TODO remove after debugging 'offset_to_token_idx_vecorized()'
+                        # answer_start_t2 = offset_to_token_idx(doc_offsets, answer_start_c)
+                        # answer_end_t2 = offset_to_token_idx(doc_offsets, answer_end_c)
+                        # if (answer_start_t != answer_start_t2) or (answer_end_t != answer_end_t2):
+                        #     pass
+
                 sample.tokenized["labels"] = label_idxs
-                #sample.tokenized["answer_types"] = answer_types
+
+
         return baskets
 
     def _join_question_with_passages(self, baskets):
@@ -1900,6 +1902,31 @@ class SquadProcessor(QAProcessor):
                                                  sp_toks_end=self.sp_toks_end)
                 sample.features = features
         return baskets
+
+    def _create_dataset(self, baskets):
+        features_flat = []
+        basket_to_remove = []
+        for basket in baskets:
+            if self._check_sample_features(basket):
+                for sample in basket.samples:
+                    features_flat.extend(sample.features)
+            else:
+                # remove the entire basket
+                basket_to_remove.append(basket)
+        if len(basket_to_remove) > 0:
+            for basket in basket_to_remove:
+                # if basket_to_remove is not empty remove the related baskets
+                baskets.remove(basket)
+
+        dataset, tensor_names = convert_features_to_dataset(features=features_flat)
+        return dataset, tensor_names, baskets
+
+    def _log_samples(self, n_samples, baskets):
+        logger.info("*** Show {} random examples ***".format(n_samples))
+        for i in range(n_samples):
+            random_basket = random.choice(baskets)
+            random_sample = random.choice(random_basket.samples)
+            logger.info(random_sample)
 
 
 class NaturalQuestionsProcessor(QAProcessor):
