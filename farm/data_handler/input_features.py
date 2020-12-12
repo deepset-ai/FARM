@@ -383,8 +383,7 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
     return [feature_dict]
 
 
-def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks_mid, sp_toks_end,
-                          labels, answer_types=None):
+def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks_mid, sp_toks_end):
     """ Prepares data for processing by the model. Supports cases where there are
     multiple answers for the one question/document pair. max_answers is by default set to 6 since
     that is the most number of answers in the squad2.0 dev set.
@@ -509,10 +508,10 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
     feature_dict = {"input_ids": input_ids,
                     "padding_mask": padding_mask,
                     "segment_ids": segment_ids,
-                    "answer_type_ids": answer_types,
+                    "answer_type_ids": sample.tokenized["answer_types"],
                     "passage_start_t": passage_start_t,
                     "start_of_word": start_of_word,
-                    "labels": labels,
+                    "labels": sample.tokenized["labels"],
                     "id": sample_id,
                     "seq_2_start_t": seq_2_start_t,
                     "span_mask": span_mask}
