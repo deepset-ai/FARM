@@ -1723,26 +1723,27 @@ class SquadProcessor(Processor):
         #dicts_tokenized = [_apply_tokenization(d, self.tokenizer) for d in dicts]
         dicts_tokenized = tokenize_batch_question_answering(dicts, self.tokenizer)
 
-        # Splitting documents into smaller passages to fit max_seq_len and doc_stride
+        # Split documents into smaller passages to fit max_seq_len (moving window approach with 'doc_stride' striding)
         baskets = self._split_docs_into_passages(dicts_tokenized, indices)
 
-        # create labels
+        # Create labels
         baskets = self._create_labels(baskets)
 
-        # joining question with passages + labels
-        baskets = self._join_question_with_passages(baskets)
+        # Convert internal representation (nested baskets + samples with mixed types) to python features (arrays of numbers)
+        baskets = self._samples_to_features(baskets)
 
-        # converting into pytorch dataset
+        # Convert python features into pytorch dataset, also removes potential errors during preprocessing
         dataset, tensor_names, baskets = self._create_dataset(baskets)
 
-        # logging
+        # Logging
         if 0 in indices:
             self._log_samples(2, baskets)
 
-        # This mode is for inference where we need to keep baskets
+        # During inference we need to keep the information contained in baskets.
         ret = [dataset, tensor_names]
         if return_baskets:
             ret.append(baskets)
+        # TODO make "return_problematic" the standard
         if return_problematic:
             ret.append(self.problematic_sample_ids)
         return tuple(ret)
@@ -1895,18 +1896,92 @@ class SquadProcessor(Processor):
 
         return baskets
 
-    def _join_question_with_passages(self, baskets):
-        for b in baskets:
+    def _samples_to_features(self, baskets):
+        """
+        TODO docstring
+        :param baskets:
+        :return:
+        """
+        for basket in baskets:
             # Add features to samples
-            for num, sample in enumerate(b.samples):
-                sample.id = f"{b.id_internal}-{num}"
-                features = sample_to_features_qa(sample=sample,
-                                                 tokenizer=self.tokenizer,
-                                                 max_seq_len=self.max_seq_len,
-                                                 sp_toks_start=self.sp_toks_start,
-                                                 sp_toks_mid=self.sp_toks_mid,
-                                                 sp_toks_end=self.sp_toks_end)
-                sample.features = features
+            for num, sample in enumerate(basket.samples):
+                sample.id = f"{basket.id_internal}-{num}"
+
+                # Initialize some basic variables
+                question_tokens = sample.tokenized["question_tokens"]
+                question_start_of_word = sample.tokenized["question_start_of_word"]
+                question_len_t = len(question_tokens)
+                passage_start_t = sample.tokenized["passage_start_t"]
+                passage_tokens = sample.tokenized["passage_tokens"]
+                passage_start_of_word = sample.tokenized["passage_start_of_word"]
+                passage_len_t = len(passage_tokens)
+                sample_id = [int(x) for x in sample.id.split("-")]
+
+                # - Combines question_tokens and passage_tokens into a single vector called input_ids
+                # - input_ids also contains special tokens (e.g. CLS or SEP tokens).
+                # - It will have length = question_len_t + passage_len_t + n_special_tokens. This may be less than
+                #   max_seq_len but never greater since truncation was already performed when the document was chunked into passages
+                if not self.tokenizer.is_fast:
+                    raise NotImplementedError
+                question_input_ids = sample.tokenized["question_tokens"]
+                passage_input_ids = sample.tokenized["passage_tokens"]
+
+                input_ids = self.tokenizer.build_inputs_with_special_tokens(token_ids_0=question_input_ids,
+                                                                       token_ids_1=passage_input_ids)
+
+                segment_ids = self.tokenizer.create_token_type_ids_from_sequences(token_ids_0=question_input_ids,
+                                                                             token_ids_1=passage_input_ids)
+                # We need to get the start index of the passage tokens. For this we could use segment_ids
+                # This does not work for all tokenizer types, e.g. RobertaTokenizer returns only 0s in the segment_ids
+                # Therefore we construct the start manually
+                seq_2_start_t = self.sp_toks_start + question_len_t + self.sp_toks_mid
+
+                start_of_word = [0] * self.sp_toks_start + \
+                                    question_start_of_word + \
+                                    [0] * self.sp_toks_mid + \
+                                    passage_start_of_word + \
+                                    [0] * self.sp_toks_end
+
+                # The mask has 1 for real tokens and 0 for padding tokens. Only real
+                # tokens are attended to.
+                padding_mask = [1] * len(input_ids)
+
+                # The passage mask has 1 for tokens that are valid start or ends for QA spans.
+                # 0s are assigned to question tokens, mid special tokens, end special tokens and padding
+                # Note that start special tokens are assigned 1 since they can be chosen for a no_answer prediction
+                span_mask = [1] * self.sp_toks_start
+                span_mask += [0] * question_len_t
+                span_mask += [0] * self.sp_toks_mid
+                span_mask += [1] * passage_len_t
+                span_mask += [0] * self.sp_toks_end
+
+                # Pad up to the sequence length. For certain models, the pad token id is not 0 (e.g. Roberta where it is 1)
+                pad_idx = self.tokenizer.pad_token_id
+                padding = [pad_idx] * (self.max_seq_len - len(input_ids))
+                zero_padding = [0] * (self.max_seq_len - len(input_ids))
+
+                input_ids += padding
+                padding_mask += zero_padding
+                segment_ids += zero_padding
+                start_of_word += zero_padding
+                span_mask += zero_padding
+
+                # - The first of the labels will be used in train, and the full array will be used in eval.
+                # - start_of_word and spec_tok_mask are not actually needed by model.forward() but are needed for
+                #   model.formatted_preds() during inference for creating answer strings
+                # - passage_start_t is index of passage's first token relative to document
+                feature_dict = {"input_ids": input_ids,
+                                "padding_mask": padding_mask,
+                                "segment_ids": segment_ids,
+                                "passage_start_t": passage_start_t,
+                                "start_of_word": start_of_word,
+                                "labels": sample.tokenized["labels"],
+                                "id": sample_id,
+                                "seq_2_start_t": seq_2_start_t,
+                                "span_mask": span_mask}
+
+
+                sample.features = [feature_dict] # other processor's features can be lists
         return baskets
 
     def _create_dataset(self, baskets):
