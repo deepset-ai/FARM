@@ -4,10 +4,6 @@ Contains functions that turn readable clear text input into dictionaries of feat
 
 
 import logging
-import re
-import collections
-from dotmap import DotMap
-import numpy as np
 
 from farm.data_handler.samples import Sample
 from farm.data_handler.utils import (
@@ -382,208 +378,7 @@ def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=T
 
     return [feature_dict]
 
-
-def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks_mid, sp_toks_end):
-    """ Prepares data for processing by the model. Supports cases where there are
-    multiple answers for the one question/document pair. max_answers is by default set to 6 since
-    that is the most number of answers in the squad2.0 dev set.
-
-    :param sample: A Sample object that contains one question / passage pair
-    :type sample: Sample
-    :param tokenizer: A Tokenizer object
-    :type tokenizer: Tokenizer
-    :param max_seq_len: The maximum sequence length
-    :type max_seq_len: int
-    :param sp_toks_start: The number of special tokens that come before the question tokens (e.g. CLS or beginning of doc tokens)
-    :type sp_toks_start: int
-    :param sp_toks_mid: The number of special tokens that come between the question and passage tokens (e.g. separator tokens)
-    :type sp_toks_mid: int
-    :param sp_toks_end: The number of special tokens that come after the passage tokens (e.g. end of doc tokens)
-    :type sp_toks_end: int
-    :param answer_type_list: A list of all the answer types that can be expected e.g. ["no_answer", "span", "yes", "no"] for Natural Questions
-    :type answer_type_list: List[str]
-    :param max_answers: The maximum number of answer annotations for a sample (In SQuAD, this is 6 hence the default)
-    :type max_answers: int
-    :return: dict (keys: [input_ids, padding_mask, segment_ids, answer_type_ids, passage_start_t, start_of_word, labels, id, seq_2_start_2])
-    """
-
-    # Initialize some basic variables
-    question_tokens = sample.tokenized["question_tokens"]
-    question_start_of_word = sample.tokenized["question_start_of_word"]
-    question_len_t = len(question_tokens)
-    passage_start_t = sample.tokenized["passage_start_t"]
-    passage_tokens = sample.tokenized["passage_tokens"]
-    passage_start_of_word = sample.tokenized["passage_start_of_word"]
-    passage_len_t = len(passage_tokens)
-    sample_id = [int(x) for x in sample.id.split("-")]
-
-    # Combines question_tokens and passage_tokens (str) into a single encoded vector of token indices (int)
-    # called input_ids. This encoded vector also contains special tokens (e.g. [CLS]). It will have length =
-    # (question_len_t + passage_len_t + n_special_tokens). This may be less than max_seq_len but will not be greater
-    # than max_seq_len since truncation was already performed when the document was chunked into passages
-    if tokenizer.is_fast:
-        # Fast Tokenizer does not support encode_plus with pretokenized input, so we just concatenate the input ids
-        question_input_ids = sample.tokenized["question_tokens"]
-        passage_input_ids = sample.tokenized["passage_tokens"]
-
-        input_ids = tokenizer.build_inputs_with_special_tokens(token_ids_0=question_input_ids,
-                                                               token_ids_1=passage_input_ids)
-        segment_ids = tokenizer.create_token_type_ids_from_sequences(token_ids_0=question_input_ids,
-                                                                     token_ids_1=passage_input_ids)
-
-        #len_mid_sep_tokens = len(input_ids) - len(question_input_ids) - len(passage_input_ids) - 2
-        start_of_word = [0]*sp_toks_start + question_start_of_word + [0]*sp_toks_mid + passage_start_of_word + [0]*sp_toks_end
-
-        # We need to get the start index of the passage tokens. For this we could use segment_ids
-        # This does not work for all tokenizers, e.g. RobertaTokenizer returns only 0s in the segment_ids
-        # Therefore we construct the start manually
-        seq_2_start_t = sp_toks_start + len(question_start_of_word) + sp_toks_mid
-    else:
-        # TODO remove this code. It wont work any longer! Move slow vs fast tokenizer handling to a dedicated farm tokenizer
-        encoded = tokenizer.encode_plus(text=sample.tokenized["question_tokens"],
-                                        text_pair=sample.tokenized["passage_tokens"],
-                                        add_special_tokens=True,
-                                        truncation=False,
-                                        truncation_strategy='do_not_truncate',
-                                        return_token_type_ids=True,
-                                        return_tensors=None)
-
-        # Generate a start of word vector for the full sequence (i.e. question + answer + special tokens).
-        # This will allow us to perform evaluation during training without clear text.
-        # Note that in the current implementation, special tokens do not count as start of word.
-        start_of_word = combine_vecs(question_start_of_word, passage_start_of_word, tokenizer, spec_tok_val=0)
-
-        input_ids = encoded["input_ids"]
-        segment_ids = encoded["token_type_ids"]
-
-    # # seq_2_start_t is the index of the first token in the second text sequence (e.g. passage)
-    # if "RobertaTokenizer" in tokenizer.__class__.__name__:
-    #     seq_2_start_t = get_roberta_seq_2_start(input_ids)
-    # elif "CamembertTokenizer" in tokenizer.__class__.__name__:
-    #     seq_2_start_t = get_camembert_seq_2_start(input_ids)
-    # else:
-    #     try:
-    #         seq_2_start_t = segment_ids.index(1)
-    #     except ValueError:
-    #         raise ValueError(f'Could not generate correct segment IDs for Tokenizer: {tokenizer.__class__.__name__}\n'
-    #                          f'Please create a custom function for finding the value "seq_2_start_t".')
-
-    # The mask has 1 for real tokens and 0 for padding tokens. Only real
-    # tokens are attended to.
-    padding_mask = [1] * len(input_ids)
-
-    # The passage mask has 1 for tokens that are valid start or ends for QA spans.
-    # 0s are assigned to question tokens, mid special tokens, end special tokens and padding
-    # Note that start special tokens are assigned 1 since they can be chosen for a no_answer prediction
-    span_mask = [1] * sp_toks_start
-    span_mask += [0] * question_len_t
-    span_mask += [0] * sp_toks_mid
-    span_mask += [1] * passage_len_t
-    span_mask += [0] * sp_toks_end
-
-    # Pad up to the sequence length. For certain models, the pad token id is not 0 (e.g. Roberta where it is 1)
-    pad_idx = tokenizer.pad_token_id
-    padding = [pad_idx] * (max_seq_len - len(input_ids))
-    zero_padding = [0] * (max_seq_len - len(input_ids))
-
-    input_ids += padding
-    padding_mask += zero_padding
-    segment_ids += zero_padding
-    start_of_word += zero_padding
-    span_mask += zero_padding
-
-    # TODO remove, not needed with fast tokenizers.
-    # # The XLM-Roberta tokenizer generates a segment_ids vector that separates the first sequence from the second.
-    # # However, when this is passed in to the forward fn of the Roberta model, it throws an error since
-    # # Roberta has only a single token embedding (!!!). To get around this, we want to have a segment_ids
-    # # vec that is only 0s
-    # if tokenizer.__class__.__name__ in ["XLMRobertaTokenizer", "RobertaTokenizer"]:
-    #     segment_ids = list(np.zeros_like(segment_ids))
-
-    # - The first of the labels will be used in train, and the full array will be used in eval.
-    # - start_of_word and spec_tok_mask are not actually needed by model.forward() but are needed for
-    #   model.formatted_preds() during inference for creating answer strings
-    # - passage_start_t is index of passage's first token relative to document
-    feature_dict = {"input_ids": input_ids,
-                    "padding_mask": padding_mask,
-                    "segment_ids": segment_ids,
-                    #"answer_type_ids": sample.tokenized["answer_types"],
-                    "passage_start_t": passage_start_t,
-                    "start_of_word": start_of_word,
-                    "labels": sample.tokenized["labels"],
-                    "id": sample_id,
-                    "seq_2_start_t": seq_2_start_t,
-                    "span_mask": span_mask}
-    return [feature_dict]
-
-
-def generate_labels(answers, passage_len_t, question_len_t, max_answers,
-                    sp_toks_start, sp_toks_mid, answer_type_list=None):
-    """
-    Creates QA label vector for each answer in answers. The labels are the index of the start and end token
-    relative to the passage. They are contained in an array of size (max_answers, 2).
-    -1 is used to fill array since there the number of answers is often less than max_answers.
-    The index values take in to consideration the question tokens, and also special tokens such as [CLS].
-    When the answer is not fully contained in the passage, or the question
-    is impossible to answer, the start_idx and end_idx are 0 i.e. start and end are on the very first token
-    (in most models, this is the [CLS] token). Note that in our implementation NQ has 4 answer types
-    ["no_answer", "yes", "no", "span"] and this is what answer_type_list should look like"""
-
-    # Note here that label_idxs get passed to the QuestionAnsweringHead and answer_types get passed to the text
-    # classification head. label_idxs may contain multiple start, end labels since SQuAD dev and test sets
-    # can have multiple annotations. By contrast, Natural Questions only has one annotation per sample hence
-    # why answer_types is only of length 1
-    label_idxs = np.full((max_answers, 2), fill_value=-1)
-    answer_types = np.asarray([-1])
-    answer_str = ""
-
-    # If there are no answers
-    if len(answers) == 0:
-        label_idxs[0, :] = 0
-        answer_types[:] = 0
-        return label_idxs, answer_types
-
-    # Iterate over the answers for the one sample
-    for i, answer in enumerate(answers):
-        start_idx = answer["start_t"]
-        end_idx = answer["end_t"]
-
-        # Check that the start and end are contained within this passage
-        if passage_len_t > start_idx >= 0 and passage_len_t > end_idx > 0:
-            label_idxs[i][0] = sp_toks_start + question_len_t + sp_toks_mid + start_idx
-            label_idxs[i][1] = sp_toks_start + question_len_t + sp_toks_mid + end_idx
-            answer_str = answer["answer_type"]
-        # If the start or end of the span answer is outside the passage, treat passage as no_answer
-        else:
-            label_idxs[i][0] = 0
-            label_idxs[i][1] = 0
-            answer_str = "no_answer"
-
-    if answer_type_list:
-        answer_types[0] = answer_type_list.index(answer_str)
-
-    return label_idxs, answer_types
-
-
-
-def combine_vecs(question_vec, passage_vec, tokenizer, spec_tok_val=-1, spec_toks_mask=None):
-    """ Combine a question_vec and passage_vec in a style that is appropriate to the model. Will add slots in
-    the returned vector for special tokens like [CLS] where the value is determine by spec_tok_val."""
-
-    # Join question_label_vec and passage_label_vec and add slots for special tokens
-    vec = tokenizer.build_inputs_with_special_tokens(token_ids_0=question_vec,
-                                                     token_ids_1=passage_vec)
-
-    if not tokenizer.is_fast and not spec_toks_mask:
-        spec_toks_mask = tokenizer.get_special_tokens_mask(token_ids_0=question_vec,
-                                                           token_ids_1=passage_vec)
-
-    # If a value in vec corresponds to a special token, it will be replaced with spec_tok_val
-    combined = [v if not special_token else spec_tok_val for v, special_token in zip(vec, spec_toks_mask)]
-
-    return combined
-
-
+#TODO remove once NQ processing is adjusted
 def get_roberta_seq_2_start(input_ids):
     # This commit (https://github.com/huggingface/transformers/commit/dfe012ad9d6b6f0c9d30bc508b9f1e4c42280c07)from
     # huggingface transformers now means that RobertaTokenizer.encode_plus returns only zeros in token_type_ids. Therefore, we need
@@ -595,6 +390,7 @@ def get_roberta_seq_2_start(input_ids):
     second_backslash_s = input_ids.index(2, first_backslash_s + 1)
     return second_backslash_s + 1
 
+#TODO remove once NQ processing is adjusted
 def get_camembert_seq_2_start(input_ids):
     # CamembertTokenizer.encode_plus returns only zeros in token_type_ids (same as RobertaTokenizer).
     # This is another way to find the start of the second sequence (following get_roberta_seq_2_start)
