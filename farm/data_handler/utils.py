@@ -877,27 +877,3 @@ def split_with_metadata(text):
     indexes = generate_tok_to_ch_map(text)
     assert len(split_text) == len(indexes)
     return split_text, indexes
-
-
-def convert_qa_input_dict(infer_dict):
-    """ Input dictionaries in QA can either have ["context", "qas"] (internal format) as keys or
-    ["text", "questions"] (api format). This function converts the latter into the former. It also converts the
-    is_impossible field to answer_type so that NQ and SQuAD dicts have the same format.
-    """
-    try:
-        # Check if infer_dict is already in internal json format
-        if "context" in infer_dict and "qas" in infer_dict:
-            return infer_dict
-        # converts dicts from inference mode to data structure used in FARM
-        questions = infer_dict["questions"]
-        text = infer_dict["text"]
-        uid = infer_dict.get("id", None)
-        qas = [{"question": q,
-                "id": uid,
-                "answers": [],
-                "answer_type": None} for i, q in enumerate(questions)]
-        converted = {"qas": qas,
-                     "context": text}
-        return converted
-    except KeyError:
-        raise Exception("Input does not have the expected format")
