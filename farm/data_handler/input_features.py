@@ -394,10 +394,12 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
     :type tokenizer: Tokenizer
     :param max_seq_len: The maximum sequence length
     :type max_seq_len: int
-    :param sp_toks_start: The number of special tokens that come before the question tokens
+    :param sp_toks_start: The number of special tokens that come before the question tokens (e.g. CLS or beginning of doc tokens)
     :type sp_toks_start: int
-    :param sp_toks_mid: The number of special tokens that come between the question and passage tokens
+    :param sp_toks_mid: The number of special tokens that come between the question and passage tokens (e.g. separator tokens)
     :type sp_toks_mid: int
+    :param sp_toks_end: The number of special tokens that come after the passage tokens (e.g. end of doc tokens)
+    :type sp_toks_end: int
     :param answer_type_list: A list of all the answer types that can be expected e.g. ["no_answer", "span", "yes", "no"] for Natural Questions
     :type answer_type_list: List[str]
     :param max_answers: The maximum number of answer annotations for a sample (In SQuAD, this is 6 hence the default)
@@ -419,8 +421,6 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
     # called input_ids. This encoded vector also contains special tokens (e.g. [CLS]). It will have length =
     # (question_len_t + passage_len_t + n_special_tokens). This may be less than max_seq_len but will not be greater
     # than max_seq_len since truncation was already performed when the document was chunked into passages
-    # (c.f. create_samples_squad() )
-
     if tokenizer.is_fast:
         # Fast Tokenizer does not support encode_plus with pretokenized input, so we just concatenate the input ids
         question_input_ids = sample.tokenized["question_tokens"]
@@ -431,10 +431,15 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
         segment_ids = tokenizer.create_token_type_ids_from_sequences(token_ids_0=question_input_ids,
                                                                      token_ids_1=passage_input_ids)
 
-        len_mid_sep_tokens = len(input_ids) - len(question_input_ids) - len(passage_input_ids) - 2
-        start_of_word = [0] + question_start_of_word + ([0] * len_mid_sep_tokens) + passage_start_of_word + [0]
+        #len_mid_sep_tokens = len(input_ids) - len(question_input_ids) - len(passage_input_ids) - 2
+        start_of_word = [0]*sp_toks_start + question_start_of_word + [0]*sp_toks_mid + passage_start_of_word + [0]*sp_toks_end
 
+        # We need to get the start index of the passage tokens. For this we could use segment_ids
+        # This does not work for all tokenizers, e.g. RobertaTokenizer returns only 0s in the segment_ids
+        # Therefore we construct the start manually
+        seq_2_start_t = sp_toks_start + len(question_start_of_word) + sp_toks_mid
     else:
+        # TODO remove this code. It wont work any longer! Move slow vs fast tokenizer handling to a dedicated farm tokenizer
         encoded = tokenizer.encode_plus(text=sample.tokenized["question_tokens"],
                                         text_pair=sample.tokenized["passage_tokens"],
                                         add_special_tokens=True,
@@ -451,13 +456,17 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
         input_ids = encoded["input_ids"]
         segment_ids = encoded["token_type_ids"]
 
-    # seq_2_start_t is the index of the first token in the second text sequence (e.g. passage)
-    if "RobertaTokenizer" in tokenizer.__class__.__name__:
-        seq_2_start_t = get_roberta_seq_2_start(input_ids)
-    elif "CamembertTokenizer" in tokenizer.__class__.__name__:
-        seq_2_start_t = get_camembert_seq_2_start(input_ids)
-    else:
-        seq_2_start_t = segment_ids.index(1)
+    # # seq_2_start_t is the index of the first token in the second text sequence (e.g. passage)
+    # if "RobertaTokenizer" in tokenizer.__class__.__name__:
+    #     seq_2_start_t = get_roberta_seq_2_start(input_ids)
+    # elif "CamembertTokenizer" in tokenizer.__class__.__name__:
+    #     seq_2_start_t = get_camembert_seq_2_start(input_ids)
+    # else:
+    #     try:
+    #         seq_2_start_t = segment_ids.index(1)
+    #     except ValueError:
+    #         raise ValueError(f'Could not generate correct segment IDs for Tokenizer: {tokenizer.__class__.__name__}\n'
+    #                          f'Please create a custom function for finding the value "seq_2_start_t".')
 
     # The mask has 1 for real tokens and 0 for padding tokens. Only real
     # tokens are attended to.
@@ -483,16 +492,18 @@ def sample_to_features_qa(sample, tokenizer, max_seq_len, sp_toks_start, sp_toks
     start_of_word += zero_padding
     span_mask += zero_padding
 
-    # The XLM-Roberta tokenizer generates a segment_ids vector that separates the first sequence from the second.
-    # However, when this is passed in to the forward fn of the Roberta model, it throws an error since
-    # Roberta has only a single token embedding (!!!). To get around this, we want to have a segment_ids
-    # vec that is only 0s
-    if tokenizer.__class__.__name__ in ["XLMRobertaTokenizer", "RobertaTokenizer"]:
-        segment_ids = list(np.zeros_like(segment_ids))
+    # TODO remove, not needed with fast tokenizers.
+    # # The XLM-Roberta tokenizer generates a segment_ids vector that separates the first sequence from the second.
+    # # However, when this is passed in to the forward fn of the Roberta model, it throws an error since
+    # # Roberta has only a single token embedding (!!!). To get around this, we want to have a segment_ids
+    # # vec that is only 0s
+    # if tokenizer.__class__.__name__ in ["XLMRobertaTokenizer", "RobertaTokenizer"]:
+    #     segment_ids = list(np.zeros_like(segment_ids))
 
-    # The first of the labels will be used in train, and the full array will be used in eval.
-    # start of word and spec_tok_mask are not actually needed by model.forward() but are needed for model.formatted_preds()
-    # passage_start_t is index of passage's first token relative to document
+    # - The first of the labels will be used in train, and the full array will be used in eval.
+    # - start_of_word and spec_tok_mask are not actually needed by model.forward() but are needed for
+    #   model.formatted_preds() during inference for creating answer strings
+    # - passage_start_t is index of passage's first token relative to document
     feature_dict = {"input_ids": input_ids,
                     "padding_mask": padding_mask,
                     "segment_ids": segment_ids,
