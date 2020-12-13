@@ -8,18 +8,19 @@ from abc import ABC
 from inspect import signature
 from pathlib import Path
 from random import randint
-import torch
+
 import numpy as np
+import torch
+from numpy.random import random as random_float
 from sklearn.preprocessing import StandardScaler
 from transformers.configuration_auto import AutoConfig
 
-from numpy.random import random as random_float
 from farm.data_handler.dataset import convert_features_to_dataset
+from farm.data_handler.input_features import get_roberta_seq_2_start, get_camembert_seq_2_start
 from farm.data_handler.input_features import (
     samples_to_features_ner,
     samples_to_features_bert_lm,
     sample_to_features_text,
-    sample_to_features_qa,
 )
 from farm.data_handler.nq_utils import sample_to_features_qa_Natural_Questions, create_samples_qa_Natural_Question
 from farm.data_handler.samples import (
@@ -45,7 +46,6 @@ from farm.data_handler.utils import (
     get_sequence_pair,
     join_sentences
 )
-from farm.data_handler.input_features import get_roberta_seq_2_start, get_camembert_seq_2_start
 from farm.modeling.tokenization import (
     Tokenizer,
     tokenize_with_metadata,
@@ -2117,7 +2117,7 @@ class NaturalQuestionsProcessor(QAProcessor):
         if self._is_nq_dict(dictionary):
             dictionary = self._prepare_dict(dictionary=dictionary)
 
-        dictionary_tokenized = _apply_tokenization(dictionary, self.tokenizer, self.answer_type_list)[0]
+        dictionary_tokenized = self._apply_tokenization(dictionary, self.tokenizer, self.answer_type_list)[0]
         n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
         samples = create_samples_qa_Natural_Question(dictionary_tokenized,
                                     self.max_query_length,
@@ -2304,7 +2304,7 @@ class NaturalQuestionsProcessor(QAProcessor):
         return start_c, end_c
 
     def _sample_to_features(self, sample: Sample) -> dict:
-        _check_valid_answer(sample)
+        self._check_valid_answer(sample)
         features = sample_to_features_qa_Natural_Questions(sample=sample,
                                          tokenizer=self.tokenizer,
                                          max_seq_len=self.max_seq_len,
@@ -2314,6 +2314,21 @@ class NaturalQuestionsProcessor(QAProcessor):
                                          answer_type_list=self.answer_type_list,
                                          max_answers=self.max_answers)
         return features
+
+    def _check_valid_answer(self, sample):
+        passage_text = sample.clear_text["passage_text"]
+        for answer in sample.clear_text["answers"]:
+            len_passage = len(passage_text)
+            start = answer["start_c"]
+            end = answer["end_c"]
+            # Cases where the answer is not within the current passage will be turned into no answers by the featurization fn
+            if start < 0 or end >= len_passage:
+                continue
+            answer_indices = passage_text[start: end + 1]
+            answer_text = answer["text"]
+            if answer_indices != answer_text:
+                raise ValueError(
+                    f"""Answer using start/end indices is '{answer_indices}' while gold label text is '{answer_text}'""")
 
     def _dict_to_samples_and_features(self, dictionary: dict, **kwargs) -> [Sample]:
         """
@@ -2326,7 +2341,7 @@ class NaturalQuestionsProcessor(QAProcessor):
             dictionary = self._prepare_dict(dictionary=dictionary)
         basket_id_internal = kwargs["basket_id_internal"]
 
-        dictionary_tokenized = _apply_tokenization(dictionary, self.tokenizer, self.answer_type_list)[0]
+        dictionary_tokenized = self._apply_tokenization(dictionary, self.tokenizer, self.answer_type_list)[0]
         n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
         samples = create_samples_qa_Natural_Question(dictionary_tokenized,
                                     self.max_query_length,
@@ -2345,6 +2360,76 @@ class NaturalQuestionsProcessor(QAProcessor):
             sample.features = features
 
         return samples
+
+    def _apply_tokenization(self, dictionary, tokenizer, answer_types_list=[]):
+        raw_baskets = []
+        dictionary = convert_qa_input_dict(dictionary)
+        dictionary["qas"] = self._is_impossible_to_answer_type(dictionary["qas"])
+        document_text = dictionary["context"]
+
+        document_tokenized = tokenize_with_metadata(document_text, tokenizer)
+        document_start_of_word = [int(x) for x in document_tokenized["start_of_word"]]
+        questions = dictionary["qas"]
+        for question in questions:
+            answers = []
+            # For training and dev with labelled examples
+            try:
+                external_id = question["id"]
+                question_text = question["question"]
+                for answer in question["answers"]:
+                    if 'answer_type' in answer.keys() and answer['answer_type'] in answer_types_list:
+                        answer_type = answer['answer_type']
+                    else:
+                        if answer["text"] == "":
+                            answer_type = "no_answer"
+                        else:
+                            answer_type = "span"
+                    a = {"text": answer["text"],
+                         "offset": answer["answer_start"],
+                         "answer_type": answer_type}
+                    answers.append(a)
+            # For inference where samples are read in as dicts without an id or answers
+            except TypeError:
+                external_id = try_get(ID_NAMES, dictionary)
+                question_text = question
+
+            question_tokenized = tokenize_with_metadata(question_text, tokenizer)
+            question_start_of_word = [int(x) for x in question_tokenized["start_of_word"]]
+
+            # During inference, there is no_answer type. Also, question might be a str instead of a dict
+            if type(question) == str:
+                answer_type = None
+            elif type(question) == dict:
+                answer_type = question.get("answer_type", None)
+            else:
+                raise Exception("Question was neither in str nor dict format")
+
+            raw = {"document_text": document_text,
+                   "document_tokens": document_tokenized["tokens"],
+                   "document_offsets": document_tokenized["offsets"],
+                   "document_start_of_word": document_start_of_word,
+                   "question_text": question_text,
+                   "question_tokens": question_tokenized["tokens"],
+                   "question_offsets": question_tokenized["offsets"],
+                   "question_start_of_word": question_start_of_word,
+                   "answers": answers,
+                   "answer_type": answer_type,
+                   "external_id": external_id}
+            raw_baskets.append(raw)
+        return raw_baskets
+
+    def _is_impossible_to_answer_type(self, qas):
+        """ Converts questions from having an is_impossible field to having an answer_type field"""
+        new_qas = []
+        for q in qas:
+            answer_type = "span"
+            if "is_impossible" in q:
+                if q["is_impossible"] == True:
+                    answer_type = "no_answer"
+                del q["is_impossible"]
+                q["answer_type"] = answer_type
+            new_qas.append(q)
+        return new_qas
 
 
 class RegressionProcessor(Processor):
@@ -2964,89 +3049,6 @@ class TextSimilarityProcessor(Processor):
 
         return samples
 
-def _apply_tokenization(dictionary, tokenizer, answer_types_list=[]):
-    raw_baskets = []
-    dictionary = convert_qa_input_dict(dictionary)
-    dictionary["qas"] = _is_impossible_to_answer_type(dictionary["qas"])
-    document_text = dictionary["context"]
-
-    document_tokenized = tokenize_with_metadata(document_text, tokenizer)
-    document_start_of_word = [int(x) for x in document_tokenized["start_of_word"]]
-    questions = dictionary["qas"]
-    for question in questions:
-        answers = []
-        # For training and dev with labelled examples
-        try:
-            external_id = question["id"]
-            question_text = question["question"]
-            for answer in question["answers"]:
-                if 'answer_type' in answer.keys() and answer['answer_type'] in answer_types_list:
-                    answer_type = answer['answer_type']
-                else:
-                    if answer["text"] == "":
-                        answer_type = "no_answer"
-                    else:
-                        answer_type = "span"
-                a = {"text": answer["text"],
-                     "offset": answer["answer_start"],
-                     "answer_type": answer_type}
-                answers.append(a)
-        # For inference where samples are read in as dicts without an id or answers
-        except TypeError:
-            external_id = try_get(ID_NAMES, dictionary)
-            question_text = question
-
-        question_tokenized = tokenize_with_metadata(question_text, tokenizer)
-        question_start_of_word = [int(x) for x in question_tokenized["start_of_word"]]
-
-        # During inference, there is no_answer type. Also, question might be a str instead of a dict
-        if type(question) == str:
-            answer_type = None
-        elif type(question) == dict:
-            answer_type = question.get("answer_type", None)
-        else:
-            raise Exception("Question was neither in str nor dict format")
-
-        raw = {"document_text": document_text,
-               "document_tokens": document_tokenized["tokens"],
-               "document_offsets": document_tokenized["offsets"],
-               "document_start_of_word": document_start_of_word,
-               "question_text": question_text,
-               "question_tokens": question_tokenized["tokens"],
-               "question_offsets": question_tokenized["offsets"],
-               "question_start_of_word": question_start_of_word,
-               "answers": answers,
-               "answer_type": answer_type,
-               "external_id": external_id}
-        raw_baskets.append(raw)
-    return raw_baskets
 
 
-def _is_impossible_to_answer_type(qas):
-    """ Converts questions from having an is_impossible field to having an answer_type field"""
-    new_qas = []
-    for q in qas:
-        answer_type = "span"
-        if "is_impossible" in q:
-            if q["is_impossible"] == True:
-                answer_type = "no_answer"
-            del q["is_impossible"]
-            q["answer_type"] = answer_type
-        new_qas.append(q)
-    return new_qas
-
-
-def _check_valid_answer(sample):
-    passage_text = sample.clear_text["passage_text"]
-    for answer in sample.clear_text["answers"]:
-        len_passage = len(passage_text)
-        start = answer["start_c"]
-        end = answer["end_c"]
-        # Cases where the answer is not within the current passage will be turned into no answers by the featurization fn
-        if start < 0 or end >= len_passage:
-            continue
-        answer_indices = passage_text[start: end + 1]
-        answer_text = answer["text"]
-        if answer_indices != answer_text:
-            raise ValueError(f"""Answer using start/end indices is '{answer_indices}' while gold label text is '{answer_text}'""")
 
