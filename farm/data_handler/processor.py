@@ -22,7 +22,12 @@ from farm.data_handler.input_features import (
     samples_to_features_bert_lm,
     sample_to_features_text,
 )
-from farm.data_handler.nq_utils import sample_to_features_qa_Natural_Questions, create_samples_qa_Natural_Question
+from farm.data_handler.nq_utils import (
+    sample_to_features_qa_Natural_Questions,
+    create_samples_qa_Natural_Question,
+    convert_qa_input_dict,
+)
+
 from farm.data_handler.samples import (
     Sample,
     SampleBasket,
@@ -42,7 +47,6 @@ from farm.data_handler.utils import (
     is_json,
     get_sentence_pair,
     split_with_metadata,
-    convert_qa_input_dict,
     get_sequence_pair,
     join_sentences
 )
@@ -1696,35 +1700,28 @@ class SquadProcessor(Processor):
             tasks={},
             proxies=proxies
         )
-        self.initialize_special_tokens_count()
+        self._initialize_special_tokens_count()
         if metric and label_list:
             self.add_task("question_answering", metric, label_list)
         else:
             logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
                         "using the default task or add a custom task later via processor.add_task()")
 
-    def initialize_special_tokens_count(self):
-        vec = self.tokenizer.build_inputs_with_special_tokens(token_ids_0=["a"],
-                                                              token_ids_1=["b"])
-        self.sp_toks_start = vec.index("a")
-        self.sp_toks_mid = vec.index("b") - self.sp_toks_start - 1
-        self.sp_toks_end = len(vec) - vec.index("b") - 1
-
     def dataset_from_dicts(self, dicts, indices=None, return_baskets=False, return_problematic=False):
-        """ todo write comment.
-        SampleBaskets are initialized with one document and one question."""
-
-        # Convert to standard format
-        # TODO add input objects here and start populating baskets
-        # TODO explain what baskets are and how we add info to baskets at each stage
-        dicts = [convert_qa_input_dict(x) for x in dicts]
+        """
+        Convert input dictionaries into a pytorch dataset for Question Answering.
+        For this we have an internal representation called "baskets".
+        Each basket is a question document pair.
+        Each stage adds or transforms specific information to our baskets.
+        """
+        # Convert to standard format TODO move to input conversion + validation
+        preBaskets = [self.convert_qa_input_dict(x) for x in dicts]
 
         # Tokenize documents and questions
-        #dicts_tokenized = [_apply_tokenization(d, self.tokenizer) for d in dicts]
-        dicts_tokenized = tokenize_batch_question_answering(dicts, self.tokenizer)
+        baskets = tokenize_batch_question_answering(preBaskets, self.tokenizer) # TODO discuss: move this also inside processor?
 
-        # Split documents into smaller passages to fit max_seq_len (moving window approach with 'doc_stride' striding)
-        baskets = self._split_docs_into_passages(dicts_tokenized, indices)
+        # Split documents into smaller passages to fit max_seq_len
+        baskets = self._split_docs_into_passages(baskets, indices)
 
         # Create labels
         baskets = self._create_labels(baskets)
@@ -1752,6 +1749,37 @@ class SquadProcessor(Processor):
         nested_dicts = read_squad_file(filename=file)
         dicts = [y for x in nested_dicts for y in x["paragraphs"]]
         return dicts
+
+    # TODO use Input Objects instead of this function
+    def convert_qa_input_dict(self, infer_dict):
+        """ Input dictionaries in QA can either have ["context", "qas"] (internal format) as keys or
+        ["text", "questions"] (api format). This function converts the latter into the former. It also converts the
+        is_impossible field to answer_type so that NQ and SQuAD dicts have the same format.
+        """
+        try:
+            # Check if infer_dict is already in internal json format
+            if "context" in infer_dict and "qas" in infer_dict:
+                return infer_dict
+            # converts dicts from inference mode to data structure used in FARM
+            questions = infer_dict["questions"]
+            text = infer_dict["text"]
+            uid = infer_dict.get("id", None)
+            qas = [{"question": q,
+                    "id": uid,
+                    "answers": [],
+                    "answer_type": None} for i, q in enumerate(questions)]
+            converted = {"qas": qas,
+                         "context": text}
+            return converted
+        except KeyError:
+            raise Exception("Input does not have the expected format")
+
+    def _initialize_special_tokens_count(self):
+        vec = self.tokenizer.build_inputs_with_special_tokens(token_ids_0=["a"],
+                                                              token_ids_1=["b"])
+        self.sp_toks_start = vec.index("a")
+        self.sp_toks_mid = vec.index("b") - self.sp_toks_start - 1
+        self.sp_toks_end = len(vec) - vec.index("b") - 1
 
     def _split_docs_into_passages(self, dicts_tokenized, indices):
         """
