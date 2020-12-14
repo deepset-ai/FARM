@@ -12,6 +12,8 @@ from farm.data_handler.utils import (
     mask_random_words)
 from farm.modeling.tokenization import insert_at_special_tokens_pos
 
+import numpy as np
+
 logger = logging.getLogger(__name__)
 
 
@@ -149,41 +151,14 @@ def samples_to_features_ner(
     :rtype: list
     """
 
-    tokens = sample.tokenized["tokens"]
-
-    if tokenizer.is_fast:
-        text = sample.clear_text["text"]
-        # Here, we tokenize the sample for the second time to get all relevant ids
-        # This should change once we git rid of FARM's tokenize_with_metadata()
-        inputs = tokenizer(text,
-                           return_token_type_ids=True,
-                           truncation=True,
-                           truncation_strategy="longest_first",
-                           max_length=max_seq_len,
-                           return_special_tokens_mask=True)
-
-        if (len(inputs["input_ids"]) - inputs["special_tokens_mask"].count(1)) != len(sample.tokenized["tokens"]):
-            logger.error(f"FastTokenizer encoded sample {sample.clear_text['text']} to "
-                         f"{len(inputs['input_ids']) - inputs['special_tokens_mask'].count(1)} tokens, which differs "
-                         f"from number of tokens produced in tokenize_with_metadata().\n"
-                         f"Further processing is likely to be wrong!")
-    else:
-        inputs = tokenizer.encode_plus(text=tokens,
-                                       text_pair=None,
-                                       add_special_tokens=True,
-                                       truncation=False,
-                                       return_special_tokens_mask=True,
-                                       return_token_type_ids=True,
-                                       is_split_into_words=False
-                                       )
-
-    input_ids, segment_ids, special_tokens_mask = inputs["input_ids"], inputs["token_type_ids"], inputs["special_tokens_mask"]
+    input_ids = sample.tokenized.ids
+    segment_ids = sample.tokenized.type_ids
+    special_tokens_mask = sample.tokenized.special_tokens_mask
 
     # We construct a mask to identify the first token of a word. We will later only use them for predicting entities.
     # Special tokens don't count as initial tokens => we add 0 at the positions of special tokens
     # For BERT we add a 0 in the start and end (for CLS and SEP)
-    initial_mask = [int(x) for x in sample.tokenized["start_of_word"]]
-    initial_mask = insert_at_special_tokens_pos(initial_mask, special_tokens_mask, insert_element=0)
+    initial_mask = _get_start_of_word(sample.tokenized.words)
     assert len(initial_mask) == len(input_ids)
 
     for task_name, task in tasks.items():
@@ -201,6 +176,7 @@ def samples_to_features_ner(
             problematic_labels = set(labels_token).difference(set(label_list))
             logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
                            f"\nWe found a problem with labels {str(problematic_labels)}")
+        #TODO change this when inference flag is implemented
         except KeyError:
             # Usually triggered if there is no label in the sample
             # This is expected during inference since there are no labels
@@ -212,24 +188,7 @@ def samples_to_features_ner(
 
         # This mask has 1 for real tokens and 0 for padding tokens. Only real
         # tokens are attended to.
-        padding_mask = [1] * len(input_ids)
-
-        # Padding up to the sequence length.
-        # Normal case: adding multiple 0 to the right
-        # Special cases:
-        # a) xlnet pads on the left and uses  "4" for padding token_type_ids
-        if "XLNetTokenizer" in tokenizer.__class__.__name__:
-            pad_on_left = True
-            segment_ids = pad(segment_ids, max_seq_len, 4, pad_on_left=pad_on_left)
-        else:
-            pad_on_left = False
-            segment_ids = pad(segment_ids, max_seq_len, 0, pad_on_left=pad_on_left)
-
-        input_ids = pad(input_ids, max_seq_len, tokenizer.pad_token_id, pad_on_left=pad_on_left)
-        padding_mask = pad(padding_mask, max_seq_len, 0, pad_on_left=pad_on_left)
-        initial_mask = pad(initial_mask, max_seq_len, 0, pad_on_left=pad_on_left)
-        if label_ids:
-            label_ids = pad(label_ids, max_seq_len, 0, pad_on_left=pad_on_left)
+        padding_mask = [int(x == 0) for x in sample.tokenized.attention_mask]
 
         feature_dict = {
             "input_ids": input_ids,
@@ -400,6 +359,12 @@ def get_camembert_seq_2_start(input_ids):
     second_backslash_s = input_ids.index(6, first_backslash_s + 1)
     return second_backslash_s + 1
 
+def _get_start_of_word(word_ids):
+    words = np.array(word_ids)
+    words[words == None] = -1
+    start_of_word_single = [0] + list(np.ediff1d(words) > 0)
+    start_of_word_single = [int(x) for x in start_of_word_single]
+    return start_of_word_single
 
 # def _SQUAD_improve_answer_span(
 #     doc_tokens, input_start, input_end, tokenizer, orig_answer_text

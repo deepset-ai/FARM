@@ -472,7 +472,6 @@ class Processor(ABC):
             random_sample = random.choice(random_basket.samples)
             logger.info(random_sample)
 
-
     def _log_params(self):
         params = {
             "processor": self.__class__.__name__,
@@ -1109,15 +1108,18 @@ class NERProcessor(Processor):
 
         # Perform batch tokenization
         texts = [x["text"] for x in dicts]
+        words = [x.split() for x in texts]
+
         tokenized_batch = self.tokenizer.batch_encode_plus(
-            texts,
+            words,
             return_offsets_mapping=True,
             return_special_tokens_mask=True,
             return_token_type_ids=True,
             return_attention_mask=True,
             truncation=True,
             max_length=self.max_seq_len,
-            padding="max_length"
+            padding="max_length",
+            is_split_into_words=True
         )
 
         # Create features by iterating over samples
@@ -1133,6 +1135,9 @@ class NERProcessor(Processor):
             else:
                 id_internal = i
 
+            # TODO populate this dict when debug = True
+            tokenized_dict = {}
+
             curr_sample = Sample(id=None,
                                  clear_text=d,
                                  tokenized=tokenized)
@@ -1145,12 +1150,13 @@ class NERProcessor(Processor):
                                        raw=d,
                                        id_external=id_external,
                                        samples=[curr_sample])
+            self.baskets.append(curr_basket)
 
         # Don't log if we are processing a dataset chunk other than the first chunk
         if indices and 0 not in indices:
             pass
         else:
-            self.log_samples(1)
+            self._log_samples(1)
 
         dataset, tensor_names = self._create_dataset()
         ret = [dataset, tensor_names]
