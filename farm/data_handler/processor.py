@@ -1103,7 +1103,7 @@ class NERProcessor(Processor):
         dicts = read_ner_file(filename=file, sep=self.delimiter,  proxies=self.proxies)
         return dicts
 
-    def dataset_from_dicts(self, dicts, indices=None, return_baskets=False, return_problematic=False):
+    def dataset_from_dicts(self, dicts, indices=None, return_baskets=False, return_problematic=False, non_initial_token="X"):
         self.baskets = []
 
         # Perform batch tokenization
@@ -1141,11 +1141,56 @@ class NERProcessor(Processor):
             curr_sample = Sample(id=None,
                                  clear_text=d,
                                  tokenized=tokenized)
-            features = samples_to_features_ner(curr_sample,
-                                               self.tasks,
-                                               self.max_seq_len,
-                                               self.tokenizer)
-            curr_sample.features = features
+
+            input_ids = curr_sample.tokenized.ids
+            segment_ids = curr_sample.tokenized.type_ids
+
+            # We construct a mask to identify the first token of a word. We will later only use them for predicting entities.
+            # Special tokens don't count as initial tokens => we add 0 at the positions of special tokens
+            # For BERT we add a 0 in the start and end (for CLS and SEP)
+            initial_mask = self._get_start_of_word(curr_sample.tokenized.words)
+            assert len(initial_mask) == len(input_ids)
+
+            for task_name, task in self.tasks.items():
+                try:
+                    label_list = task["label_list"]
+                    label_name = task["label_name"]
+                    label_tensor_name = task["label_tensor_name"]
+                    labels_word = curr_sample.clear_text[label_name]
+                    labels_token = expand_labels(labels_word, initial_mask, non_initial_token)
+                    # labels_token = add_cls_sep(labels_token, cls_token, sep_token)
+                    label_ids = [label_list.index(lt) for lt in labels_token]
+                except ValueError:
+                    # Usually triggered if label is not in label list
+                    label_ids = None
+                    problematic_labels = set(labels_token).difference(set(label_list))
+                    logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
+                                   f"\nWe found a problem with labels {str(problematic_labels)}")
+                # TODO change this when inference flag is implemented
+                except KeyError:
+                    # Usually triggered if there is no label in the sample
+                    # This is expected during inference since there are no labels
+                    # During training, this is a problem
+                    label_ids = None
+                    logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
+                                   "\nIf your are running in *inference* mode: Don't worry!"
+                                   "\nIf you are running in *training* mode: Verify you are supplying a proper label list to your processor and check that labels in input data are correct.")
+
+                # This mask has 1 for real tokens and 0 for padding tokens. Only real
+                # tokens are attended to.
+                padding_mask = [int(x == 0) for x in curr_sample.tokenized.attention_mask]
+
+                feature_dict = {
+                    "input_ids": input_ids,
+                    "padding_mask": padding_mask,
+                    "segment_ids": segment_ids,
+                    "initial_mask": initial_mask,
+                }
+
+                if label_ids:
+                    feature_dict[label_tensor_name] = label_ids
+
+            curr_sample.features = [feature_dict]
             curr_basket = SampleBasket(id_internal=id_internal,
                                        raw=d,
                                        id_external=id_external,
@@ -1189,6 +1234,14 @@ class NERProcessor(Processor):
             tokenizer=self.tokenizer,
         )
         return features
+
+    @staticmethod
+    def _get_start_of_word(word_ids):
+        words = np.array(word_ids)
+        words[words == None] = -1
+        start_of_word_single = [0] + list(np.ediff1d(words) > 0)
+        start_of_word_single = [int(x) for x in start_of_word_single]
+        return start_of_word_single
 
     def _dict_to_samples_and_features(self, dictionary: dict, **kwargs) -> [Sample]:
         """This method is used so that we need to tokenize only once when using a fast tokenizer."""
