@@ -1623,9 +1623,15 @@ class SquadProcessor(Processor):
         self.target = "classification"
         self.ph_output_type = "per_token_squad"
 
-        assert doc_stride < max_seq_len, "doc_stride is longer than max_seq_len. This means that there will be gaps " \
-                                         "as the passage windows slide, causing the model to skip over parts of the document. "\
+        assert doc_stride < max_seq_len, "doc_stride is longer than max_seq_len. \nThis means that there will be gaps " \
+                                         "as the passage windows slide, causing the model to skip over parts of the document.\n"\
                                          "Please set a lower value for doc_stride (Suggestions: doc_stride=128, max_seq_len=384) "
+
+        assert doc_stride < (max_seq_len - max_query_length), \
+            "doc_stride is longer than max_seq_len minus space reserved for query tokens. \nThis means that there will be gaps " \
+            "as the passage windows slide, causing the model to skip over parts of the document.\n" \
+            "Please set a lower value for doc_stride (Suggestions: doc_stride=128, max_seq_len=384)\n " \
+            "Or decrease max_query_length"
 
         self.doc_stride = doc_stride
         self.max_query_length = max_query_length
@@ -1734,6 +1740,7 @@ class SquadProcessor(Processor):
         """
         n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
         for basket in baskets:
+            samples = []
             ########## perform some basic checking
             # TODO, eventually move checking into input validation functions
             # ignore samples with empty context
@@ -1746,8 +1753,6 @@ class SquadProcessor(Processor):
                     logger.warning(f"Answer '{answer['text']}' not contained in context.")
             ########## end checking
 
-
-            samples = []
 
             # Calculate the number of tokens that can be reserved for the passage. This is calculated by considering
             # the max_seq_len, the number of tokens in the question and the number of special tokens that will be added
@@ -1786,7 +1791,9 @@ class SquadProcessor(Processor):
                              "question_start_of_word": basket.raw["question_start_of_word"][:self.max_query_length],
                              "document_offsets": basket.raw["document_offsets"],  # So that to_doc_preds can access them
                              }
-                samples.append(Sample(id=passage_span["passage_id"],
+                # The sample ID consists of internal_id and a passage numbering
+                sample_id = f"{basket.id_internal}-{passage_span['passage_id']}"
+                samples.append(Sample(id=sample_id,
                                       clear_text=clear_text,
                                       tokenized=tokenized))
 
@@ -1871,8 +1878,6 @@ class SquadProcessor(Processor):
         for basket in baskets:
             # Add features to samples
             for num, sample in enumerate(basket.samples):
-                sample.id = f"{basket.id_internal}-{num}"
-
                 # Initialize some basic variables
                 question_tokens = sample.tokenized["question_tokens"]
                 question_start_of_word = sample.tokenized["question_start_of_word"]
@@ -1887,8 +1892,6 @@ class SquadProcessor(Processor):
                 # - input_ids also contains special tokens (e.g. CLS or SEP tokens).
                 # - It will have length = question_len_t + passage_len_t + n_special_tokens. This may be less than
                 #   max_seq_len but never greater since truncation was already performed when the document was chunked into passages
-                if not self.tokenizer.is_fast:
-                    raise NotImplementedError
                 question_input_ids = sample.tokenized["question_tokens"]
                 passage_input_ids = sample.tokenized["passage_tokens"]
 
