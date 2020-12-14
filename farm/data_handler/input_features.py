@@ -153,7 +153,6 @@ def samples_to_features_ner(
 
     input_ids = sample.tokenized.ids
     segment_ids = sample.tokenized.type_ids
-    special_tokens_mask = sample.tokenized.special_tokens_mask
 
     # We construct a mask to identify the first token of a word. We will later only use them for predicting entities.
     # Special tokens don't count as initial tokens => we add 0 at the positions of special tokens
@@ -359,12 +358,7 @@ def get_camembert_seq_2_start(input_ids):
     second_backslash_s = input_ids.index(6, first_backslash_s + 1)
     return second_backslash_s + 1
 
-def _get_start_of_word(word_ids):
-    words = np.array(word_ids)
-    words[words == None] = -1
-    start_of_word_single = [0] + list(np.ediff1d(words) > 0)
-    start_of_word_single = [int(x) for x in start_of_word_single]
-    return start_of_word_single
+
 
 # def _SQUAD_improve_answer_span(
 #     doc_tokens, input_start, input_end, tokenizer, orig_answer_text
