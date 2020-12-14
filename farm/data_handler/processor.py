@@ -1646,7 +1646,6 @@ class SquadProcessor(Processor):
         max_query_length=64,
         proxies=None,
         max_answers=6,
-        **kwargs
     ):
         """
         :param tokenizer: Used to split a sentence (str) into tokens.
@@ -1711,20 +1710,25 @@ class SquadProcessor(Processor):
         """
         Convert input dictionaries into a pytorch dataset for Question Answering.
         For this we have an internal representation called "baskets".
-        Each basket is a question document pair.
+        Each basket is a question-document pair.
         Each stage adds or transforms specific information to our baskets.
+
+        @param dicts: dict, input dictionary with SQuAD style information present
+        @param indices: list, indices used during multiprocessing so that IDs assigned to our baskets is unique
+        @param return_baskets: boolean, weather to return the baskets or not (baskets are needed during inference)
+        @param return_problematic: boolean, weather to return the IDs of baskets that created errors during processing
         """
-        # Convert to standard format TODO move to input conversion + validation
-        preBaskets = [self.convert_qa_input_dict(x) for x in dicts]
+        # Convert to standard format
+        pre_baskets = [self.convert_qa_input_dict(x) for x in dicts] # TODO move to input object conversion
 
         # Tokenize documents and questions
-        baskets = tokenize_batch_question_answering(preBaskets, self.tokenizer) # TODO discuss: move this also inside processor?
+        baskets = tokenize_batch_question_answering(pre_baskets, self.tokenizer, indices)
 
         # Split documents into smaller passages to fit max_seq_len
-        baskets = self._split_docs_into_passages(baskets, indices)
+        baskets = self._split_docs_into_passages(baskets)
 
-        # Create labels
-        baskets = self._create_labels(baskets)
+        # Convert answers from string to token space
+        baskets = self._convert_answers(baskets)
 
         # Convert internal representation (nested baskets + samples with mixed types) to python features (arrays of numbers)
         baskets = self._samples_to_features(baskets)
@@ -1781,86 +1785,78 @@ class SquadProcessor(Processor):
         self.sp_toks_mid = vec.index("b") - self.sp_toks_start - 1
         self.sp_toks_end = len(vec) - vec.index("b") - 1
 
-    def _split_docs_into_passages(self, dicts_tokenized, indices):
+    def _split_docs_into_passages(self, baskets):
         """
         Because of the sequence length limitation of Language Models, the documents need to be divided into smaller
         parts that we call passages.
-        This function creates per Question-Document pair many Question-Passage pairs and collects them in
-        SampleBaskets. One SampleBasket represents one Question-Document pair."""
-        baskets = []
-
+        """
         n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
-        for index, document in zip(indices, dicts_tokenized):
-            for q_idx, dictionary in enumerate(document):
-                ########## perform some basic checking
-                # TODO, eventually move checking into input validation functions
-                # ignore samples with empty context
-                if dictionary["document_text"] == "":
-                    logger.warning("Ignoring sample with empty context")
-                    continue
-                # check if answer string can be found in context
-                for answer in dictionary["answers"]:
-                    if answer["text"] not in dictionary["document_text"]:
-                        logger.warning(f"Answer '{answer['text']}' not contained in context.")
-                ########## end checking
-
-                # # create out of each Question-Document pair samples of Question-Passage pairs
-                # In case of Question Answering the external ID is used for document IDs
-                id_external = try_get(ID_NAMES, dictionary)
-                id_internal = f"{index}-{q_idx}"
-                samples = []
-
-                # Calculate the number of tokens that can be reserved for the passage. This is calculated by considering
-                # the max_seq_len, the number of tokens in the question and the number of special tokens that will be added
-                # when the question and passage are joined (e.g. [CLS] and [SEP])
-                passage_len_t = self.max_seq_len - len(dictionary["question_tokens"][:self.max_query_length]) - n_special_tokens
+        for basket in baskets:
+            ########## perform some basic checking
+            # TODO, eventually move checking into input validation functions
+            # ignore samples with empty context
+            if basket.raw["document_text"] == "":
+                logger.warning("Ignoring sample with empty context")
+                continue
+            # check if answer string can be found in context
+            for answer in basket.raw["answers"]:
+                if answer["text"] not in basket.raw["document_text"]:
+                    logger.warning(f"Answer '{answer['text']}' not contained in context.")
+            ########## end checking
 
 
-                # passage_spans is a list of dictionaries where each defines the start and end of each passage
-                # on both token and character level
-                passage_spans = get_passage_offsets(dictionary["document_offsets"],
-                                                    self.doc_stride,
-                                                    passage_len_t,
-                                                    dictionary["document_text"])
-                for passage_span in passage_spans:
-                    # Unpack each variable in the dictionary. The "_t" and "_c" indicate
-                    # whether the index is on the token or character level
-                    passage_start_t = passage_span["passage_start_t"]
-                    passage_end_t = passage_span["passage_end_t"]
-                    passage_start_c = passage_span["passage_start_c"]
-                    passage_end_c = passage_span["passage_end_c"]
+            samples = []
 
-                    passage_start_of_word = dictionary["document_start_of_word"][passage_start_t: passage_end_t]
-                    passage_tokens = dictionary["document_tokens"][passage_start_t: passage_end_t]
-                    passage_text = dictionary["document_text"][passage_start_c: passage_end_c]
-
-                    clear_text = {"passage_text": passage_text,
-                                  "question_text": dictionary["question_text"],
-                                  "passage_id": passage_span["passage_id"],
-                                  "answers": None}
-                    tokenized = {"passage_start_t": passage_start_t,
-                                 "passage_start_c": passage_start_c,
-                                 "passage_tokens": passage_tokens,
-                                 "passage_start_of_word": passage_start_of_word,
-                                 "question_tokens": dictionary["question_tokens"][:self.max_query_length],
-                                 "question_offsets": dictionary["question_offsets"],
-                                 "question_start_of_word": dictionary["question_start_of_word"][:self.max_query_length],
-                                 "answers": None,
-                                 "document_offsets": dictionary["document_offsets"]}  # So that to_doc_preds can access them
-                    samples.append(Sample(id=passage_span["passage_id"],
-                                          clear_text=clear_text,
-                                          tokenized=tokenized))
+            # Calculate the number of tokens that can be reserved for the passage. This is calculated by considering
+            # the max_seq_len, the number of tokens in the question and the number of special tokens that will be added
+            # when the question and passage are joined (e.g. [CLS] and [SEP])
+            passage_len_t = self.max_seq_len - len(basket.raw["question_tokens"][:self.max_query_length]) - n_special_tokens
 
 
-                basket = SampleBasket(raw=dictionary, id_internal=id_internal, id_external=id_external, samples=samples)
-                baskets.append(basket)
+            # passage_spans is a list of dictionaries where each defines the start and end of each passage
+            # on both token and character level
+            passage_spans = get_passage_offsets(basket.raw["document_offsets"],
+                                                self.doc_stride,
+                                                passage_len_t,
+                                                basket.raw["document_text"])
+            for passage_span in passage_spans:
+                # Unpack each variable in the dictionary. The "_t" and "_c" indicate
+                # whether the index is on the token or character level
+                passage_start_t = passage_span["passage_start_t"]
+                passage_end_t = passage_span["passage_end_t"]
+                passage_start_c = passage_span["passage_start_c"]
+                passage_end_c = passage_span["passage_end_c"]
+
+                passage_start_of_word = basket.raw["document_start_of_word"][passage_start_t: passage_end_t]
+                passage_tokens = basket.raw["document_tokens"][passage_start_t: passage_end_t]
+                passage_text = basket.raw["document_text"][passage_start_c: passage_end_c]
+
+                clear_text = {"passage_text": passage_text,
+                              "question_text": basket.raw["question_text"],
+                              "passage_id": passage_span["passage_id"],
+                              }
+                tokenized = {"passage_start_t": passage_start_t,
+                             "passage_start_c": passage_start_c,
+                             "passage_tokens": passage_tokens,
+                             "passage_start_of_word": passage_start_of_word,
+                             "question_tokens": basket.raw["question_tokens"][:self.max_query_length],
+                             "question_offsets": basket.raw["question_offsets"],
+                             "question_start_of_word": basket.raw["question_start_of_word"][:self.max_query_length],
+                             "document_offsets": basket.raw["document_offsets"],  # So that to_doc_preds can access them
+                             }
+                samples.append(Sample(id=passage_span["passage_id"],
+                                      clear_text=clear_text,
+                                      tokenized=tokenized))
+
+
+            basket.samples=samples
+
         return baskets
 
-    def _create_labels(self, baskets):
+    def _convert_answers(self, baskets):
         """
-        TODO docstring
-        :param baskets:
-        :return:
+        Converts answers that are pure strings into the token based representation with start and end token offset.
+        Can handle multiple answers per question document pair as is common for development/text sets
         """
         for basket in baskets:
             for num, sample in enumerate(basket.samples):
@@ -1926,9 +1922,9 @@ class SquadProcessor(Processor):
 
     def _samples_to_features(self, baskets):
         """
-        TODO docstring
-        :param baskets:
-        :return:
+        Convert internal representation (nested baskets + samples with mixed types) to python features (arrays of numbers).
+        We first join question and passages into on large vector.
+        Then we add additional vectors for: - #TODO
         """
         for basket in baskets:
             # Add features to samples
@@ -2013,6 +2009,11 @@ class SquadProcessor(Processor):
         return baskets
 
     def _create_dataset(self, baskets):
+        """
+        Convert python features into pytorch dataset.
+        Also removes potential errors during preprocessing.
+        Flattens nested basket structure to create a flat list of features
+        """
         features_flat = []
         basket_to_remove = []
         for basket in baskets:
