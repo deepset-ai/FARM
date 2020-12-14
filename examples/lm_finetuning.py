@@ -34,7 +34,7 @@ def lm_finetuning():
     evaluate_every = 30
     lang_model = "bert-base-cased"
     do_lower_case = False
-    next_sent_pred_style = "bert-style"
+    next_sent_pred_style = "sentence"
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
@@ -51,8 +51,11 @@ def lm_finetuning():
     )
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
-    data_silo = DataSilo(processor=processor, batch_size=batch_size, max_multiprocessing_chunksize=20)
-
+    import time
+    tic = time.time()
+    data_silo = DataSilo(processor=processor, batch_size=batch_size, max_multiprocessing_chunksize=20, max_processes=1)
+    toc = time.time()
+    print(f"Time {toc-tic}")
     # 4. Create an AdaptiveModel
     # a) which consists of a pretrained language model as a basis
     language_model = LanguageModel.load(lang_model)

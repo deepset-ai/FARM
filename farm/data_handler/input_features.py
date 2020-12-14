@@ -12,8 +12,7 @@ import numpy as np
 from farm.data_handler.samples import Sample
 from farm.data_handler.utils import (
     expand_labels,
-    pad,
-    mask_random_words)
+    pad)
 from farm.modeling.tokenization import insert_at_special_tokens_pos
 
 logger = logging.getLogger(__name__)
@@ -241,139 +240,6 @@ def samples_to_features_ner(
 
         if label_ids:
             feature_dict[label_tensor_name] = label_ids
-
-    return [feature_dict]
-
-
-def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=True, masked_lm_prob=0.15):
-    """
-    Convert a raw sample (pair of sentences as tokenized strings) into a proper training sample with
-    IDs, LM labels, padding_mask, CLS and SEP tokens etc.
-
-    :param sample: Sample, containing sentence input as strings and is_next label
-    :type sample: Sample
-    :param max_seq_len: Maximum length of sequence.
-    :type max_seq_len: int
-    :param tokenizer: Tokenizer
-    :param masked_lm_prob: probability of masking a token
-    :type masked_lm_prob: float
-    :return: InputFeatures, containing all inputs and labels of one sample as IDs (as used for model training)
-    """
-
-    if next_sent_pred:
-        tokens_a = sample.tokenized["text_a"]["tokens"]
-        tokens_b = sample.tokenized["text_b"]["tokens"]
-
-        # mask random words
-        tokens_a, t1_label = mask_random_words(tokens_a, tokenizer.vocab,
-                                               token_groups=sample.tokenized["text_a"]["start_of_word"], masked_lm_prob=masked_lm_prob)
-
-        tokens_b, t2_label = mask_random_words(tokens_b, tokenizer.vocab,
-                                               token_groups=sample.tokenized["text_b"]["start_of_word"], masked_lm_prob=masked_lm_prob)
-
-        # convert lm labels to ids
-        t1_label_ids = [-1 if tok == '' else tokenizer.convert_tokens_to_ids(tok) for tok in t1_label]
-        t2_label_ids = [-1 if tok == '' else tokenizer.convert_tokens_to_ids(tok) for tok in t2_label]
-        lm_label_ids = t1_label_ids + t2_label_ids
-
-        # Convert is_next_label: Note that in Bert, is_next_labelid = 0 is used for next_sentence=true!
-        if sample.clear_text["nextsentence_label"]:
-            is_next_label_id = [0]
-        else:
-            is_next_label_id = [1]
-    else:
-        tokens_a = sample.tokenized["text_a"]["tokens"]
-        tokens_b = None
-        tokens_a, t1_label = mask_random_words(tokens_a, tokenizer.vocab,
-                                               token_groups=sample.tokenized["text_a"]["start_of_word"], masked_lm_prob=masked_lm_prob)
-
-        # convert lm labels to ids
-        lm_label_ids = [-1 if tok == '' else tokenizer.convert_tokens_to_ids(tok) for tok in t1_label]
-
-    if tokenizer.is_fast:
-        seq_a_input_ids = tokenizer.convert_tokens_to_ids(tokens_a)
-        seq_b_input_ids = tokenizer.convert_tokens_to_ids(tokens_b) if next_sent_pred else None
-
-        input_ids = tokenizer.build_inputs_with_special_tokens(token_ids_0=seq_a_input_ids,
-                                                               token_ids_1=seq_b_input_ids)
-        segment_ids = tokenizer.create_token_type_ids_from_sequences(token_ids_0=seq_a_input_ids,
-                                                                     token_ids_1=seq_b_input_ids)
-        # FastTokenizers do not support get_special_tokens_mask, so special_tokens_mask is created manually
-        a_token_id = tokenizer.convert_tokens_to_ids("a")
-        special_tokens = tokenizer.encode_plus(text="a",
-                                               text_pair="a" if next_sent_pred else None,
-                                               add_special_tokens=True,
-                                               return_special_tokens_mask=True,
-                                               return_token_type_ids=True,
-                                               return_tensors=None)
-        special_tokens_grid = special_tokens["special_tokens_mask"]
-        seq_a_position = special_tokens["input_ids"].index(a_token_id)
-        if next_sent_pred:
-            seq_b_position = special_tokens["input_ids"].index(a_token_id, seq_a_position + 1)
-            special_tokens_mask = special_tokens_grid[:seq_a_position] \
-                                  + [0] * len(seq_a_input_ids) \
-                                  + special_tokens_grid[seq_a_position + 1:seq_b_position] \
-                                  + [0] * len(seq_b_input_ids) \
-                                  + special_tokens_grid[seq_b_position + 1:]
-        # No next sentence prediction task, therefore no seq_b
-        else:
-            special_tokens_mask = special_tokens_grid[:seq_a_position] \
-                                  + [0] * len(seq_a_input_ids) \
-                                  + special_tokens_grid[seq_a_position + 1:]
-
-    else:
-        # encode string tokens to input_ids and add special tokens
-        inputs = tokenizer.encode_plus(text=tokens_a,
-                                       text_pair=tokens_b,
-                                       add_special_tokens=True,
-                                       truncation=False,
-                                       truncation_strategy='do_not_truncate',
-                                       # We've already truncated our tokens before
-                                       return_special_tokens_mask=True,
-                                       return_token_type_ids=True
-                                       )
-
-        input_ids = inputs["input_ids"]
-        segment_ids = inputs["token_type_ids"]
-        special_tokens_mask = inputs["special_tokens_mask"]
-
-    # account for special tokens (CLS, SEP, SEP..) in lm_label_ids
-    lm_label_ids = insert_at_special_tokens_pos(lm_label_ids, special_tokens_mask, insert_element=-1)
-
-    # The mask has 1 for real tokens and 0 for padding tokens. Only real
-    # tokens are attended to.
-    padding_mask = [1] * len(input_ids)
-
-    # Zero-pad up to the sequence length.
-    # Padding up to the sequence length.
-    # Normal case: adding multiple 0 to the right
-    # Special cases:
-    # a) xlnet pads on the left and uses  "4" for padding token_type_ids
-    if tokenizer.__class__.__name__ == "XLNetTokenizer":
-        pad_on_left = True
-        segment_ids = pad(segment_ids, max_seq_len, 4, pad_on_left=pad_on_left)
-    else:
-        pad_on_left = False
-        segment_ids = pad(segment_ids, max_seq_len, 0, pad_on_left=pad_on_left)
-
-    input_ids = pad(input_ids, max_seq_len, tokenizer.pad_token_id, pad_on_left=pad_on_left)
-    padding_mask = pad(padding_mask, max_seq_len, 0, pad_on_left=pad_on_left)
-    lm_label_ids = pad(lm_label_ids, max_seq_len, -1, pad_on_left=pad_on_left)
-
-    feature_dict = {
-        "input_ids": input_ids,
-        "padding_mask": padding_mask,
-        "segment_ids": segment_ids,
-        "lm_label_ids": lm_label_ids,
-    }
-
-    if next_sent_pred:
-        feature_dict["nextsentence_label_ids"] = is_next_label_id
-
-    assert len(input_ids) == max_seq_len
-    assert len(padding_mask) == max_seq_len
-    assert len(segment_ids) == max_seq_len
-    assert len(lm_label_ids) == max_seq_len
 
     return [feature_dict]
 

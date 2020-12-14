@@ -17,7 +17,6 @@ from numpy.random import random as random_float
 from farm.data_handler.dataset import convert_features_to_dataset
 from farm.data_handler.input_features import (
     samples_to_features_ner,
-    samples_to_features_bert_lm,
     sample_to_features_text,
     sample_to_features_qa,
 )
@@ -1232,7 +1231,7 @@ class BertStyleLMProcessor(Processor):
         max_docs=None,
         proxies=None,
         masked_lm_prob=0.15,
-        
+        rust_multithreading=False,
         **kwargs
     ):
         """
@@ -1281,7 +1280,7 @@ class BertStyleLMProcessor(Processor):
 
         self.delimiter = ""
         self.max_docs = max_docs
-
+        os.environ["RAYON_RS_NUM_CPUS"] = "1"
         super(BertStyleLMProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
@@ -1312,62 +1311,90 @@ class BertStyleLMProcessor(Processor):
         dicts = read_docs_from_txt(filename=file, delimiter=self.delimiter, max_docs=self.max_docs, proxies=self.proxies)
         return dicts
 
-    def _dict_to_samples(self, dictionary, all_dicts=None):
-        doc = dictionary["doc"]
-
-        # next sentence prediction...
+    def dataset_from_dicts(self, dicts, indices=None, return_baskets=False):
+        dicts = [d["doc"] for d in dicts]
+        # 2) Create samples & truncate (sentence pairs)
+        # next sentence prediction ...
         if self.next_sent_pred:
-            assert len(all_dicts) > 1, "Need at least 2 documents to sample random sentences from"
+            assert len(dicts) > 1, "Need at least 2 documents to sample random sentences from"
             # ...with single sentences
             if self.next_sent_pred_style == "sentence":
-                samples = self._dict_to_samples_single_sentence(doc, all_dicts)
+                samples = self._create_sequence_pairs_by_line(dicts)
             # ...bert style
-            elif self.next_sent_pred_style == "bert-style":
-                samples = self._dict_to_samples_bert_style(doc, all_dicts)
-            else:
-                raise NotImplementedError("next_sent_pred_style has to be 'sentence' or 'bert-style'")
+            # elif self.next_sent_pred_style == "bert-style":
+                 #samples = self._dict_to_samples_bert_style(doc, all_dicts)
+            # else:
+            #     raise NotImplementedError("next_sent_pred_style has to be 'sentence' or 'bert-style'")
 
-        # no next sentence prediction
-        else:
-            samples = self._dict_to_samples_no_next_sent(doc)
+            # no next sentence prediction
+            #else:
+            #    samples = self._dict_to_samples_no_next_sent(doc)
 
-        return samples
+            # a) sentence based
+            # b) original bert style
+            # c) single sentence (No nsp)
 
-    def _dict_to_samples_single_sentence(self, doc, all_dicts):
+        logger.info("Done with samples")
+        # Get features
+        features = []
+        vocab = self.tokenizer.vocab
+        for sample in samples:
+            sample = self._sample_to_features(sample=sample, vocab=vocab)
+            features.append(sample.features)
+        logger.info("Done with features")
+
+        # Create dataset
+        dataset, tensor_names = convert_features_to_dataset(features=features)
+        return dataset, tensor_names
+
+    def _create_sequence_pairs_by_line(self, docs):
         samples = []
+        raw_pairs = []
+        labels = []
+        for doc in docs:
+            # create one sample for each sentence in the doc (except for the very last -> "nextSentence" is impossible)
+            for idx in range(len(doc) - 1):
+                text_a, text_b, is_next_label = get_sentence_pair(doc, docs, idx)
+                raw_pairs.append((text_a, text_b))
+                labels.append(is_next_label)
 
-        # create one sample for each sentence in the doc (except for the very last -> "nextSentence" is impossible)
-        for idx in range(len(doc) - 1):
-            tokenized = {}
-            text_a, text_b, is_next_label = get_sentence_pair(doc, all_dicts, idx)
-            sample_in_clear_text = {
-                "text_a" : text_a,
-                "text_b" : text_b,
-                "nextsentence_label" : is_next_label,
-            }
-            # tokenize
-            tokenized["text_a"] = tokenize_with_metadata(text_a, self.tokenizer)
-            tokenized["text_b"] = tokenize_with_metadata(text_b, self.tokenizer)
+        # Tokenize + Encode masks
+        encoded_pairs = self.tokenizer.batch_encode_plus(raw_pairs,
+                                                         max_length=self.max_seq_len,
+                                                         truncation=True,
+                                                         truncation_strategy="longest_first",
+                                                         add_special_tokens=True,
+                                                         padding='max_length'
+                                                         )
 
-            if len(tokenized["text_a"]["tokens"]) == 0:
+        assert len(encoded_pairs.input_ids) == len(raw_pairs)
+
+        # Create "Start of word mask"
+        start_of_word = []
+        for e in encoded_pairs.encodings:
+            start_of_word.append(_get_start_of_word(e.words, e.special_tokens_mask))
+
+        # Create Sample objects
+        for idx in range(len(raw_pairs)):
+            if len(encoded_pairs.input_ids[idx]) == 0:
                 logger.warning(
-                    f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text_a}")
-                continue
-            if len(tokenized["text_b"]["tokens"]) == 0:
-                logger.warning(
-                    f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text_b}")
+                    f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {raw_pairs[idx]}")
                 continue
 
-            # truncate to max_seq_len
-            for seq_name in ["tokens", "offsets", "start_of_word"]:
-                tokenized["text_a"][seq_name], tokenized["text_b"][seq_name], _ = truncate_sequences(
-                    seq_a=tokenized["text_a"][seq_name],
-                    seq_b=tokenized["text_b"][seq_name],
-                    tokenizer=self.tokenizer,
-                    max_seq_len=self.max_seq_len)
-
-            samples.append(Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized))
-
+            # We don't populate 'tokenized' here as we skiped the intermediate string token stage abeoce to improve the speed ...
+            samples.append(Sample(id=None,
+                                  clear_text={"text_a": raw_pairs[idx][0],
+                                              "text_b": raw_pairs[idx][1],
+                                              "nextsentence_label": labels[idx]},
+                                  tokenized={"tokens": encoded_pairs.encodings[idx].tokens,
+                                             "start_of_word": start_of_word[idx],
+                                             "special_tokens_mask": encoded_pairs.encodings[idx].special_tokens_mask,
+                                             "offsets": encoded_pairs.encodings[idx].offsets},
+                                  features={"input_ids": encoded_pairs.input_ids[idx],
+                                            "segment_ids": encoded_pairs.token_type_ids[idx],
+                                            "attention_mask": encoded_pairs.attention_mask[idx],
+                                            }
+                                  ))
         return samples
 
     def _dict_to_samples_bert_style(self, doc, all_dicts):
@@ -1377,8 +1404,14 @@ class BertStyleLMProcessor(Processor):
 
         # tokenize
         doc_tokenized = []
-        for sentence in doc:
-            doc_tokenized.append(tokenize_with_metadata(sentence, self.tokenizer))
+
+        #for sentence in doc:
+            # doc_tokenized.append(tokenize_with_metadata(sentence, self.tokenizer))
+
+        # TODO check format
+        doc_tokenized = self.tokenizer.batch_encode(doc)
+        # TODO start_of_word
+        # TODO offsets?
 
         current_chunk = []
         current_chunk_clear_text = []
@@ -1453,39 +1486,145 @@ class BertStyleLMProcessor(Processor):
 
         return samples
 
-    def _sample_to_features(self, sample) -> dict:
-        features = samples_to_features_bert_lm(
-            sample=sample, max_seq_len=self.max_seq_len, tokenizer=self.tokenizer,
-            next_sent_pred=self.next_sent_pred, masked_lm_prob=self.masked_lm_prob
-        )
-        return features
-
-    def _dict_to_samples_and_features(self, dictionary: dict, all_dicts=None, **kwargs) -> [Sample]:
-        doc = dictionary["doc"]
-
-        # Initialize samples
-        # next sentence prediction...
+    def _sample_to_features(self, sample, vocab) -> dict:
+        # mask random words
+        tokens_a = sample.features["input_ids"]
+        tokens_a, lm_label_ids = self._mask_random_words(tokens_a, vocab, token_groups=sample.tokenized["start_of_word"])
+        sample.features["lm_label_ids"] = lm_label_ids
         if self.next_sent_pred:
-            assert len(all_dicts) > 1, "Need at least 2 documents to sample random sentences from"
-            # ...with single sentences
-            if self.next_sent_pred_style == "sentence":
-                samples = self._dict_to_samples_single_sentence(doc, all_dicts)
-            # ...bert style
-            elif self.next_sent_pred_style == "bert-style":
-                samples = self._dict_to_samples_bert_style(doc, all_dicts)
+            # Convert is_next_label: Note that in Bert, is_next_labelid = 0 is used for next_sentence=true!
+            if sample.clear_text["nextsentence_label"]:
+                sample.features["nextsentence_label_ids"] = [0]
             else:
-                raise NotImplementedError("next_sent_pred_style has to be 'sentence' or 'bert-style'")
+                sample.features["nextsentence_label_ids"] = [1]
 
-        # no next sentence prediction
-        else:
-            samples = self._dict_to_samples_no_next_sent(doc)
 
-        # Get features
-        for sample in samples:
-            features = self._sample_to_features(sample)
-            sample.features = features
+        # The mask has 1 for real tokens and 0 for padding tokens. Only real
+        # tokens are attended to.
+        # padding_mask = [1] * len(input_ids)
 
-        return samples
+        # feature_dict = {
+        #     "input_ids": input_ids,
+        #     #"padding_mask": padding_mask,
+        #     "segment_ids": segment_ids,
+        #     "lm_label_ids": lm_label_ids,
+        # }
+
+        assert len(sample.features["input_ids"]) == self.max_seq_len
+        # assert len(padding_mask) == self.max_seq_len
+        assert len(sample.features["segment_ids"]) == self.max_seq_len
+        assert len(sample.features["lm_label_ids"]) == self.max_seq_len
+
+        return sample
+
+    def _mask_random_words(self, tokens, vocab, token_groups=None, max_predictions_per_seq=20):
+        """
+        Masking some random tokens for Language Model task with probabilities as in the original BERT paper.
+        num_masked.
+        If token_groups is supplied, whole word masking is applied, so *all* tokens of a word are either masked or not.
+        This option was added by the BERT authors later and showed solid improvements compared to the original objective.
+        Whole Word Masking means that if we mask all of the wordpieces corresponding to an original word.
+        When a word has been split intoWordPieces, the first token does not have any marker and any subsequence
+        tokens are prefixed with ##. So whenever we see the ## token, we
+        append it to the previous set of word indexes. Note that Whole Word Masking does *not* change the training code
+        at all -- we still predict each WordPiece independently, softmaxed over the entire vocabulary.
+        This implementation is mainly a copy from the original code by Google, but includes some simplifications.
+
+        :param tokens: tokenized sentence.
+        :type tokens: [str]
+        :param token_groups: If supplied, only whole groups of tokens get masked. This can be whole words but
+        also other types (e.g. spans). Booleans indicate the start of a group.
+        :type token_groups: [bool]
+        :param max_predictions_per_seq: maximum number of masked tokens
+        :type max_predictions_per_seq: int
+        :param masked_lm_prob: probability of masking a token
+        :type masked_lm_prob: float
+        :return: (list of str, list of int), masked tokens and related labels for LM prediction
+        """
+        # import time
+        # tic = time.time()
+        # 1. Combine tokens to one group (e.g. all subtokens of a word)
+        cand_indices = []
+        for (i, token) in enumerate(tokens):
+            if token == self.tokenizer.cls_token_id or token == self.tokenizer.sep_token_id:
+                continue
+            if (token_groups and len(cand_indices) >= 1 and not token_groups[i]):
+                cand_indices[-1].append(i)
+            else:
+                cand_indices.append([i])
+
+        num_to_mask = min(max_predictions_per_seq,
+                          max(1, int(round(len(tokens) * self.masked_lm_prob ))))
+
+        random.shuffle(cand_indices)
+        output_label = [-1] * len(tokens)
+        num_masked = 0
+
+        assert self.tokenizer.mask_token_id not in tokens
+
+        # 2. Mask the first groups until we reach the number of tokens we wanted to mask (num_to_mask)
+        for index_set in cand_indices:
+            if num_masked >= num_to_mask:
+                break
+            # If adding a whole-word mask would exceed the maximum number of
+            # predictions, then just skip this candidate.
+            if num_masked + len(index_set) > num_to_mask:
+                continue
+
+            for index in index_set:
+                prob = random.random()
+                num_masked += 1
+                original_token = tokens[index]
+                # 80% randomly change token to mask token
+                if prob < 0.8:
+                    tokens[index] = self.tokenizer.mask_token_id
+
+                # 10% randomly change token to random token
+                # TODO currently custom vocab is not included here
+                elif prob < 0.9:
+                    tokens[index] = random.choice(list(vocab.items()))[1]
+
+                # -> rest 10% randomly keep current token
+
+                # append current token to output (we will predict these later)
+                try:
+                    output_label[index] = original_token
+                except KeyError:
+                    # For unknown words (should not occur with BPE vocab)
+                    output_label[index] = self.tokenizer.unk_token_id
+                    logger.warning(
+                        "Cannot find token '{}' in vocab. Using [UNK] instead".format(original_token)
+                    )
+        # toc = time.time()
+        # logger.info(f"time: {toc-tic}")
+        return tokens, output_label
+
+    # def _dict_to_samples_and_features(self, dictionary: dict, all_dicts=None, **kwargs) -> [Sample]:
+    #     doc = dictionary["doc"]
+    #
+    #     # Initialize samples
+    #     # next sentence prediction...
+    #     if self.next_sent_pred:
+    #         assert len(all_dicts) > 1, "Need at least 2 documents to sample random sentences from"
+    #         # ...with single sentences
+    #         if self.next_sent_pred_style == "sentence":
+    #             samples = self._create_sequence_pairs_by_line(doc, all_dicts)
+    #         # ...bert style
+    #         elif self.next_sent_pred_style == "bert-style":
+    #             samples = self._dict_to_samples_bert_style(doc, all_dicts)
+    #         else:
+    #             raise NotImplementedError("next_sent_pred_style has to be 'sentence' or 'bert-style'")
+    #
+    #     # no next sentence prediction
+    #     else:
+    #         samples = self._dict_to_samples_no_next_sent(doc)
+    #
+    #     # Get features
+    #     for sample in samples:
+    #         features = self._sample_to_features(sample)
+    #         sample.features = features
+    #
+    #     return samples
 
     def estimate_n_samples(self, filepath, max_docs=500):
         """
@@ -2672,13 +2811,20 @@ class TextSimilarityProcessor(Processor):
 
         return samples
 
-def _get_start_of_word(word_ids):
+def _get_start_of_word(word_ids, special_token_mask=None):
     words = np.array(word_ids)
-    # TODO check for validity for all tokenizer and special token types
-    words[0] = -1
-    words[-1] = words[-2]
-    words += 1
-    start_of_word_single = [0] + list(np.ediff1d(words))
+    #TODO test with multiple CLS tokens
+    if special_token_mask:
+        start_of_word_single = np.where(special_token_mask, -1, words)
+        start_of_word_single = np.ediff1d(start_of_word_single)
+        start_of_word_single = [0] + list(np.clip(start_of_word_single, 0, 1))
+    else:
+        # TODO check for validity for all tokenizer and special token types
+        words[0] = -1
+        words[-1] = words[-2]
+        #words += 1
+        start_of_word_single = [0] + list(np.ediff1d(words))
+
     return start_of_word_single
 
 def _apply_tokenization_batch(dicts,tokenizer):
