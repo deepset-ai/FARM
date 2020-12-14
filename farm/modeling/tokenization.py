@@ -562,6 +562,8 @@ def tokenize_batch_question_answering(pre_baskets, tokenizer, indices):
     :return: baskets, list containing question and corresponding document information
     """
     assert len(indices) == len(pre_baskets)
+    assert tokenizer.is_fast, "Processing QA data is only supported with fast tokenizers for now.\n" \
+                              "Please load Tokenizers with 'use_fast=True' option."
     baskets = []
     # # Tokenize texts in batch mode
     texts = [d["context"] for d in pre_baskets]
