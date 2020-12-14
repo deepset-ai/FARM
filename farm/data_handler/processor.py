@@ -1970,7 +1970,7 @@ class TextSimilarityProcessor(Processor):
         config = self.generate_config()
         # save tokenizer incl. attributes
         config["tokenizer"] = self.tokenizer.__class__.__name__
-        config["passage_tokenizer"] = self.tokenizer.__class__.__name__
+        config["passage_tokenizer"] = self.passage_tokenizer.__class__.__name__
 
         # Because the fast tokenizers expect a str and not Path
         # always convert Path to str here.
