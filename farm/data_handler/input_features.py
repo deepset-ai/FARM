@@ -12,6 +12,8 @@ from farm.data_handler.utils import (
     mask_random_words)
 from farm.modeling.tokenization import insert_at_special_tokens_pos
 
+import numpy as np
+
 logger = logging.getLogger(__name__)
 
 
@@ -121,127 +123,6 @@ def sample_to_features_text(
         if label_ids is not None:
             feat_dict[task["label_tensor_name"]] = label_ids
     return [feat_dict]
-
-
-def samples_to_features_ner(
-    sample,
-    tasks,
-    max_seq_len,
-    tokenizer,
-    non_initial_token="X",
-    **kwargs
-):
-    """
-    Generates a dictionary of features for a given input sample that is to be consumed by an NER model.
-
-    :param sample: Sample object that contains human readable text and label fields from a single NER data sample
-    :type sample: Sample
-    :param tasks: A dictionary where the keys are the names of the tasks and the values are the details of the task (e.g. label_list, metric, tensor name)
-    :type tasks: dict
-    :param max_seq_len: Sequences are truncated after this many tokens
-    :type max_seq_len: int
-    :param tokenizer: A tokenizer object that can turn string sentences into a list of tokens
-    :param non_initial_token: Token that is inserted into the label sequence in positions where there is a
-                              non-word-initial token. This is done since the default NER performs prediction
-                              only on word initial tokens
-    :return: A list with one dictionary containing the keys "input_ids", "padding_mask", "segment_ids", "initial_mask"
-             (also "label_ids" if not in inference mode). The values are lists containing those features.
-    :rtype: list
-    """
-
-    tokens = sample.tokenized["tokens"]
-
-    if tokenizer.is_fast:
-        text = sample.clear_text["text"]
-        # Here, we tokenize the sample for the second time to get all relevant ids
-        # This should change once we git rid of FARM's tokenize_with_metadata()
-        inputs = tokenizer(text,
-                           return_token_type_ids=True,
-                           truncation=True,
-                           truncation_strategy="longest_first",
-                           max_length=max_seq_len,
-                           return_special_tokens_mask=True)
-
-        if (len(inputs["input_ids"]) - inputs["special_tokens_mask"].count(1)) != len(sample.tokenized["tokens"]):
-            logger.error(f"FastTokenizer encoded sample {sample.clear_text['text']} to "
-                         f"{len(inputs['input_ids']) - inputs['special_tokens_mask'].count(1)} tokens, which differs "
-                         f"from number of tokens produced in tokenize_with_metadata().\n"
-                         f"Further processing is likely to be wrong!")
-    else:
-        inputs = tokenizer.encode_plus(text=tokens,
-                                       text_pair=None,
-                                       add_special_tokens=True,
-                                       truncation=False,
-                                       return_special_tokens_mask=True,
-                                       return_token_type_ids=True,
-                                       is_split_into_words=False
-                                       )
-
-    input_ids, segment_ids, special_tokens_mask = inputs["input_ids"], inputs["token_type_ids"], inputs["special_tokens_mask"]
-
-    # We construct a mask to identify the first token of a word. We will later only use them for predicting entities.
-    # Special tokens don't count as initial tokens => we add 0 at the positions of special tokens
-    # For BERT we add a 0 in the start and end (for CLS and SEP)
-    initial_mask = [int(x) for x in sample.tokenized["start_of_word"]]
-    initial_mask = insert_at_special_tokens_pos(initial_mask, special_tokens_mask, insert_element=0)
-    assert len(initial_mask) == len(input_ids)
-
-    for task_name, task in tasks.items():
-        try:
-            label_list = task["label_list"]
-            label_name = task["label_name"]
-            label_tensor_name = task["label_tensor_name"]
-            labels_word = sample.clear_text[label_name]
-            labels_token = expand_labels(labels_word, initial_mask, non_initial_token)
-            # labels_token = add_cls_sep(labels_token, cls_token, sep_token)
-            label_ids = [label_list.index(lt) for lt in labels_token]
-        except ValueError:
-            # Usually triggered if label is not in label list
-            label_ids = None
-            problematic_labels = set(labels_token).difference(set(label_list))
-            logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
-                           f"\nWe found a problem with labels {str(problematic_labels)}")
-        except KeyError:
-            # Usually triggered if there is no label in the sample
-            # This is expected during inference since there are no labels
-            # During training, this is a problem
-            label_ids = None
-            logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
-                           "\nIf your are running in *inference* mode: Don't worry!"
-                           "\nIf you are running in *training* mode: Verify you are supplying a proper label list to your processor and check that labels in input data are correct.")
-
-        # This mask has 1 for real tokens and 0 for padding tokens. Only real
-        # tokens are attended to.
-        padding_mask = [1] * len(input_ids)
-
-        # Padding up to the sequence length.
-        # Normal case: adding multiple 0 to the right
-        # Special cases:
-        # a) xlnet pads on the left and uses  "4" for padding token_type_ids
-        if "XLNetTokenizer" in tokenizer.__class__.__name__:
-            pad_on_left = True
-            segment_ids = pad(segment_ids, max_seq_len, 4, pad_on_left=pad_on_left)
-        else:
-            pad_on_left = False
-            segment_ids = pad(segment_ids, max_seq_len, 0, pad_on_left=pad_on_left)
-
-        input_ids = pad(input_ids, max_seq_len, tokenizer.pad_token_id, pad_on_left=pad_on_left)
-        padding_mask = pad(padding_mask, max_seq_len, 0, pad_on_left=pad_on_left)
-        initial_mask = pad(initial_mask, max_seq_len, 0, pad_on_left=pad_on_left)
-        if label_ids:
-            label_ids = pad(label_ids, max_seq_len, 0, pad_on_left=pad_on_left)
-
-        feature_dict = {
-            "input_ids": input_ids,
-            "padding_mask": padding_mask,
-            "segment_ids": segment_ids,
-            "initial_mask": initial_mask,
-        }
-
-        if label_ids:
-            feature_dict[label_tensor_name] = label_ids
-
-    return [feature_dict]
 
 
 def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=True, masked_lm_prob=0.15):
