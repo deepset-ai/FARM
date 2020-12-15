@@ -667,11 +667,16 @@ class TextClassificationProcessor(Processor):
                                        samples=[curr_sample])
             self.baskets.append(curr_basket)
 
-        if 0 in indices:
-            self._log_samples(2)
+        if indices and 0 not in indices:
+            pass
+        else:
+            self._log_samples(1)
 
+        # TODO populate problematic ids
+        problematic_ids = set()
+        logger.warning("Currently no support in TextClassification processor for returning problematic ids")
         dataset, tensornames = self._create_dataset()
-        ret = [dataset, tensornames]
+        ret = [dataset, tensornames, problematic_ids]
         if return_baskets:
             ret.append(self.baskets)
         return ret
