@@ -125,83 +125,6 @@ def sample_to_features_text(
     return [feat_dict]
 
 
-def samples_to_features_ner(
-    sample,
-    tasks,
-    max_seq_len,
-    tokenizer,
-    non_initial_token="X",
-    **kwargs
-):
-    """
-    Generates a dictionary of features for a given input sample that is to be consumed by an NER model.
-
-    :param sample: Sample object that contains human readable text and label fields from a single NER data sample
-    :type sample: Sample
-    :param tasks: A dictionary where the keys are the names of the tasks and the values are the details of the task (e.g. label_list, metric, tensor name)
-    :type tasks: dict
-    :param max_seq_len: Sequences are truncated after this many tokens
-    :type max_seq_len: int
-    :param tokenizer: A tokenizer object that can turn string sentences into a list of tokens
-    :param non_initial_token: Token that is inserted into the label sequence in positions where there is a
-                              non-word-initial token. This is done since the default NER performs prediction
-                              only on word initial tokens
-    :return: A list with one dictionary containing the keys "input_ids", "padding_mask", "segment_ids", "initial_mask"
-             (also "label_ids" if not in inference mode). The values are lists containing those features.
-    :rtype: list
-    """
-
-    input_ids = sample.tokenized.ids
-    segment_ids = sample.tokenized.type_ids
-
-    # We construct a mask to identify the first token of a word. We will later only use them for predicting entities.
-    # Special tokens don't count as initial tokens => we add 0 at the positions of special tokens
-    # For BERT we add a 0 in the start and end (for CLS and SEP)
-    initial_mask = _get_start_of_word(sample.tokenized.words)
-    assert len(initial_mask) == len(input_ids)
-
-    for task_name, task in tasks.items():
-        try:
-            label_list = task["label_list"]
-            label_name = task["label_name"]
-            label_tensor_name = task["label_tensor_name"]
-            labels_word = sample.clear_text[label_name]
-            labels_token = expand_labels(labels_word, initial_mask, non_initial_token)
-            # labels_token = add_cls_sep(labels_token, cls_token, sep_token)
-            label_ids = [label_list.index(lt) for lt in labels_token]
-        except ValueError:
-            # Usually triggered if label is not in label list
-            label_ids = None
-            problematic_labels = set(labels_token).difference(set(label_list))
-            logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
-                           f"\nWe found a problem with labels {str(problematic_labels)}")
-        #TODO change this when inference flag is implemented
-        except KeyError:
-            # Usually triggered if there is no label in the sample
-            # This is expected during inference since there are no labels
-            # During training, this is a problem
-            label_ids = None
-            logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
-                           "\nIf your are running in *inference* mode: Don't worry!"
-                           "\nIf you are running in *training* mode: Verify you are supplying a proper label list to your processor and check that labels in input data are correct.")
-
-        # This mask has 1 for real tokens and 0 for padding tokens. Only real
-        # tokens are attended to.
-        padding_mask = [int(x == 0) for x in sample.tokenized.attention_mask]
-
-        feature_dict = {
-            "input_ids": input_ids,
-            "padding_mask": padding_mask,
-            "segment_ids": segment_ids,
-            "initial_mask": initial_mask,
-        }
-
-        if label_ids:
-            feature_dict[label_tensor_name] = label_ids
-
-    return [feature_dict]
-
-
 def samples_to_features_bert_lm(sample, max_seq_len, tokenizer, next_sent_pred=True, masked_lm_prob=0.15):
     """
     Convert a raw sample (pair of sentences as tokenized strings) into a proper training sample with
@@ -357,7 +280,6 @@ def get_camembert_seq_2_start(input_ids):
     first_backslash_s = input_ids.index(6)
     second_backslash_s = input_ids.index(6, first_backslash_s + 1)
     return second_backslash_s + 1
-
 
 
 # def _SQUAD_improve_answer_span(
