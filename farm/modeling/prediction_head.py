@@ -1211,7 +1211,7 @@ class QuestionAnsweringHead(PredictionHead):
         for pred_d, no_ans_gap, basket in zip(top_preds, no_ans_gaps, baskets):
 
             # Unpack document offsets, clear text and id
-            token_offsets = basket.samples[0].tokenized["document_offsets"]
+            token_offsets = basket.raw["document_offsets"]
             pred_id = basket.id_external if basket.id_external else basket.id_internal
 
             # These options reflect the different input dicts that can be assigned to the basket

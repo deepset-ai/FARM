@@ -129,6 +129,7 @@ class Inferencer:
         self.language = self.model.get_language()
         self.task_type = task_type
         self.disable_tqdm = disable_tqdm
+        self.problematic_sample_ids = set()
 
         if task_type == "embeddings":
             if not extraction_layer or not extraction_strategy:
@@ -431,6 +432,7 @@ class Inferencer:
                 dicts, return_json, aggregate_preds, multiprocessing_chunksize,
             )
 
+            self.processor.log_problematic(self.problematic_sample_ids)
             # return a generator object if streaming is enabled, else, cast the generator to a list.
             if not streaming and type(predictions) != list:
                 return list(predictions)
@@ -453,11 +455,10 @@ class Inferencer:
         :return: list of predictions
         :rtype: list
         """
-        dataset, tensor_names, baskets = self.processor.dataset_from_dicts(
+        dataset, tensor_names, problematic_ids, baskets = self.processor.dataset_from_dicts(
             dicts, indices=[i for i in range(len(dicts))], return_baskets=True
         )
-        self.processor.log_problematic()
-
+        self.problematic_sample_ids = problematic_ids
         if self.benchmarking:
             self.benchmarker.record("dataset_single_proc")
 
@@ -505,9 +506,8 @@ class Inferencer:
 
         # Once a process spits out a preprocessed chunk. we feed this dataset directly to the model.
         # So we don't need to wait until all preprocessing has finished before getting first predictions.
-        for dataset, tensor_names, baskets, problematic_sample_ids in results:
-            self.processor.problematic_sample_ids.update(problematic_sample_ids)
-            self.processor.log_problematic()
+        for dataset, tensor_names, problematic_sample_ids, baskets in results:
+            self.problematic_sample_ids.update(problematic_sample_ids)
             if dataset is None:
                 logger.error(f"Part of the dataset could not be converted! \n"
                              f"BE AWARE: The order of predictions will not conform with the input order!")
@@ -535,8 +535,8 @@ class Inferencer:
         The resulting datasets of the processes are merged together afterwards"""
         dicts = [d[1] for d in chunk]
         indices = [d[0] for d in chunk]
-        dataset, tensor_names, baskets, problematic_sample_ids = processor.dataset_from_dicts(dicts, indices, return_baskets=True, return_problematic=True)
-        return dataset, tensor_names, baskets, problematic_sample_ids
+        dataset, tensor_names, problematic_sample_ids, baskets = processor.dataset_from_dicts(dicts, indices, return_baskets=True)
+        return dataset, tensor_names, problematic_sample_ids, baskets
 
     def _get_predictions(self, dataset, tensor_names, baskets):
         """
