@@ -1102,7 +1102,7 @@ class NERProcessor(Processor):
         dicts = read_ner_file(filename=file, sep=self.delimiter,  proxies=self.proxies)
         return dicts
 
-    def dataset_from_dicts(self, dicts, indices=None, return_baskets=False, return_problematic=False, non_initial_token="X"):
+    def dataset_from_dicts(self, dicts, indices=None, return_baskets=False, non_initial_token="X"):
         self.baskets = []
 
         # Perform batch tokenization
@@ -1201,13 +1201,11 @@ class NERProcessor(Processor):
             self._log_samples(1)
 
         dataset, tensor_names = self._create_dataset()
-        ret = [dataset, tensor_names]
+        ret = [dataset, tensor_names, self.problematic_sample_ids]
         # This is for inference where we need to keep baskets
         # By contrast, in training, we can remove baskets to free up RAM
         if return_baskets:
             ret.append(self.baskets)
-        if return_problematic:
-            ret.append(self.problematic_sample_ids)
         return tuple(ret)
 
     @staticmethod
