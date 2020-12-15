@@ -18,7 +18,6 @@ from transformers.configuration_auto import AutoConfig
 from farm.data_handler.dataset import convert_features_to_dataset
 from farm.data_handler.input_features import get_roberta_seq_2_start, get_camembert_seq_2_start
 from farm.data_handler.input_features import (
-    samples_to_features_ner,
     samples_to_features_bert_lm,
     sample_to_features_text,
 )
