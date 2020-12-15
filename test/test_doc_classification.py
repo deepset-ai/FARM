@@ -19,7 +19,9 @@ from farm.utils import set_all_seeds, initialize_device_settings
 @pytest.mark.parametrize("data_dir_path,text_column_name",
                          [("samples/doc_class", None),
                           ("samples/doc_class_other_text_column_name", "text_other")])
-@pytest.mark.parametrize("use_fast", [False, True])
+# TODO test for slow tokenizers too when they are reimplemented
+# @pytest.mark.parametrize("use_fast", [False, True])
+@pytest.mark.parametrize("use_fast", [True])
 def test_doc_classification(data_dir_path, text_column_name, use_fast, caplog=None):
     if caplog:
         caplog.set_level(logging.CRITICAL)
