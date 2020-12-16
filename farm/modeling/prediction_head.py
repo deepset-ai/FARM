@@ -697,15 +697,17 @@ class TokenClassificationHead(PredictionHead):
         ):
             tags, spans_seq = convert_iob_to_simple_tags(preds_seq, spans_seq)
             seq_res = []
+            # TODO: Though we filter out tags and spans for non-entity words,
+            # TODO: we do not yet filter out probs of non-entity words. This needs to be implemented still
             for tag, prob, span in zip(tags, probs_seq, spans_seq):
-                context = sample.clear_text["text"][span["start"] : span["end"]]
+                context = sample.clear_text["text"][span[0]: span[1]]
                 seq_res.append(
                     {
-                        "start": span["start"],
-                        "end": span["end"],
+                        "start": span[0],
+                        "end": span[1],
                         "context": f"{context}",
                         "label": f"{tag}",
-                        "probability": prob,
+                        "probability": None,
                     }
                 )
             res["predictions"].extend(seq_res)
