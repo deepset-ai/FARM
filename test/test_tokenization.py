@@ -188,8 +188,8 @@ def test_all_tokenizer_on_special_cases(caplog):
         tokenizers.append(t)
 
     texts = [
-     # "This is a sentence",
-     # "Der entscheidende Pass",
+     "This is a sentence",
+     "Der entscheidende Pass",
     "This      is a sentence with multiple spaces",
     "力加勝北区ᴵᴺᵀᵃছজটডণত",
      "Thiso text is included tolod makelio sure Unicodeel is handled properly:",
@@ -227,11 +227,12 @@ def test_all_tokenizer_on_special_cases(caplog):
             # TODO: currently this test expects certain combinations of text and tokenizer to pass the test, but others to fail
             # TODO: This is due to the fact that the Roberta tokenizer maintains white space while the others don't
             # TODO: This test needs to be redesigned
-            expected_to_fail = [(1,0), (1, 5), (1,6), (1,7), (1,8), (1,9)]
+            expected_to_fail = [(1,0), (1, 5), (1,6), (1,7)]
             if (i_tok, i_text) in expected_to_fail:
                 assert metadata["tokens"] != tokenized
             else:
                 assert metadata["tokens"] == tokenized, f"Failed using {tokenizer.__class__.__name__}"
+
 
 
             # verify that offsets align back to original text
@@ -275,11 +276,12 @@ def test_bert_custom_vocab(caplog):
     assert tokenized == ['Some', 'Text', 'with', 'neverseentokens', 'plus', '!', '215', '?', '#', '.', 'and', 'a', 'combined', '-', 'token', '_', 'with', '/', 'ch', '##ars']
 
     # ours with metadata
-    tokenized_meta = tokenize_with_metadata(text=basic_text, tokenizer=tokenizer)
-    assert tokenized_meta["tokens"] == tokenized
-    assert tokenized_meta["offsets"] == [0, 5, 10, 15, 31, 36, 37, 40, 41, 42, 44, 48, 50, 58, 59, 64, 65, 69, 70, 72]
-    assert tokenized_meta["start_of_word"] == [True, True, True, True, True, True, False, False, False, False, True, True, True, False, False, False, False, False, False, False]
-
+    encoded = tokenizer.encode_plus(basic_text, add_special_tokens=False).encodings[0]
+    offsets = [x[0] for x in encoded.offsets]
+    start_of_word_single = [True] + list(np.ediff1d(encoded.words) > 0)
+    assert encoded.tokens == tokenized
+    assert offsets == [0, 5, 10, 15, 31, 36, 37, 40, 41, 42, 44, 48, 50, 58, 59, 64, 65, 69, 70, 72]
+    assert start_of_word_single == [True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, False]
 
 def test_fast_bert_custom_vocab(caplog):
     caplog.set_level(logging.CRITICAL)
@@ -301,10 +303,12 @@ def test_fast_bert_custom_vocab(caplog):
     assert tokenized == ['Some', 'Text', 'with', 'neverseentokens', 'plus', '!', '215', '?', '#', '.', 'and', 'a', 'combined', '-', 'token', '_', 'with', '/', 'ch', '##ars']
 
     # ours with metadata
-    tokenized_meta = tokenize_with_metadata(text=basic_text, tokenizer=tokenizer)
-    assert tokenized_meta["tokens"] == tokenized
-    assert tokenized_meta["offsets"] == [0, 5, 10, 15, 31, 36, 37, 40, 41, 42, 44, 48, 50, 58, 59, 64, 65, 69, 70, 72]
-    assert tokenized_meta["start_of_word"] == [True, True, True, True, True, True, False, False, False, False, True, True, True, False, False, False, False, False, False, False]
+    encoded = tokenizer.encode_plus(basic_text, add_special_tokens=False).encodings[0]
+    offsets = [x[0] for x in encoded.offsets]
+    start_of_word_single = [True] + list(np.ediff1d(encoded.words) > 0)
+    assert encoded.tokens == tokenized
+    assert offsets == [0, 5, 10, 15, 31, 36, 37, 40, 41, 42, 44, 48, 50, 58, 59, 64, 65, 69, 70, 72]
+    assert start_of_word_single == [True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, False]
 
 
 @pytest.mark.parametrize("model_name, tokenizer_type", [
@@ -344,16 +348,15 @@ def test_detokenization_in_fast_tokenizers(model_name):
         use_fast=True
     )
     for text in TEXTS:
-        tokens_with_metadata = tokenize_with_metadata(text, tokenizer)
-        tokens = tokens_with_metadata["tokens"]
+        encoded = tokenizer.encode_plus(text, add_special_tokens=False).encodings[0]
 
-        detokenized = " ".join(tokens)
+        detokenized = " ".join(encoded.tokens)
         detokenized = re.sub(r"(^|\s+)(##)", "", detokenized)
 
         detokenized_ids = tokenizer(detokenized, add_special_tokens=False)["input_ids"]
         detokenized_tokens = [tokenizer.decode([tok_id]).strip() for tok_id in detokenized_ids]
 
-        assert tokens == detokenized_tokens
+        assert encoded.tokens == detokenized_tokens
 
 
 if __name__ == "__main__":
