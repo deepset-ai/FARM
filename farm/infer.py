@@ -167,7 +167,7 @@ class Inferencer:
         num_processes=None,
         disable_tqdm=False,
         tokenizer_class=None,
-        use_fast=False,
+        use_fast=True,
         tokenizer_args=None,
         dummy_ph=False,
         benchmarking=False,
