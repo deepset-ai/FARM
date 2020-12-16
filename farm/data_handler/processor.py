@@ -236,7 +236,7 @@ class Processor(ABC):
 
     @classmethod
     def convert_from_transformers(cls, tokenizer_name_or_path, task_type, max_seq_len, doc_stride,
-                                  tokenizer_class=None, tokenizer_args=None, use_fast=None):
+                                  tokenizer_class=None, tokenizer_args=None, use_fast=True):
         config = AutoConfig.from_pretrained(tokenizer_name_or_path)
         tokenizer_args = tokenizer_args or {}
         tokenizer = Tokenizer.load(tokenizer_name_or_path,
@@ -665,11 +665,16 @@ class TextClassificationProcessor(Processor):
                                        samples=[curr_sample])
             self.baskets.append(curr_basket)
 
-        if 0 in indices:
-            self._log_samples(2)
+        if indices and 0 not in indices:
+            pass
+        else:
+            self._log_samples(1)
 
+        # TODO populate problematic ids
+        problematic_ids = set()
+        logger.warning("Currently no support in TextClassification processor for returning problematic ids")
         dataset, tensornames = self._create_dataset()
-        ret = [dataset, tensornames]
+        ret = [dataset, tensornames, problematic_ids]
         if return_baskets:
             ret.append(self.baskets)
         return ret
