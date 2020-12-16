@@ -690,26 +690,7 @@ class TokenClassificationHead(PredictionHead):
         probs = self.logits_to_probs(logits, initial_mask,return_class_probs)
 
         # align back with original input by getting the original word spans
-        spans = []
-        for sample, sample_preds in zip(samples, preds):
-            word_spans = []
-            span = None
-            for token, offset, start_of_word in zip(
-                sample.tokenized["tokens"],
-                sample.tokenized["offsets"],
-                sample.tokenized["start_of_word"],
-            ):
-                if start_of_word:
-                    # previous word has ended unless it's the very first word
-                    if span is not None:
-                        word_spans.append(span)
-                    span = {"start": offset, "end": offset + len(token)}
-                else:
-                    # expand the span to include the subword-token
-                    span["end"] = offset + len(token.replace("##", ""))
-            word_spans.append(span)
-            spans.append(word_spans)
-
+        spans = [s.tokenized["word_spans"] for s in samples]
         res = {"task": "ner", "predictions": []}
         for preds_seq, probs_seq, sample, spans_seq in zip(
             preds, probs, samples, spans
