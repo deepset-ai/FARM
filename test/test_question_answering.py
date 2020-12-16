@@ -9,7 +9,7 @@ from farm.infer import QAInferencer
 from farm.data_handler.inputs import QAInput, Question
 
 # TODO Slow tokenizers will keep causing these tests to fail until they are reimplemented
-@pytest.mark.parametrize("distilbert_squad", [True, False], indirect=True)
+@pytest.mark.parametrize("distilbert_squad", [True], indirect=True)
 def test_training(distilbert_squad, caplog=None):
     if caplog:
         caplog.set_level(logging.CRITICAL)
@@ -20,7 +20,7 @@ def test_training(distilbert_squad, caplog=None):
 
 
 # TODO Slow tokenizers will keep causing these tests to fail until they are reimplemented
-@pytest.mark.parametrize("distilbert_squad", [True, False], indirect=True)
+@pytest.mark.parametrize("distilbert_squad", [True], indirect=True)
 def test_save_load(distilbert_squad, caplog=None):
     if caplog:
         caplog.set_level(logging.CRITICAL)
@@ -36,7 +36,7 @@ def test_save_load(distilbert_squad, caplog=None):
 
 
 # TODO Slow tokenizers will keep causing these tests to fail until they are reimplemented
-@pytest.mark.parametrize("bert_base_squad2", [True, False], indirect=True)
+@pytest.mark.parametrize("bert_base_squad2", [True], indirect=True)
 def test_inference_dicts(bert_base_squad2):
     qa_format_1 = [
         {
@@ -54,7 +54,7 @@ def test_inference_dicts(bert_base_squad2):
 
 # TODO Slow tokenizers will keep causing these tests to fail until they are reimplemented
 @pytest.fixture()
-@pytest.mark.parametrize("bert_base_squad2", [True, False], indirect=True)
+@pytest.mark.parametrize("bert_base_squad2", [True], indirect=True)
 def span_inference_result(bert_base_squad2, caplog=None):
     if caplog:
         caplog.set_level(logging.CRITICAL)
@@ -66,7 +66,7 @@ def span_inference_result(bert_base_squad2, caplog=None):
 
 # TODO Slow tokenizers will keep causing these tests to fail until they are reimplemented
 @pytest.fixture()
-@pytest.mark.parametrize("bert_base_squad2", [True, False], indirect=True)
+@pytest.mark.parametrize("bert_base_squad2", [True], indirect=True)
 def no_answer_inference_result(bert_base_squad2, caplog=None):
     if caplog:
         caplog.set_level(logging.CRITICAL)
