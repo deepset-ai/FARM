@@ -258,7 +258,7 @@ def convert_iob_to_simple_tags(preds, spans):
         elif "I-" in pred:
             this_tag = pred.replace("I-", "")
             if open_tag and this_tag == cur_tag:
-                cur_span["end"] = span["end"]
+                cur_span = (cur_span[0], span[1])
             elif open_tag:
                 # end of one tag
                 merged_spans.append(cur_span)
