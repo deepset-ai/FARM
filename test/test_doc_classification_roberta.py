@@ -10,7 +10,7 @@ from farm.infer import Inferencer
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.language_model import Roberta
 from farm.modeling.prediction_head import TextClassificationHead
-from farm.modeling.tokenization import RobertaTokenizer
+from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer
 from farm.utils import set_all_seeds, initialize_device_settings
 
@@ -25,8 +25,10 @@ def test_doc_classification(caplog):
     evaluate_every = 2
     lang_model = "roberta-base"
 
-    tokenizer = RobertaTokenizer.from_pretrained(
-        pretrained_model_name_or_path=lang_model)
+    tokenizer = Tokenizer.load(
+        pretrained_model_name_or_path=lang_model,
+        use_fast=True
+    )
 
     processor = TextClassificationProcessor(tokenizer=tokenizer,
                                             max_seq_len=8,
