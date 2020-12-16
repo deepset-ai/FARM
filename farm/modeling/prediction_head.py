@@ -707,7 +707,7 @@ class TokenClassificationHead(PredictionHead):
                         "end": span[1],
                         "context": f"{context}",
                         "label": f"{tag}",
-                        "probability": None,
+                        "probability": np.float32(0.0),
                     }
                 )
             res["predictions"].extend(seq_res)
