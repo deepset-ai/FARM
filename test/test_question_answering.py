@@ -4,7 +4,6 @@ import pytest
 from math import isclose
 
 from farm.data_handler.processor import SquadProcessor
-from farm.data_handler.inputs import QAInput, Question
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.infer import QAInferencer
 from farm.data_handler.inputs import QAInput, Question

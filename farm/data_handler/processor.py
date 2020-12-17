@@ -920,49 +920,80 @@ class InferenceProcessor(Processor):
     def file_to_dicts(self, file: str) -> [dict]:
         raise NotImplementedError
 
+    def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
+        # this tokenization also stores offsets
+        tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer)
+        # truncate tokens, offsets and start_of_word to max_seq_len that can be handled by the model
+        for seq_name in tokenized.keys():
+            tokenized[seq_name], _, _ = truncate_sequences(seq_a=tokenized[seq_name], seq_b=None, tokenizer=self.tokenizer,
+                                                max_seq_len=self.max_seq_len)
+        return Sample(id=None, clear_text=dictionary, tokenized=tokenized)
+
+    def _sample_to_features(self, sample) -> dict:
+        features = sample_to_features_text(
+            sample=sample,
+            tasks=self.tasks,
+            max_seq_len=self.max_seq_len,
+            tokenizer=self.tokenizer,
+        )
+        return features
+
     def dataset_from_dicts(self, dicts, indices=None, return_baskets=False, debug=False):
         self.baskets = []
-        # Tokenize in batches
-        texts = [x["text"] for x in dicts]
-        tokenized_batch = self.tokenizer.batch_encode_plus(
-            texts,
-            return_offsets_mapping=True,
-            return_special_tokens_mask=True,
-            return_token_type_ids=True,
-            return_attention_mask=True,
-            truncation=True,
-            max_length=self.max_seq_len,
-            add_special_tokens=True,
-            padding="max_length"
-        )
-        input_ids_batch = tokenized_batch["input_ids"]
-        segment_ids_batch = tokenized_batch["token_type_ids"]
-        padding_masks_batch = tokenized_batch["attention_mask"]
-        tokens_batch = [x.tokens for x in tokenized_batch.encodings]
-        special_tokens_mask_batch = tokenized_batch["special_tokens_mask"]
 
-        # From here we operate on a per sample basis
-        for dictionary, input_ids, segment_ids, padding_mask, tokens, special_tokens_mask in zip(
-                dicts, input_ids_batch, segment_ids_batch, padding_masks_batch, tokens_batch, special_tokens_mask_batch
-        ):
-
-            # TODO Build tokenized dict for debug mode
-            tokenized = {"tokens": [t for t, stm in zip(tokens, special_tokens_mask) if not stm]}
-
-            feat_dict = {"input_ids": input_ids,
-                         "padding_mask": padding_mask,
-                         "segment_ids": segment_ids}
-
-            # Add Basket to self.baskets
-            curr_sample = Sample(id=None,
-                                 clear_text=dictionary,
-                                 tokenized=tokenized,
-                                 features=[feat_dict])
-            curr_basket = SampleBasket(id_internal=None,
-                                       raw=dictionary,
+        if not self.tokenizer.is_fast:
+            for d in dicts:
+                sample = self._dict_to_samples(dictionary=d)
+                features = self._sample_to_features(sample)
+                sample.features = features
+                basket = SampleBasket(id_internal=None,
+                                       raw=d,
                                        id_external=None,
-                                       samples=[curr_sample])
-            self.baskets.append(curr_basket)
+                                       samples=[sample])
+                self.baskets.append(basket)
+        else:
+            # Tokenize in batches
+            texts = [x["text"] for x in dicts]
+            tokenized_batch = self.tokenizer.batch_encode_plus(
+                texts,
+                return_offsets_mapping=True,
+                return_special_tokens_mask=True,
+                return_token_type_ids=True,
+                return_attention_mask=True,
+                truncation=True,
+                max_length=self.max_seq_len,
+                add_special_tokens=True,
+                padding="max_length"
+            )
+            input_ids_batch = tokenized_batch["input_ids"]
+            segment_ids_batch = tokenized_batch["token_type_ids"]
+            padding_masks_batch = tokenized_batch["attention_mask"]
+            if self.tokenizer.is_fast:
+                tokens_batch = [x.tokens for x in tokenized_batch.encodings]
+            special_tokens_mask_batch = tokenized_batch["special_tokens_mask"]
+
+            # From here we operate on a per sample basis
+            for dictionary, input_ids, segment_ids, padding_mask, tokens, special_tokens_mask in zip(
+                    dicts, input_ids_batch, segment_ids_batch, padding_masks_batch, tokens_batch, special_tokens_mask_batch
+            ):
+
+                # TODO Build tokenized dict for debug mode
+                tokenized = {"tokens": [t for t, stm in zip(tokens, special_tokens_mask) if not stm]}
+
+                feat_dict = {"input_ids": input_ids,
+                             "padding_mask": padding_mask,
+                             "segment_ids": segment_ids}
+
+                # Add Basket to self.baskets
+                curr_sample = Sample(id=None,
+                                     clear_text=dictionary,
+                                     tokenized=tokenized,
+                                     features=[feat_dict])
+                basket = SampleBasket(id_internal=None,
+                                           raw=dictionary,
+                                           id_external=None,
+                                           samples=[curr_sample])
+                self.baskets.append(basket)
 
         if indices and 0 not in indices:
             pass
