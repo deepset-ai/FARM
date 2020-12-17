@@ -525,7 +525,7 @@ def _get_random_sentence(all_baskets, forbidden_doc):
     return sentence
 
 
-def get_sequence_pair(doc, chunk, chunk_clear_text, all_baskets, tokenizer, max_num_tokens, prob_next_sentence=0.5):
+def get_sequence_pair(chunk, max_num_tokens, prob_next_sentence=0.5):
     """
     Get one sample from corpus consisting of two sequences. A sequence can consist of more than one sentence.
     With prob. 50% these are two subsequent sequences from one doc. With 50% the second sequence will be a
@@ -535,11 +535,9 @@ def get_sequence_pair(doc, chunk, chunk_clear_text, all_baskets, tokenizer, max_
     :type doc: [str]
     :param chunk: List of subsequent, tokenized sentences.
     :type chunk: [dict]
-    :param chunk_clear_text: List of subsequent sentences.
-    :type chunk_clear_text: [str]
-    :param all_baskets: SampleBaskets containing multiple other docs from which we can sample the second sequence
+    :param all_docs: SampleBaskets containing multiple other docs from which we can sample the second sequence
     if we need a random one.
-    :type all_baskets: [dict]
+    :type all_docs: [dict]
     :param tokenizer: Used to split a sentence (str) into tokens.
     :param max_num_tokens: Samples are truncated after this many tokens.
     :type max_num_tokens: int
@@ -549,31 +547,26 @@ def get_sequence_pair(doc, chunk, chunk_clear_text, all_baskets, tokenizer, max_
         sample in clear text with label,
         number of unused sentences in chunk
     """
+    from farm.data_handler.samples import Sample
+    sample = Sample(id=None, clear_text=None, tokenized={}, features={})
     sequence_a = []
     sequence_b = []
-    sample_in_clear_text = { "text_a" : "", "text_b" : ""}
+
     # determine how many segments from chunk go into sequence_a
-    len_sequence_a = 0
     a_end = 1
     if len(chunk) >= 2:
         a_end = random.randrange(1, len(chunk))
-    for i in range(a_end):
-        sequence_a.append(chunk[i])
-        sample_in_clear_text["text_a"] += f"{chunk_clear_text[i]} "
-        len_sequence_a += len(chunk[i]["tokens"])
-    sample_in_clear_text["text_a"].strip()
+    sequence_a = chunk[:a_end]
 
     # actual next sequence
     if (random.random() > prob_next_sentence) and (len(chunk) > 1):
+        sequence_b = chunk[a_end:]
         label = True
-        for i in range(a_end, len(chunk)):
-            sequence_b.append(chunk[i])
-            sample_in_clear_text["text_b"] += f"{chunk_clear_text[i]} "
-        sample_in_clear_text["text_b"].strip()
-        sample_in_clear_text["nextsentence_label"] = True
         num_unused_segments = 0
-    # edge case: split sequence in half
-    elif (len(chunk) == 1) and len_sequence_a >= max_num_tokens:
+
+    # TODO  Check intendation of if blocks here
+    # edge case: if we have only a single sequence, we split that one in half
+    elif (len(chunk) == 1) and len(sequence_a) >= max_num_tokens:
         sequence_a = {}
         sequence_b = {}
         if int(len(chunk[0]["tokens"])/2) >= max_num_tokens:
@@ -581,47 +574,42 @@ def get_sequence_pair(doc, chunk, chunk_clear_text, all_baskets, tokenizer, max_
         else:
             boundary = int(len(chunk[0]["tokens"])/2)
         sequence_a["tokens"] = chunk[0]["tokens"][:boundary]
-        sequence_a["offsets"] = chunk[0]["offsets"][:boundary]
         sequence_a["start_of_word"] = chunk[0]["start_of_word"][:boundary]
         sequence_b["tokens"] = chunk[0]["tokens"][boundary:]
         sequence_b["start_of_word"] = chunk[0]["start_of_word"][boundary:]
-        # get offsets for sequence_b right
-        seq_b_offset_start = chunk[0]["offsets"][boundary]
-        sequence_b["offsets"] = [offset - seq_b_offset_start for offset in chunk[0]["offsets"][boundary:]]
-        # get clear text
-        clear_text_boundary = chunk[0]["offsets"][boundary]
-        sample_in_clear_text["text_a"] = chunk_clear_text[0][:clear_text_boundary]
-        sample_in_clear_text["text_b"] = chunk_clear_text[0][clear_text_boundary:]
-        sample_in_clear_text["text_a"].strip()
-        sample_in_clear_text["text_b"].strip()
-        sample_in_clear_text["nextsentence_label"] = True
-        return [sequence_a], [sequence_b], sample_in_clear_text, 0
+        label = True
+        num_unused_segments = 0
+        return sample, label, num_unused_segments
+
     # random next sequence
     else:
-        label = False
-        sequence_b_length = 0
-        target_b_length = max_num_tokens - len_sequence_a
-        random_doc = _get_random_doc(all_baskets, forbidden_doc=doc)
+        sequence_b = {"tokens": [],
+                      "start_of_word": []}
 
+        target_b_length = max_num_tokens - len(sequence_a)
+        # TODO: this seems to be an overkill here
+        random_doc = _get_random_doc(all_docs, forbidden_doc=doc)
+
+        # pick random start sentence and then fill up to target length
         random_start = random.randrange(len(random_doc))
         for i in range(random_start, len(random_doc)):
-            current_sentence_tokenized = tokenize_with_metadata(random_doc[i], tokenizer)
-            sequence_b.append(current_sentence_tokenized)
-            sample_in_clear_text["text_b"] += f"{random_doc[i]} "
-            sequence_b_length += len(current_sentence_tokenized["tokens"])
-            if sequence_b_length >= target_b_length:
+            sequence_b["tokens"].append(random_doc[i])
+            sequence_b["start_of_word"].append(random_doc[i])
+            if len(sequence_b["tokens"]) >= target_b_length:
                 break
 
-        sample_in_clear_text["text_b"].strip()
-        sample_in_clear_text["nextsentence_label"] = False
+        # sample_in_clear_text["text_b"].strip()
+        label = False
 
         # We didn't use all of the segments in chunk => put them back
         num_unused_segments = len(chunk) - a_end
 
     assert len(sequence_a) > 0
     assert len(sequence_b) > 0
-    return sequence_a, sequence_b, sample_in_clear_text, num_unused_segments
 
+    return sample, label, num_unused_segments
+
+    # return sequence_a, sequence_b, sample_in_clear_text, num_unused_segments
 
 def _get_random_doc(all_baskets, forbidden_doc):
     random_doc = None

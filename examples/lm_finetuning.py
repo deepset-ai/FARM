@@ -34,19 +34,23 @@ def lm_finetuning():
     evaluate_every = 30
     lang_model = "bert-base-cased"
     do_lower_case = False
-    next_sent_pred_style = "sentence"
+    next_sent_pred = True
+    next_sent_pred_style = "bert-style"
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
-        pretrained_model_name_or_path=lang_model, do_lower_case=do_lower_case
+        pretrained_model_name_or_path=lang_model, do_lower_case=do_lower_case,
     )
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
     processor = BertStyleLMProcessor(
         data_dir=Path("../data/lm_finetune_nips"),
+        test_filename=None,
+        dev_filename=None,
         tokenizer=tokenizer,
         max_seq_len=128,
         max_docs=20, # We have set max_docs to 20 to speed up data processing
+        next_sent_pred=next_sent_pred,
         next_sent_pred_style=next_sent_pred_style
     )
 
