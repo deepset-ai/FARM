@@ -4,6 +4,8 @@ import re
 from transformers import BertTokenizer, BertTokenizerFast, RobertaTokenizer, RobertaTokenizerFast, \
     XLNetTokenizer, XLNetTokenizerFast, ElectraTokenizerFast
 
+from tokenizers.pre_tokenizers import WhitespaceSplit
+
 from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences
 
 import numpy as np
@@ -182,30 +184,36 @@ def test_all_tokenizer_on_special_cases(caplog):
     caplog.set_level(logging.CRITICAL)
 
     lang_names = ["bert-base-cased", "roberta-base", "xlnet-base-cased"]
+
     tokenizers = []
     for lang_name in lang_names:
-        t = Tokenizer.load(lang_name, lower_case=False)
+        if "roberta" in lang_name:
+            add_prefix_space = True
+        else:
+            add_prefix_space = False
+        t = Tokenizer.load(lang_name, lower_case=False, add_prefix_space=add_prefix_space)
         tokenizers.append(t)
 
     texts = [
      "This is a sentence",
      "Der entscheidende Pass",
-    "This      is a sentence with multiple spaces",
-    "力加勝北区ᴵᴺᵀᵃছজটডণত",
+     "力加勝北区ᴵᴺᵀᵃছজটডণত",
      "Thiso text is included tolod makelio sure Unicodeel is handled properly:",
-   "This is a sentence...",
-   "Let's see all on this text and. !23# neverseenwordspossible",
-    """This is a sentence.
-    With linebreak""",
-    """Sentence with multiple
+     "This is a sentence...",
+     "Let's see all on this text and. !23# neverseenwordspossible"
+     "This      is a sentence with multiple spaces",
+      """This is a sentence.
+      With linebreak""",
+      """Sentence with multiple
 
 
-    newlines
-    """,
-    "and another one\n\n\nwithout space",
-    "This is a sentence	with tab",
-    "This is a sentence			with multiple tabs",
+      newlines
+      """,
+      "and another one\n\n\nwithout space",
+      "This is a sentence			with multiple tabs",
     ]
+
+    expected_to_fail = [(1, 1), (1, 3), (1, 4), (1, 5), (1, 6), (1, 7), (2, 1), (2, 5)]
 
     for i_tok, tokenizer in enumerate(tokenizers):
         for i_text, text in enumerate(texts):
@@ -213,47 +221,49 @@ def test_all_tokenizer_on_special_cases(caplog):
             # This means: \t, \n " " etc will all resolve to a single " ".
             # This doesn't make a difference for BERT + XLNet but it does for roBERTa
 
+            test_passed = True
+
             # 1. original tokenize function from transformer repo on full sentence
             standardized_whitespace_text = ' '.join(text.split()) # remove multiple whitespaces
             tokenized = tokenizer.tokenize(standardized_whitespace_text)
 
-            # 2. our tokenizer with metadata on "whitespace tokenized words"
-            encoded = tokenizer.encode_plus(text, add_special_tokens=False).encodings[0]
-            metadata = {"tokens": encoded.tokens,
-                        "offsets": encoded.offsets,
-                        "words": encoded.words}
+            # 2. Our tokenization method using a pretokenizer which can normalize multiple white spaces
+            # This approach is used in NER
+            pre_tokenizer = WhitespaceSplit()
+            words_and_spans = pre_tokenizer.pre_tokenize_str(text)
+            words = [x[0] for x in words_and_spans]
+            word_spans = [x[1] for x in words_and_spans]
+
+            encoded = tokenizer.encode_plus(words, is_split_into_words=True, add_special_tokens=False).encodings[0]
 
             # verify that tokenization on full sequence is the same as the one on "whitespace tokenized words"
-            # TODO: currently this test expects certain combinations of text and tokenizer to pass the test, but others to fail
-            # TODO: This is due to the fact that the Roberta tokenizer maintains white space while the others don't
-            # TODO: This test needs to be redesigned
-            expected_to_fail = [(1,0), (1, 5), (1,6), (1,7)]
-            if (i_tok, i_text) in expected_to_fail:
-                assert metadata["tokens"] != tokenized
-            else:
-                assert metadata["tokens"] == tokenized, f"Failed using {tokenizer.__class__.__name__}"
+            if encoded.tokens != tokenized:
+                test_passed = False
 
-
+            # token offsets are originally relative to the beginning of the word
+            # These lines convert them so they are relative to the beginning of the sentence
+            token_offsets = []
+            for (start, end), w_index, in zip(encoded.offsets, encoded.words):
+                word_start_ch = word_spans[w_index][0]
+                token_offsets.append((start + word_start_ch, end + word_start_ch))
+            if getattr(tokenizer, "add_prefix_space", None):
+                token_offsets = [(start-1, end) for start, end in token_offsets]
 
             # verify that offsets align back to original text
             if text == "力加勝北区ᴵᴺᵀᵃছজটডণত":
                 # contains [UNK] that are impossible to match back to original text space
                 continue
-
-            # TODO: See above TODO comment
-            expected_to_fail_2 = [(1, 5), (1, 6), (1, 7)]
-            section_passed = True
-            for tok, (offset, _) in zip(metadata["tokens"], metadata["offsets"]):
+            for tok, (start, end) in zip(encoded.tokens, token_offsets):
                 #subword-tokens have special chars depending on model type. In order to align with original text we need to get rid of them
                 tok = re.sub(r"^(##|Ġ|▁)", "", tok)
                 #tok = tokenizer.decode(tokenizer.convert_tokens_to_ids(tok))
-                original_tok = text[offset:offset+len(tok)]
+                original_tok = text[start: end]
                 if tok != original_tok:
-                    section_passed = False
-            if (i_tok, i_text) in expected_to_fail_2:
-                assert not section_passed
+                    test_passed = False
+            if (i_tok, i_text) in expected_to_fail:
+                assert not test_passed, f"Behaviour of {tokenizer.__class__.__name__} has changed on text {text}'"
             else:
-                assert section_passed
+                assert test_passed, f"Behaviour of {tokenizer.__class__.__name__} has changed on text {text}'"
 
 
 def test_bert_custom_vocab(caplog):
@@ -282,6 +292,7 @@ def test_bert_custom_vocab(caplog):
     assert encoded.tokens == tokenized
     assert offsets == [0, 5, 10, 15, 31, 36, 37, 40, 41, 42, 44, 48, 50, 58, 59, 64, 65, 69, 70, 72]
     assert start_of_word_single == [True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, True, False]
+
 
 def test_fast_bert_custom_vocab(caplog):
     caplog.set_level(logging.CRITICAL)
