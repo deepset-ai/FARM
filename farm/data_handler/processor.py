@@ -1550,6 +1550,7 @@ class SquadProcessor(Processor):
         max_query_length=64,
         proxies=None,
         max_answers=6,
+        **kwargs
     ):
         """
         :param tokenizer: Used to split a sentence (str) into tokens.
