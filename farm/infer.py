@@ -683,7 +683,8 @@ class QAInferencer(Inferencer):
                                multiprocessing_chunksize=None,
                                streaming=False) -> Union[List[QAPred], Generator[QAPred, None, None]]:
         dicts = [o.to_dict() for o in objects]
-        logger.warning("QAInferencer.inference_from_objects() will soon be deprecated. Use QAInferencer.inference_from_dicts() instead")
+        # TODO investigate this deprecation warning. Timo: I thought we were about to implement Input Objects, then we can and should use inference from (input) objects!
+        #logger.warning("QAInferencer.inference_from_objects() will soon be deprecated. Use QAInferencer.inference_from_dicts() instead")
         return self.inference_from_dicts(dicts, return_json=return_json,
                                          multiprocessing_chunksize=multiprocessing_chunksize, streaming=streaming)
 
