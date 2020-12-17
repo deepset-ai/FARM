@@ -4,12 +4,12 @@ import pytest
 from math import isclose
 
 from farm.data_handler.processor import SquadProcessor
+from farm.data_handler.inputs import QAInput, Question
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.infer import QAInferencer
 from farm.data_handler.inputs import QAInput, Question
 
-# TODO Slow tokenizers will keep causing these tests to fail until they are reimplemented
-@pytest.mark.parametrize("distilbert_squad", [True], indirect=True)
+
 def test_training(distilbert_squad, caplog=None):
     if caplog:
         caplog.set_level(logging.CRITICAL)
@@ -19,8 +19,6 @@ def test_training(distilbert_squad, caplog=None):
     assert type(processor) == SquadProcessor
 
 
-# TODO Slow tokenizers will keep causing these tests to fail until they are reimplemented
-@pytest.mark.parametrize("distilbert_squad", [True], indirect=True)
 def test_save_load(distilbert_squad, caplog=None):
     if caplog:
         caplog.set_level(logging.CRITICAL)
@@ -35,26 +33,22 @@ def test_save_load(distilbert_squad, caplog=None):
     assert inferencer is not None
 
 
-# TODO Slow tokenizers will keep causing these tests to fail until they are reimplemented
-@pytest.mark.parametrize("bert_base_squad2", [True], indirect=True)
-def test_inference_dicts(bert_base_squad2):
+def test_inference_different_inputs(bert_base_squad2):
     qa_format_1 = [
         {
             "questions": ["Who counted the game among the best ever made?"],
             "text": "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
         }]
-    qa_format_2 = [{"qas":["Who counted the game among the best ever made?"],
-                 "context": "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created.",
-                }]
+    q = Question(text="Who counted the game among the best ever made?")
+    qa_format_2 = QAInput(questions=[q],doc_text= "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created.")
+
 
     result1 = bert_base_squad2.inference_from_dicts(dicts=qa_format_1)
-    result2 = bert_base_squad2.inference_from_dicts(dicts=qa_format_2)
+    result2 = bert_base_squad2.inference_from_objects(objects=[qa_format_2])
     assert result1 == result2
 
 
-# TODO Slow tokenizers will keep causing these tests to fail until they are reimplemented
 @pytest.fixture()
-@pytest.mark.parametrize("bert_base_squad2", [True], indirect=True)
 def span_inference_result(bert_base_squad2, caplog=None):
     if caplog:
         caplog.set_level(logging.CRITICAL)
@@ -64,9 +58,7 @@ def span_inference_result(bert_base_squad2, caplog=None):
     return result
 
 
-# TODO Slow tokenizers will keep causing these tests to fail until they are reimplemented
 @pytest.fixture()
-@pytest.mark.parametrize("bert_base_squad2", [True], indirect=True)
 def no_answer_inference_result(bert_base_squad2, caplog=None):
     if caplog:
         caplog.set_level(logging.CRITICAL)
@@ -152,6 +144,6 @@ def test_id(span_inference_result, no_answer_inference_result):
 if(__name__=="__main__"):
     test_training()
     test_save_load()
-    test_inference_dicts()
+    test_inference_different_inputs()
     test_inference_objs()
 
