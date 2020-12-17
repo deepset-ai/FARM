@@ -239,7 +239,6 @@ def test_all_tokenizer_on_special_cases(caplog):
             # verify that tokenization on full sequence is the same as the one on "whitespace tokenized words"
             if encoded.tokens != tokenized:
                 test_passed = False
-                print(f"Failed using {tokenizer.__class__.__name__}")
 
             # token offsets are originally relative to the beginning of the word
             # These lines convert them so they are relative to the beginning of the sentence
@@ -261,13 +260,10 @@ def test_all_tokenizer_on_special_cases(caplog):
                 original_tok = text[start: end]
                 if tok != original_tok:
                     test_passed = False
-                    print(f"Offset alignment wrong for {tokenizer.__class__.__name__} and text '{text}'")
             if (i_tok, i_text) in expected_to_fail:
-                assert not test_passed
+                assert not test_passed, f"Behaviour of {tokenizer.__class__.__name__} has changed on text {text}'"
             else:
-                assert test_passed
-
-
+                assert test_passed, f"Behaviour of {tokenizer.__class__.__name__} has changed on text {text}'"
 
 
 def test_bert_custom_vocab(caplog):
