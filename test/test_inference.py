@@ -76,7 +76,7 @@ def test_qa_format_and_results(adaptive_model_qa, streaming, multiprocessing_chu
 
 
 @pytest.mark.parametrize("num_processes", [0], scope="session")
-@pytest.mark.parametrize("use_fast", [False, True])
+@pytest.mark.parametrize("use_fast", [True])
 def test_embeddings_extraction(num_processes, use_fast):
     # Input
     basic_texts = [

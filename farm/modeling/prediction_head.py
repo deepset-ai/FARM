@@ -690,41 +690,24 @@ class TokenClassificationHead(PredictionHead):
         probs = self.logits_to_probs(logits, initial_mask,return_class_probs)
 
         # align back with original input by getting the original word spans
-        spans = []
-        for sample, sample_preds in zip(samples, preds):
-            word_spans = []
-            span = None
-            for token, offset, start_of_word in zip(
-                sample.tokenized["tokens"],
-                sample.tokenized["offsets"],
-                sample.tokenized["start_of_word"],
-            ):
-                if start_of_word:
-                    # previous word has ended unless it's the very first word
-                    if span is not None:
-                        word_spans.append(span)
-                    span = {"start": offset, "end": offset + len(token)}
-                else:
-                    # expand the span to include the subword-token
-                    span["end"] = offset + len(token.replace("##", ""))
-            word_spans.append(span)
-            spans.append(word_spans)
-
+        spans = [s.tokenized["word_spans"] for s in samples]
         res = {"task": "ner", "predictions": []}
         for preds_seq, probs_seq, sample, spans_seq in zip(
             preds, probs, samples, spans
         ):
             tags, spans_seq = convert_iob_to_simple_tags(preds_seq, spans_seq)
             seq_res = []
+            # TODO: Though we filter out tags and spans for non-entity words,
+            # TODO: we do not yet filter out probs of non-entity words. This needs to be implemented still
             for tag, prob, span in zip(tags, probs_seq, spans_seq):
-                context = sample.clear_text["text"][span["start"] : span["end"]]
+                context = sample.clear_text["text"][span[0]: span[1]]
                 seq_res.append(
                     {
-                        "start": span["start"],
-                        "end": span["end"],
+                        "start": span[0],
+                        "end": span[1],
                         "context": f"{context}",
                         "label": f"{tag}",
-                        "probability": prob,
+                        "probability": np.float32(0.0),
                     }
                 )
             res["predictions"].extend(seq_res)
@@ -1211,7 +1194,7 @@ class QuestionAnsweringHead(PredictionHead):
         for pred_d, no_ans_gap, basket in zip(top_preds, no_ans_gaps, baskets):
 
             # Unpack document offsets, clear text and id
-            token_offsets = basket.samples[0].tokenized["document_offsets"]
+            token_offsets = basket.raw["document_offsets"]
             pred_id = basket.id_external if basket.id_external else basket.id_internal
 
             # These options reflect the different input dicts that can be assigned to the basket

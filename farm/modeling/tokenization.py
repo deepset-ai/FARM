@@ -44,8 +44,8 @@ from transformers.modeling_auto import AutoConfig
 from transformers import DPRContextEncoderTokenizer, DPRQuestionEncoderTokenizer
 from transformers import DPRContextEncoderTokenizerFast, DPRQuestionEncoderTokenizerFast
 
+from farm.data_handler.samples import SampleBasket
 from farm.modeling.wordembedding_utils import load_from_cache, EMBEDDING_VOCAB_FILES_MAP, run_split_on_punc
-
 
 logger = logging.getLogger(__name__)
 
@@ -546,3 +546,71 @@ def insert_at_special_tokens_pos(seq, special_tokens_mask, insert_element):
     for idx in special_tokens_indices:
         new_seq.insert(idx, insert_element)
     return new_seq
+
+
+def tokenize_batch_question_answering(pre_baskets, tokenizer, indices):
+    """
+    Tokenizes text data for question answering tasks. Tokenization means splitting words into subwords, depending on the
+    tokenizer's vocabulary.
+
+    - We first tokenize all documents in batch mode. (When using FastTokenizers Rust multithreading can be enabled by TODO add how to enable rust mt)
+    - Then we tokenize each question individually
+    - We construct dicts with question and corresponding document text + tokens + offsets + ids
+    :param pre_baskets: input dicts with QA info #todo change to input objects
+    :param tokenizer: tokenizer to be used
+    :param indices: list, indices used during multiprocessing so that IDs assigned to our baskets are unique
+    :return: baskets, list containing question and corresponding document information
+    """
+    assert len(indices) == len(pre_baskets)
+    assert tokenizer.is_fast, "Processing QA data is only supported with fast tokenizers for now.\n" \
+                              "Please load Tokenizers with 'use_fast=True' option."
+    baskets = []
+    # # Tokenize texts in batch mode
+    texts = [d["context"] for d in pre_baskets]
+    tokenized_docs_batch = tokenizer.batch_encode_plus(texts, return_offsets_mapping=True, return_special_tokens_mask=True, add_special_tokens=False)
+
+    # Extract relevant data
+    tokenids_batch = tokenized_docs_batch["input_ids"]
+    offsets_batch = []
+    for o in tokenized_docs_batch["offset_mapping"]:
+        offsets_batch.append(np.array([x[0] for x in o]))
+    start_of_words_batch = []
+    for e in tokenized_docs_batch.encodings:
+        start_of_words_batch.append(_get_start_of_word_QA(e.words))
+
+    for i_doc, d in enumerate(pre_baskets):
+        document_text = d["context"]
+        # # Tokenize questions one by one
+        for i_q, q in enumerate(d["qas"]):
+            question_text = q["question"]
+            tokenized_q = tokenizer.encode_plus(question_text, return_offsets_mapping=True, return_special_tokens_mask=True, add_special_tokens=False)
+
+            # Extract relevant data
+            question_tokenids = tokenized_q["input_ids"]
+            question_offsets = [x[0] for x in tokenized_q["offset_mapping"]]
+            question_sow = _get_start_of_word_QA(tokenized_q.encodings[0].words)
+
+            external_id = q["id"]
+            # The internal_id depends on unique ids created for each process before forking
+            internal_id = f"{indices[i_doc]}-{i_q}"
+            raw = {"document_text": document_text,
+                   "document_tokens": tokenids_batch[i_doc],
+                   "document_offsets": offsets_batch[i_doc],
+                   "document_start_of_word": start_of_words_batch[i_doc],
+                   "question_text": question_text,
+                   "question_tokens": question_tokenids,
+                   "question_offsets": question_offsets,
+                   "question_start_of_word": question_sow,
+                   "answers": q["answers"],
+                   }
+            # TODO add only during debug mode (need to create debug mode)
+            raw["document_tokens_strings"] = tokenized_docs_batch.encodings[i_doc].tokens
+            raw["question_tokens_strings"] = tokenized_q.encodings[0].tokens
+
+            baskets.append(SampleBasket(raw=raw, id_internal=internal_id, id_external=external_id, samples=None))
+    return baskets
+
+def _get_start_of_word_QA(word_ids):
+    words = np.array(word_ids)
+    start_of_word_single = [1] + list(np.ediff1d(words))
+    return start_of_word_single

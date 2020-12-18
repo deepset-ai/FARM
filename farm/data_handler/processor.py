@@ -8,23 +8,28 @@ from abc import ABC
 from inspect import signature
 from pathlib import Path
 from random import randint
-import torch
+
 import numpy as np
+import torch
+from numpy.random import random as random_float
 from sklearn.preprocessing import StandardScaler
 from transformers.configuration_auto import AutoConfig
 from tokenizers import Encoding
 
-from numpy.random import random as random_float
 from farm.data_handler.dataset import convert_features_to_dataset
-from farm.data_handler.input_features import (
-    samples_to_features_ner,
-    sample_to_features_text,
-    sample_to_features_qa,
+from farm.data_handler.input_features import get_roberta_seq_2_start, get_camembert_seq_2_start
+from farm.data_handler.input_features import sample_to_features_text
+from farm.data_handler.nq_utils import (
+    sample_to_features_qa_Natural_Questions,
+    create_samples_qa_Natural_Question,
+    convert_qa_input_dict,
 )
+
 from farm.data_handler.samples import (
     Sample,
     SampleBasket,
-    create_samples_qa
+    get_passage_offsets,
+    offset_to_token_idx_vecorized
 )
 
 from farm.data_handler.utils import (
@@ -40,14 +45,18 @@ from farm.data_handler.utils import (
     is_json,
     get_sentence_pair,
     split_with_metadata,
-    convert_qa_input_dict,
 )
-
-from farm.data_handler.input_features import get_roberta_seq_2_start, get_camembert_seq_2_start
-
-from farm.modeling.tokenization import Tokenizer, tokenize_with_metadata, truncate_sequences, insert_at_special_tokens_pos
+from farm.modeling.tokenization import (
+    Tokenizer,
+    tokenize_with_metadata,
+    truncate_sequences,
+    insert_at_special_tokens_pos,
+    tokenize_batch_question_answering,
+)
 from farm.utils import MLFlowLogger as MlLogger
 from farm.utils import try_get
+
+from tokenizers.pre_tokenizers import WhitespaceSplit
 
 ID_NAMES = ["example_id", "external_id", "doc_id", "id"]
 
@@ -119,6 +128,7 @@ class Processor(ABC):
         self.baskets = []
 
         self._log_params()
+        self.problematic_sample_ids = set()
 
     def __init_subclass__(cls, **kwargs):
         """ This automatically keeps track of all available subclasses.
@@ -225,7 +235,7 @@ class Processor(ABC):
 
     @classmethod
     def convert_from_transformers(cls, tokenizer_name_or_path, task_type, max_seq_len, doc_stride,
-                                  tokenizer_class=None, tokenizer_args=None, use_fast=None):
+                                  tokenizer_class=None, tokenizer_args=None, use_fast=True):
         config = AutoConfig.from_pretrained(tokenizer_name_or_path)
         tokenizer_args = tokenizer_args or {}
         tokenizer = Tokenizer.load(tokenizer_name_or_path,
@@ -328,11 +338,9 @@ class Processor(ABC):
     def file_to_dicts(self, file: str) -> [dict]:
         raise NotImplementedError()
 
-    #@abc.abstractmethod
     def _dict_to_samples(cls, dictionary: dict, all_dicts=None) -> [Sample]:
         raise NotImplementedError()
 
-    #@abc.abstractmethod
     def _sample_to_features(cls, sample: Sample) -> dict:
         raise NotImplementedError()
 
@@ -351,14 +359,24 @@ class Processor(ABC):
                 logger.error(f"Error message: {e}")
 
     def _featurize_samples(self):
+        curr_problematic_sample_ids = []
         for basket in self.baskets:
             for sample in basket.samples:
                 try:
                     sample.features = self._sample_to_features(sample=sample)
                 except Exception as e:
-                    logger.error(f"Could not convert this sample to features: \n {sample}")
-                    logger.error(f"Basket id: id_internal: {basket.id_internal}, id_external: {basket.id_external}")
-                    logger.error(f"Error message: {e}")
+                    curr_problematic_sample_ids.append(sample.id)
+        if curr_problematic_sample_ids:
+            self.problematic_sample_ids.update(curr_problematic_sample_ids)
+
+    @staticmethod
+    def log_problematic(problematic_sample_ids):
+        if problematic_sample_ids:
+            n_problematic = len(problematic_sample_ids)
+            problematic_id_str = ", ".join(problematic_sample_ids)
+            logger.error(
+                f"Unable to convert {n_problematic} samples to features. Their ids are : {problematic_id_str}")
+
 
     def _init_and_featurize_samples_in_baskets(self):
         for basket in self.baskets:
@@ -385,6 +403,8 @@ class Processor(ABC):
             True if all the samples in the basket has computed its features, False otherwise
 
         """
+        if len(basket.samples) == 0:
+            return False
         for sample in basket.samples:
             if sample.features is None:
                 return False
@@ -401,10 +421,8 @@ class Processor(ABC):
                 # remove the entire basket
                 basket_to_remove.append(basket)
         if len(basket_to_remove) > 0:
-            # if basket_to_remove is not empty remove the related baskets
-            logger.warning(f"Removing the following baskets because of errors in computing features:")
             for basket in basket_to_remove:
-                logger.warning(f"Basket id: id_internal: {basket.id_internal}, id_external: {basket.id_external}")
+                # if basket_to_remove is not empty remove the related baskets
                 self.baskets.remove(basket)
 
         dataset, tensor_names = convert_features_to_dataset(features=features_flat)
@@ -427,21 +445,23 @@ class Processor(ABC):
             if indices:
                 id_internal = indices[id_internal]
             self.baskets.append(SampleBasket(raw=d, id_external=id_external, id_internal=id_internal))
-        if self.tokenizer.is_fast:
-            self._init_and_featurize_samples_in_baskets()
+
+        self._init_samples_in_baskets()
+        self._featurize_samples()
+        if indices:
+            if 0 in indices:
+                self._log_samples(1)
         else:
-            self._init_samples_in_baskets()
-            self._featurize_samples()
-        if indices and 0 in indices:
-            self._log_samples(2)
-        else:
-            self._log_samples(2)
+            self._log_samples(1)
+
+        dataset, tensor_names = self._create_dataset()
+        # This mode is for inference where we need to keep baskets
         if return_baskets:
-            dataset, tensor_names = self._create_dataset(keep_baskets=True)
-            return dataset, tensor_names, self.baskets
+            #TODO simplify
+            return dataset, tensor_names, self.problematic_sample_ids, self.baskets
+        # This mode is for training where we can free ram by removing baskets
         else:
-            dataset, tensor_names = self._create_dataset()
-            return dataset, tensor_names
+            return dataset, tensor_names, self.problematic_sample_ids
 
     def _log_samples(self, n_samples):
         logger.info("*** Show {} random examples ***".format(n_samples))
@@ -449,7 +469,6 @@ class Processor(ABC):
             random_basket = random.choice(self.baskets)
             random_sample = random.choice(random_basket.samples)
             logger.info(random_sample)
-
 
     def _log_params(self):
         params = {
@@ -645,11 +664,16 @@ class TextClassificationProcessor(Processor):
                                        samples=[curr_sample])
             self.baskets.append(curr_basket)
 
-        if 0 in indices:
-            self._log_samples(2)
+        if indices and 0 not in indices:
+            pass
+        else:
+            self._log_samples(1)
 
+        # TODO populate problematic ids
+        problematic_ids = set()
+        logger.warning("Currently no support in TextClassification processor for returning problematic ids")
         dataset, tensornames = self._create_dataset()
-        ret = [dataset, tensornames]
+        ret = [dataset, tensornames, problematic_ids]
         if return_baskets:
             ret.append(self.baskets)
         return ret
@@ -686,30 +710,6 @@ class TextClassificationProcessor(Processor):
                         label_ids[label_list.index(l)] = 1
             ret[task["label_tensor_name"]] = label_ids
         return ret
-
-    def pad_sequences(self, input_ids, segment_ids):
-        # The mask has 1 for real tokens and 0 for padding tokens. Only real
-        # tokens are attended to.
-        padding_mask = [1] * len(input_ids)
-        # Padding up to the sequence length.
-        # Normal case: adding multiple 0 to the right
-        # Special cases:
-        # a) xlnet pads on the left and uses  "4"  for padding token_type_ids
-        if "XLNetTokenizer" in self.tokenizer.__class__.__name__:
-            pad_on_left = True
-            segment_ids = pad(segment_ids, self.max_seq_len, 4, pad_on_left=pad_on_left)
-        else:
-            pad_on_left = False
-            segment_ids = pad(segment_ids, self.max_seq_len, 0, pad_on_left=pad_on_left)
-
-        input_ids = pad(input_ids, self.max_seq_len, self.tokenizer.pad_token_id, pad_on_left=pad_on_left)
-        padding_mask = pad(padding_mask, self.max_seq_len, 0, pad_on_left=pad_on_left)
-
-        assert len(input_ids) == self.max_seq_len
-        assert len(padding_mask) == self.max_seq_len
-        assert len(segment_ids) == self.max_seq_len
-
-        return input_ids, padding_mask, segment_ids
 
 
 class TextPairClassificationProcessor(TextClassificationProcessor):
@@ -924,7 +924,7 @@ class InferenceProcessor(Processor):
         for seq_name in tokenized.keys():
             tokenized[seq_name], _, _ = truncate_sequences(seq_a=tokenized[seq_name], seq_b=None, tokenizer=self.tokenizer,
                                                 max_seq_len=self.max_seq_len)
-        return [Sample(id=None, clear_text=dictionary, tokenized=tokenized)]
+        return Sample(id=None, clear_text=dictionary, tokenized=tokenized)
 
     def _sample_to_features(self, sample) -> dict:
         features = sample_to_features_text(
@@ -935,71 +935,76 @@ class InferenceProcessor(Processor):
         )
         return features
 
-    def _dict_to_samples_and_features(self, dictionary: dict, **kwargs) -> [Sample]:
-        """This method is used so that we need to tokenize only once when using a fast tokenizer."""
-        text = dictionary["text"]
-        inputs = self.tokenizer.encode_plus(
-            text=text,
-            max_length=self.max_seq_len,
-            truncation=True,
-            add_special_tokens=True,
-            return_offsets_mapping=True,
-            return_token_type_ids=True,
-            return_special_tokens_mask=True,
-        )
+    def dataset_from_dicts(self, dicts, indices=None, return_baskets=False, debug=False):
+        self.baskets = []
 
-        # Get tokens as text with metadata
-        tokens = []
-        offsets = []
-        start_of_word = []
-        previous_token_end = -1
-        for token_id, is_special_token, offset in zip(inputs["input_ids"],
-                                                      inputs["special_tokens_mask"],
-                                                      inputs["offset_mapping"]):
-            if not is_special_token:
-                tokens.append(self.tokenizer.convert_ids_to_tokens(token_id))
-                offsets.append(offset[0])
-                start_of_word.append(True if offset[0] != previous_token_end else False)
-                previous_token_end = offset[1]
-
-        token_dict = {"tokens": tokens,
-                      "offsets": offsets,
-                      "start_of_word": start_of_word}
-
-        if len(token_dict["tokens"]) == 0:
-            logger.warning(
-                f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text}")
-            return []
-
-        # Build feature dict
-        input_ids, segment_ids = inputs["input_ids"], inputs["token_type_ids"]
-
-        # The mask has 1 for real tokens and 0 for padding tokens. Only real
-        # tokens are attended to.
-        padding_mask = [1] * len(input_ids)
-        # Padding up to the sequence length.
-        # Normal case: adding multiple 0 to the right
-        # Special cases:
-        # a) xlnet pads on the left and uses  "4"  for padding token_type_ids
-        if "XLNetTokenizer" in self.tokenizer.__class__.__name__:
-            pad_on_left = True
-            segment_ids = pad(segment_ids, self.max_seq_len, 4, pad_on_left=pad_on_left)
+        if not self.tokenizer.is_fast:
+            for d in dicts:
+                sample = self._dict_to_samples(dictionary=d)
+                features = self._sample_to_features(sample)
+                sample.features = features
+                basket = SampleBasket(id_internal=None,
+                                       raw=d,
+                                       id_external=None,
+                                       samples=[sample])
+                self.baskets.append(basket)
         else:
-            pad_on_left = False
-            segment_ids = pad(segment_ids, self.max_seq_len, 0, pad_on_left=pad_on_left)
+            # Tokenize in batches
+            texts = [x["text"] for x in dicts]
+            tokenized_batch = self.tokenizer.batch_encode_plus(
+                texts,
+                return_offsets_mapping=True,
+                return_special_tokens_mask=True,
+                return_token_type_ids=True,
+                return_attention_mask=True,
+                truncation=True,
+                max_length=self.max_seq_len,
+                add_special_tokens=True,
+                padding="max_length"
+            )
+            input_ids_batch = tokenized_batch["input_ids"]
+            segment_ids_batch = tokenized_batch["token_type_ids"]
+            padding_masks_batch = tokenized_batch["attention_mask"]
+            if self.tokenizer.is_fast:
+                tokens_batch = [x.tokens for x in tokenized_batch.encodings]
+            special_tokens_mask_batch = tokenized_batch["special_tokens_mask"]
 
-        input_ids = pad(input_ids, self.max_seq_len, self.tokenizer.pad_token_id, pad_on_left=pad_on_left)
-        padding_mask = pad(padding_mask, self.max_seq_len, 0, pad_on_left=pad_on_left)
+            # From here we operate on a per sample basis
+            for dictionary, input_ids, segment_ids, padding_mask, tokens, special_tokens_mask in zip(
+                    dicts, input_ids_batch, segment_ids_batch, padding_masks_batch, tokens_batch, special_tokens_mask_batch
+            ):
 
-        assert len(input_ids) == self.max_seq_len
-        assert len(padding_mask) == self.max_seq_len
-        assert len(segment_ids) == self.max_seq_len
+                # TODO Build tokenized dict for debug mode
+                tokenized = {"tokens": [t for t, stm in zip(tokens, special_tokens_mask) if not stm]}
 
-        feat_dict = {"input_ids": input_ids,
-                     "padding_mask": padding_mask,
-                     "segment_ids": segment_ids}
+                feat_dict = {"input_ids": input_ids,
+                             "padding_mask": padding_mask,
+                             "segment_ids": segment_ids}
 
-        return [Sample(id=None, clear_text=dictionary, tokenized=token_dict, features=[feat_dict])]
+                # Add Basket to self.baskets
+                curr_sample = Sample(id=None,
+                                     clear_text=dictionary,
+                                     tokenized=tokenized,
+                                     features=[feat_dict])
+                basket = SampleBasket(id_internal=None,
+                                           raw=dictionary,
+                                           id_external=None,
+                                           samples=[curr_sample])
+                self.baskets.append(basket)
+
+        if indices and 0 not in indices:
+            pass
+        else:
+            self._log_samples(1)
+
+        # TODO populate problematic ids
+        problematic_ids = set()
+        logger.warning("Currently no support in InferenceProcessor for returning problematic ids")
+        dataset, tensornames = self._create_dataset()
+        ret = [dataset, tensornames, problematic_ids]
+        if return_baskets:
+            ret.append(self.baskets)
+        return ret
 
 
 #########################################
@@ -1035,7 +1040,7 @@ class NERProcessor(Processor):
                          These predefined datasets are defined as the keys in the dict at
                          `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
         :type data_dir: str
-        :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
+        :param label_list: list of labels to predict (strings).
         :type label_list: list
         :param metric: name of metric that shall be used for evaluation, e.g. "seq_f1".
                  Alternatively you can also supply a custom function, that takes preds and labels as args and returns a numerical value.
@@ -1061,6 +1066,8 @@ class NERProcessor(Processor):
         # Custom processor attributes
         self.delimiter = delimiter
 
+        self.pre_tokenizer = WhitespaceSplit()
+
         super(NERProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
@@ -1072,7 +1079,6 @@ class NERProcessor(Processor):
             tasks={},
             proxies=proxies
         )
-
         if metric and label_list:
             self.add_task("ner", metric, label_list)
         else:
@@ -1083,130 +1089,135 @@ class NERProcessor(Processor):
         dicts = read_ner_file(filename=file, sep=self.delimiter,  proxies=self.proxies)
         return dicts
 
-    def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
-        # this tokenization also stores offsets, which helps to map our entity tags back to original positions
-        tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer)
-        if len(tokenized["tokens"]) == 0:
-            text = dictionary["text"]
-            logger.warning(f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text}")
-            return []
-        # truncate tokens, offsets and start_of_word to max_seq_len that can be handled by the model
-        for seq_name in tokenized.keys():
-            tokenized[seq_name], _, _ = truncate_sequences(seq_a=tokenized[seq_name], seq_b=None, tokenizer=self.tokenizer,
-                                                max_seq_len=self.max_seq_len)
-        return [Sample(id=None, clear_text=dictionary, tokenized=tokenized)]
+    def dataset_from_dicts(self, dicts, indices=None, return_baskets=False, non_initial_token="X"):
+        self.baskets = []
 
-    def _sample_to_features(self, sample) -> dict:
-        features = samples_to_features_ner(
-            sample=sample,
-            tasks=self.tasks,
-            max_seq_len=self.max_seq_len,
-            tokenizer=self.tokenizer,
-        )
-        return features
+        # Perform batch tokenization
+        texts = [x["text"] for x in dicts]
+        words_and_spans = [self.pre_tokenizer.pre_tokenize_str(x) for x in texts]
+        words = [[x[0] for x in y] for y in words_and_spans]
 
-    def _dict_to_samples_and_features(self, dictionary: dict, **kwargs) -> [Sample]:
-        """This method is used so that we need to tokenize only once when using a fast tokenizer."""
-        text = dictionary["text"]
-        inputs = self.tokenizer.encode_plus(
-            text=text,
-            max_length=self.max_seq_len,
-            truncation=True,
-            add_special_tokens=True,
+        # word_spans_batch is the char span for each whitespace split word
+        word_spans_batch = [[x[1] for x in y] for y in words_and_spans]
+
+        tokenized_batch = self.tokenizer.batch_encode_plus(
+            words,
             return_offsets_mapping=True,
-            return_token_type_ids=True,
             return_special_tokens_mask=True,
+            return_token_type_ids=True,
+            return_attention_mask=True,
+            truncation=True,
+            max_length=self.max_seq_len,
+            padding="max_length",
+            is_split_into_words=True
         )
 
-        # Get tokens as text with metadata
-        tokens = []
-        offsets = []
-        start_of_word = []
-        previous_token_end = -1
-        for token_id, is_special_token, offset in zip(inputs["input_ids"],
-                                                      inputs["special_tokens_mask"],
-                                                      inputs["offset_mapping"]):
-            if not is_special_token:
-                tokens.append(self.tokenizer.convert_ids_to_tokens(token_id))
-                offsets.append(offset[0])
-                start_of_word.append(True if offset[0] != previous_token_end else False)
-                previous_token_end = offset[1]
+        # Create features by iterating over samples
+        for i in range(len(dicts)):
+            tokenized = tokenized_batch[i]
+            d = dicts[i]
 
-        token_dict = {"tokens": tokens,
-                      "offsets": offsets,
-                      "start_of_word": start_of_word}
+            # Either try to extract an ID from the dictionary, or else create an id
+            # based on the order of the dictionaries coming in, taking into account
+            # the indices generated by chunking and multiprocessing
+            id_external = self._id_from_dict(d)
+            if indices:
+                id_internal = indices[i]
+            else:
+                id_internal = i
 
-        if len(token_dict["tokens"]) == 0:
-            logger.warning(
-                f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text}")
-            return []
+            input_ids = tokenized.ids
+            segment_ids = tokenized.type_ids
 
-        # Build feature dict
-        input_ids = inputs["input_ids"]
-        segment_ids = inputs["token_type_ids"]
-        special_tokens_mask = inputs["special_tokens_mask"]
+            # We construct a mask to identify the first token of a word. We will later only use them for predicting entities.
+            # Special tokens don't count as initial tokens => we add 0 at the positions of special tokens
+            # For BERT we add a 0 in the start and end (for CLS and SEP)
+            initial_mask = self._get_start_of_word(tokenized.words)
+            assert len(initial_mask) == len(input_ids)
 
-        # We construct a mask to identify the first token of a word. We will later only use them for predicting entities.
-        # Special tokens don't count as initial tokens => we add 0 at the positions of special tokens
-        # For BERT we add a 0 in the start and end (for CLS and SEP)
-        initial_mask = [int(x) for x in token_dict["start_of_word"]]
-        initial_mask = insert_at_special_tokens_pos(initial_mask, special_tokens_mask, insert_element=0)
-        assert len(initial_mask) == len(input_ids)
+            # This mask has 1 for real tokens and 0 for padding tokens. Only real
+            # tokens are attended to.
+            padding_mask = tokenized.attention_mask
 
-        for task_name, task in self.tasks.items():
-            try:
-                label_list = task["label_list"]
-                label_name = task["label_name"]
-                label_tensor_name = task["label_tensor_name"]
-                labels_word = dictionary[label_name]
-                labels_token = expand_labels(labels_word, initial_mask, "X")
-                label_ids = [label_list.index(lt) for lt in labels_token]
-            except ValueError:
-                label_ids = None
-                problematic_labels = set(labels_token).difference(set(label_list))
-                logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
-                               f"\nWe found a problem with labels {str(problematic_labels)}")
-            except KeyError:
-                # For inference mode we don't expect labels
-                label_ids = None
-                logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
-                               "\nIf your are running in *inference* mode: Don't worry!"
-                               "\nIf you are running in *training* mode: Verify you are supplying a proper label list to "
-                               "your processor and check that labels in input data are correct.")
+            # i.e. if inference, we need to populate the tokenized_dict so that formatted preds can align
+            # the prediction to the original text
+            if return_baskets:
+                token_to_word_map = tokenized.words
+                word_spans = word_spans_batch[i]
+                tokenized_dict = {
+                    "tokens": tokenized.tokens,
+                    "word_spans": word_spans,
+                    "token_to_word_map": token_to_word_map,
+                    "start_of_word": initial_mask
+                }
+            else:
+                tokenized_dict = {}
 
-        # This mask has 1 for real tokens and 0 for padding tokens. Only real
-        # tokens are attended to.
-        padding_mask = [1] * len(input_ids)
+            feature_dict = {
+                "input_ids": input_ids,
+                "padding_mask": padding_mask,
+                "segment_ids": segment_ids,
+                "initial_mask": initial_mask,
+            }
 
-        # Padding up to the sequence length.
-        # Normal case: adding multiple 0 to the right
-        # Special cases:
-        # a) xlnet pads on the left and uses  "4" for padding token_type_ids
-        if "XLNetTokenizer" in self.tokenizer.__class__.__name__:
-            pad_on_left = True
-            segment_ids = pad(segment_ids, self.max_seq_len, 4, pad_on_left=pad_on_left)
+            for task_name, task in self.tasks.items():
+                try:
+                    label_list = task["label_list"]
+                    label_name = task["label_name"]
+                    label_tensor_name = task["label_tensor_name"]
+                    labels_word = d[label_name]
+                    labels_token = expand_labels(labels_word, initial_mask, non_initial_token)
+                    label_ids = [label_list.index(lt) for lt in labels_token]
+                except ValueError:
+                    # Usually triggered if label is not in label list
+                    label_ids = None
+                    problematic_labels = set(labels_token).difference(set(label_list))
+                    logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
+                                   f"\nWe found a problem with labels {str(problematic_labels)}")
+                # TODO change this when inference flag is implemented
+                except KeyError:
+                    # Usually triggered if there is no label in the sample
+                    # This is expected during inference since there are no labels
+                    # During training, this is a problem
+                    label_ids = None
+                    logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
+                                   "\nIf your are running in *inference* mode: Don't worry!"
+                                   "\nIf you are running in *training* mode: Verify you are supplying a proper label list to your processor and check that labels in input data are correct.")
+
+                if label_ids:
+                    feature_dict[label_tensor_name] = label_ids
+
+            curr_sample = Sample(id=None,
+                                 clear_text=d,
+                                 tokenized=tokenized_dict,
+                                 features=[feature_dict])
+            curr_basket = SampleBasket(id_internal=id_internal,
+                                       raw=d,
+                                       id_external=id_external,
+                                       samples=[curr_sample])
+            self.baskets.append(curr_basket)
+
+        # Don't log if we are processing a dataset chunk other than the first chunk
+        if indices and 0 not in indices:
+            pass
         else:
-            pad_on_left = False
-            segment_ids = pad(segment_ids, self.max_seq_len, 0, pad_on_left=pad_on_left)
+            self._log_samples(1)
 
-        input_ids = pad(input_ids, self.max_seq_len, self.tokenizer.pad_token_id, pad_on_left=pad_on_left)
-        padding_mask = pad(padding_mask, self.max_seq_len, 0, pad_on_left=pad_on_left)
-        initial_mask = pad(initial_mask, self.max_seq_len, 0, pad_on_left=pad_on_left)
-        if label_ids:
-            label_ids = pad(label_ids, self.max_seq_len, 0, pad_on_left=pad_on_left)
+        dataset, tensor_names = self._create_dataset()
+        ret = [dataset, tensor_names, self.problematic_sample_ids]
+        # This is for inference where we need to keep baskets
+        # By contrast, in training, we can remove baskets to free up RAM
+        if return_baskets:
+            ret.append(self.baskets)
+        return tuple(ret)
 
-        feature_dict = {
-            "input_ids": input_ids,
-            "padding_mask": padding_mask,
-            "segment_ids": segment_ids,
-            "initial_mask": initial_mask,
-        }
-
-        if label_ids:
-            feature_dict[label_tensor_name] = label_ids
-
-        return [Sample(id=None, clear_text=dictionary, tokenized=token_dict, features=[feature_dict])]
-
+    @staticmethod
+    def _get_start_of_word(word_ids):
+        words = np.array(word_ids)
+        words[words == None] = -1
+        start_of_word_single = [0] + list(np.ediff1d(words) > 0)
+        start_of_word_single = [int(x) for x in start_of_word_single]
+        return start_of_word_single
 
 #####################
 # LM Processors ####
@@ -1748,6 +1759,7 @@ class BertStyleLMProcessor(Processor):
             # count samples
             n_samples = 0
             for d in dicts:
+                #TODO this currently fails
                 n_samples += len(self._create_sequence_pairs_bert_style(doc=d["doc"], all_dicts=dicts))
             n_samples = int(n_samples / len(dicts)) * (empty_lines+1)
             logging.info(f"Heuristic estimate of number of samples in {filepath} based on {len(dicts)} docs: {n_samples}")
@@ -1779,7 +1791,7 @@ class QAProcessor(Processor):
         self.sp_toks_end = len(vec) - vec.index("b") - 1
 
 
-class SquadProcessor(QAProcessor):
+class SquadProcessor(Processor):
     """ Used to handle the SQuAD dataset"""
 
     def __init__(
@@ -1833,14 +1845,19 @@ class SquadProcessor(QAProcessor):
         self.target = "classification"
         self.ph_output_type = "per_token_squad"
 
-        assert doc_stride < max_seq_len, "doc_stride is longer than max_seq_len. This means that there will be gaps " \
-                                         "as the passage windows slide, causing the model to skip over parts of the document. "\
+        assert doc_stride < max_seq_len, "doc_stride is longer than max_seq_len. \nThis means that there will be gaps " \
+                                         "as the passage windows slide, causing the model to skip over parts of the document.\n"\
                                          "Please set a lower value for doc_stride (Suggestions: doc_stride=128, max_seq_len=384) "
+
+        assert doc_stride < (max_seq_len - max_query_length), \
+            "doc_stride is longer than max_seq_len minus space reserved for query tokens. \nThis means that there will be gaps " \
+            "as the passage windows slide, causing the model to skip over parts of the document.\n" \
+            "Please set a lower value for doc_stride (Suggestions: doc_stride=128, max_seq_len=384)\n " \
+            "Or decrease max_query_length"
 
         self.doc_stride = doc_stride
         self.max_query_length = max_query_length
         self.max_answers = max_answers
-
         super(SquadProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
@@ -1852,98 +1869,358 @@ class SquadProcessor(QAProcessor):
             tasks={},
             proxies=proxies
         )
+        self._initialize_special_tokens_count()
         if metric and label_list:
             self.add_task("question_answering", metric, label_list)
         else:
             logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
                         "using the default task or add a custom task later via processor.add_task()")
 
-
     def dataset_from_dicts(self, dicts, indices=None, return_baskets=False):
-        """ Overwrites the method from the base class since Question Answering processing is quite different.
-        This method allows for documents and questions to be tokenized earlier. Then SampleBaskets are initialized
-        with one document and one question. """
+        """
+        Convert input dictionaries into a pytorch dataset for Question Answering.
+        For this we have an internal representation called "baskets".
+        Each basket is a question-document pair.
+        Each stage adds or transforms specific information to our baskets.
 
-        # convert to standard format
-        dicts = [convert_qa_input_dict(x) for x in dicts]
+        @param dicts: dict, input dictionary with SQuAD style information present
+        @param indices: list, indices used during multiprocessing so that IDs assigned to our baskets is unique
+        @param return_baskets: boolean, weather to return the baskets or not (baskets are needed during inference)
+        @param return_problematic: boolean, weather to return the IDs of baskets that created errors during processing
+        """
+        # Convert to standard format
+        pre_baskets = [self.convert_qa_input_dict(x) for x in dicts] # TODO move to input object conversion
 
-        #tokenize
-        dicts_tokenized = [_apply_tokenization(d, self.tokenizer) for d in dicts]
+        # Tokenize documents and questions
+        baskets = tokenize_batch_question_answering(pre_baskets, self.tokenizer, indices)
 
-        # splitting documents into smaller passages to fit max_seq_len and doc_stride
-        baskets = self._split_docs_into_passages(dicts_tokenized, indices)
+        # Split documents into smaller passages to fit max_seq_len
+        baskets = self._split_docs_into_passages(baskets)
 
-        # joining question with passages + convert labels
-        self.baskets = self._join_question_with_passages(baskets)
+        # Convert answers from string to token space, skip this step for inference
+        if not return_baskets:
+            baskets = self._convert_answers(baskets)
 
-        # converting into pytorch dataset
-        dataset, tensor_names = self._create_dataset()
+        # Convert internal representation (nested baskets + samples with mixed types) to pytorch features (arrays of numbers)
+        baskets = self._passages_to_pytorch_features(baskets, return_baskets)
 
-        # logging
+        # Convert features into pytorch dataset, this step also removes potential errors during preprocessing
+        dataset, tensor_names, baskets = self._create_dataset(baskets)
+
+        # Logging
         if 0 in indices:
-            self._log_samples(2)
+            self._log_samples(1, baskets)
 
-        # This mode is for inference where we need to keep baskets
+        # During inference we need to keep the information contained in baskets.
         if return_baskets:
-            return dataset, tensor_names, self.baskets
-        # This mode is for training where we can free ram by removing baskets
+            return dataset, tensor_names, self.problematic_sample_ids, baskets
         else:
-            #TODO check if needed or handled by GC
-            self.baskets = None
-            return dataset, tensor_names
+            return dataset, tensor_names, self.problematic_sample_ids
+
 
     def file_to_dicts(self, file: str) -> [dict]:
         nested_dicts = read_squad_file(filename=file)
         dicts = [y for x in nested_dicts for y in x["paragraphs"]]
         return dicts
 
-    def _split_docs_into_passages(self, dicts_tokenized, indices):
-        """This method is used so that we need to tokenize only once when using a fast tokenizer."""
-        # Perform tokenization on documents and questions resulting in an unnested list of doc-question pairs
-        #dicts_tokenized2 = [_apply_tokenization(d, self.tokenizer) for d in dicts]
-        baskets = []
+    # TODO use Input Objects instead of this function
+    def convert_qa_input_dict(self, infer_dict):
+        """ Input dictionaries in QA can either have ["context", "qas"] (internal format) as keys or
+        ["text", "questions"] (api format). This function converts the latter into the former. It also converts the
+        is_impossible field to answer_type so that NQ and SQuAD dicts have the same format.
+        """
+        try:
+            # Check if infer_dict is already in internal json format
+            if "context" in infer_dict and "qas" in infer_dict:
+                return infer_dict
+            # converts dicts from inference mode to data structure used in FARM
+            questions = infer_dict["questions"]
+            text = infer_dict["text"]
+            uid = infer_dict.get("id", None)
+            qas = [{"question": q,
+                    "id": uid,
+                    "answers": [],
+                    "answer_type": None} for i, q in enumerate(questions)]
+            converted = {"qas": qas,
+                         "context": text}
+            return converted
+        except KeyError:
+            raise Exception("Input does not have the expected format")
 
+    def _initialize_special_tokens_count(self):
+        vec = self.tokenizer.build_inputs_with_special_tokens(token_ids_0=["a"],
+                                                              token_ids_1=["b"])
+        self.sp_toks_start = vec.index("a")
+        self.sp_toks_mid = vec.index("b") - self.sp_toks_start - 1
+        self.sp_toks_end = len(vec) - vec.index("b") - 1
+
+    def _split_docs_into_passages(self, baskets):
+        """
+        Because of the sequence length limitation of Language Models, the documents need to be divided into smaller
+        parts that we call passages.
+        """
         n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
-        for index, document in zip(indices, dicts_tokenized):
-            for q_idx, raw in enumerate(document):
-                # ignore samples with empty context
-                if raw["document_text"] == "":
-                    logger.warning("Ignoring sample with empty context")
-                    continue
-                # check if answer string can be found in context
-                for answer in raw["answers"]:
-                    if answer["text"] not in raw["document_text"]:
-                        logger.warning(f"Answer '{answer['text']}' not contained in context.")
-                # In case of Question Answering the external ID is used for document IDs
-                id_external = try_get(ID_NAMES, raw)
-                id_internal = f"{index}-{q_idx}"
+        for basket in baskets:
+            samples = []
+            ########## perform some basic checking
+            # TODO, eventually move checking into input validation functions
+            # ignore samples with empty context
+            if basket.raw["document_text"] == "":
+                logger.warning("Ignoring sample with empty context")
+                continue
+            ########## end checking
 
-                # create out of each Question-Document pair samples of Question-Passage pairs
-                samples = create_samples_qa(dictionary=raw,
-                                            max_query_len=self.max_query_length,
-                                            max_seq_len=self.max_seq_len,
-                                            doc_stride=self.doc_stride,
-                                            n_special_tokens=n_special_tokens)
 
-                basket = SampleBasket(raw=raw, id_internal=id_internal, id_external=id_external, samples=samples)
-                baskets.append(basket)
+            # Calculate the number of tokens that can be reserved for the passage. This is calculated by considering
+            # the max_seq_len, the number of tokens in the question and the number of special tokens that will be added
+            # when the question and passage are joined (e.g. [CLS] and [SEP])
+            passage_len_t = self.max_seq_len - len(basket.raw["question_tokens"][:self.max_query_length]) - n_special_tokens
+
+
+            # passage_spans is a list of dictionaries where each defines the start and end of each passage
+            # on both token and character level
+            try:
+                passage_spans = get_passage_offsets(basket.raw["document_offsets"],
+                                                    self.doc_stride,
+                                                    passage_len_t,
+                                                    basket.raw["document_text"])
+            except Exception as e:
+                logger.warning(f"Could not devide document into passages. Document: {basket.raw['document_text'][:200]}\n"
+                               f"With error: {e}")
+                passage_spans = []
+
+            for passage_span in passage_spans:
+                # Unpack each variable in the dictionary. The "_t" and "_c" indicate
+                # whether the index is on the token or character level
+                passage_start_t = passage_span["passage_start_t"]
+                passage_end_t = passage_span["passage_end_t"]
+                passage_start_c = passage_span["passage_start_c"]
+                passage_end_c = passage_span["passage_end_c"]
+
+                passage_start_of_word = basket.raw["document_start_of_word"][passage_start_t: passage_end_t]
+                passage_tokens = basket.raw["document_tokens"][passage_start_t: passage_end_t]
+                passage_text = basket.raw["document_text"][passage_start_c: passage_end_c]
+
+                clear_text = {"passage_text": passage_text,
+                              "question_text": basket.raw["question_text"],
+                              "passage_id": passage_span["passage_id"],
+                              }
+                tokenized = {"passage_start_t": passage_start_t,
+                             "passage_start_c": passage_start_c,
+                             "passage_tokens": passage_tokens,
+                             "passage_start_of_word": passage_start_of_word,
+                             "question_tokens": basket.raw["question_tokens"][:self.max_query_length],
+                             "question_offsets": basket.raw["question_offsets"][:self.max_query_length],
+                             "question_start_of_word": basket.raw["question_start_of_word"][:self.max_query_length],
+                             }
+                # The sample ID consists of internal_id and a passage numbering
+                sample_id = f"{basket.id_internal}-{passage_span['passage_id']}"
+                samples.append(Sample(id=sample_id,
+                                      clear_text=clear_text,
+                                      tokenized=tokenized))
+
+
+            basket.samples=samples
+
         return baskets
 
-    def _join_question_with_passages(self, baskets):
-        for b in baskets:
+    def _convert_answers(self, baskets):
+        """
+        Converts answers that are pure strings into the token based representation with start and end token offset.
+        Can handle multiple answers per question document pair as is common for development/text sets
+        """
+        for basket in baskets:
+            error_in_answer = False
+            for num, sample in enumerate(basket.samples):
+                # Dealing with potentially multiple answers (e.g. Squad dev set)
+                # Initializing a numpy array of shape (max_answers, 2), filled with -1 for missing values
+                label_idxs = np.full((self.max_answers, 2), fill_value=-1)
+
+                if error_in_answer or (len(basket.raw["answers"]) == 0):
+                    # If there are no answers we set
+                    label_idxs[0, :] = 0
+                else:
+                    # For all other cases we use start and end token indices, that are relative to the passage
+                    for i, answer in enumerate(basket.raw["answers"]):
+                        # Calculate start and end relative to document
+                        answer_len_c = len(answer["text"])
+                        answer_start_c = answer["answer_start"]
+                        answer_end_c = answer_start_c + answer_len_c - 1
+
+                        # Convert character offsets to token offsets on document level
+                        answer_start_t = offset_to_token_idx_vecorized(basket.raw["document_offsets"], answer_start_c)
+                        answer_end_t = offset_to_token_idx_vecorized(basket.raw["document_offsets"], answer_end_c)
+                        # TODO remove after testing 'offset_to_token_idx_vecorized()'
+                        # answer_start_t2 = offset_to_token_idx(doc_offsets, answer_start_c)
+                        # answer_end_t2 = offset_to_token_idx(doc_offsets, answer_end_c)
+                        # if (answer_start_t != answer_start_t2) or (answer_end_t != answer_end_t2):
+                        #     pass
+
+                        # Adjust token offsets to be relative to the passage
+                        answer_start_t -= sample.tokenized["passage_start_t"]
+                        answer_end_t -= sample.tokenized["passage_start_t"]
+
+                        # Initialize some basic variables
+                        question_len_t = len(sample.tokenized["question_tokens"])
+                        passage_len_t = len(sample.tokenized["passage_tokens"])
+
+                        # Check that start and end are contained within this passage
+                        if passage_len_t > answer_start_t >= 0 and passage_len_t > answer_end_t > 0:
+                            # Then adjust the start and end offsets by adding question and special tokens
+                            label_idxs[i][0] = self.sp_toks_start + question_len_t + self.sp_toks_mid + answer_start_t
+                            label_idxs[i][1] = self.sp_toks_start + question_len_t + self.sp_toks_mid + answer_end_t
+                        # If the start or end of the span answer is outside the passage, treat passage as no_answer
+                        else:
+                            label_idxs[i][0] = 0
+                            label_idxs[i][1] = 0
+
+                        ########## answer checking ##############################
+                        # TODO, move this checking into input validation functions and delete wrong examples there
+                        # Cases where the answer is not within the current passage will be turned into no answers by the featurization fn
+                        if answer_start_t < 0 or answer_end_t >= passage_len_t:
+                            pass
+                        else:
+                            doc_text = basket.raw["document_text"]
+                            answer_indices = doc_text[answer_start_c: answer_end_c + 1]
+                            answer_text = answer["text"]
+                            # check if answer string can be found in context
+                            if answer_text not in doc_text:
+                                logger.warning(f"Answer '{answer['text']}' not contained in context.")
+                                error_in_answer = True
+                                label_idxs[i][0] = -100  # TODO remove this hack also from featurization
+                                label_idxs[i][1] = -100
+                                break  # Break loop around answers, so the error message is not shown multiple times
+                            elif answer_indices != answer_text.strip():
+                                logger.warning(f"""Answer using start/end indices is '{answer_indices}' while gold label text is '{answer_text}'.\n
+                                                   Example will not be converted for training/evaluation.""")
+                                error_in_answer = True
+                                label_idxs[i][0] = -100 # TODO remove this hack also from featurization
+                                label_idxs[i][1] = -100
+                                break # Break loop around answers, so the error message is not shown multiple times
+                        ########## end of checking ####################
+
+                sample.tokenized["labels"] = label_idxs
+
+        return baskets
+
+    def _passages_to_pytorch_features(self, baskets, return_baskets):
+        """
+        Convert internal representation (nested baskets + samples with mixed types) to python features (arrays of numbers).
+        We first join question and passages into on large vector.
+        Then we add additional vectors for: - #TODO
+        """
+        for basket in baskets:
             # Add features to samples
-            for num, sample in enumerate(b.samples):
-                sample.id = f"{b.id_internal}-{num}"
-                _check_valid_answer(sample)
-                features = sample_to_features_qa(sample=sample,
-                                                 tokenizer=self.tokenizer,
-                                                 max_seq_len=self.max_seq_len,
-                                                 sp_toks_start=self.sp_toks_start,
-                                                 sp_toks_mid=self.sp_toks_mid,
-                                                 sp_toks_end=self.sp_toks_end,
-                                                 max_answers=self.max_answers)
-                sample.features = features
+            for num, sample in enumerate(basket.samples):
+                # Initialize some basic variables
+                question_tokens = sample.tokenized["question_tokens"]
+                question_start_of_word = sample.tokenized["question_start_of_word"]
+                question_len_t = len(question_tokens)
+                passage_start_t = sample.tokenized["passage_start_t"]
+                passage_tokens = sample.tokenized["passage_tokens"]
+                passage_start_of_word = sample.tokenized["passage_start_of_word"]
+                passage_len_t = len(passage_tokens)
+                sample_id = [int(x) for x in sample.id.split("-")]
+
+                # - Combines question_tokens and passage_tokens into a single vector called input_ids
+                # - input_ids also contains special tokens (e.g. CLS or SEP tokens).
+                # - It will have length = question_len_t + passage_len_t + n_special_tokens. This may be less than
+                #   max_seq_len but never greater since truncation was already performed when the document was chunked into passages
+                question_input_ids = sample.tokenized["question_tokens"]
+                passage_input_ids = sample.tokenized["passage_tokens"]
+
+                input_ids = self.tokenizer.build_inputs_with_special_tokens(token_ids_0=question_input_ids,
+                                                                       token_ids_1=passage_input_ids)
+
+                segment_ids = self.tokenizer.create_token_type_ids_from_sequences(token_ids_0=question_input_ids,
+                                                                             token_ids_1=passage_input_ids)
+                # To make the start index of passage tokens the start manually
+                seq_2_start_t = self.sp_toks_start + question_len_t + self.sp_toks_mid
+
+                start_of_word = [0] * self.sp_toks_start + \
+                                    question_start_of_word + \
+                                    [0] * self.sp_toks_mid + \
+                                    passage_start_of_word + \
+                                    [0] * self.sp_toks_end
+
+                # The mask has 1 for real tokens and 0 for padding tokens. Only real
+                # tokens are attended to.
+                padding_mask = [1] * len(input_ids)
+
+                # The passage mask has 1 for tokens that are valid start or ends for QA spans.
+                # 0s are assigned to question tokens, mid special tokens, end special tokens and padding
+                # Note that start special tokens are assigned 1 since they can be chosen for a no_answer prediction
+                span_mask = [1] * self.sp_toks_start
+                span_mask += [0] * question_len_t
+                span_mask += [0] * self.sp_toks_mid
+                span_mask += [1] * passage_len_t
+                span_mask += [0] * self.sp_toks_end
+
+                # Pad up to the sequence length. For certain models, the pad token id is not 0 (e.g. Roberta where it is 1)
+                pad_idx = self.tokenizer.pad_token_id
+                padding = [pad_idx] * (self.max_seq_len - len(input_ids))
+                zero_padding = [0] * (self.max_seq_len - len(input_ids))
+
+                input_ids += padding
+                padding_mask += zero_padding
+                segment_ids += zero_padding
+                start_of_word += zero_padding
+                span_mask += zero_padding
+
+                # TODO possibly remove these checks after input validation is in place
+                len_check = len(input_ids) == len(padding_mask) == len(segment_ids) == len(start_of_word) == len(span_mask)
+                id_check = len(sample_id) == 3
+                label_check = return_baskets or len(sample.tokenized.get("labels",[])) == self.max_answers
+                label_check2 = return_baskets or np.all(sample.tokenized["labels"] > -99) # labels are set to -100 when answer cannot be found
+                if len_check and id_check and label_check and label_check2:
+                    # - The first of the labels will be used in train, and the full array will be used in eval.
+                    # - start_of_word and spec_tok_mask are not actually needed by model.forward() but are needed for
+                    #   model.formatted_preds() during inference for creating answer strings
+                    # - passage_start_t is index of passage's first token relative to document
+                    feature_dict = {"input_ids": input_ids,
+                                    "padding_mask": padding_mask,
+                                    "segment_ids": segment_ids,
+                                    "passage_start_t": passage_start_t,
+                                    "start_of_word": start_of_word,
+                                    "labels": sample.tokenized.get("labels",[]),
+                                    "id": sample_id,
+                                    "seq_2_start_t": seq_2_start_t,
+                                    "span_mask": span_mask}
+                    sample.features = [feature_dict] # other processor's features can be lists
+                else:
+                    self.problematic_sample_ids.add(sample.id)
+                    sample.features = None
         return baskets
+
+    def _create_dataset(self, baskets):
+        """
+        Convert python features into pytorch dataset.
+        Also removes potential errors during preprocessing.
+        Flattens nested basket structure to create a flat list of features
+        """
+        features_flat = []
+        basket_to_remove = []
+        for basket in baskets:
+            if self._check_sample_features(basket):
+                for sample in basket.samples:
+                    features_flat.extend(sample.features)
+            else:
+                # remove the entire basket
+                basket_to_remove.append(basket)
+        if len(basket_to_remove) > 0:
+            for basket in basket_to_remove:
+                # if basket_to_remove is not empty remove the related baskets
+                baskets.remove(basket)
+
+        dataset, tensor_names = convert_features_to_dataset(features=features_flat)
+        return dataset, tensor_names, baskets
+
+    def _log_samples(self, n_samples, baskets):
+        logger.info("*** Show {} random examples ***".format(n_samples))
+        for i in range(n_samples):
+            random_basket = random.choice(baskets)
+            random_sample = random.choice(random_basket.samples)
+            logger.info(random_sample)
 
 
 class NaturalQuestionsProcessor(QAProcessor):
@@ -2053,9 +2330,9 @@ class NaturalQuestionsProcessor(QAProcessor):
         if self._is_nq_dict(dictionary):
             dictionary = self._prepare_dict(dictionary=dictionary)
 
-        dictionary_tokenized = _apply_tokenization(dictionary, self.tokenizer, self.answer_type_list)[0]
+        dictionary_tokenized = self._apply_tokenization(dictionary, self.tokenizer, self.answer_type_list)[0]
         n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
-        samples = create_samples_qa(dictionary_tokenized,
+        samples = create_samples_qa_Natural_Question(dictionary_tokenized,
                                     self.max_query_length,
                                     self.max_seq_len,
                                     self.doc_stride,
@@ -2240,8 +2517,8 @@ class NaturalQuestionsProcessor(QAProcessor):
         return start_c, end_c
 
     def _sample_to_features(self, sample: Sample) -> dict:
-        _check_valid_answer(sample)
-        features = sample_to_features_qa(sample=sample,
+        self._check_valid_answer(sample)
+        features = sample_to_features_qa_Natural_Questions(sample=sample,
                                          tokenizer=self.tokenizer,
                                          max_seq_len=self.max_seq_len,
                                          sp_toks_start=self.sp_toks_start,
@@ -2250,6 +2527,21 @@ class NaturalQuestionsProcessor(QAProcessor):
                                          answer_type_list=self.answer_type_list,
                                          max_answers=self.max_answers)
         return features
+
+    def _check_valid_answer(self, sample):
+        passage_text = sample.clear_text["passage_text"]
+        for answer in sample.clear_text["answers"]:
+            len_passage = len(passage_text)
+            start = answer["start_c"]
+            end = answer["end_c"]
+            # Cases where the answer is not within the current passage will be turned into no answers by the featurization fn
+            if start < 0 or end >= len_passage:
+                continue
+            answer_indices = passage_text[start: end + 1]
+            answer_text = answer["text"]
+            if answer_indices != answer_text:
+                raise ValueError(
+                    f"""Answer using start/end indices is '{answer_indices}' while gold label text is '{answer_text}'""")
 
     def _dict_to_samples_and_features(self, dictionary: dict, **kwargs) -> [Sample]:
         """
@@ -2262,9 +2554,9 @@ class NaturalQuestionsProcessor(QAProcessor):
             dictionary = self._prepare_dict(dictionary=dictionary)
         basket_id_internal = kwargs["basket_id_internal"]
 
-        dictionary_tokenized = _apply_tokenization(dictionary, self.tokenizer, self.answer_type_list)[0]
+        dictionary_tokenized = self._apply_tokenization(dictionary, self.tokenizer, self.answer_type_list)[0]
         n_special_tokens = self.tokenizer.num_special_tokens_to_add(pair=True)
-        samples = create_samples_qa(dictionary_tokenized,
+        samples = create_samples_qa_Natural_Question(dictionary_tokenized,
                                     self.max_query_length,
                                     self.max_seq_len,
                                     self.doc_stride,
@@ -2281,6 +2573,76 @@ class NaturalQuestionsProcessor(QAProcessor):
             sample.features = features
 
         return samples
+
+    def _apply_tokenization(self, dictionary, tokenizer, answer_types_list=[]):
+        raw_baskets = []
+        dictionary = convert_qa_input_dict(dictionary)
+        dictionary["qas"] = self._is_impossible_to_answer_type(dictionary["qas"])
+        document_text = dictionary["context"]
+
+        document_tokenized = tokenize_with_metadata(document_text, tokenizer)
+        document_start_of_word = [int(x) for x in document_tokenized["start_of_word"]]
+        questions = dictionary["qas"]
+        for question in questions:
+            answers = []
+            # For training and dev with labelled examples
+            try:
+                external_id = question["id"]
+                question_text = question["question"]
+                for answer in question["answers"]:
+                    if 'answer_type' in answer.keys() and answer['answer_type'] in answer_types_list:
+                        answer_type = answer['answer_type']
+                    else:
+                        if answer["text"] == "":
+                            answer_type = "no_answer"
+                        else:
+                            answer_type = "span"
+                    a = {"text": answer["text"],
+                         "offset": answer["answer_start"],
+                         "answer_type": answer_type}
+                    answers.append(a)
+            # For inference where samples are read in as dicts without an id or answers
+            except TypeError:
+                external_id = try_get(ID_NAMES, dictionary)
+                question_text = question
+
+            question_tokenized = tokenize_with_metadata(question_text, tokenizer)
+            question_start_of_word = [int(x) for x in question_tokenized["start_of_word"]]
+
+            # During inference, there is no_answer type. Also, question might be a str instead of a dict
+            if type(question) == str:
+                answer_type = None
+            elif type(question) == dict:
+                answer_type = question.get("answer_type", None)
+            else:
+                raise Exception("Question was neither in str nor dict format")
+
+            raw = {"document_text": document_text,
+                   "document_tokens": document_tokenized["tokens"],
+                   "document_offsets": document_tokenized["offsets"],
+                   "document_start_of_word": document_start_of_word,
+                   "question_text": question_text,
+                   "question_tokens": question_tokenized["tokens"],
+                   "question_offsets": question_tokenized["offsets"],
+                   "question_start_of_word": question_start_of_word,
+                   "answers": answers,
+                   "answer_type": answer_type,
+                   "external_id": external_id}
+            raw_baskets.append(raw)
+        return raw_baskets
+
+    def _is_impossible_to_answer_type(self, qas):
+        """ Converts questions from having an is_impossible field to having an answer_type field"""
+        new_qas = []
+        for q in qas:
+            answer_type = "span"
+            if "is_impossible" in q:
+                if q["is_impossible"] == True:
+                    answer_type = "no_answer"
+                del q["is_impossible"]
+                q["answer_type"] = answer_type
+            new_qas.append(q)
+        return new_qas
 
 
 class RegressionProcessor(Processor):
@@ -2900,6 +3262,7 @@ class TextSimilarityProcessor(Processor):
 
         return samples
 
+#TODO standardize with other processors
 def _get_start_of_word(word_ids, special_token_mask=None):
     words = np.array(word_ids)
     #TODO test with multiple CLS tokens
@@ -2916,133 +3279,4 @@ def _get_start_of_word(word_ids, special_token_mask=None):
 
     return start_of_word_single
 
-def _apply_tokenization_batch(dicts,tokenizer):
-    raw_baskets_batch = []
-    texts = [d["context"] for d in dicts]
-    tokenized_batch = tokenizer.batch_encode_plus(texts, return_offsets_mapping=True, return_special_tokens_mask=True)
-
-    tokenids_batch = tokenized_batch["input_ids"]
-    offsets_batch = []
-    for o in tokenized_batch["offset_mapping"]:
-        offsets_batch.append([x[0] for x in o])
-
-    start_of_words_batch = []
-    for e in tokenized_batch.encodings:
-        start_of_words_batch.append(_get_start_of_word(e.words))
-
-    for i,d in enumerate(dicts):
-        raw_basket = []
-        document_text = d["context"]
-        for q in d["qas"]:
-            # tokenize questions
-            question_text = q["question"]
-            tokenized_q = tokenizer.encode_plus(question_text, return_offsets_mapping=True, return_special_tokens_mask=True)
-
-            question_tokenids = tokenized_q["input_ids"]
-            question_offsets = [x[0] for x in tokenized_q["offset_mapping"]]
-            question_sow = _get_start_of_word(tokenized_q.encodings[0].words)
-            answers = q["answers"]
-            external_id = q["id"]
-            answer_type = "span"
-            raw = {"document_text": document_text,
-                   "document_tokens": tokenids_batch[i],
-                   "document_offsets": offsets_batch[i],
-                   "document_start_of_word": start_of_words_batch[i],
-                   "question_text": question_text,
-                   "question_tokens": question_tokenids,
-                   "question_offsets": question_offsets,
-                   "question_start_of_word": question_sow,
-                   "answers": answers,
-                   "answer_type": answer_type,
-                   "external_id": external_id}
-            raw_basket.append(raw)
-        raw_baskets_batch.append(raw_basket)
-
-    return raw_baskets_batch
-
-def _apply_tokenization(dictionary, tokenizer, answer_types_list=[]):
-    raw_baskets = []
-    dictionary = convert_qa_input_dict(dictionary)
-    dictionary["qas"] = _is_impossible_to_answer_type(dictionary["qas"])
-    document_text = dictionary["context"]
-
-    document_tokenized = tokenize_with_metadata(document_text, tokenizer)
-    document_start_of_word = [int(x) for x in document_tokenized["start_of_word"]]
-    questions = dictionary["qas"]
-    for question in questions:
-        answers = []
-        # For training and dev with labelled examples
-        try:
-            external_id = question["id"]
-            question_text = question["question"]
-            for answer in question["answers"]:
-                if 'answer_type' in answer.keys() and answer['answer_type'] in answer_types_list:
-                    answer_type = answer['answer_type']
-                else:
-                    if answer["text"] == "":
-                        answer_type = "no_answer"
-                    else:
-                        answer_type = "span"
-                a = {"text": answer["text"],
-                     "offset": answer["answer_start"],
-                     "answer_type": answer_type}
-                answers.append(a)
-        # For inference where samples are read in as dicts without an id or answers
-        except TypeError:
-            external_id = try_get(ID_NAMES, dictionary)
-            question_text = question
-
-        question_tokenized = tokenize_with_metadata(question_text, tokenizer)
-        question_start_of_word = [int(x) for x in question_tokenized["start_of_word"]]
-
-        # During inference, there is no_answer type. Also, question might be a str instead of a dict
-        if type(question) == str:
-            answer_type = None
-        elif type(question) == dict:
-            answer_type = question.get("answer_type", None)
-        else:
-            raise Exception("Question was neither in str nor dict format")
-
-        raw = {"document_text": document_text,
-               "document_tokens": document_tokenized["tokens"],
-               "document_offsets": document_tokenized["offsets"],
-               "document_start_of_word": document_start_of_word,
-               "question_text": question_text,
-               "question_tokens": question_tokenized["tokens"],
-               "question_offsets": question_tokenized["offsets"],
-               "question_start_of_word": question_start_of_word,
-               "answers": answers,
-               "answer_type": answer_type,
-               "external_id": external_id}
-        raw_baskets.append(raw)
-    return raw_baskets
-
-
-def _is_impossible_to_answer_type(qas):
-    """ Converts questions from having an is_impossible field to having an answer_type field"""
-    new_qas = []
-    for q in qas:
-        answer_type = "span"
-        if "is_impossible" in q:
-            if q["is_impossible"] == True:
-                answer_type = "no_answer"
-            del q["is_impossible"]
-            q["answer_type"] = answer_type
-        new_qas.append(q)
-    return new_qas
-
-
-def _check_valid_answer(sample):
-    passage_text = sample.clear_text["passage_text"]
-    for answer in sample.clear_text["answers"]:
-        len_passage = len(passage_text)
-        start = answer["start_c"]
-        end = answer["end_c"]
-        # Cases where the answer is not within the current passage will be turned into no answers by the featurization fn
-        if start < 0 or end >= len_passage:
-            continue
-        answer_indices = passage_text[start: end + 1]
-        answer_text = answer["text"]
-        if answer_indices != answer_text:
-            raise ValueError(f"""Answer using start/end indices is '{answer_indices}' while gold label text is '{answer_text}'""")
 
