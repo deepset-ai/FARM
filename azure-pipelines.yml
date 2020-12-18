@@ -4,13 +4,13 @@
 # https://docs.microsoft.com/azure/devops/pipelines/languages/python
 
 trigger:
-  - master
-
+  branches:
+    include:
+    - master
 pr:
   branches:
     include:
-    - refactor_processor_qa
-
+    - '*'
 jobs:
   - job: 'Test'
     pool:

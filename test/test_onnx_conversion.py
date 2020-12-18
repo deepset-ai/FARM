@@ -13,8 +13,8 @@ def test_onnx_conversion_and_inference(tmp_path, model_name):
     onnx_inferencer = Inferencer.load(tmp_path / "test-onnx", task_type="question_answering", num_processes=0)
     qa_input = [
         {
-            "qas": ["What is the population of Berlin?"],
-            "context": "Berlin is the capital and largest city of Germany by both area and population. Its 3,769,495 "
+            "questions": ["What is the population of Berlin?"],
+            "text": "Berlin is the capital and largest city of Germany by both area and population. Its 3,769,495 "
             "inhabitants as of December 31, 2019 make it the most populous city of the European Union, "
             "according to population within city limits.The city is also one of Germany's 16 federal states.",
         }

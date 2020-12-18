@@ -58,7 +58,8 @@ def test_conversion_inferencer_qa():
     model = "deepset/bert-base-cased-squad2"
     nlp = Inferencer.load(model, task_type="question_answering", num_processes=0)
 
-    assert nlp.processor.tokenizer.basic_tokenizer.do_lower_case == False
+    assert nlp.processor.tokenizer.do_lower_case == False
+    assert nlp.processor.tokenizer.is_fast == True
 
     QA_input = [{"questions": [question], "text": text}]
     result_farm = nlp.inference_from_dicts(dicts=QA_input)
@@ -100,7 +101,8 @@ def test_conversion_inferencer_classification():
     model = "deepset/bert-base-german-cased-hatespeech-GermEval18Coarse"
     nlp = Inferencer.load(model, task_type="text_classification", num_processes=0)
 
-    assert nlp.processor.tokenizer.basic_tokenizer.do_lower_case == False
+    assert nlp.processor.tokenizer.do_lower_case == False
+    assert nlp.processor.tokenizer.is_fast == True
 
     input = [{"text": text}]
     result_farm = nlp.inference_from_dicts(dicts=input)
@@ -139,7 +141,8 @@ def test_conversion_inferencer_ner():
     model = "dslim/bert-base-NER"
     nlp = Inferencer.load(model, task_type="ner", num_processes=0)
 
-    assert nlp.processor.tokenizer.basic_tokenizer.do_lower_case == False
+    assert nlp.processor.tokenizer.do_lower_case == False
+    assert nlp.processor.tokenizer.is_fast == True
 
     input = [{"text": text}]
     result_farm = nlp.inference_from_dicts(dicts=input)
