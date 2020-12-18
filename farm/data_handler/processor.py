@@ -1290,7 +1290,14 @@ class BertStyleLMProcessor(Processor):
 
         self.delimiter = ""
         self.max_docs = max_docs
-        os.environ["RAYON_RS_NUM_CPUS"] = "1"
+
+        if not tokenizer.is_fast:
+            raise ValueError("This processor only supports FastTokenizers. "
+                             "Load one by calling Tokenizer.load(..., use_fast=True)")
+
+        if not rust_multithreading:
+            os.environ["RAYON_RS_NUM_CPUS"] = "1"
+
         super(BertStyleLMProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
@@ -1339,12 +1346,11 @@ class BertStyleLMProcessor(Processor):
         else:
            samples = self._create_sequence_pairs_no_next_sent(dicts)
 
-        # 2) Get features
+        # 2) Create labels (masking words + NSP)
         features = []
         vocab = self.tokenizer.vocab
         for sample in samples:
             features.append(self._create_labels(sample=sample, vocab_length=len(vocab)))
-        logger.info("Done with features")
 
         # 3) Create dataset
         dataset, tensor_names = convert_features_to_dataset(features=features)
@@ -1489,18 +1495,14 @@ class BertStyleLMProcessor(Processor):
         With prob. 50% these are two subsequent sequences from one doc. With 50% the second sequence will be a
         random one from another document.
 
-        :param doc: The current document.
-        :type doc: [str]
         :param chunk: List of subsequent, tokenized and encoded sentences.
         :type chunk: [Encoding]
         :param random_doc: A random doc where we can sample a random next "sentence" from.
-        :type random_doc: List
+        :type random_doc: [str]
         :param max_num_tokens: Samples are truncated after this many tokens.
         :type max_num_tokens: int
-        :return: (list, list, dict, int)
-            tokenized seq a,
-            tokenized seq b,
-            sample in clear text with label,
+        :return: (Sample, int)
+            sample,
             number of unused sentences in chunk
         """
         # edge case: if we have only a single sequence, we split that one in half
@@ -1568,7 +1570,7 @@ class BertStyleLMProcessor(Processor):
 
                 label = False
 
-                # We didn't use all of the segments in chunk => put them back
+                # We didn't use all of the segments in this chunk as we sampled a random sequence => put them back
                 num_unused_segments = len(chunk) - a_end
 
             # Join everything to single sample
@@ -1662,14 +1664,14 @@ class BertStyleLMProcessor(Processor):
 
         :param tokens: tokenized sentence.
         :type tokens: [str]
+        :param vocab_length: number of tokens in the vocabulary
+        :type vocab_length: int
         :param token_groups: If supplied, only whole groups of tokens get masked. This can be whole words but
         also other types (e.g. spans). Booleans indicate the start of a group.
         :type token_groups: [bool]
         :param max_predictions_per_seq: maximum number of masked tokens
         :type max_predictions_per_seq: int
-        :param masked_lm_prob: probability of masking a token
-        :type masked_lm_prob: float
-        :return: (list of str, list of int), masked tokens and related labels for LM prediction
+        :return: (list of int, list of int), masked tokens and related labels for LM prediction
         """
         # 1. Combine tokens to one group (e.g. all subtokens of a word)
         cand_indices = []
@@ -1757,10 +1759,9 @@ class BertStyleLMProcessor(Processor):
                 dicts = list(self.file_to_dicts(filepath))
                 self.max_docs = None
             # count samples
-            n_samples = 0
-            for d in dicts:
-                #TODO this currently fails
-                n_samples += len(self._create_sequence_pairs_bert_style(doc=d["doc"], all_dicts=dicts))
+            dicts = [d["doc"] for d in dicts]
+            n_samples = len(self._create_sequence_pairs_bert_style(docs=dicts))
+            # extrapolate to the whole file
             n_samples = int(n_samples / len(dicts)) * (empty_lines+1)
             logging.info(f"Heuristic estimate of number of samples in {filepath} based on {len(dicts)} docs: {n_samples}")
         else:
