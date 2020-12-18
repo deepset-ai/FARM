@@ -614,3 +614,18 @@ def _get_start_of_word_QA(word_ids):
     words = np.array(word_ids)
     start_of_word_single = [1] + list(np.ediff1d(words))
     return start_of_word_single
+
+#TODO standardize with other processors
+def _get_start_of_word(word_ids, special_token_mask=None):
+    words = np.array(word_ids)
+    if special_token_mask:
+        start_of_word_single = np.where(special_token_mask, -1, words)
+        start_of_word_single = np.ediff1d(start_of_word_single)
+        start_of_word_single = [0] + list(np.clip(start_of_word_single, 0, 1))
+    else:
+        # TODO check for validity for all tokenizer and special token types
+        words[0] = -1
+        words[-1] = words[-2]
+        start_of_word_single = [0] + list(np.ediff1d(words))
+
+    return start_of_word_single
