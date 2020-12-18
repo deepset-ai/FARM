@@ -12,6 +12,7 @@ import torch
 import numpy as np
 from sklearn.preprocessing import StandardScaler
 from transformers.configuration_auto import AutoConfig
+from tokenizers import Encoding
 
 from numpy.random import random as random_float
 from farm.data_handler.dataset import convert_features_to_dataset
@@ -40,8 +41,6 @@ from farm.data_handler.utils import (
     get_sentence_pair,
     split_with_metadata,
     convert_qa_input_dict,
-    get_sequence_pair,
-    join_sentences
 )
 
 from farm.data_handler.input_features import get_roberta_seq_2_start, get_camembert_seq_2_start
@@ -1301,7 +1300,6 @@ class BertStyleLMProcessor(Processor):
             self.add_task("nextsentence", "acc", ["False", "True"])
         self.masked_lm_prob = masked_lm_prob
 
-
     def get_added_tokens(self):
         dictionary = self.tokenizer.get_added_vocab()
         sorted_tuples = sorted(dictionary.items(), key=lambda x: x[0])
@@ -1313,7 +1311,7 @@ class BertStyleLMProcessor(Processor):
 
     def dataset_from_dicts(self, dicts, indices=None, return_baskets=False):
         dicts = [d["doc"] for d in dicts]
-        # 2) Create samples & truncate (sentence pairs)
+        # 1) Create samples & truncate (sentence pairs)
         # next sentence prediction ...
         if self.next_sent_pred:
             assert len(dicts) > 1, "Need at least 2 documents to sample random sentences from"
@@ -1322,7 +1320,7 @@ class BertStyleLMProcessor(Processor):
                 samples = self._create_sequence_pairs_by_line(dicts)
             # ...bert style
             elif self.next_sent_pred_style == "bert-style":
-                 samples = self._dict_to_samples_bert_style(dicts)
+                 samples = self._create_sequence_pairs_bert_style(dicts)
             else:
                 raise NotImplementedError("next_sent_pred_style has to be 'sentence' or 'bert-style'")
 
@@ -1330,7 +1328,7 @@ class BertStyleLMProcessor(Processor):
         else:
            samples = self._create_sequence_pairs_no_next_sent(dicts)
 
-        # Get features
+        # 2) Get features
         features = []
         vocab = self.tokenizer.vocab
         for sample in samples:
@@ -1338,7 +1336,7 @@ class BertStyleLMProcessor(Processor):
             # features.append(sample.features)
         logger.info("Done with features")
 
-        # Create dataset
+        # 3) Create dataset
         dataset, tensor_names = convert_features_to_dataset(features=features)
         return dataset, tensor_names
 
@@ -1392,11 +1390,8 @@ class BertStyleLMProcessor(Processor):
                                   ))
         return samples
 
-    def _dict_to_samples_bert_style(self, docs):
+    def _create_sequence_pairs_bert_style(self, docs):
         samples = []
-        # TODO make this more general
-        # account for [CLS], [SEP], [SEP]
-        max_num_tokens = self.max_seq_len - 3
 
         # 1) Tokenize + Encode all docs
         # TODO optimize for single batch call
@@ -1409,6 +1404,9 @@ class BertStyleLMProcessor(Processor):
             encoded_docs.append(encoded_sentences)
 
         # 2) Create sequence pairs that utilize full possible length up to max_seq_len
+        # TODO make num special tokens more general
+        # account for [CLS], [SEP], [SEP]
+        max_num_tokens = self.max_seq_len - 3
         for enc_doc in encoded_docs:
             current_chunk = []
             current_length = 0
@@ -1417,36 +1415,15 @@ class BertStyleLMProcessor(Processor):
                 current_length += len(enc_doc[i].tokens)
                 current_chunk.append(enc_doc[i])
 
-                # reached end of document or max_num_tokens
-                if (i == len(enc_doc.encodings) - 1) or (current_length >= max_num_tokens):
-                    # split our list of sequences (=chunk) into two
-                    sequence_a, sequence_b, sample_in_clear_text, num_unused_segments = get_sequence_pair(
-                        # doc=enc_doc,
+                if current_length >= max_num_tokens:
+                    # split our list of sequences (=chunk) into two sequences and create a sample out of it
+                    # (incl. special tokens and all other masks)
+                    sample, num_unused_segments = self._create_sample_bert_style(
                         chunk=current_chunk,
-                        # all_docs=encoded_docs,
+                        random_doc=encoded_docs[random.randint(0, len(encoded_docs)-1)],
                         max_num_tokens=max_num_tokens,
                     )
-
-                    # join lists to sequences
-                    # sequence_a = join_sentences(sequence_a)
-                    # sequence_b = join_sentences(sequence_b)
-
-
-                    for seq_name in ["tokens", "offsets", "start_of_word"]:
-                        sequence_a[seq_name], sequence_b[seq_name], _ = truncate_sequences(
-                            seq_a=sequence_a[seq_name],
-                            seq_b=sequence_b[seq_name],
-                            tokenizer=self.tokenizer,
-                            max_seq_len=max_num_tokens,
-                            with_special_tokens=False,
-                            truncation_strategy="only_second",
-                        )
-                    tokenized = {"text_a": sequence_a, "text_b": sequence_b}
-
-                    #TODO  Add special tokens
-
-                    samples.append(Sample(id=None, clear_text=sample_in_clear_text, tokenized=tokenized))
-
+                    samples.append(sample)
                     i -= num_unused_segments
 
                     current_chunk = []
@@ -1496,6 +1473,149 @@ class BertStyleLMProcessor(Processor):
                                   ))
         return samples
 
+    def _create_sample_bert_style(self, chunk, random_doc, max_num_tokens, prob_next_sentence=0.5):
+        """
+        Get one sample from corpus consisting of two sequences. A sequence can consist of more than one sentence.
+        With prob. 50% these are two subsequent sequences from one doc. With 50% the second sequence will be a
+        random one from another document.
+
+        :param doc: The current document.
+        :type doc: [str]
+        :param chunk: List of subsequent, tokenized and encoded sentences.
+        :type chunk: [Encoding]
+        :param random_doc: A random doc where we can sample a random next "sentence" from.
+        :type random_doc: List
+        :param max_num_tokens: Samples are truncated after this many tokens.
+        :type max_num_tokens: int
+        :return: (list, list, dict, int)
+            tokenized seq a,
+            tokenized seq b,
+            sample in clear text with label,
+            number of unused sentences in chunk
+        """
+        # edge case: if we have only a single sequence, we split that one in half
+        if len(chunk) == 1:
+            # Define splitting point
+            if int(len(chunk[0].tokens) / 2) >= max_num_tokens:
+                boundary = int(max_num_tokens / 2)
+            else:
+                boundary = int(len(chunk[0].tokens) / 2)
+
+            # Insert special tokens
+            input_ids = self.tokenizer.build_inputs_with_special_tokens(token_ids_0=chunk[0].ids[:boundary],
+                                                                        token_ids_1=chunk[0].ids[
+                                                                                    boundary:max_num_tokens])
+
+            segment_ids = self.tokenizer.create_token_type_ids_from_sequences(token_ids_0=chunk[0].ids[:boundary],
+                                                                              token_ids_1=chunk[0].ids[
+                                                                                          boundary:max_num_tokens])
+
+            # TODO make this general for other model types
+            start_of_word = [0] + chunk[0].start_of_word[:boundary] + [0] + chunk[0].start_of_word[boundary:max_num_tokens] + [0]
+            padding_mask = [1] * len(input_ids)
+
+            assert len(start_of_word) == len(input_ids)
+            assert len(padding_mask) == len(input_ids)
+            assert len(segment_ids) == len(input_ids)
+
+            sample = Sample(id=None,
+                            clear_text= {"text_a": None,
+                                        "text_b": None,
+                                        "nextsentence_label": True},
+                            tokenized= {"start_of_word": start_of_word},
+                            features= {"input_ids": input_ids,
+                                        "segment_ids": segment_ids,
+                                        "padding_mask": padding_mask,
+                                        }
+            )
+            num_unused_segments = 0
+            return sample, num_unused_segments
+        else:
+            # determine how many segments from chunk go into sequence A
+            a_end = random.randrange(1, len(chunk))
+            sequence_a = chunk[:a_end]
+            length_a = sum([len(seq) for seq in sequence_a])
+
+            # Build sequence B
+            target_b_length = max_num_tokens - length_a
+            # a) .. using actual next sequence
+            if (random.random() > prob_next_sentence) and (len(chunk) > 1):
+                sequence_b = chunk[a_end:]
+                label = True
+                num_unused_segments = 0
+
+            # b) ... using random next sequence
+            else:
+                sequence_b = []
+                length_b = 0
+                # pick random start sentence and then fill up to target length
+                random_start = random.randrange(len(random_doc))
+                for i in range(random_start, len(random_doc.encodings)):
+                    sequence_b.append(random_doc[i])
+                    length_b += len(random_doc[i].ids)
+                    if length_b >= target_b_length:
+                        break
+
+                label = False
+
+                # We didn't use all of the segments in chunk => put them back
+                num_unused_segments = len(chunk) - a_end
+
+            # Join everything to single sample
+            def merge_start_of_word(sequences):
+                start_of_word = []
+                for s in sequences:
+                    start_of_word.extend(s.start_of_word)
+                return start_of_word
+
+            start_of_word_a = merge_start_of_word(sequence_a)
+            start_of_word_b = merge_start_of_word(sequence_b)
+
+            sequence_a = Encoding.merge(sequence_a)
+            sequence_b = Encoding.merge(sequence_b)
+
+            assert len(sequence_a.ids) > 0
+            assert len(sequence_b.ids) > 0
+
+            # Insert special tokens
+            input_ids = self.tokenizer.build_inputs_with_special_tokens(token_ids_0=sequence_a.ids,
+                                                                        token_ids_1=sequence_b.ids[:target_b_length])
+
+            segment_ids = self.tokenizer.create_token_type_ids_from_sequences(token_ids_0=sequence_a.ids,
+                                                                              token_ids_1=sequence_b.ids[:target_b_length])
+
+            # TODO make this general for other model types
+            start_of_word = [0] + start_of_word_a + [0] + start_of_word_b[:target_b_length] + [0]
+            padding_mask = [1] * len(input_ids)
+
+            if len(input_ids) < self.max_seq_len:
+                # Pad up to the sequence length. For certain models, the pad token id is not 0 (e.g. Roberta where it is 1)
+                pad_idx = self.tokenizer.pad_token_id
+                padding = [pad_idx] * (self.max_seq_len - len(input_ids))
+                zero_padding = [0] * (self.max_seq_len - len(input_ids))
+
+                input_ids += padding
+                padding_mask += zero_padding
+                segment_ids += zero_padding
+                start_of_word += zero_padding
+
+            assert len(start_of_word) == len(input_ids)
+            assert len(padding_mask) == len(input_ids)
+            assert len(segment_ids) == len(input_ids)
+
+            sample = Sample(id=None,
+                            clear_text={"text_a": None,
+                                        "text_b": None,
+                                        "nextsentence_label": label},
+                            tokenized={"start_of_word": start_of_word},
+                            features={"input_ids": input_ids,
+                                      "segment_ids": segment_ids,
+                                      "padding_mask": padding_mask,
+                                      }
+                                )
+
+        return sample, num_unused_segments
+
     def _create_labels(self, sample, vocab) -> dict:
         # Mask random words
         tokens_a, lm_label_ids = self._mask_random_words(sample.features["input_ids"], vocab, token_groups=sample.tokenized["start_of_word"])
@@ -1509,18 +1629,6 @@ class BertStyleLMProcessor(Processor):
                 sample.features["nextsentence_label_ids"] = [0]
             else:
                 sample.features["nextsentence_label_ids"] = [1]
-
-
-        # The mask has 1 for real tokens and 0 for padding tokens. Only real
-        # tokens are attended to.
-        # padding_mask = [1] * len(input_ids)
-
-        # feature_dict = {
-        #     "input_ids": input_ids,
-        #     #"padding_mask": padding_mask,
-        #     "segment_ids": segment_ids,
-        #     "lm_label_ids": lm_label_ids,
-        # }
 
         assert len(sample.features["input_ids"]) == self.max_seq_len
         assert len(sample.features["padding_mask"]) == self.max_seq_len
@@ -1648,7 +1756,7 @@ class BertStyleLMProcessor(Processor):
             # count samples
             n_samples = 0
             for d in dicts:
-                n_samples += len(self._dict_to_samples_bert_style(doc=d["doc"], all_dicts=dicts))
+                n_samples += len(self._create_sequence_pairs_bert_style(doc=d["doc"], all_dicts=dicts))
             n_samples = int(n_samples / len(dicts)) * (empty_lines+1)
             logging.info(f"Heuristic estimate of number of samples in {filepath} based on {len(dicts)} docs: {n_samples}")
         else:
