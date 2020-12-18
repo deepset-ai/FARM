@@ -1332,8 +1332,7 @@ class BertStyleLMProcessor(Processor):
         features = []
         vocab = self.tokenizer.vocab
         for sample in samples:
-            features.append(self._create_labels(sample=sample, vocab=vocab))
-            # features.append(sample.features)
+            features.append(self._create_labels(sample=sample, vocab_length=len(vocab)))
         logger.info("Done with features")
 
         # 3) Create dataset
@@ -1616,11 +1615,11 @@ class BertStyleLMProcessor(Processor):
 
         return sample, num_unused_segments
 
-    def _create_labels(self, sample, vocab) -> dict:
+    def _create_labels(self, sample, vocab_length) -> dict:
         # Mask random words
-        tokens_a, lm_label_ids = self._mask_random_words(sample.features["input_ids"], vocab, token_groups=sample.tokenized["start_of_word"])
+        input_ids, lm_label_ids = self._mask_random_words(sample.features["input_ids"], vocab_length, token_groups=sample.tokenized["start_of_word"])
         sample.features["lm_label_ids"] = lm_label_ids
-        sample.features["input_ids"] = tokens_a
+        sample.features["input_ids"] = input_ids
 
         # NSP label
         if self.next_sent_pred:
@@ -1637,7 +1636,7 @@ class BertStyleLMProcessor(Processor):
 
         return sample.features
 
-    def _mask_random_words(self, tokens, vocab, token_groups=None, max_predictions_per_seq=20):
+    def _mask_random_words(self, tokens, vocab_length, token_groups=None, max_predictions_per_seq=20):
         """
         Masking some random tokens for Language Model task with probabilities as in the original BERT paper.
         num_masked.
@@ -1661,13 +1660,10 @@ class BertStyleLMProcessor(Processor):
         :type masked_lm_prob: float
         :return: (list of str, list of int), masked tokens and related labels for LM prediction
         """
-        # import time
-        # tic = time.time()
         # 1. Combine tokens to one group (e.g. all subtokens of a word)
         cand_indices = []
         for (i, token) in enumerate(tokens):
-            # if token == self.tokenizer.cls_token_id or token == self.tokenizer.sep_token_id:
-            if token == 101 or token == 102:
+            if token == 101 or token == 102 or token == 0:
                 continue
             if (token_groups and len(cand_indices) >= 1 and not token_groups[i]):
                 cand_indices[-1].append(i)
@@ -1678,11 +1674,10 @@ class BertStyleLMProcessor(Processor):
                           max(1, int(round(len(tokens) * self.masked_lm_prob ))))
 
         random.shuffle(cand_indices)
+
         output_label = [-1] * len(tokens)
         num_masked = 0
-
-        # assert self.tokenizer.mask_token_id not in tokens
-        assert 103 not in tokens
+        assert 103 not in tokens #mask token
 
         # 2. Mask the first groups until we reach the number of tokens we wanted to mask (num_to_mask)
         for index_set in cand_indices:
@@ -1700,12 +1695,11 @@ class BertStyleLMProcessor(Processor):
                 # 80% randomly change token to mask token
                 if prob < 0.8:
                     tokens[index] = 103
-                    # tokens[index] = self.tokenizer.mask_token_id
 
                 # 10% randomly change token to random token
                 # TODO currently custom vocab is not included here
                 elif prob < 0.9:
-                    tokens[index] = random.choice(list(vocab.items()))[1]
+                    tokens[index] = random.randint(0, vocab_length)
 
                 # -> rest 10% randomly keep current token
 
@@ -1714,13 +1708,11 @@ class BertStyleLMProcessor(Processor):
                     output_label[index] = original_token
                 except KeyError:
                     # For unknown words (should not occur with BPE vocab)
-                    # output_label[index] = self.tokenizer.unk_token_id
-                    output_label[index] = 100
+                    output_label[index] = 100 # UNK token
                     logger.warning(
                         "Cannot find token '{}' in vocab. Using [UNK] instead".format(original_token)
                     )
-        # toc = time.time()
-        # logger.info(f"time: {toc-tic}")
+
         return tokens, output_label
 
     def estimate_n_samples(self, filepath, max_docs=500):
