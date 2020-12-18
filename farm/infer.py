@@ -306,7 +306,10 @@ class Inferencer:
             self.process_pool = None
         else:
             if num_processes is None:  # use all CPU cores
-                num_processes = mp.cpu_count() - 1
+                if mp.cpu_count() > 3:
+                    num_processes = mp.cpu_count() - 1
+                else:
+                    num_processes = mp.cpu_count()
             self.process_pool = mp.Pool(processes=num_processes)
             logger.info(
                 f"Got ya {num_processes} parallel workers to do inference ..."
