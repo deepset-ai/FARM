@@ -1351,7 +1351,7 @@ class BertStyleLMProcessor(Processor):
 
         # 2) Create labels (masking words + NSP)
         features = []
-        vocab_length = self.tokenizer.vocab-1
+        vocab_length = len(self.tokenizer.vocab)-1
         for sample in samples:
             features.append(self._create_labels(sample=sample, vocab_length=vocab_length))
 
@@ -1563,13 +1563,16 @@ class BertStyleLMProcessor(Processor):
             else:
                 sequence_b = []
                 length_b = 0
-                # pick random start sentence and then fill up to target length
-                random_start = random.randrange(len(random_doc))
-                for i in range(random_start, len(random_doc.encodings)):
-                    sequence_b.append(random_doc[i])
-                    length_b += len(random_doc[i].ids)
-                    if length_b >= target_b_length:
-                        break
+                if len(random_doc.encodings) == 1:
+                    sequence_b.append(random_doc[0])
+                else:
+                    # pick random start sentence and then fill up to target length
+                    random_start = random.randrange(len(random_doc.encodings)-1)
+                    for i in range(random_start, len(random_doc.encodings)):
+                        sequence_b.append(random_doc[i])
+                        length_b += len(random_doc[i].ids)
+                        if length_b >= target_b_length:
+                            break
 
                 label = False
 
