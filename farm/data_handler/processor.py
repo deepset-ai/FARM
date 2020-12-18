@@ -1617,10 +1617,6 @@ class SquadProcessor(Processor):
         self.target = "classification"
         self.ph_output_type = "per_token_squad"
 
-        assert doc_stride < max_seq_len, "doc_stride is longer than max_seq_len. \nThis means that there will be gaps " \
-                                         "as the passage windows slide, causing the model to skip over parts of the document.\n"\
-                                         "Please set a lower value for doc_stride (Suggestions: doc_stride=128, max_seq_len=384) "
-
         assert doc_stride < (max_seq_len - max_query_length), \
             "doc_stride is longer than max_seq_len minus space reserved for query tokens. \nThis means that there will be gaps " \
             "as the passage windows slide, causing the model to skip over parts of the document.\n" \
@@ -1701,6 +1697,13 @@ class SquadProcessor(Processor):
         ["text", "questions"] (api format). This function converts the latter into the former. It also converts the
         is_impossible field to answer_type so that NQ and SQuAD dicts have the same format.
         """
+        # check again for doc stride vs max_seq_len when. Parameters can be changed for already initialized models (e.g. in haystack)
+        assert self.doc_stride < (self.max_seq_len - self.max_query_length), \
+            "doc_stride is longer than max_seq_len minus space reserved for query tokens. \nThis means that there will be gaps " \
+            "as the passage windows slide, causing the model to skip over parts of the document.\n" \
+            "Please set a lower value for doc_stride (Suggestions: doc_stride=128, max_seq_len=384)\n " \
+            "Or decrease max_query_length"
+
         try:
             # Check if infer_dict is already in internal json format
             if "context" in infer_dict and "qas" in infer_dict:
