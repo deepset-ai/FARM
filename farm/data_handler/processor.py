@@ -1351,13 +1351,13 @@ class BertStyleLMProcessor(Processor):
 
         # 2) Create labels (masking words + NSP)
         features = []
-        vocab = self.tokenizer.vocab
+        vocab_length = self.tokenizer.vocab-1
         for sample in samples:
-            features.append(self._create_labels(sample=sample, vocab_length=len(vocab)))
+            features.append(self._create_labels(sample=sample, vocab_length=vocab_length))
 
         # 3) Create dataset
         dataset, tensor_names = convert_features_to_dataset(features=features)
-        return dataset, tensor_names
+        return dataset, tensor_names, set()
 
     def _create_sequence_pairs_by_line(self, docs):
         samples = []
