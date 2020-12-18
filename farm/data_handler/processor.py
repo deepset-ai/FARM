@@ -84,7 +84,8 @@ class Processor(ABC):
         dev_split,
         data_dir,
         tasks={},
-        proxies=None
+        proxies=None,
+        multithreading_rust=True,
     ):
         """
         :param tokenizer: Used to split a sentence (str) into tokens.
@@ -109,7 +110,13 @@ class Processor(ABC):
         :param proxies: proxy configuration to allow downloads of remote datasets.
                     Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
         :type proxies: dict
+        :param multithreading_rust: Whether to allow multithreading in Rust, e.g. for FastTokenizers.
+                                    Note: Enabling multithreading in Rust AND multiprocessing in python can cause
+                                    trouble incl. deadlocks.
+        :type multithreading_rust: bool
         """
+        if not multithreading_rust:
+            os.environ["RAYON_RS_NUM_CPUS"] = "1"
 
         self.tokenizer = tokenizer
         self.max_seq_len = max_seq_len
@@ -1241,7 +1248,6 @@ class BertStyleLMProcessor(Processor):
         max_docs=None,
         proxies=None,
         masked_lm_prob=0.15,
-        rust_multithreading=False,
         **kwargs
     ):
         """
@@ -1294,9 +1300,6 @@ class BertStyleLMProcessor(Processor):
         if not tokenizer.is_fast:
             raise ValueError("This processor only supports FastTokenizers. "
                              "Load one by calling Tokenizer.load(..., use_fast=True)")
-
-        if not rust_multithreading:
-            os.environ["RAYON_RS_NUM_CPUS"] = "1"
 
         super(BertStyleLMProcessor, self).__init__(
             tokenizer=tokenizer,
