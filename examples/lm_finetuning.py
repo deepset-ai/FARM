@@ -32,7 +32,7 @@ def lm_finetuning():
     device, n_gpu = initialize_device_settings(use_cuda=True)
     n_epochs = 1
     batch_size = 32
-    evaluate_every = 100
+    evaluate_every = 1000
     lang_model = "bert-base-cased"
     do_lower_case = False
 
