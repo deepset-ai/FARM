@@ -19,7 +19,7 @@ def lm_finetuning():
         datefmt="%m/%d/%Y %H:%M:%S",
         level=logging.INFO,
     )
-    next_sent_pred_style = "sentence"
+    next_sent_pred_style = "bert-style"
     next_sent_pred=True
     set_all_seeds(seed=42)
     ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
@@ -46,7 +46,7 @@ def lm_finetuning():
         data_dir=Path("../data/lm_finetune_nips"),
         tokenizer=tokenizer,
         max_seq_len=128,
-        max_docs=None, # We have set max_docs to 20 to speed up data processing
+        max_docs=None, # You can have set max_docs here to limit the number of docs in the dataset and speed up this example
         next_sent_pred_style=next_sent_pred_style
     )
 
@@ -87,6 +87,7 @@ def lm_finetuning():
         lr_schedule=lr_schedule,
         evaluate_every=evaluate_every,
         device=device,
+        eval_report=False
     )
 
     # 7. Let it grow! Watch the tracked metrics live on the public mlflow server: https://public-mlflow.deepset.ai

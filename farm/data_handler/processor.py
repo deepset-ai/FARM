@@ -1244,7 +1244,7 @@ class BertStyleLMProcessor(Processor):
         test_filename="test.txt",
         dev_split=0.0,
         next_sent_pred=True,
-        next_sent_pred_style="sentence",
+        next_sent_pred_style="bert-style",
         max_docs=None,
         proxies=None,
         masked_lm_prob=0.15,
