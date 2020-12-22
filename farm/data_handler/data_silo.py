@@ -723,7 +723,7 @@ class _StreamingDataSet(IterableDataset):
             logger.info("Skipping a dict chunk as it contains less than 2 documents ...")
             return None, None
         indices = [x[0] for x in chunk]
-        datasets, tensor_names = self.processor.dataset_from_dicts(dicts=dicts, indices=indices)
+        datasets, tensor_names, _ = self.processor.dataset_from_dicts(dicts=dicts, indices=indices)
         return datasets, tensor_names
 
     def shuffle_files(self, files, seed=None):

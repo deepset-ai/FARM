@@ -6,16 +6,9 @@ These functions should be deprecated soon
 
 import logging
 import re
-import collections
-from dotmap import DotMap
 import numpy as np
 
 from farm.data_handler.samples import Sample
-from farm.data_handler.utils import (
-    expand_labels,
-    pad,
-    mask_random_words)
-from farm.modeling.tokenization import insert_at_special_tokens_pos
 
 logger = logging.getLogger(__name__)
 
