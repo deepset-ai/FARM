@@ -556,6 +556,7 @@ def tokenize_batch_question_answering(pre_baskets, tokenizer, indices):
     - We first tokenize all documents in batch mode. (When using FastTokenizers Rust multithreading can be enabled by TODO add how to enable rust mt)
     - Then we tokenize each question individually
     - We construct dicts with question and corresponding document text + tokens + offsets + ids
+    
     :param pre_baskets: input dicts with QA info #todo change to input objects
     :param tokenizer: tokenizer to be used
     :param indices: list, indices used during multiprocessing so that IDs assigned to our baskets are unique
