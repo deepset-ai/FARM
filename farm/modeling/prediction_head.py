@@ -11,7 +11,6 @@ from typing import List, Tuple
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss, NLLLoss
-from torch.distributed import all_gather
 from farm.data_handler.utils import is_json
 from farm.utils import convert_iob_to_simple_tags, try_get, all_gather_list
 from farm.modeling.predictions import QACandidate, QAPred
