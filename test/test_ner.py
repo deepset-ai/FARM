@@ -16,8 +16,8 @@ from farm.utils import set_all_seeds, initialize_device_settings
 
 import logging
 
-
-@pytest.mark.parametrize("use_fast", [False, True])
+# TODO: Test slow tokenizers when reimplemented
+@pytest.mark.parametrize("use_fast", [True])
 def test_ner(caplog, use_fast):
     if caplog:
         caplog.set_level(logging.CRITICAL)

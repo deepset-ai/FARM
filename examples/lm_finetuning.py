@@ -19,22 +19,22 @@ def lm_finetuning():
         datefmt="%m/%d/%Y %H:%M:%S",
         level=logging.INFO,
     )
-
+    next_sent_pred_style = "bert-style"
+    next_sent_pred=True
     set_all_seeds(seed=42)
     ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
     ml_logger.init_experiment(
-        experiment_name="Public_FARM", run_name="Run_minimal_example_lm"
+        experiment_name="LM_refactoring", run_name=f"new, nsp: {next_sent_pred}, {next_sent_pred_style}"
     )
     ##########################
     ########## Settings
     ##########################
-    device, n_gpu = initialize_device_settings(use_cuda=False)
+    device, n_gpu = initialize_device_settings(use_cuda=True)
     n_epochs = 1
     batch_size = 32
-    evaluate_every = 30
+    evaluate_every = 1000
     lang_model = "bert-base-cased"
     do_lower_case = False
-    next_sent_pred_style = "bert-style"
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
@@ -46,7 +46,7 @@ def lm_finetuning():
         data_dir=Path("../data/lm_finetune_nips"),
         tokenizer=tokenizer,
         max_seq_len=128,
-        max_docs=20, # We have set max_docs to 20 to speed up data processing
+        max_docs=None, # You can have set max_docs here to limit the number of docs in the dataset and speed up this example
         next_sent_pred_style=next_sent_pred_style
     )
 
@@ -74,7 +74,7 @@ def lm_finetuning():
         learning_rate=2e-5,
         device=device,
         n_batches=len(data_silo.loaders["train"]),
-        n_epochs=n_epochs,
+        n_epochs=n_epochs
     )
 
     # 6. Feed everything to the Trainer, which keeps care of growing our model into powerful plant and evaluates it from time to time
@@ -87,6 +87,7 @@ def lm_finetuning():
         lr_schedule=lr_schedule,
         evaluate_every=evaluate_every,
         device=device,
+        eval_report=False
     )
 
     # 7. Let it grow! Watch the tracked metrics live on the public mlflow server: https://public-mlflow.deepset.ai

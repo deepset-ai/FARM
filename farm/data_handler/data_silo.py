@@ -129,7 +129,7 @@ class DataSilo:
         """
         dicts = [d[1] for d in chunk]
         indices = [x[0] for x in chunk]
-        dataset, tensor_names, problematic_sample_ids = processor.dataset_from_dicts(dicts=dicts, indices=indices, return_problematic=True)
+        dataset, tensor_names, problematic_sample_ids = processor.dataset_from_dicts(dicts=dicts, indices=indices)
         return dataset, tensor_names, problematic_sample_ids
 
     def _get_dataset(self, filename, dicts=None):
@@ -176,6 +176,7 @@ class DataSilo:
                 results = map(partial(self._dataset_from_chunk, processor=self.processor), grouper(dicts, num_dicts))
 
             datasets = []
+            problematic_ids_all = set()
 
             desc = f"Preprocessing Dataset"
             if filename:
@@ -185,8 +186,9 @@ class DataSilo:
                     datasets.append(dataset)
                     # update progress bar (last step can have less dicts than actual chunk_size)
                     pbar.update(min(multiprocessing_chunk_size, pbar.total-pbar.n))
-                    self.processor.problematic_sample_ids.update(problematic_samples)
-            self.processor.log_problematic()
+                    problematic_ids_all.update(problematic_samples)
+
+            self.processor.log_problematic(problematic_ids_all)
             # _dataset_from_chunk can return a None in cases where downsampling has occurred
             datasets = [d for d in datasets if d]
             concat_datasets = ConcatDataset(datasets)
@@ -221,7 +223,6 @@ class DataSilo:
         else:
             logger.info("No train set is being loaded")
             self.data["train"] = None
-        self.processor.log_problematic()
 
         # dev data
         logger.info("")
@@ -243,7 +244,6 @@ class DataSilo:
         else:
             logger.info("No dev set is being loaded")
             self.data["dev"] = None
-        self.processor.log_problematic()
 
         logger.info("")
         logger.info("LOADING TEST DATA")
@@ -264,7 +264,6 @@ class DataSilo:
         else:
             logger.info("No test set is being loaded")
             self.data["test"] = None
-        self.processor.log_problematic()
 
         if self.caching:
             self._save_dataset_to_cache()
@@ -724,7 +723,7 @@ class _StreamingDataSet(IterableDataset):
             logger.info("Skipping a dict chunk as it contains less than 2 documents ...")
             return None, None
         indices = [x[0] for x in chunk]
-        datasets, tensor_names = self.processor.dataset_from_dicts(dicts=dicts, indices=indices)
+        datasets, tensor_names, _ = self.processor.dataset_from_dicts(dicts=dicts, indices=indices)
         return datasets, tensor_names
 
     def shuffle_files(self, files, seed=None):
