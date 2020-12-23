@@ -10,8 +10,7 @@ trigger:
 pr:
   branches:
     include:
-    - '*' 
-
+    - '*'
 jobs:
   - job: 'Test'
     pool:

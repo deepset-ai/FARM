@@ -64,16 +64,16 @@ def test_evaluation():
 
     # 1. Test FARM internal evaluation
     results = evaluator.eval(model)
-    f1_score = results[0]["f1"]*100
-    em_score = results[0]["EM"]*100
-    tnacc = results[0]["top_n_accuracy"]*100
+    f1_score = results[0]["f1"]
+    em_score = results[0]["EM"]
+    tnacc = results[0]["top_n_accuracy"]
     elapsed = time() - starttime
     print(results)
     print(elapsed)
 
-    gold_EM = 77.7478
-    gold_f1 = 82.1557
-    gold_tnacc = 84.0646 # top 1 recall
+    gold_EM = 0.784721
+    gold_f1 = 0.826671
+    gold_tnacc = 0.843594 # top 1 recall
     gold_elapsed = 40 # 4x V100
     if test_assertions:
         np.testing.assert_allclose(em_score, gold_EM, rtol=0.001, err_msg=f"FARM Eval changed for EM by: {em_score-gold_EM}")
@@ -107,8 +107,10 @@ def test_evaluation():
     f1_score = results_official["f1"]
     em_score = results_official["exact"]
 
-    gold_EM = 78.4890
-    gold_f1 = 81.7104
+
+
+    gold_EM = 79.878
+    gold_f1 = 82.917
     gold_elapsed = 27 # 4x V100
     print(elapsed)
     if test_assertions:

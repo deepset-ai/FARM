@@ -42,7 +42,7 @@ def question_answering():
 
     # 1.Create a tokenizer
     tokenizer = Tokenizer.load(
-        pretrained_model_name_or_path=lang_model, do_lower_case=do_lower_case
+        pretrained_model_name_or_path=lang_model, do_lower_case=do_lower_case, use_fast=False,
     )
 
     # Add HTML tag tokens to the tokenizer vocabulary, so they do not get split apart

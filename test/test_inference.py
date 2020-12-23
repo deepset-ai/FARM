@@ -3,6 +3,7 @@ import numpy as np
 import transformers
 
 from farm.infer import Inferencer
+from transformers import BertTokenizerFast
 
 
 @pytest.mark.parametrize("streaming", [True, False])
@@ -75,7 +76,7 @@ def test_qa_format_and_results(adaptive_model_qa, streaming, multiprocessing_chu
 
 
 @pytest.mark.parametrize("num_processes", [0], scope="session")
-@pytest.mark.parametrize("use_fast", [False, True])
+@pytest.mark.parametrize("use_fast", [True])
 def test_embeddings_extraction(num_processes, use_fast):
     # Input
     basic_texts = [
@@ -105,7 +106,7 @@ def test_inferencer_with_fast_bert_tokenizer():
     model = Inferencer.load("bert-base-german-cased", task_type='text_classification',
                             use_fast=True, num_processes=0)
     tokenizer = model.processor.tokenizer
-    assert type(tokenizer) is transformers.tokenization_bert.BertTokenizerFast
+    assert type(tokenizer) is BertTokenizerFast
 
 
 if __name__ == "__main__":

@@ -46,7 +46,11 @@ def set_all_seeds(seed, deterministic_cudnn=False):
 
 
 def calc_chunksize(num_dicts, min_chunksize=4, max_chunksize=2000, max_processes=128):
-    num_cpus = min(mp.cpu_count() - 1 or 1, max_processes)  # -1 to keep a CPU core free for the main process
+    if mp.cpu_count() > 3:
+        num_cpus = min(mp.cpu_count() - 1 or 1, max_processes)  # -1 to keep a CPU core free for xxx
+    else:
+        num_cpus = min(mp.cpu_count(), max_processes) # when there are few cores, we use all of them
+
     dicts_per_cpu = np.ceil(num_dicts / num_cpus)
     # automatic adjustment of multiprocessing chunksize
     # for small files (containing few dicts) we want small chunksize to ulitize all available cores but never less
@@ -258,7 +262,7 @@ def convert_iob_to_simple_tags(preds, spans):
         elif "I-" in pred:
             this_tag = pred.replace("I-", "")
             if open_tag and this_tag == cur_tag:
-                cur_span["end"] = span["end"]
+                cur_span = (cur_span[0], span[1])
             elif open_tag:
                 # end of one tag
                 merged_spans.append(cur_span)
