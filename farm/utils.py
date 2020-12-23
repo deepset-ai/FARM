@@ -46,7 +46,11 @@ def set_all_seeds(seed, deterministic_cudnn=False):
 
 
 def calc_chunksize(num_dicts, min_chunksize=4, max_chunksize=2000, max_processes=128):
-    num_cpus = min(mp.cpu_count() - 1 or 1, max_processes)  # -1 to keep a CPU core free for the main process
+    if mp.cpu_count() > 3:
+        num_cpus = min(mp.cpu_count() - 1 or 1, max_processes)  # -1 to keep a CPU core free for xxx
+    else:
+        num_cpus = min(mp.cpu_count(), max_processes) # when there are few cores, we use all of them
+
     dicts_per_cpu = np.ceil(num_dicts / num_cpus)
     # automatic adjustment of multiprocessing chunksize
     # for small files (containing few dicts) we want small chunksize to ulitize all available cores but never less
@@ -94,6 +98,8 @@ class BaseMLLogger:
 
     This class can be extended to implement custom logging backends like MLFlow, Tensorboard, or Sacred.
     """
+
+    disable_logging = False
 
     def __init__(self, tracking_uri, **kwargs):
         self.tracking_uri = tracking_uri
@@ -145,47 +151,57 @@ class MLFlowLogger(BaseMLLogger):
     """
 
     def init_experiment(self, experiment_name, run_name=None, nested=True):
-        try:
-            mlflow.set_tracking_uri(self.tracking_uri)
-            mlflow.set_experiment(experiment_name)
-            mlflow.start_run(run_name=run_name, nested=nested)
-        except ConnectionError:
-            raise Exception(
-                f"MLFlow cannot connect to the remote server at {self.tracking_uri}.\n"
-                f"MLFlow also supports logging runs locally to files. Set the MLFlowLogger "
-                f"tracking_uri to an empty string to use that."
-            )
+        if not self.disable_logging:
+            try:
+                mlflow.set_tracking_uri(self.tracking_uri)
+                mlflow.set_experiment(experiment_name)
+                mlflow.start_run(run_name=run_name, nested=nested)
+            except ConnectionError:
+                raise Exception(
+                    f"MLFlow cannot connect to the remote server at {self.tracking_uri}.\n"
+                    f"MLFlow also supports logging runs locally to files. Set the MLFlowLogger "
+                    f"tracking_uri to an empty string to use that."
+                )
 
     @classmethod
     def log_metrics(cls, metrics, step):
-        try:
-            mlflow.log_metrics(metrics, step=step)
-        except ConnectionError:
-            logger.warning(f"ConnectionError in logging metrics to MLFlow.")
-        except Exception as e:
-            logger.warning(f"Failed to log metrics: {e}")
+        if not cls.disable_logging:
+            try:
+                mlflow.log_metrics(metrics, step=step)
+            except ConnectionError:
+                logger.warning(f"ConnectionError in logging metrics to MLFlow.")
+            except Exception as e:
+                logger.warning(f"Failed to log metrics: {e}")
 
     @classmethod
     def log_params(cls, params):
-        try:
-            mlflow.log_params(params)
-        except ConnectionError:
-            logger.warning("ConnectionError in logging params to MLFlow")
-        except Exception as e:
-            logger.warning(f"Failed to log params: {e}")
+        if not cls.disable_logging:
+            try:
+                mlflow.log_params(params)
+            except ConnectionError:
+                logger.warning("ConnectionError in logging params to MLFlow")
+            except Exception as e:
+                logger.warning(f"Failed to log params: {e}")
 
     @classmethod
     def log_artifacts(cls, dir_path, artifact_path=None):
-        try:
-            mlflow.log_artifacts(dir_path, artifact_path)
-        except ConnectionError:
-            logger.warning(f"ConnectionError in logging artifacts to MLFlow")
-        except Exception as e:
-            logger.warning(f"Failed to log artifacts: {e}")
+        if not cls.disable_logging:
+            try:
+                mlflow.log_artifacts(dir_path, artifact_path)
+            except ConnectionError:
+                logger.warning(f"ConnectionError in logging artifacts to MLFlow")
+            except Exception as e:
+                logger.warning(f"Failed to log artifacts: {e}")
 
     @classmethod
     def end_run(cls):
-        mlflow.end_run()
+        if not cls.disable_logging:
+            mlflow.end_run()
+
+    @classmethod
+    def disable(cls):
+        logger.warning("ML Logging is turned off. No parameters, metrics or artifacts will be logged to MLFlow.")
+        cls.disable_logging = True
 
 
 class TensorBoardLogger(BaseMLLogger):
@@ -246,7 +262,7 @@ def convert_iob_to_simple_tags(preds, spans):
         elif "I-" in pred:
             this_tag = pred.replace("I-", "")
             if open_tag and this_tag == cur_tag:
-                cur_span["end"] = span["end"]
+                cur_span = (cur_span[0], span[1])
             elif open_tag:
                 # end of one tag
                 merged_spans.append(cur_span)
