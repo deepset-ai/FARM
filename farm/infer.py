@@ -154,6 +154,7 @@ class Inferencer:
     def load(
         cls,
         model_name_or_path,
+        revision=None,
         batch_size=4,
         gpu=False,
         task_type=None,
@@ -171,7 +172,6 @@ class Inferencer:
         tokenizer_args=None,
         dummy_ph=False,
         benchmarking=False,
-
     ):
         """
         Load an Inferencer incl. all relevant components (model, tokenizer, processor ...) either by
@@ -181,6 +181,8 @@ class Inferencer:
 
         :param model_name_or_path: Local directory or public name of the model to load.
         :type model_name_or_path: str
+        :param revision: The version of model to use from the HuggingFace model hub. Can be tag name, branch name, or commit hash.
+        :type revision: str
         :param batch_size: Number of samples computed once per batch
         :type batch_size: int
         :param gpu: If GPU shall be used
@@ -263,9 +265,18 @@ class Inferencer:
                                  "Valid options for arg `task_type`:"
                                  "'question_answering', 'embeddings', 'text_classification', 'ner'")
 
-            model = AdaptiveModel.convert_from_transformers(model_name_or_path, device, task_type)
-            processor = Processor.convert_from_transformers(model_name_or_path, task_type, max_seq_len, doc_stride,
-                                                            tokenizer_class, tokenizer_args, use_fast)
+            model = AdaptiveModel.convert_from_transformers(model_name_or_path,
+                                                            revision=revision,
+                                                            device=device,
+                                                            task_type=task_type)
+            processor = Processor.convert_from_transformers(model_name_or_path,
+                                                            revision=revision,
+                                                            task_type=task_type,
+                                                            max_seq_len=max_seq_len,
+                                                            doc_stride=doc_stride,
+                                                            tokenizer_class=tokenizer_class,
+                                                            tokenizer_args=tokenizer_args,
+                                                            use_fast=use_fast)
 
         if not isinstance(model,ONNXAdaptiveModel):
             model, _ = optimize_model(model=model, device=device, local_rank=-1, optimizer=None)
