@@ -64,7 +64,7 @@ def adaptive_model_qa(use_gpu, num_processes):
 @pytest.fixture()
 def bert_base_squad2(request):
     model = QAInferencer.load(
-            "deepset/bert-base-cased-squad2",
+            "deepset/minilm-uncased-squad2",
             task_type="question_answering",
             batch_size=4,
             num_processes=0,
