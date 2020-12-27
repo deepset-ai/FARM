@@ -13,7 +13,7 @@ import numpy as np
 import torch
 from numpy.random import random as random_float
 from sklearn.preprocessing import StandardScaler
-from transformers.configuration_auto import AutoConfig
+from transformers import AutoConfig
 from tokenizers import Encoding
 
 from farm.data_handler.dataset import convert_features_to_dataset

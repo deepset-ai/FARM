@@ -8,7 +8,7 @@ import multiprocessing
 import numpy
 import torch
 from torch import nn
-from transformers.configuration_auto import AutoConfig
+from transformers import AutoConfig
 from transformers.convert_graph_to_onnx import convert, quantize as quantize_model
 
 

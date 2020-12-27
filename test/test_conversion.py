@@ -7,7 +7,7 @@ from farm.modeling.prediction_head import TextClassificationHead, TokenClassific
 from farm.modeling.tokenization import Tokenizer
 from farm.infer import Inferencer
 from transformers.pipelines import pipeline
-from transformers.modeling_auto import AutoModelForQuestionAnswering, AutoModelWithLMHead, \
+from transformers import AutoModelForQuestionAnswering, AutoModelWithLMHead, \
     AutoModelForSequenceClassification, AutoModelForTokenClassification
 import os
 from pathlib import Path
