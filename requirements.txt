@@ -33,3 +33,4 @@ dill # pickle extension for (de-)serialization
 #onnxruntime
 #onnxruntime_tools
 psutil
+sentencepiece
