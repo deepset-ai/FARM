@@ -160,7 +160,7 @@ def prepare_dict(sample_file, q, document_size):
         if sample_file[-3:] == "txt":
             text = f.read()[:document_size]
             assert len(text) == document_size
-            dicts = [{"qas": [q], "context": text}]
+            dicts = [{"questions": [q], "text": text}]
         elif sample_file[-4:] == "json":
             data = json.load(f)
             dicts = []
