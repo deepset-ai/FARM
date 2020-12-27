@@ -46,7 +46,8 @@ def test_ner(caplog, use_fast):
         test_filename=None,
         delimiter=" ",
         label_list=ner_labels,
-        metric="seq_f1"
+        metric="seq_f1",
+        multithreading_rust=False
     )
 
     data_silo = DataSilo(processor=processor, batch_size=batch_size, max_processes=1)

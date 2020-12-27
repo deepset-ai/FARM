@@ -1,6 +1,5 @@
 import pytest
 import numpy as np
-import transformers
 
 from farm.infer import Inferencer
 from transformers import BertTokenizerFast
@@ -93,7 +92,8 @@ def test_embeddings_extraction(num_processes, use_fast):
         extraction_strategy="reduce_mean",
         extraction_layer=-2,
         use_fast=use_fast,
-        num_processes=num_processes)
+        num_processes=num_processes,
+    )
 
     # Get embeddings for input text (you can vary the strategy and layer)
     result = model.inference_from_dicts(dicts=basic_texts)
