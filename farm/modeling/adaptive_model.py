@@ -455,11 +455,11 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
 
         # Run forward pass of language model
         if extraction_layer == -1:
-            sequence_output, pooled_output = self.language_model(**kwargs, output_all_encoded_layers=False)
+            sequence_output, pooled_output = self.language_model(**kwargs, return_dict=False, output_all_encoded_layers=False)
         else:
             # get output from an earlier layer
             self.language_model.enable_hidden_states_output()
-            sequence_output, pooled_output, all_hidden_states = self.language_model(**kwargs)
+            sequence_output, pooled_output, all_hidden_states = self.language_model(**kwargs, return_dict=False)
             sequence_output = all_hidden_states[extraction_layer]
             pooled_output = None #not available in earlier layers
             self.language_model.disable_hidden_states_output()
