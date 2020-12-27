@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [ master, bump_torch_1.7 ]
+    branches: [ master ]
   pull_request:
     branches: [ master ]
 
