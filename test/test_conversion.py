@@ -11,6 +11,7 @@ from transformers import AutoModelForQuestionAnswering, AutoModelWithLMHead, \
     AutoModelForSequenceClassification, AutoModelForTokenClassification
 import os
 from pathlib import Path
+import pytest
 
 @pytest.mark.conversion
 def test_conversion_adaptive_model_qa():
