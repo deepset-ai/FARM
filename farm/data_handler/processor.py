@@ -111,8 +111,8 @@ class Processor(ABC):
                     Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
         :type proxies: dict
         :param multithreading_rust: Whether to allow multithreading in Rust, e.g. for FastTokenizers.
-                                    Note: Enabling multithreading in Rust AND multiprocessing in python can cause
-                                    trouble incl. deadlocks.
+                                    Note: Enabling multithreading in Rust AND multiprocessing in python might cause
+                                    deadlocks.
         :type multithreading_rust: bool
         """
         if not multithreading_rust:
