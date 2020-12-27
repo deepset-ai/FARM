@@ -26,8 +26,8 @@ jobs:
         pip install -r requirements.txt
         pip install -e .
 
-    - name: Run Pytest - all except conversion marker
-      run: cd test &&  pytest -m "not conversion"
-
     - name: Run pytest - only "conversion" marker
       run: cd test && pytest -m "conversion"
+
+    - name: Run Pytest - all except conversion marker
+      run: cd test &&  pytest -m "not conversion"
