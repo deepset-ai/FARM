@@ -87,6 +87,12 @@ def test_doc_regression(data_dir_path, text_column_name, caplog=None):
     model.save(save_dir)
     processor.save(save_dir)
 
+    del model
+    del processor
+    del optimizer
+    del data_silo
+    del trainer
+
     basic_texts = [
         {"text": "The dress is just fabulous and it totally fits my size. The fabric is of great quality and the seams are really well hidden. I am super happy with this purchase and I am looking forward to trying some more from the same brand."},
         {"text": "it just did not fit right. The top is very thin showing everything."},
@@ -95,3 +101,4 @@ def test_doc_regression(data_dir_path, text_column_name, caplog=None):
     model = Inferencer.load(save_dir, num_processes=0)
     result = model.inference_from_dicts(dicts=basic_texts)
     assert isinstance(result[0]["predictions"][0]["pred"], np.float32)
+    del model

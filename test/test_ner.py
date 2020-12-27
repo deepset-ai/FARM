@@ -87,6 +87,12 @@ def test_ner(caplog, use_fast):
     model.save(save_dir)
     processor.save(save_dir)
 
+    del model
+    del processor
+    del optimizer
+    del data_silo
+    del trainer
+
     basic_texts = [
         {"text": "Paris is a town in France."},
     ]

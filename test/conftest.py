@@ -33,6 +33,12 @@ def pytest_generate_tests(metafunc):
             metafunc.parametrize("use_gpu", [False], scope="session")
 
 
+def pytest_collection_modifyitems(items):
+    for item in items:
+        if "conversion" in item.nodeid:
+            item.add_marker(pytest.mark.conversion)
+
+
 @pytest.fixture(scope="module")
 def adaptive_model_qa(use_gpu, num_processes):
     """
