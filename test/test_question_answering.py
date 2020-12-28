@@ -82,13 +82,13 @@ def test_span_performance(span_inference_result, caplog=None):
 
     assert best_pred.answer == "GameTrailers"
 
-    best_score_gold = 11.7282
+    best_score_gold = 13.4205
     best_score = best_pred.score
-    assert isclose(best_score, best_score_gold, rel_tol=0.0001)
+    assert isclose(best_score, best_score_gold, rel_tol=0.001)
 
-    no_answer_gap_gold = 12.6491
+    no_answer_gap_gold = 13.9827
     no_answer_gap = span_inference_result.no_answer_gap
-    assert isclose(no_answer_gap, no_answer_gap_gold, rel_tol=0.0001)
+    assert isclose(no_answer_gap, no_answer_gap_gold, rel_tol=0.001)
 
 
 def test_no_answer_performance(no_answer_inference_result, caplog=None):
@@ -98,13 +98,13 @@ def test_no_answer_performance(no_answer_inference_result, caplog=None):
 
     assert best_pred.answer == "no_answer"
 
-    best_score_gold = 15.8022
+    best_score_gold = 12.1445
     best_score = best_pred.score
-    assert isclose(best_score, best_score_gold, rel_tol=0.0001)
+    assert isclose(best_score, best_score_gold, rel_tol=0.001)
 
-    no_answer_gap_gold = -15.0159
+    no_answer_gap_gold = -14.4646
     no_answer_gap = no_answer_inference_result.no_answer_gap
-    assert isclose(no_answer_gap, no_answer_gap_gold, rel_tol=0.0001)
+    assert isclose(no_answer_gap, no_answer_gap_gold, rel_tol=0.001)
 
 
 def test_qa_pred_attributes(span_inference_result, caplog=None):

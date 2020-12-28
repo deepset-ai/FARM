@@ -81,6 +81,12 @@ def test_lm_finetuning(caplog):
     model.save(save_dir)
     processor.save(save_dir)
 
+    del model
+    del processor
+    del optimizer
+    del data_silo
+    del trainer
+
     basic_texts = [
         {"text": "Farmer's life is great."},
         {"text": "It's nothing for big city kids though."},
@@ -158,6 +164,12 @@ def test_lm_finetuning_no_next_sentence(caplog):
     save_dir = Path("testsave/lm_finetuning_no_nsp")
     model.save(save_dir)
     processor.save(save_dir)
+
+    del model
+    del processor
+    del optimizer
+    del data_silo
+    del trainer
 
     basic_texts = [
         {"text": "Farmer's life is great."},
@@ -238,6 +250,12 @@ def test_lm_finetuning_custom_vocab(caplog):
     save_dir = Path("testsave/lm_finetuning")
     model.save(save_dir)
     processor.save(save_dir)
+
+    del model
+    del processor
+    del optimizer
+    del data_silo
+    del trainer
 
     basic_texts = [
         {"text": "Farmer's life is great."},

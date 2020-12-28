@@ -23,26 +23,22 @@ import re
 from pathlib import Path
 
 import numpy as np
-from transformers.tokenization_albert import AlbertTokenizer
-from transformers.tokenization_albert_fast import AlbertTokenizerFast
-from transformers.tokenization_bert import BertTokenizer, load_vocab
-from transformers.tokenization_bert_fast import BertTokenizerFast
-from transformers.tokenization_distilbert import DistilBertTokenizer
-from transformers.tokenization_distilbert_fast import DistilBertTokenizerFast
-from transformers.tokenization_electra import ElectraTokenizer
-from transformers.tokenization_electra_fast import ElectraTokenizerFast
-from transformers.tokenization_roberta import RobertaTokenizer
-from transformers.tokenization_roberta_fast import RobertaTokenizerFast
+from transformers import (
+    AlbertTokenizer, AlbertTokenizerFast,
+    BertTokenizer, BertTokenizerFast,
+    DistilBertTokenizer, DistilBertTokenizerFast,
+    ElectraTokenizer, ElectraTokenizerFast,
+    RobertaTokenizer, RobertaTokenizerFast,
+    XLMRobertaTokenizer, XLMRobertaTokenizerFast,
+    XLNetTokenizer, XLNetTokenizerFast,
+    CamembertTokenizer, CamembertTokenizerFast,
+    DPRContextEncoderTokenizer, DPRContextEncoderTokenizerFast,
+    DPRQuestionEncoderTokenizer, DPRQuestionEncoderTokenizerFast
+)
+from transformers.models.bert.tokenization_bert import load_vocab
 from transformers.tokenization_utils import PreTrainedTokenizer
-from transformers.tokenization_xlm_roberta import XLMRobertaTokenizer
-from transformers.tokenization_xlm_roberta_fast import XLMRobertaTokenizerFast
-from transformers.tokenization_xlnet import XLNetTokenizer
-from transformers.tokenization_xlnet_fast import XLNetTokenizerFast
-from transformers.tokenization_camembert import CamembertTokenizer
-from transformers.tokenization_camembert_fast import CamembertTokenizerFast
-from transformers.modeling_auto import AutoConfig
-from transformers import DPRContextEncoderTokenizer, DPRQuestionEncoderTokenizer
-from transformers import DPRContextEncoderTokenizerFast, DPRQuestionEncoderTokenizerFast
+from transformers import AutoConfig
+
 
 from farm.data_handler.samples import SampleBasket
 from farm.modeling.wordembedding_utils import load_from_cache, EMBEDDING_VOCAB_FILES_MAP, run_split_on_punc

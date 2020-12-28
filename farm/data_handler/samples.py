@@ -1,4 +1,4 @@
-from transformers.tokenization_bert import whitespace_tokenize
+from transformers.models.bert.tokenization_bert import whitespace_tokenize
 from farm.visual.ascii.images import SAMPLE
 import numpy as np
 

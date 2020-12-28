@@ -4,8 +4,8 @@ import os
 import numpy as np
 
 from pathlib import Path
-from transformers.modeling_bert import BertForPreTraining, ACT2FN
-from transformers.modeling_auto import AutoModelForQuestionAnswering, AutoModelForTokenClassification, AutoModelForSequenceClassification
+from transformers.models.bert.modeling_bert import BertForPreTraining, ACT2FN
+from transformers import AutoModelForQuestionAnswering, AutoModelForTokenClassification, AutoModelForSequenceClassification
 from typing import List, Tuple
 
 import torch

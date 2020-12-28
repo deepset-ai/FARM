@@ -170,6 +170,7 @@ class Inferencer:
         tokenizer_class=None,
         use_fast=True,
         tokenizer_args=None,
+        multithreading_rust=True,
         dummy_ph=False,
         benchmarking=False,
     ):
@@ -218,13 +219,17 @@ class Inferencer:
         :type disable_tqdm: bool
         :param tokenizer_class: (Optional) Name of the tokenizer class to load (e.g. `BertTokenizer`)
         :type tokenizer_class: str
-        :param use_fast: (Optional, False by default) Indicate if FARM should try to load the fast version of the tokenizer (True) or
+        :param use_fast: (Optional, True by default) Indicate if FARM should try to load the fast version of the tokenizer (True) or
             use the Python one (False).
+        :type use_fast: bool
         :param tokenizer_args: (Optional) Will be passed to the Tokenizer ``__init__`` method.
             See https://huggingface.co/transformers/main_classes/tokenizer.html and detailed tokenizer documentation
             on `Hugging Face Transformers <https://huggingface.co/transformers/>`_.
         :type tokenizer_args: dict
-        :type use_fast: bool
+        :param multithreading_rust: Whether to allow multithreading in Rust, e.g. for FastTokenizers.
+                                    Note: Enabling multithreading in Rust AND multiprocessing in python might cause
+                                    deadlocks.
+        :type multithreading_rust: bool
         :param dummy_ph: If True, methods of the prediction head will be replaced
                              with a dummy method. This is used to isolate lm run time from ph run time.
         :type dummy_ph: bool
@@ -250,14 +255,6 @@ class Inferencer:
             else:
                 processor = Processor.load_from_dir(model_name_or_path)
 
-            # override processor attributes loaded from config file with inferencer params
-            processor.max_seq_len = max_seq_len
-            if hasattr(processor, "doc_stride"):
-                assert doc_stride < max_seq_len, "doc_stride is longer than max_seq_len. This means that there will be gaps " \
-                                                 "as the passage windows slide, causing the model to skip over parts of the document. "\
-                                                 "Please set a lower value for doc_stride (Suggestions: doc_stride=128, max_seq_len=384) "
-                processor.doc_stride = doc_stride
-
         # b) or from remote transformers model hub
         else:
             if not task_type:
@@ -278,8 +275,15 @@ class Inferencer:
                                                             tokenizer_args=tokenizer_args,
                                                             use_fast=use_fast)
 
-        if not isinstance(model,ONNXAdaptiveModel):
-            model, _ = optimize_model(model=model, device=device, local_rank=-1, optimizer=None)
+        # override processor attributes loaded from config or HF with inferencer params
+        processor.max_seq_len = max_seq_len
+        processor.multithreading_rust = multithreading_rust
+        if hasattr(processor, "doc_stride"):
+            assert doc_stride < max_seq_len, "doc_stride is longer than max_seq_len. This means that there will be gaps " \
+                                             "as the passage windows slide, causing the model to skip over parts of the document. " \
+                                             "Please set a lower value for doc_stride (Suggestions: doc_stride=128, max_seq_len=384) "
+            processor.doc_stride = doc_stride
+
         return cls(
             model,
             processor,

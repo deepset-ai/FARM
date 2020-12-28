@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
-from transformers.tokenization_bert import BertTokenizer
+from transformers import BertTokenizer
 from sklearn.decomposition import TruncatedSVD
 from sklearn.cluster import KMeans
 from collections import Counter

@@ -70,7 +70,7 @@ def test_s3e_fit():
     result = inferencer.inference_from_dicts(dicts=basic_texts)
     assert result[0]["context"] == ['a', 'man', 'is', 'walking', 'on', 'the', 'street', '.']
     assert result[0]["vec"][0] - 0.00527727306941057 < 1e-6
-    assert result[0]["vec"][-2] + 0.06285100416478565 < 1e-6
+    assert result[0]["vec"][-2] - 0.06285100416478565 < 1e-6
 
 
 def test_load_extract_s3e_embeddings():

@@ -77,6 +77,12 @@ def test_doc_classification(caplog):
     model.save(save_dir)
     processor.save(save_dir)
 
+    del model
+    del processor
+    del optimizer
+    del data_silo
+    del trainer
+
     basic_texts = [
         {"text": "Malte liebt Berlin."},
         {"text": "Schartau sagte dem Tagesspiegel, dass Fischer ein Idiot sei."}
@@ -85,7 +91,7 @@ def test_doc_classification(caplog):
     inf = Inferencer.load(save_dir, batch_size=2, num_processes=0)
     result = inf.inference_from_dicts(dicts=basic_texts)
     assert isinstance(result[0]["predictions"][0]["probability"], np.float32)
-
+    del inf
 
 if __name__ == "__main__":
     test_doc_classification(None)
