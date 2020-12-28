@@ -46,7 +46,8 @@ def test_ner(caplog, use_fast):
         test_filename=None,
         delimiter=" ",
         label_list=ner_labels,
-        metric="seq_f1"
+        metric="seq_f1",
+        multithreading_rust=False
     )
 
     data_silo = DataSilo(processor=processor, batch_size=batch_size, max_processes=1)
@@ -85,6 +86,12 @@ def test_ner(caplog, use_fast):
     model = trainer.train()
     model.save(save_dir)
     processor.save(save_dir)
+
+    del model
+    del processor
+    del optimizer
+    del data_silo
+    del trainer
 
     basic_texts = [
         {"text": "Paris is a town in France."},

@@ -7,7 +7,7 @@ from farm.data_handler.data_silo import DataSilo, DataSiloForCrossVal
 
 
 def test_data_silo_for_cross_val_nested():
-    lang_model = "bert-base-german-cased"
+    lang_model = "distilbert-base-german-cased"
     n_outer_splits = 3
     n_inner_splits = 3
 
@@ -68,3 +68,8 @@ def test_data_silo_for_cross_val_nested():
            (data_loader_train_indices_1.size + \
            data_loader_dev_indices_1.size + \
            data_loader_test_indices_1.size)
+
+    del tokenizer
+    del processor
+    del data_silo
+    del silos

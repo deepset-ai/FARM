@@ -33,7 +33,13 @@ def pytest_generate_tests(metafunc):
             metafunc.parametrize("use_gpu", [False], scope="session")
 
 
-@pytest.fixture()
+def pytest_collection_modifyitems(items):
+    for item in items:
+        if "conversion" in item.nodeid:
+            item.add_marker(pytest.mark.conversion)
+
+
+@pytest.fixture(scope="module")
 def adaptive_model_qa(use_gpu, num_processes):
     """
     PyTest Fixture for a Question Answering Inferencer based on PyTorch.
@@ -61,20 +67,21 @@ def adaptive_model_qa(use_gpu, num_processes):
     assert len(children) == 0
 
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def bert_base_squad2(request):
     model = QAInferencer.load(
-            "deepset/bert-base-cased-squad2",
+            "deepset/minilm-uncased-squad2",
             task_type="question_answering",
-            batch_size=16,
+            batch_size=4,
             num_processes=0,
+            multithreading_rust=False,
             use_fast=True # TODO parametrize this to test slow as well
     )
     return model
 
 # TODO add other model types (roberta, xlm-r, albert) here as well
 
-@pytest.fixture()
+@pytest.fixture(scope="module")
 def distilbert_squad(request):
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=False)

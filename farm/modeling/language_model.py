@@ -34,17 +34,20 @@ from torch import nn
 
 logger = logging.getLogger(__name__)
 
-from transformers.modeling_bert import BertModel, BertConfig
-from transformers.modeling_roberta import RobertaModel, RobertaConfig
-from transformers.modeling_xlnet import XLNetModel, XLNetConfig
-from transformers.modeling_albert import AlbertModel, AlbertConfig
-from transformers.modeling_xlm_roberta import XLMRobertaModel, XLMRobertaConfig
-from transformers.modeling_distilbert import DistilBertModel, DistilBertConfig
-from transformers.modeling_electra import ElectraModel, ElectraConfig
-from transformers.modeling_camembert import CamembertModel, CamembertConfig
-from transformers.modeling_auto import AutoModel, AutoConfig
+from transformers import (
+    BertModel, BertConfig,
+    RobertaModel, RobertaConfig,
+    XLNetModel, XLNetConfig,
+    AlbertModel, AlbertConfig,
+    XLMRobertaModel, XLMRobertaConfig,
+    DistilBertModel, DistilBertConfig,
+    ElectraModel, ElectraConfig,
+    CamembertModel, CamembertConfig
+)
+
+from transformers import AutoModel, AutoConfig
 from transformers.modeling_utils import SequenceSummary
-from transformers.tokenization_bert import load_vocab
+from transformers.models.bert.tokenization_bert import load_vocab
 import transformers
 
 from farm.modeling import wordembedding_utils

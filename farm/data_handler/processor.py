@@ -13,7 +13,7 @@ import numpy as np
 import torch
 from numpy.random import random as random_float
 from sklearn.preprocessing import StandardScaler
-from transformers.configuration_auto import AutoConfig
+from transformers import AutoConfig
 from tokenizers import Encoding
 
 from farm.data_handler.dataset import convert_features_to_dataset
@@ -111,8 +111,8 @@ class Processor(ABC):
                     Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
         :type proxies: dict
         :param multithreading_rust: Whether to allow multithreading in Rust, e.g. for FastTokenizers.
-                                    Note: Enabling multithreading in Rust AND multiprocessing in python can cause
-                                    trouble incl. deadlocks.
+                                    Note: Enabling multithreading in Rust AND multiprocessing in python might cause
+                                    deadlocks.
         :type multithreading_rust: bool
         """
         if not multithreading_rust:
