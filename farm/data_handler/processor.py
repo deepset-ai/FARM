@@ -3216,11 +3216,19 @@ class TextSimilarityProcessor(Processor):
 
             # featurize context passages
             if self.embed_title:
-                # embed title with positive context passages + negative context passages
-                all_ctx = [tuple((title, ctx)) for title, ctx in
-                           zip(positive_ctx_titles, positive_ctx_texts)] + \
-                          [tuple((title, ctx)) for title, ctx in
-                           zip(hard_negative_ctx_titles, hard_negative_ctx_texts)]
+                # concatenate title with positive context passages + negative context passages
+                def _combine_title_context(titles, texts):
+                    res = []
+                    for title, ctx in zip(titles, texts):
+                        if title is None:
+                            title = ""
+                            logger.warning(
+                                f"Couldn't find title although `embed_title` is set to True for DPR. Using title='' now. Related passage text: '{ctx}' ")
+                        res.append(tuple((title, ctx)))
+                    return res
+
+                all_ctx = _combine_title_context(positive_ctx_titles, positive_ctx_texts) + _combine_title_context(
+                    hard_negative_ctx_titles, hard_negative_ctx_texts)
             else:
                 all_ctx = positive_ctx_texts + hard_negative_ctx_texts
 
