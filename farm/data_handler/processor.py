@@ -3224,7 +3224,7 @@ class TextSimilarityProcessor(Processor):
                             title = ""
                             logger.warning(
                                 f"Couldn't find title although `embed_title` is set to True for DPR. Using title='' now. Related passage text: '{ctx}' ")
-                            res.append(tuple((title, ctx)))
+                        res.append(tuple((title, ctx)))
                     return res
 
                 all_ctx = _combine_title_context(positive_ctx_titles, positive_ctx_texts) + _combine_title_context(
