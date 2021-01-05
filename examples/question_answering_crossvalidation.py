@@ -94,7 +94,7 @@ def question_answering_crossvalidation():
         logger.info(f"############ Crossvalidation: Fold {n_fold} ############")
 
         # fine-tune pre-trained question-answering model
-        model = AdaptiveModel.convert_from_transformers(lang_model, device, "question_answering")
+        model = AdaptiveModel.convert_from_transformers(lang_model, device=device, task_type="question_answering")
         model.connect_heads_with_processor(data_silo.processor.tasks, require_labels=True)
         # If positive, thjs will boost "No Answer" as prediction.
         # If negative, this will prevent the model from giving "No Answer" as prediction.
