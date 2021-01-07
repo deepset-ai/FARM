@@ -567,7 +567,7 @@ def tokenize_batch_question_answering(pre_baskets, tokenizer, indices):
     baskets = []
     # # Tokenize texts in batch mode
     texts = [d["context"] for d in pre_baskets]
-    tokenized_docs_batch = tokenizer.batch_encode_plus(texts, return_offsets_mapping=True, return_special_tokens_mask=True, add_special_tokens=False)
+    tokenized_docs_batch = tokenizer.batch_encode_plus(texts, return_offsets_mapping=True, return_special_tokens_mask=True, add_special_tokens=False, verbose=False)
 
     # Extract relevant data
     tokenids_batch = tokenized_docs_batch["input_ids"]

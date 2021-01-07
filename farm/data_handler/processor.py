@@ -2101,7 +2101,7 @@ class SquadProcessor(Processor):
                                 label_idxs[i][0] = -100  # TODO remove this hack also from featurization
                                 label_idxs[i][1] = -100
                                 break  # Break loop around answers, so the error message is not shown multiple times
-                            elif answer_indices != answer_text.strip():
+                            elif answer_indices.strip() != answer_text.strip():
                                 logger.warning(f"""Answer using start/end indices is '{answer_indices}' while gold label text is '{answer_text}'.\n
                                                    Example will not be converted for training/evaluation.""")
                                 error_in_answer = True
