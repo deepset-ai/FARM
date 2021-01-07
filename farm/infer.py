@@ -389,7 +389,6 @@ class Inferencer:
         Runs down-stream inference on samples created from input dictionaries.
         The format of the input `dicts` depends on the task:
 
-        * QA (SQuAD style):    [{"qas": ["What is X?"], "context":  "Some context containing the answer"}] (Deprecated)
         * QA (FARM style): [{"questions": ["What is X?"], "text":  "Some context containing the answer"}]
         * Classification / NER / embeddings: [{"text": "Some input text"}]
 
