@@ -930,7 +930,7 @@ class QuestionAnsweringHead(PredictionHead):
                  context_window_size=100,
                  n_best=5,
                  n_best_per_sample=1,
-                 filter_range=-1,
+                 duplicate_filtering=-1,
                  **kwargs):
         """
         :param layer_dims: dimensions of Feed Forward block, e.g. [768,2], for adjusting to BERT embedding. Output should be always 2
@@ -948,10 +948,9 @@ class QuestionAnsweringHead(PredictionHead):
                                   This is decoupled from n_best on document level, since predictions on passage level are very similar.
                                   It should have a low value
         :type n_best_per_sample: int
-        :param filter_range: The maximum distance that the start indices or end indices of two answers need to have to be handled as duplicates.
-                            0 corresponds to exact duplicates.
-                            -1 turns off duplicate removal.
-        :type filter_range: int
+        :param duplicate_filtering: Answers are filtered based on their position. Both start and end position of the answers are considered.
+                                    The higher the value, answers that are more apart are filtered out. 0 corresponds to exact duplicates. -1 turns off duplicate removal.
+        :type duplicate_filtering: int
         """
         super(QuestionAnsweringHead, self).__init__()
         if len(kwargs) > 0:
@@ -969,7 +968,7 @@ class QuestionAnsweringHead(PredictionHead):
         self.context_window_size = context_window_size
         self.n_best = n_best
         self.n_best_per_sample = n_best_per_sample
-        self.filter_range = filter_range
+        self.duplicate_filtering = duplicate_filtering
         self.generate_config()
 
 
@@ -1145,7 +1144,7 @@ class QuestionAnsweringHead(PredictionHead):
                 # Ignore no_answer scores which will be extracted later in this method
                 if start_idx == 0 and end_idx == 0:
                     continue
-                if self.filter_range > -1 and (start_idx in start_idx_candidates or end_idx in end_idx_candidates):
+                if self.duplicate_filtering > -1 and (start_idx in start_idx_candidates or end_idx in end_idx_candidates):
                     continue
                 score = start_end_matrix[start_idx, end_idx].item()
                 top_candidates.append(QACandidate(offset_answer_start=start_idx,
@@ -1155,8 +1154,8 @@ class QuestionAnsweringHead(PredictionHead):
                                                   offset_unit="token",
                                                   aggregation_level="passage",
                                                   passage_id=sample_idx))
-                if self.filter_range > -1:
-                    for i in range(0, self.filter_range + 1):
+                if self.duplicate_filtering > -1:
+                    for i in range(0, self.duplicate_filtering + 1):
                         start_idx_candidates.add(start_idx + i)
                         start_idx_candidates.add(start_idx - i)
                         end_idx_candidates.add(end_idx + i)

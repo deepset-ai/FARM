@@ -140,8 +140,8 @@ def test_id(span_inference_result, no_answer_inference_result):
     assert no_answer_inference_result.id == "best_id_ever"
 
 
-def test_duplicate_answer_filtering():
-    QA_input = [
+def test_duplicate_answer_filtering(bert_base_squad2):
+    qa_input = [
         {
             "questions": ["“In what country lies the Normandy?”"],
             "text": """The Normans (Norman: Nourmands; French: Normands; Latin: Normanni) were the people who in the 10th and 11th centuries gave their name to Normandy, a region in France. They were descended from Norse (\"Norman\" comes from \"Norseman\") 
@@ -149,16 +149,11 @@ def test_duplicate_answer_filtering():
                 The distinct cultural and ethnic identity of the Normans emerged initially in the first half of the 10th century, and it continued to evolve over the succeeding centuries. Weird things happen in Normandy, France."""
         }]
 
-    base_LM_model = "deepset/bert-base-cased-squad2"
+    bert_base_squad2.model.prediction_heads[0].n_best = 5
+    bert_base_squad2.model.prediction_heads[0].n_best_per_sample = 5
+    bert_base_squad2.model.prediction_heads[0].duplicate_filtering = 0
 
-    inferencer = QAInferencer.load(base_LM_model, batch_size=2, gpu=False, task_type="question_answering",
-                                 num_processes=0)
-
-    inferencer.model.prediction_heads[0].n_best = 5
-    inferencer.model.prediction_heads[0].n_best_per_sample = 5
-    inferencer.model.prediction_heads[0].filter_range = 0
-
-    result = inferencer.inference_from_dicts(dicts=QA_input)
+    result = bert_base_squad2.inference_from_dicts(dicts=qa_input)
     offset_answer_starts = []
     offset_answer_ends = []
     for answer in result[0]["predictions"][0]["answers"]:
@@ -169,8 +164,8 @@ def test_duplicate_answer_filtering():
     assert len(offset_answer_ends) == len(set(offset_answer_ends))
 
 
-def test_no_duplicate_answer_filtering():
-    QA_input = [
+def test_no_duplicate_answer_filtering(bert_base_squad2):
+    qa_input = [
         {
             "questions": ["“In what country lies the Normandy?”"],
             "text": """The Normans (Norman: Nourmands; French: Normands; Latin: Normanni) were the people who in the 10th and 11th centuries gave their name to Normandy, a region in France. They were descended from Norse (\"Norman\" comes from \"Norseman\") 
@@ -178,16 +173,11 @@ def test_no_duplicate_answer_filtering():
                     The distinct cultural and ethnic identity of the Normans emerged initially in the first half of the 10th century, and it continued to evolve over the succeeding centuries. Weird things happen in Normandy, France."""
         }]
 
-    base_LM_model = "deepset/bert-base-cased-squad2"
+    bert_base_squad2.model.prediction_heads[0].n_best = 5
+    bert_base_squad2.model.prediction_heads[0].n_best_per_sample = 5
+    bert_base_squad2.model.prediction_heads[0].duplicate_filtering = -1
 
-    inferencer = QAInferencer.load(base_LM_model, batch_size=2, gpu=False, task_type="question_answering",
-                                 num_processes=0)
-
-    inferencer.model.prediction_heads[0].n_best = 5
-    inferencer.model.prediction_heads[0].n_best_per_sample = 5
-    inferencer.model.prediction_heads[0].filter_range = -1
-
-    result = inferencer.inference_from_dicts(dicts=QA_input)
+    result = bert_base_squad2.inference_from_dicts(dicts=qa_input)
     offset_answer_starts = []
     offset_answer_ends = []
     for answer in result[0]["predictions"][0]["answers"]:
@@ -198,8 +188,8 @@ def test_no_duplicate_answer_filtering():
     assert len(offset_answer_ends) != len(set(offset_answer_ends))
 
 
-def test_range_duplicate_answer_filtering():
-    QA_input = [
+def test_range_duplicate_answer_filtering(bert_base_squad2):
+    qa_input = [
         {
             "questions": ["“In what country lies the Normandy?”"],
             "text": """The Normans (Norman: Nourmands; French: Normands; Latin: Normanni) were the people who in the 10th and 11th centuries gave their name to Normandy, a region in France. They were descended from Norse (\"Norman\" comes from \"Norseman\") 
@@ -207,16 +197,11 @@ def test_range_duplicate_answer_filtering():
                     The distinct cultural and ethnic identity of the Normans emerged initially in the first half of the 10th century, and it continued to evolve over the succeeding centuries. Weird things happen in Normandy, France."""
         }]
 
-    base_LM_model = "deepset/bert-base-cased-squad2"
+    bert_base_squad2.model.prediction_heads[0].n_best = 5
+    bert_base_squad2.model.prediction_heads[0].n_best_per_sample = 5
+    bert_base_squad2.model.prediction_heads[0].duplicate_filtering = 5
 
-    inferencer = QAInferencer.load(base_LM_model, batch_size=2, gpu=False, task_type="question_answering",
-                                 num_processes=0)
-
-    inferencer.model.prediction_heads[0].n_best = 5
-    inferencer.model.prediction_heads[0].n_best_per_sample = 5
-    inferencer.model.prediction_heads[0].filter_range = 5
-
-    result = inferencer.inference_from_dicts(dicts=QA_input)
+    result = bert_base_squad2.inference_from_dicts(dicts=qa_input)
     offset_answer_starts = []
     offset_answer_ends = []
     for answer in result[0]["predictions"][0]["answers"]:
@@ -226,12 +211,12 @@ def test_range_duplicate_answer_filtering():
     offset_answer_starts.sort()
     offset_answer_starts.remove(0)
     distances_answer_starts = [j-i for i, j in zip(offset_answer_starts[:-1],offset_answer_starts[1:])]
-    assert all(distance > inferencer.model.prediction_heads[0].filter_range for distance in distances_answer_starts)
+    assert all(distance > bert_base_squad2.model.prediction_heads[0].duplicate_filtering for distance in distances_answer_starts)
 
     offset_answer_ends.sort()
     offset_answer_ends.remove(0)
     distances_answer_ends = [j-i for i, j in zip(offset_answer_ends[:-1], offset_answer_ends[1:])]
-    assert all(distance > inferencer.model.prediction_heads[0].filter_range for distance in distances_answer_ends)
+    assert all(distance > bert_base_squad2.model.prediction_heads[0].duplicate_filtering for distance in distances_answer_ends)
 
 
 if(__name__=="__main__"):
@@ -242,4 +227,3 @@ if(__name__=="__main__"):
     test_duplicate_answer_filtering()
     test_no_duplicate_answer_filtering()
     test_range_duplicate_answer_filtering()
-
