@@ -1880,7 +1880,7 @@ class SquadProcessor(Processor):
             logger.info("Initialized processor without tasks. Supply `metric` and `label_list` to the constructor for "
                         "using the default task or add a custom task later via processor.add_task()")
 
-    def dataset_from_dicts(self, dicts, indices=None, return_baskets=False):
+    def dataset_from_dicts(self, dicts, indices, return_baskets=False):
         """
         Convert input dictionaries into a pytorch dataset for Question Answering.
         For this we have an internal representation called "baskets".
@@ -2096,14 +2096,15 @@ class SquadProcessor(Processor):
                             answer_text = answer["text"]
                             # check if answer string can be found in context
                             if answer_text not in doc_text:
-                                logger.warning(f"Answer '{answer['text']}' not contained in context.")
+                                logger.warning(f"Answer '{answer['text']}' not contained in context.\n"
+                                               f"Example will not be converted for training/evaluation.")
                                 error_in_answer = True
                                 label_idxs[i][0] = -100  # TODO remove this hack also from featurization
                                 label_idxs[i][1] = -100
                                 break  # Break loop around answers, so the error message is not shown multiple times
                             elif answer_indices.strip() != answer_text.strip():
-                                logger.warning(f"""Answer using start/end indices is '{answer_indices}' while gold label text is '{answer_text}'.\n
-                                                   Example will not be converted for training/evaluation.""")
+                                logger.warning(f"Answer using start/end indices is '{answer_indices}' while gold label text is '{answer_text}'.\n"
+                                               f"Example will not be converted for training/evaluation.")
                                 error_in_answer = True
                                 label_idxs[i][0] = -100 # TODO remove this hack also from featurization
                                 label_idxs[i][1] = -100
