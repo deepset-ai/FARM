@@ -46,7 +46,7 @@ parsed_requirements = parse_requirements('requirements.txt')
 
 setup(
     name="farm",
-    version="0.6.0",
+    version="0.6.1",
     author="Malte Pietsch, Timo Moeller, Branden Chan, Tanay Soni, Bogdan Kostic",
     author_email="malte.pietsch@deepset.ai",
     description="Framework for finetuning and evaluating transformer based language models",
@@ -55,7 +55,7 @@ setup(
     keywords="BERT NLP deep-learning language-model transformer qa question-answering transfer-learning",
     license="Apache",
     url="https://github.com/deepset-ai/FARM",
-    download_url="https://github.com/deepset-ai/FARM/archive/0.6.0.tar.gz",
+    download_url="https://github.com/deepset-ai/FARM/archive/0.6.1.tar.gz",
     packages=find_packages(exclude=["*.tests", "*.tests.*", "tests.*", "tests"]),
     dependency_links=dependency_links,
     install_requires=parsed_requirements,
