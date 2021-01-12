@@ -24,7 +24,6 @@ def test_dataset_from_dicts_qa_inference(caplog=None):
         processor = SquadProcessor(tokenizer, max_seq_len=256, data_dir=None)
 
         for sample_type in sample_types:
-            # clear_text = json.load(open(f"samples/qa/{sample_type}/clear_text.json"))
             dicts = processor.file_to_dicts(f"samples/qa/{sample_type}.json")
             dataset, tensor_names, problematic_sample_ids, baskets = processor.dataset_from_dicts(dicts, indices=[1], return_baskets=True)
             assert tensor_names == ['input_ids', 'padding_mask', 'segment_ids', 'passage_start_t', 'start_of_word', 'labels', 'id', 'seq_2_start_t', 'span_mask'], f"Processing for {model} has changed."
@@ -103,7 +102,6 @@ def test_dataset_from_dicts_qa_labelconversion(caplog=None):
         processor = SquadProcessor(tokenizer, max_seq_len=256, data_dir=None)
 
         for sample_type in sample_types:
-            # clear_text = json.load(open(f"samples/qa/{sample_type}/clear_text.json"))
             dicts = processor.file_to_dicts(f"samples/qa/{sample_type}.json")
             dataset, tensor_names, problematic_sample_ids = processor.dataset_from_dicts(dicts, indices=[1], return_baskets=False)
 
