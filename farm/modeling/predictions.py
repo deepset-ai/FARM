@@ -179,7 +179,7 @@ class QACandidate:
         # to the end of the document
         end_t = min(end_t, n_tokens)
 
-        start_ch = token_offsets[start_t]
+        start_ch = int(token_offsets[start_t])
         # i.e. pointing at the END of the last token
         if end_t == n_tokens:
             end_ch = len(clear_text)
@@ -187,7 +187,7 @@ class QACandidate:
             end_ch = token_offsets[end_t]
 
         final_text = clear_text[start_ch: end_ch].strip()
-        end_ch = start_ch + len(final_text)
+        end_ch = int(start_ch + len(final_text))
 
         return final_text, start_ch, end_ch
 
