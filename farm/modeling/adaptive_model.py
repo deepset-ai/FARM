@@ -642,6 +642,7 @@ class ONNXAdaptiveModel(BaseAdaptiveModel):
 
     @classmethod
     def load(cls, load_dir, device, **kwargs):
+        load_dir = Path(load_dir)
         import onnxruntime
         sess_options = onnxruntime.SessionOptions()
         # Set graph optimization level to ORT_ENABLE_EXTENDED to enable bert optimization.
