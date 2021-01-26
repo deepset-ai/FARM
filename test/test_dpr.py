@@ -1,4 +1,3 @@
-import os
 import pytest
 import torch
 import logging
@@ -11,7 +10,7 @@ from farm.modeling.tokenization import Tokenizer
 from farm.utils import set_all_seeds, initialize_device_settings
 from farm.data_handler.dataset import convert_features_to_dataset
 
-@pytest.mark.skipif(os.name == 'nt', reason="DDP does not work on Windows")
+
 def test_dpr_modules(caplog=None):
     if caplog:
         caplog.set_level(logging.CRITICAL)
