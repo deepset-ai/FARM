@@ -203,16 +203,18 @@ def squad(preds, labels):
     overall_results = squad_base(preds, labels)
 
     preds_answer = [pred for (pred, label) in zip(preds, labels) if (-1, -1) not in label]
-    labels_answer = [label for label in labels if label != [(-1, -1)]]
+    labels_answer = [label for label in labels if (-1, -1) not in label]
     answer_results = squad_base(preds_answer, labels_answer)
 
     preds_no_answer = [pred for (pred, label) in zip(preds, labels) if (-1, -1) in label]
-    labels_no_answer = [label for label in labels if label == [(-1, -1)]]
+    labels_no_answer = [label for label in labels if (-1, -1) in label]
     no_answer_results = squad_base(preds_no_answer, labels_no_answer)
 
     return {"EM": overall_results["EM"], "f1": overall_results["f1"], "top_n_accuracy": overall_results["top_n_accuracy"],
             "EM_text_answer": answer_results["EM"], "f1_text_answer": answer_results["f1"], "top_n_accuracy_text_answer": answer_results["top_n_accuracy"],
+            "Total_text_answer": len(preds_answer),
             "EM_no_answer": no_answer_results["EM"], "f1_no_answer": no_answer_results["f1"], "top_n_accuracy_no_answer": no_answer_results["top_n_accuracy"],
+            "Total_no_answer": len(preds_no_answer)
             }
 
 def top_n_accuracy(preds, labels):

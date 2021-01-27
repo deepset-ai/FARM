@@ -2076,8 +2076,10 @@ class SquadProcessor(Processor):
                         passage_len_t = len(sample.tokenized["passage_tokens"])
 
                         # Check that start and end are contained within this passage
-                        if passage_len_t > answer_start_t >= 0 and passage_len_t > answer_end_t > 0:
-                            # Then adjust the start and end offsets by adding question and special tokens
+                        # answer_end_t is 0 if the first token is the answer
+                        # answer_end_t is passage_len_t if the last token is the answer
+                        if passage_len_t > answer_start_t >= 0 and passage_len_t >= answer_end_t >= 0:
+                            # Then adjust the start and end offsets by adding question and special token
                             label_idxs[i][0] = self.sp_toks_start + question_len_t + self.sp_toks_mid + answer_start_t
                             label_idxs[i][1] = self.sp_toks_start + question_len_t + self.sp_toks_mid + answer_end_t
                         # If the start or end of the span answer is outside the passage, treat passage as no_answer
