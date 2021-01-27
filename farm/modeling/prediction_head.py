@@ -970,6 +970,7 @@ class QuestionAnsweringHead(PredictionHead):
         self.n_best_per_sample = n_best_per_sample
         self.duplicate_filtering = duplicate_filtering
         self.generate_config()
+        self.temperature = nn.Parameter(torch.ones(1) * 1)  # 1
 
 
     @classmethod
@@ -1049,6 +1050,46 @@ class QuestionAnsweringHead(PredictionHead):
         per_sample_loss = (start_loss + end_loss) / 2
         return per_sample_loss
 
+    def update_temperature(self, preds_all, label_all):
+        # TODO extract preds and labels in pytorch format from preds_all and labels_all
+        logits = preds_all
+        labels = label_all  # label_all: [[(53,53)], [(39,44), (37,44)], [(77,81)], [(85,86)], ...]
+        scores = [x[0][0].score for x in preds_all]
+        start = [x[0][0].offset_answer_start for x in preds_all]
+        end = [x[0][0].offset_answer_end for x in preds_all]
+        import torch
+        a = [1, 2, 3]
+        b = torch.FloatTensor(a)
+        from torch import nn, optim
+        from torch.nn import functional as F
+        # self.temperature = 2
+        self.cuda()
+        nll_criterion = nn.CrossEntropyLoss().cuda()
+
+        # First: collect all the logits and labels for the validation set
+        logits_list = []
+        labels_list = []
+
+        # Calculate NLL before temperature scaling
+        before_temperature_nll = nll_criterion(logits, labels).item()
+        print('Before temperature - NLL: %.3f' % (before_temperature_nll))
+
+        # Next: optimize the temperature w.r.t. NLL
+        optimizer = optim.LBFGS([self.temperature], lr=0.01, max_iter=50)
+
+        def eval():
+            loss = nll_criterion(self.temperature_scale(logits), labels)
+            loss.backward()
+            return loss
+
+        optimizer.step(eval)
+
+        # Calculate NLL and ECE after temperature scaling
+        after_temperature_nll = nll_criterion(self.temperature_scale(logits), labels).item()
+        print('Optimal temperature: %.3f' % self.temperature.item())
+        print('After temperature - NLL: %.3f' % (after_temperature_nll))
+
+
     def logits_to_preds(self, logits, span_mask, start_of_word,
                         seq_2_start_t, max_answer_length=1000, **kwargs):
         """
@@ -1067,6 +1108,12 @@ class QuestionAnsweringHead(PredictionHead):
         start_logits, end_logits = logits.split(1, dim=-1)
         start_logits = start_logits.squeeze(-1)
         end_logits = end_logits.squeeze(-1)
+
+        # temperature needs to be the same size as start_logits and end_logits
+        temperature = self.temperature.unsqueeze(1).expand(start_logits.size(0), start_logits.size(1))
+        # Calibrate logits with temperature
+        start_logits = start_logits / temperature
+        end_logits = end_logits / temperature
 
         # Calculate a few useful variables
         batch_size = start_logits.size()[0]

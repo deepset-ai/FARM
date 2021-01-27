@@ -100,6 +100,10 @@ class Evaluator:
                                                                                 passage_start_t=passage_start_t_all[head_num],
                                                                                 ids=head_ids)
 
+            if head.model_type == "span_classification":
+                print("update temperature here")
+                # head.update_temperature(preds_all[head_num], label_all[head_num])
+
             result = {"loss": loss_all[head_num] / len(self.data_loader.dataset),
                       "task_name": head.task_name}
             result.update(
