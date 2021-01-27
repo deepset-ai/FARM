@@ -199,13 +199,14 @@ def squad(preds, labels):
     """
     This method calculates squad evaluation metrics a) overall, b) for questions with text answer and c) for questions with no answer
     """
+    # TODO change check for no_answer questions from using (start,end)==(-1,-1) to is_impossible flag in QAInput. This needs to be done for labels though. Not for predictions.
     overall_results = squad_base(preds, labels)
 
-    preds_answer = [pred for (pred, label) in zip(preds, labels) if label != [(-1, -1)]]
+    preds_answer = [pred for (pred, label) in zip(preds, labels) if (-1, -1) not in label]
     labels_answer = [label for label in labels if label != [(-1, -1)]]
     answer_results = squad_base(preds_answer, labels_answer)
 
-    preds_no_answer = [pred for (pred, label) in zip(preds, labels) if label == [(-1, -1)]]
+    preds_no_answer = [pred for (pred, label) in zip(preds, labels) if (-1, -1) in label]
     labels_no_answer = [label for label in labels if label == [(-1, -1)]]
     no_answer_results = squad_base(preds_no_answer, labels_no_answer)
 
