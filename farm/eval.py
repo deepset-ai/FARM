@@ -57,6 +57,7 @@ class Evaluator:
         label_all = [[] for _ in model.prediction_heads]
         ids_all = [[] for _ in model.prediction_heads]
         passage_start_t_all = [[] for _ in model.prediction_heads]
+        logits_all = [[] for _ in model.prediction_heads]
 
         for step, batch in enumerate(
             tqdm(self.data_loader, desc="Evaluating", mininterval=10)
@@ -78,6 +79,7 @@ class Evaluator:
                 if head.model_type == "span_classification":
                     ids_all[head_num] += list(to_numpy(batch["id"]))
                     passage_start_t_all[head_num] += list(to_numpy(batch["passage_start_t"]))
+                    logits_all[head_num] += list(to_numpy(logits))
 
 
         # Evaluate per prediction head
@@ -102,7 +104,7 @@ class Evaluator:
 
             if head.model_type == "span_classification":
                 print("update temperature here")
-                # head.update_temperature(preds_all[head_num], label_all[head_num])
+                head.update_temperature(logits_all[head_num], label_all[head_num])
 
             result = {"loss": loss_all[head_num] / len(self.data_loader.dataset),
                       "task_name": head.task_name}

@@ -1017,7 +1017,7 @@ class QuestionAnsweringHead(PredictionHead):
 
         """
         logits = self.feed_forward(X)
-        return logits
+        return self.temperature_scale(logits)
 
     def logits_to_loss(self, logits, labels, **kwargs):
         """
@@ -1050,42 +1050,79 @@ class QuestionAnsweringHead(PredictionHead):
         per_sample_loss = (start_loss + end_loss) / 2
         return per_sample_loss
 
-    def update_temperature(self, preds_all, label_all):
-        # TODO extract preds and labels in pytorch format from preds_all and labels_all
-        logits = preds_all
-        labels = label_all  # label_all: [[(53,53)], [(39,44), (37,44)], [(77,81)], [(85,86)], ...]
-        scores = [x[0][0].score for x in preds_all]
-        start = [x[0][0].offset_answer_start for x in preds_all]
-        end = [x[0][0].offset_answer_end for x in preds_all]
-        import torch
-        a = [1, 2, 3]
-        b = torch.FloatTensor(a)
-        from torch import nn, optim
-        from torch.nn import functional as F
-        # self.temperature = 2
-        self.cuda()
-        nll_criterion = nn.CrossEntropyLoss().cuda()
+    def temperature_scale_1(self, logits):
+        """
+        Perform temperature scaling on logits
+        """
+        # Expand temperature to match the size of logits
+        temperature = self.temperature.unsqueeze(1).expand(logits.size(0), logits.size(1))
+        return logits / temperature
 
-        # First: collect all the logits and labels for the validation set
-        logits_list = []
-        labels_list = []
+    def temperature_scale(self, logits):
+        """
+        Perform temperature scaling on logits
+        """
+        # Expand temperature to match the size of logits
+        temperature = self.temperature.unsqueeze(1).expand(logits.size(0), logits.size(1), logits.size(2))
+        return logits / temperature
+
+    # def update_temperature(self, preds_all, label_all):
+    #     scores = [x[0][0].score for x in preds_all]
+    #     start = [x[0][0].offset_answer_start for x in preds_all]
+    #     end = [x[0][0].offset_answer_end for x in preds_all]
+    #     from farm.evaluation import metrics
+    #     average_correctness = metrics.squad_EM(preds_all,label_all)
+    #     average_confidence = sum(scores)/len(scores)
+    #     temp_value = average_confidence/average_correctness
+    #     self.temperature = nn.Parameter(torch.ones(1) * temp_value)
+    #     print(average_correctness, average_confidence, self.temperature)
+
+    def update_temperature(self, logits_all, label_all):
+        # TODO handle also end_logits and not only start_logits
+        # logits_all is a list of the logits of individual batches. we need to concatenate these batches into one large tensor
+        logits = torch.cat(logits_all, dim=0)#[0] #for one sample
+        # TODO it seems that the last batch is not full. remove empty items from last batch
+        logits = torch.cat([logits[:-(len(logits)-len(label_all))]])
+
+        # TODO handle -1 label correctly, e.g., map -1 to max_value(end_position)+1
+        start_position = [label[0][0] if label[0][0] >=0 else 0 for label in label_all]
+        end_position = [label[0][1] if label[0][1] >=0 else 0 for label in label_all]
+
+        start_logits, end_logits = logits.split(1, dim=-1)
+        start_logits = start_logits.squeeze(-1)
+        end_logits = end_logits.squeeze(-1)
+
+        start_position = torch.tensor(start_position)
+        if len(start_position.size()) > 1:
+            start_position = start_position.squeeze(-1)
+        #if len(end_position.size()) > 1:
+        #    end_position = end_position.squeeze(-1)
+
+        ignored_index = start_logits.size(1)-1
+        start_position.clamp_(0, ignored_index)
+        #end_position.clamp_(0, ignored_index)
+
+        from torch import optim
+        self.cuda()
+        nll_criterion = CrossEntropyLoss()
+
 
         # Calculate NLL before temperature scaling
-        before_temperature_nll = nll_criterion(logits, labels).item()
+        before_temperature_nll = nll_criterion(start_logits, start_position.to(device='cuda')).item()
         print('Before temperature - NLL: %.3f' % (before_temperature_nll))
 
         # Next: optimize the temperature w.r.t. NLL
         optimizer = optim.LBFGS([self.temperature], lr=0.01, max_iter=50)
 
         def eval():
-            loss = nll_criterion(self.temperature_scale(logits), labels)
+            loss = nll_criterion(self.temperature_scale_1(start_logits), start_position.to(device='cuda'))
             loss.backward()
             return loss
 
         optimizer.step(eval)
 
-        # Calculate NLL and ECE after temperature scaling
-        after_temperature_nll = nll_criterion(self.temperature_scale(logits), labels).item()
+        # Calculate NLL after temperature scaling
+        after_temperature_nll = nll_criterion(self.temperature_scale_1(start_logits), start_position.to(device='cuda')).item()
         print('Optimal temperature: %.3f' % self.temperature.item())
         print('After temperature - NLL: %.3f' % (after_temperature_nll))
 
@@ -1112,8 +1149,8 @@ class QuestionAnsweringHead(PredictionHead):
         # temperature needs to be the same size as start_logits and end_logits
         temperature = self.temperature.unsqueeze(1).expand(start_logits.size(0), start_logits.size(1))
         # Calibrate logits with temperature
-        start_logits = start_logits / temperature
-        end_logits = end_logits / temperature
+        start_logits = start_logits / temperature.to(device='cuda')
+        end_logits = end_logits / temperature.to(device='cuda')
 
         # Calculate a few useful variables
         batch_size = start_logits.size()[0]
@@ -1194,6 +1231,10 @@ class QuestionAnsweringHead(PredictionHead):
                 if self.duplicate_filtering > -1 and (start_idx in start_idx_candidates or end_idx in end_idx_candidates):
                     continue
                 score = start_end_matrix[start_idx, end_idx].item()
+                start_end_matrix[0, 0] = -999
+                start_end_matrix_softmax = torch.softmax(start_end_matrix,dim=0)
+                score = start_end_matrix_softmax[start_idx, end_idx].item()
+                # todo apply softmax here across all start indices now that we have calibrated scores
                 top_candidates.append(QACandidate(offset_answer_start=start_idx,
                                                   offset_answer_end=end_idx,
                                                   score=score,
@@ -1209,7 +1250,7 @@ class QuestionAnsweringHead(PredictionHead):
                         end_idx_candidates.add(end_idx - i)
 
 
-        no_answer_score = start_end_matrix[0, 0].item()
+        no_answer_score = start_end_matrix_softmax[0, 0].item()
         top_candidates.append(QACandidate(offset_answer_start=0,
                                           offset_answer_end=0,
                                           score=no_answer_score,
