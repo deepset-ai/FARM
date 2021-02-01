@@ -929,7 +929,7 @@ class QuestionAnsweringHead(PredictionHead):
                  no_ans_boost=0.0,
                  context_window_size=100,
                  n_best=5,
-                 n_best_per_sample=1,
+                 n_best_per_sample=None,
                  duplicate_filtering=-1,
                  **kwargs):
         """
@@ -967,9 +967,15 @@ class QuestionAnsweringHead(PredictionHead):
         self.no_ans_boost = no_ans_boost
         self.context_window_size = context_window_size
         self.n_best = n_best
-        self.n_best_per_sample = n_best_per_sample
+        if n_best_per_sample:
+            self.n_best_per_sample = n_best_per_sample
+        else:
+            # increasing n_best_per_sample to n_best ensures that there are n_best predictions in total
+            # otherwise this might not be the case for very short documents with only one "sample"
+            self.n_best_per_sample = n_best
         self.duplicate_filtering = duplicate_filtering
         self.generate_config()
+
 
 
     @classmethod

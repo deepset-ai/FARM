@@ -156,7 +156,7 @@ def squad_EM(preds, labels):
         curr_labels = labels[doc_idx]
         if (pred_start, pred_end) in curr_labels:
             n_correct += 1
-    return n_correct/n_docs
+    return n_correct/n_docs if n_docs else 0
 
 def squad_f1(preds, labels):
     f1_scores = []
@@ -189,11 +189,33 @@ def squad_f1_single(pred, label, pred_idx=0):
     f1 = (2 * precision * recall) / (precision + recall)
     return f1
 
-def squad(preds, labels):
+def squad_base(preds, labels):
     em = squad_EM(preds=preds, labels=labels)
     f1 = squad_f1(preds=preds, labels=labels)
     top_acc = top_n_accuracy(preds=preds, labels=labels)
     return {"EM": em, "f1": f1, "top_n_accuracy": top_acc}
+
+def squad(preds, labels):
+    """
+    This method calculates squad evaluation metrics a) overall, b) for questions with text answer and c) for questions with no answer
+    """
+    # TODO change check for no_answer questions from using (start,end)==(-1,-1) to is_impossible flag in QAInput. This needs to be done for labels though. Not for predictions.
+    overall_results = squad_base(preds, labels)
+
+    preds_answer = [pred for (pred, label) in zip(preds, labels) if (-1, -1) not in label]
+    labels_answer = [label for label in labels if (-1, -1) not in label]
+    answer_results = squad_base(preds_answer, labels_answer)
+
+    preds_no_answer = [pred for (pred, label) in zip(preds, labels) if (-1, -1) in label]
+    labels_no_answer = [label for label in labels if (-1, -1) in label]
+    no_answer_results = squad_base(preds_no_answer, labels_no_answer)
+
+    return {"EM": overall_results["EM"], "f1": overall_results["f1"], "top_n_accuracy": overall_results["top_n_accuracy"],
+            "EM_text_answer": answer_results["EM"], "f1_text_answer": answer_results["f1"], "top_n_accuracy_text_answer": answer_results["top_n_accuracy"],
+            "Total_text_answer": len(preds_answer),
+            "EM_no_answer": no_answer_results["EM"], "f1_no_answer": no_answer_results["f1"], "top_n_accuracy_no_answer": no_answer_results["top_n_accuracy"],
+            "Total_no_answer": len(preds_no_answer)
+            }
 
 def top_n_accuracy(preds, labels):
     """
