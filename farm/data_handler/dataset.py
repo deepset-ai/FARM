@@ -19,9 +19,14 @@ def convert_features_to_dataset(features):
     all_tensors = []
     for t_name in tensor_names:
         try:
-            cur_tensor = torch.tensor(
-                [sample[t_name] for sample in features], dtype=torch.long
-            )
+            if t_name == 'regression_label_ids':
+                cur_tensor = torch.tensor(
+                    [sample[t_name] for sample in features], dtype=torch.float32
+                )
+            else:
+                cur_tensor = torch.tensor(
+                    [sample[t_name] for sample in features], dtype=torch.long
+                )
         except ValueError:
             cur_tensor = torch.tensor(
                 [sample[t_name] for sample in features], dtype=torch.float32
