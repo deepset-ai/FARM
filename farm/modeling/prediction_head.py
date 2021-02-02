@@ -696,11 +696,11 @@ class TokenClassificationHead(PredictionHead):
         for preds_seq, probs_seq, sample, spans_seq in zip(
             preds, probs, samples, spans
         ):
-            tags, spans_seq = convert_iob_to_simple_tags(preds_seq, spans_seq)
+            tags, spans_seq, tag_probs = convert_iob_to_simple_tags(preds_seq, spans_seq, probs_seq)
             seq_res = []
             # TODO: Though we filter out tags and spans for non-entity words,
             # TODO: we do not yet filter out probs of non-entity words. This needs to be implemented still
-            for tag, prob, span in zip(tags, probs_seq, spans_seq):
+            for tag, tag_prob, span in zip(tags, tag_probs, spans_seq):
                 context = sample.clear_text["text"][span[0]: span[1]]
                 seq_res.append(
                     {
@@ -708,10 +708,10 @@ class TokenClassificationHead(PredictionHead):
                         "end": span[1],
                         "context": f"{context}",
                         "label": f"{tag}",
-                        "probability": np.float32(0.0),
+                        "probability": tag_prob,
                     }
                 )
-            res["predictions"].extend(seq_res)
+            res["predictions"].append(seq_res)
         return res
 
 

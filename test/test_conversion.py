@@ -162,9 +162,9 @@ def test_conversion_inferencer_ner():
     input = [{"text": text}]
     result_farm = nlp.inference_from_dicts(dicts=input)
     pred_farm = result_farm[0]["predictions"]
-    assert pred_farm[0]["label"] == 'LOC'
-    assert pred_farm[1]["label"] == 'LOC'
-    assert len(pred_farm) == 2
+    assert pred_farm[0][0]["label"] == 'LOC'
+    assert pred_farm[0][1]["label"] == 'LOC'
+    assert len(pred_farm[0]) == 2
 
     # save it
     farm_model_dir = Path("testsave/bert-conversion-test-hf")

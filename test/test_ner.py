@@ -103,8 +103,10 @@ def test_ner(caplog, use_fast):
     model.processor.tasks["ner"]["label_list"][-1] = "B-LOC"
     result = model.inference_from_dicts(dicts=basic_texts)
 
-    assert result[0]["predictions"][0]["context"] == "Paris"
-    assert isinstance(result[0]["predictions"][0]["probability"], np.float32)
+    assert result[0]["predictions"][0][0]["context"] == "Paris"
+    assert isinstance(result[0]["predictions"][0][0]["probability"], np.float32)
+    assert result[0]["predictions"][0][0]["probability"] > 0.99
+    assert result[0]["predictions"][0][0]["label"] == "LOC"
 
 
 if __name__ == "__main__":
