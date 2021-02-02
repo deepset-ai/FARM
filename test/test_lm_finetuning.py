@@ -93,7 +93,6 @@ def test_lm_finetuning(caplog):
     ]
     model = Inferencer.load(save_dir, task_type="embeddings", num_processes=0)
     result = model.extract_vectors(dicts=basic_texts)
-    assert result[0]["context"] == ['Farmer', "'", 's', 'life', 'is', 'great', '.']
     assert result[0]["vec"].shape == (768,)
     # TODO check why results vary accross runs with same seed
     assert isinstance(result[0]["vec"][0], np.float32)
@@ -177,7 +176,6 @@ def test_lm_finetuning_no_next_sentence(caplog):
     ]
     model = Inferencer.load(save_dir, task_type="embeddings", num_processes=0)
     result = model.extract_vectors(dicts=basic_texts)
-    assert result[0]["context"] == ['Farmer', "'", 's', 'life', 'is', 'great', '.']
     assert result[0]["vec"].shape == (768,)
     # TODO check why results vary accross runs with same seed
     assert isinstance(result[0]["vec"][0], np.float32)
@@ -263,7 +261,6 @@ def test_lm_finetuning_custom_vocab(caplog):
     ]
     model = Inferencer.load(save_dir, task_type="embeddings", num_processes=0)
     result = model.extract_vectors(dicts=basic_texts)
-    assert result[0]["context"] == ['Farmer', "'", 's', 'life', 'is', 'great', '.']
     assert result[0]["vec"].shape == (768,)
     # TODO check why results vary accross runs with same seed
     assert isinstance(result[0]["vec"][0], np.float32)
