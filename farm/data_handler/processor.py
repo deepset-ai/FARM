@@ -860,6 +860,128 @@ class RegressionProcessor(TextClassificationProcessor):
         return ret
 
 
+#########################################
+# Processor for Basic Inference ####
+#########################################
+class InferenceProcessor(TextClassificationProcessor):
+    """
+    Generic processor used at inference time:
+    - fast
+    - no labels
+    - pure encoding of text into pytorch dataset
+    - Doesn't read from file, but only consumes dictionaries (e.g. coming from API requests)
+    """
+
+    def __init__(
+        self,
+        tokenizer,
+        max_seq_len,
+        **kwargs,
+    ):
+
+        super(InferenceProcessor, self).__init__(
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            train_filename=None,
+            dev_filename=None,
+            test_filename=None,
+            dev_split=None,
+            data_dir=None,
+            tasks={},
+        )
+
+    @classmethod
+    def load_from_dir(cls, load_dir):
+        """
+         Overwriting method from parent class to **always** load the InferenceProcessor instead of the specific class stored in the config.
+
+        :param load_dir: str, directory that contains a 'processor_config.json'
+        :return: An instance of an InferenceProcessor
+        """
+        # read config
+        processor_config_file = Path(load_dir) / "processor_config.json"
+        config = json.load(open(processor_config_file))
+        # init tokenizer
+        tokenizer = Tokenizer.load(load_dir, tokenizer_class=config["tokenizer"])
+        # we have to delete the tokenizer string from config, because we pass it as Object
+        del config["tokenizer"]
+
+        processor = cls.load(tokenizer=tokenizer, processor_name="InferenceProcessor", **config)
+        for task_name, task in config["tasks"].items():
+            processor.add_task(name=task_name, metric=task["metric"], label_list=task["label_list"])
+
+        if processor is None:
+            raise Exception
+
+        return processor
+
+    def file_to_dicts(self, file: str) -> [dict]:
+        raise NotImplementedError
+
+    def convert_labels(self, dictionary: dict):
+        # For inference we do not need labels
+        ret = {}
+        return ret
+
+    def dataset_from_dicts(self, dicts, indices=None, return_baskets=False, debug=False):
+        """
+        Function to convert input dictionaries containing text into a torch dataset.
+        For normal operation with Language Models it calls the superclass' TextClassification.dataset_from_dicts method.
+        For slow tokenizers, s3e or wordembedding tokenizers the function works on _dict_to_samples and _sample_to_features
+        """
+        # TODO remove this sections once tokenizers work the same way for slow/fast and our special tokenizers
+        if not self.tokenizer.is_fast:
+            self.baskets = []
+            for d in dicts:
+                sample = self._dict_to_samples(dictionary=d)
+                features = self._sample_to_features(sample)
+                sample.features = features
+                basket = SampleBasket(id_internal=None,
+                                      raw=d,
+                                      id_external=None,
+                                      samples=[sample])
+                self.baskets.append(basket)
+            if indices and 0 not in indices:
+                pass
+            else:
+                self._log_samples(1)
+
+            problematic_ids = set()
+            logger.warning("Currently no support in InferenceProcessor for returning problematic ids")
+            dataset, tensornames = self._create_dataset()
+            ret = [dataset, tensornames, problematic_ids]
+            if return_baskets:
+                ret.append(self.baskets)
+            return ret
+        else:
+            return super().dataset_from_dicts(dicts=dicts,
+                                       indices=indices,
+                                       return_baskets=return_baskets,
+                                       debug=debug)
+
+    # Private method to keep s3e pooling and embedding extraction working
+    def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
+        # this tokenization also stores offsets
+        tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer)
+        # truncate tokens, offsets and start_of_word to max_seq_len that can be handled by the model
+        for seq_name in tokenized.keys():
+            tokenized[seq_name], _, _ = truncate_sequences(seq_a=tokenized[seq_name], seq_b=None,
+                                                           tokenizer=self.tokenizer,
+                                                           max_seq_len=self.max_seq_len)
+        return Sample(id=None, clear_text=dictionary, tokenized=tokenized)
+
+    # Private method to keep s3e pooling and embedding extraction working
+    def _sample_to_features(self, sample) -> dict:
+        features = sample_to_features_text(
+            sample=sample,
+            tasks=self.tasks,
+            max_seq_len=self.max_seq_len,
+            tokenizer=self.tokenizer,
+        )
+        return features
+
+
+# TODO remove inheritance from superclass to be able to convert text + text_b
 class TextPairClassificationProcessor(TextClassificationProcessor):
     """
     Used to handle text pair classification datasets (e.g. Answer Selection or Natural Inference) that come in
@@ -1003,128 +1125,6 @@ class TextPairClassificationProcessor(TextClassificationProcessor):
                 feat_dict[task["label_tensor_name"]] = label_ids
 
         return [Sample(id=None, clear_text=dictionary, tokenized=token_dict, features=[feat_dict])]
-
-
-#########################################
-# Processor for Basic Inference ####
-#########################################
-class InferenceProcessor(TextClassificationProcessor):
-    """
-    Generic processor used at inference time:
-    - fast
-    - no labels
-    - pure encoding of text into pytorch dataset
-    - Doesn't read from file, but only consumes dictionaries (e.g. coming from API requests)
-    """
-
-    def __init__(
-        self,
-        tokenizer,
-        max_seq_len,
-        **kwargs,
-    ):
-
-        super(InferenceProcessor, self).__init__(
-            tokenizer=tokenizer,
-            max_seq_len=max_seq_len,
-            train_filename=None,
-            dev_filename=None,
-            test_filename=None,
-            dev_split=None,
-            data_dir=None,
-            tasks={},
-        )
-
-    @classmethod
-    def load_from_dir(cls, load_dir):
-        """
-         Overwriting method from parent class to **always** load the InferenceProcessor instead of the specific class stored in the config.
-
-        :param load_dir: str, directory that contains a 'processor_config.json'
-        :return: An instance of an InferenceProcessor
-        """
-        # read config
-        processor_config_file = Path(load_dir) / "processor_config.json"
-        config = json.load(open(processor_config_file))
-        # init tokenizer
-        tokenizer = Tokenizer.load(load_dir, tokenizer_class=config["tokenizer"])
-        # we have to delete the tokenizer string from config, because we pass it as Object
-        del config["tokenizer"]
-
-        processor = cls.load(tokenizer=tokenizer, processor_name="InferenceProcessor", **config)
-        for task_name, task in config["tasks"].items():
-            processor.add_task(name=task_name, metric=task["metric"], label_list=task["label_list"])
-
-        if processor is None:
-            raise Exception
-
-        return processor
-
-    def file_to_dicts(self, file: str) -> [dict]:
-        raise NotImplementedError
-
-    def convert_labels(self, dictionary: dict):
-        # For inference we do not need labels
-        ret = {}
-        return ret
-
-    def dataset_from_dicts(self, dicts, indices=None, return_baskets=False, debug=False):
-        """
-        The function to convert input dictionaries containing text into a torch dataset
-        For normal operation with Language Models it calls the superclass TextClassification.dataset_from_dicts
-        For slow tokenizers, se3 or wordembedding tokenizers the function works on _dict_to_samples and _sample_to_features
-        """
-        # TODO remove this sections once tokenizers work the same way for slow/fast and our special tokenizers
-        if not self.tokenizer.is_fast:
-            self.baskets = []
-            for d in dicts:
-                sample = self._dict_to_samples(dictionary=d)
-                features = self._sample_to_features(sample)
-                sample.features = features
-                basket = SampleBasket(id_internal=None,
-                                      raw=d,
-                                      id_external=None,
-                                      samples=[sample])
-                self.baskets.append(basket)
-            if indices and 0 not in indices:
-                pass
-            else:
-                self._log_samples(1)
-
-            problematic_ids = set()
-            logger.warning("Currently no support in InferenceProcessor for returning problematic ids")
-            dataset, tensornames = self._create_dataset()
-            ret = [dataset, tensornames, problematic_ids]
-            if return_baskets:
-                ret.append(self.baskets)
-            return ret
-        else:
-            return super().dataset_from_dicts(dicts=dicts,
-                                       indices=indices,
-                                       return_baskets=return_baskets,
-                                       debug=debug)
-
-    # Private method to keep s3e pooling and embedding extraction working
-    def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
-        # this tokenization also stores offsets
-        tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer)
-        # truncate tokens, offsets and start_of_word to max_seq_len that can be handled by the model
-        for seq_name in tokenized.keys():
-            tokenized[seq_name], _, _ = truncate_sequences(seq_a=tokenized[seq_name], seq_b=None,
-                                                           tokenizer=self.tokenizer,
-                                                           max_seq_len=self.max_seq_len)
-        return Sample(id=None, clear_text=dictionary, tokenized=tokenized)
-
-    # Private method to keep s3e pooling and embedding extraction working
-    def _sample_to_features(self, sample) -> dict:
-        features = sample_to_features_text(
-            sample=sample,
-            tasks=self.tasks,
-            max_seq_len=self.max_seq_len,
-            tokenizer=self.tokenizer,
-        )
-        return features
-
 
 
 #########################################
