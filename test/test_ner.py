@@ -105,6 +105,8 @@ def test_ner(caplog, use_fast):
 
     assert result[0]["predictions"][0][0]["context"] == "Paris"
     assert isinstance(result[0]["predictions"][0][0]["probability"], np.float32)
+    assert result[0]["predictions"][0][0]["probability"] > 0.99
+    assert result[0]["predictions"][0][0]["label"] == "LOC"
 
 
 if __name__ == "__main__":
