@@ -9,6 +9,14 @@ Adaptive Model
    :undoc-members:
    :show-inheritance:
 
+BiAdaptive Model
+------------------
+
+.. automodule:: farm.modeling.adaptive_model
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Language Model
 --------------
 
