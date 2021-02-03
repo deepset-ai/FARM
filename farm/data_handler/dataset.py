@@ -1,5 +1,10 @@
+import numpy as np
+import numbers
+import logging
 import torch
 from torch.utils.data import TensorDataset
+
+logger = logging.getLogger(__name__)
 
 
 # TODO we need the option to handle different dtypes
@@ -18,19 +23,27 @@ def convert_features_to_dataset(features):
     tensor_names = list(features[0].keys())
     all_tensors = []
     for t_name in tensor_names:
-        try:
-            if t_name == 'regression_label_ids':
-                cur_tensor = torch.tensor(
-                    [sample[t_name] for sample in features], dtype=torch.float32
-                )
-            else:
-                cur_tensor = torch.tensor(
-                    [sample[t_name] for sample in features], dtype=torch.long
-                )
-        except ValueError:
-            cur_tensor = torch.tensor(
-                [sample[t_name] for sample in features], dtype=torch.float32
-            )
+        # Conversion of floats
+        if t_name == 'regression_label_ids':
+            cur_tensor = torch.tensor([sample[t_name] for sample in features], dtype=torch.float32)
+        else:
+            # Checking weather a non-integer will be silently converted to torch.long
+            try:
+                if isinstance(features[0][t_name], numbers.Number):
+                    basenum = features[0][t_name]
+                elif isinstance(features[0][t_name], list):
+                    basenum = features[0][t_name][0]
+                else:
+                    basenum = features[0][t_name].ravel()[0]
+            except:
+                basenum = features[0][t_name]
+            if not np.issubdtype(type(basenum), np.integer):
+                logger.warning(f"Problem during conversion to torch tensors:\n"
+                               f"A non-integer value for '{t_name}' with a value of: "
+                               f"'{basenum}' will be converted to a torch tensor of dtype long.")
+
+            # Convert all remaining python objects to torch long tensors
+            cur_tensor = torch.tensor([sample[t_name] for sample in features], dtype=torch.long)
 
         all_tensors.append(cur_tensor)
 
