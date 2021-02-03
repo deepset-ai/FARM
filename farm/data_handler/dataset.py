@@ -27,20 +27,23 @@ def convert_features_to_dataset(features):
         if t_name == 'regression_label_ids':
             cur_tensor = torch.tensor([sample[t_name] for sample in features], dtype=torch.float32)
         else:
-            # Checking weather a non-integer will be silently converted to torch.long
             try:
+                # Checking weather a non-integer will be silently converted to torch.long
                 if isinstance(features[0][t_name], numbers.Number):
-                    basenum = features[0][t_name]
+                    base = features[0][t_name]
                 elif isinstance(features[0][t_name], list):
-                    basenum = features[0][t_name][0]
+                    if len(features[0][t_name]) > 0:
+                        base = features[0][t_name][0]
+                    else:
+                        base = 1
                 else:
-                    basenum = features[0][t_name].ravel()[0]
+                    base = features[0][t_name].ravel()[0]
+                if not np.issubdtype(type(base), np.integer):
+                    logger.warning(f"Problem during conversion to torch tensors:\n"
+                                   f"A non-integer value for '{t_name}' with a value of: "
+                                   f"'{base}' will be converted to a torch tensor of dtype long.")
             except:
-                basenum = features[0][t_name]
-            if not np.issubdtype(type(basenum), np.integer):
-                logger.warning(f"Problem during conversion to torch tensors:\n"
-                               f"A non-integer value for '{t_name}' with a value of: "
-                               f"'{basenum}' will be converted to a torch tensor of dtype long.")
+                logger.warning("conversion checks did not work")
 
             # Convert all remaining python objects to torch long tensors
             cur_tensor = torch.tensor([sample[t_name] for sample in features], dtype=torch.long)
