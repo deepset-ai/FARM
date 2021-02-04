@@ -12,7 +12,7 @@ Adaptive Model
 BiAdaptive Model
 ------------------
 
-.. automodule:: farm.modeling.adaptive_model
+.. automodule:: farm.modeling.biadaptive_model
    :members:
    :undoc-members:
    :show-inheritance:
