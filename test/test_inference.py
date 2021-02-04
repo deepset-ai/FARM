@@ -97,7 +97,7 @@ def test_embeddings_extraction(num_processes, use_fast):
 
     # Get embeddings for input text (you can vary the strategy and layer)
     result = model.inference_from_dicts(dicts=basic_texts)
-    assert result[0]["context"] == ['Schar', '##tau', 'sagte', 'dem', 'Tages', '##spiegel', ',', 'dass', 'Fischer', 'ein', 'Id', '##iot', 'ist']
+    assert result[0]["context"] == basic_texts[0]["text"]
     assert result[0]["vec"].shape == (768,)
     assert np.isclose(result[0]["vec"][0], 0.01501756374325071, atol=0.00001)
 
