@@ -1215,21 +1215,11 @@ class QuestionAnsweringHead(PredictionHead):
                     continue
                 score = start_end_matrix[start_idx, end_idx].item()
                 start_end_matrix[0, 0] = -999
-                # todo use start_matrix (vector) instead start_end_matrix
-                # todo WIP pull request
-                #start_end_matrix_softmax_start = torch.softmax(start_end_matrix,dim=0)
-                #start_matrix_softmax_start = torch.softmax(start_matrix)
                 start_matrix_softmax_start = torch.softmax(start_matrix[:, 0], dim=-1)
-                #start_end_matrix_softmax_end = torch.softmax(start_end_matrix, dim=1)
-                #score_start = start_end_matrix_softmax_start[start_idx, end_idx].item()
-                #score_end = start_end_matrix_softmax_end[start_idx, end_idx].item()
-                #score = (score_start + score_end) / 2
                 score = start_matrix_softmax_start[start_idx].item()
                 top_candidates.append(QACandidate(offset_answer_start=start_idx,
                                                   offset_answer_end=end_idx,
                                                   score=score,
-                                                  #score_start=score_start,
-                                                  #score_end=score_end,
                                                   answer_type="span",
                                                   offset_unit="token",
                                                   aggregation_level="passage",
@@ -1241,16 +1231,10 @@ class QuestionAnsweringHead(PredictionHead):
                         end_idx_candidates.add(end_idx + i)
                         end_idx_candidates.add(end_idx - i)
 
-        #no_answer_score_start = start_end_matrix_softmax_start[0, 0].item()
-        #no_answer_score_end = start_end_matrix_softmax_end[0, 0].item()
-        #no_answer_score = (no_answer_score_start + no_answer_score_end) / 2
-        #no_answer_score = start_end_matrix_softmax_start[0, 0].item()
         no_answer_score = start_matrix_softmax_start[0].item()
         top_candidates.append(QACandidate(offset_answer_start=0,
                                           offset_answer_end=0,
                                           score=no_answer_score,
-                                          #score_start=no_answer_score_start,
-                                          #score_end=no_answer_score_end,
                                           answer_type="no_answer",
                                           offset_unit="token",
                                           aggregation_level="passage",
@@ -1448,8 +1432,6 @@ class QuestionAnsweringHead(PredictionHead):
                     pos_answers_flat.append(QACandidate(offset_answer_start=qa_candidate.offset_answer_start,
                                                         offset_answer_end=qa_candidate.offset_answer_end,
                                                         score=qa_candidate.score,
-                                                        #score_start=qa_candidate.score_start,
-                                                        #score_end=qa_candidate.score_end,
                                                         answer_type=qa_candidate.answer_type,
                                                         offset_unit="token",
                                                         aggregation_level="passage",
@@ -1470,13 +1452,9 @@ class QuestionAnsweringHead(PredictionHead):
         # the most significant difference between scores.
         # Most significant difference: change top prediction from "no answer" to answer (or vice versa)
         best_overall_positive_score = max(x.score for x in pos_answer_dedup)
-        #best_overall_positive_score_start = max(x.score_start for x in pos_answer_dedup)
-        #best_overall_positive_score_end = max(x.score_end for x in pos_answer_dedup)
         no_answer_pred = QACandidate(offset_answer_start=-1,
                                      offset_answer_end=-1,
                                      score=best_overall_positive_score - no_ans_gap,
-                                     #score_start=best_overall_positive_score_start - no_ans_gap,
-                                     #score_end=best_overall_positive_score_end - no_ans_gap,
                                      answer_type="no_answer",
                                      offset_unit="token",
                                      aggregation_level="document",
