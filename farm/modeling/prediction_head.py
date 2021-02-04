@@ -1068,15 +1068,21 @@ class QuestionAnsweringHead(PredictionHead):
         return logits / temperature.to(device='cuda')
 
 
-    def update_temperature(self, logits_all, label_all):
+    def update_temperature(self, logits, label_all):
         # logits_all is a list of the logits of individual batches. we need to concatenate these batches into one large tensor
-        logits = torch.cat(logits_all, dim=0)
+        # is now done in aggregate_preds
+        #logits = torch.cat(logits, dim=0)
+        logits = torch.stack(logits)
         # remove empty items from last batch if last batch is not full
-        logits = torch.cat([logits[:-(len(logits)-len(label_all))]])
+        #logits = torch.cat([logits[:-(len(logits)-len(label_all))]])
+        # TODO aggregate. logits are not aggregated across longer passages yet
 
         # To handle no_answer labels correctly (-1,-1), we set their start_position to 0. The logit at index 0 also refers to no_answer
         # TODO what if the label is larger than 384?
+        # TODO some language models do not have the CLS token at position 0
+        # TODO correctly map -1 to index of CLS token
         start_position = [label[0][0] if label[0][0] >=0 else 0 for label in label_all]
+
 
         start_logits, end_logits = logits.split(1, dim=-1)
         start_logits = start_logits.squeeze(-1)
@@ -1095,6 +1101,11 @@ class QuestionAnsweringHead(PredictionHead):
         # reset temperature to 1 before optimization
         self.temperature = nn.Parameter(torch.ones(1) * 1)
 
+        # TODO align start_logits with start_positions
+        # TODO look at pred to doc ix
+        # TODO look at label to doc idx
+        # TODO look at logits_to_loss in QAHead
+        # que
         # optimize the temperature
         optimizer_start = optim.LBFGS([self.temperature], lr=0.01, max_iter=50)
 
@@ -1104,8 +1115,8 @@ class QuestionAnsweringHead(PredictionHead):
             return loss
 
         # todo use optimizer again
-        # optimizer_start.step(eval_start)
-        self.temperature = nn.Parameter(torch.ones(1) * 1.4)
+        optimizer_start.step(eval_start)
+        #self.temperature = nn.Parameter(torch.ones(1) * 1.4)
 
 
     def logits_to_preds(self, logits, span_mask, start_of_word,
@@ -1337,7 +1348,7 @@ class QuestionAnsweringHead(PredictionHead):
                 return True
         return False
 
-    def aggregate_preds(self, preds, passage_start_t, ids, seq_2_start_t=None, labels=None):
+    def aggregate_preds(self, preds, passage_start_t, ids, seq_2_start_t=None, labels=None, logits=None):
         """ Aggregate passage level predictions to create document level predictions.
         This method assumes that all passages of each document are contained in preds
         i.e. that there are no incomplete documents. The output of this step
@@ -1347,6 +1358,9 @@ class QuestionAnsweringHead(PredictionHead):
         n_samples = len(preds)
         all_basket_preds = {}
         all_basket_labels = {}
+        all_basket_logits = {}
+        if logits:
+            logits = torch.cat(logits, dim=0)
 
         # Iterate over the preds of each sample - remove final number which is the sample id and not needed for aggregation
         for sample_idx in range(n_samples):
@@ -1375,11 +1389,14 @@ class QuestionAnsweringHead(PredictionHead):
             if basket_id not in all_basket_preds:
                 all_basket_preds[basket_id] = []
                 all_basket_labels[basket_id] = []
+                all_basket_logits[basket_id] = []
 
             # Add predictions and labels to dictionary grouped by their basket_ids
             all_basket_preds[basket_id].append(pred_d)
             if labels:
                 all_basket_labels[basket_id].append(label_d)
+            if True:
+                all_basket_logits[basket_id].append(logits[sample_idx])#todo merge logits if there are multiple passages for the same document
 
         # Pick n-best predictions and remove repeated labels
         all_basket_preds = {k: self.reduce_preds(v) for k, v in all_basket_preds.items()}
@@ -1389,11 +1406,19 @@ class QuestionAnsweringHead(PredictionHead):
         # Return aggregated predictions in order as a list of lists
         keys = [k for k in all_basket_preds]
         aggregated_preds = [all_basket_preds[k] for k in keys]
+        if True:
+            logits = [all_basket_logits[k][0] for k in keys]
         if labels:
             labels = [all_basket_labels[k] for k in keys]
-            return aggregated_preds, labels
+            if True:
+                return aggregated_preds, labels, logits
+            else:
+                return aggregated_preds, labels
         else:
-            return aggregated_preds
+            if True:
+                return aggregated_preds, logits
+            else:
+                return aggregated_preds
 
     @staticmethod
     def reduce_labels(labels):

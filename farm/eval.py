@@ -97,10 +97,10 @@ class Evaluator:
                 ids_all_str = [x.astype(str) for x in ids_all[head_num]]
                 ids_all_list = [list(x) for x in ids_all_str]
                 head_ids = ["-".join(x) for x in ids_all_list]
-                preds_all[head_num], label_all[head_num] = head.aggregate_preds(preds=preds_all[head_num],
+                preds_all[head_num], label_all[head_num], logits_all[head_num] = head.aggregate_preds(preds=preds_all[head_num],
                                                                                 labels=label_all[head_num],
                                                                                 passage_start_t=passage_start_t_all[head_num],
-                                                                                ids=head_ids)
+                                                                                ids=head_ids, logits=logits_all[head_num])
 
             if head.model_type == "span_classification" and update_temp:
                 logger.info(f"temperature before update: {head.temperature}")
