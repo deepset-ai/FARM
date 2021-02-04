@@ -40,10 +40,10 @@ def convert_features_to_dataset(features):
                     base = features[0][t_name].ravel()[0]
                 if not np.issubdtype(type(base), np.integer):
                     logger.warning(f"Problem during conversion to torch tensors:\n"
-                                   f"A non-integer value for '{t_name}' with a value of: "
+                                   f"A non-integer value for feature '{t_name}' with a value of: "
                                    f"'{base}' will be converted to a torch tensor of dtype long.")
             except:
-                logger.warning("conversion checks did not work")
+                logger.warning(f"Could not determine type for feature '{t_name}'. Converting now to a tensor of default type long.")
 
             # Convert all remaining python objects to torch long tensors
             cur_tensor = torch.tensor([sample[t_name] for sample in features], dtype=torch.long)
