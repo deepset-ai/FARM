@@ -170,7 +170,7 @@ def squad_EM_start(preds, labels):
         qa_candidate = preds[doc_idx][0][0]
         curr_labels = labels[doc_idx]
         pred = qa_candidate.offset_answer_start
-        curr_label = [label[1] for label in curr_labels]
+        curr_label = [label[0] for label in curr_labels]
         if pred in curr_label:
             n_correct += 1
     return n_correct/n_docs if n_docs else 0
