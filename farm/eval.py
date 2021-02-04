@@ -37,7 +37,7 @@ class Evaluator:
         self.device = device
         self.report = report
 
-    def eval(self, model, return_preds_and_labels=False):
+    def eval(self, model, return_preds_and_labels=False, update_temp=False):
         """
         Performs evaluation on a given model.
 
@@ -102,9 +102,10 @@ class Evaluator:
                                                                                 passage_start_t=passage_start_t_all[head_num],
                                                                                 ids=head_ids)
 
-            if head.model_type == "span_classification":
-                print("update temperature here")
+            if head.model_type == "span_classification" and update_temp:
+                logger.info(f"temperature before update: {head.temperature}")
                 head.update_temperature(logits_all[head_num], label_all[head_num])
+                logger.info(f"temperature after update: {head.temperature}")
 
             result = {"loss": loss_all[head_num] / len(self.data_loader.dataset),
                       "task_name": head.task_name}

@@ -146,7 +146,9 @@ def compute_report_metrics(head, preds, labels):
 
 
 def squad_EM(preds, labels):
-    # TODO write comment describing function
+    """
+    Count how often the pair of predicted start and end index exactly matches one of the labels
+    """
     n_docs = len(preds)
     n_correct = 0
     for doc_idx in range(n_docs):
@@ -158,20 +160,17 @@ def squad_EM(preds, labels):
             n_correct += 1
     return n_correct/n_docs if n_docs else 0
 
-def squad_EM_start(preds, labels, start=True):
+def squad_EM_start(preds, labels):
+    """
+    Count how often the predicted start index exactly matches the start index given by one of the labels
+    """
     n_docs = len(preds)
     n_correct = 0
     for doc_idx in range(n_docs):
         qa_candidate = preds[doc_idx][0][0]
         curr_labels = labels[doc_idx]
-        # get predicted start and ground truth start
-        if start:
-            pred = qa_candidate.offset_answer_start
-            curr_label = [label[1] for label in curr_labels]
-        # get predicted end and ground truth start
-        else:
-            pred = qa_candidate.offset_answer_end
-            curr_label = [label[0] for label in curr_labels]
+        pred = qa_candidate.offset_answer_start
+        curr_label = [label[1] for label in curr_labels]
         if pred in curr_label:
             n_correct += 1
     return n_correct/n_docs if n_docs else 0
@@ -207,37 +206,41 @@ def squad_f1_single(pred, label, pred_idx=0):
     f1 = (2 * precision * recall) / (precision + recall)
     return f1
 
-def avg_confidence(preds):
-    confidence = 0
-    for pred in preds:
-        confidence += pred[0][0].score
-    return confidence/len(preds) if len(preds) else 0
 
-def avg_confidence_per_bin(preds,labels):
+def confidence(preds):
+    conf = 0
+    for pred in preds:
+        conf += pred[0][0].score
+    return conf/len(preds) if len(preds) else 0
+
+
+def metrics_per_bin(preds, labels):
     pred_bins = [[] for _ in range(10)]
     label_bins = [[] for _ in range(10)]
     count_per_bin = [0]*10
     for (pred, label) in zip(preds, labels):
-        if pred[0][0].score == 1.0:
-            pred[0][0].score = 0.9999
-        pred_bins[int(pred[0][0].score*10)].append(pred)
-        label_bins[int(pred[0][0].score*10)].append(label)
-        count_per_bin[int(pred[0][0].score * 10)] += 1
+        current_score = pred[0][0].score
+        if current_score == 1.0:
+            current_score = 0.9999
+        pred_bins[int(current_score*10)].append(pred)
+        label_bins[int(current_score*10)].append(label)
+        count_per_bin[int(current_score*10)] += 1
 
     em_per_bin = [0]*10
     confidence_per_bin = [0]*10
     for i in range(1, 10):
-        em_per_bin[i] = squad_EM_start(preds=pred_bins[i], labels=label_bins[i], start=True)
-        confidence_per_bin[i] = avg_confidence(preds=pred_bins[i])
+        em_per_bin[i] = squad_EM_start(preds=pred_bins[i], labels=label_bins[i])
+        confidence_per_bin[i] = confidence(preds=pred_bins[i])
     return em_per_bin, confidence_per_bin, count_per_bin
+
 
 def squad(preds, labels):
     em = squad_EM(preds=preds, labels=labels)
     f1 = squad_f1(preds=preds, labels=labels)
     top_acc = top_n_accuracy(preds=preds, labels=labels)
-    confidence = avg_confidence(preds)
-    em_per_bin, confidence_per_bin, count_per_bin = avg_confidence_per_bin(preds,labels)
-    return {"EM": em, "f1": f1, "top_n_accuracy": top_acc, "avg_confidence": confidence, "em_per_bin": em_per_bin, "confidence_per_bin": confidence_per_bin, "count_per_bin":count_per_bin}
+    conf = confidence(preds)
+    em_per_bin, conf_per_bin, count_per_bin = metrics_per_bin(preds, labels)
+    return {"EM": em, "f1": f1, "top_n_accuracy": top_acc, "confidence": conf, "em_per_bin": em_per_bin, "confidence_per_bin": conf_per_bin, "count_per_bin": count_per_bin}
 
 def top_n_accuracy(preds, labels):
     """

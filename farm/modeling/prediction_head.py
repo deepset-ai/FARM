@@ -970,7 +970,7 @@ class QuestionAnsweringHead(PredictionHead):
         self.n_best_per_sample = n_best_per_sample
         self.duplicate_filtering = duplicate_filtering
         self.generate_config()
-        self.temperature = nn.Parameter(torch.ones(1) * 1)  # 1
+        self.temperature = nn.Parameter(torch.ones(1) * 1)
 
 
     @classmethod
@@ -1017,7 +1017,13 @@ class QuestionAnsweringHead(PredictionHead):
 
         """
         logits = self.feed_forward(X)
-        return self.temperature_scale(logits)
+        start_logits, end_logits = logits.split(1, dim=-1)
+        start_logits = start_logits.squeeze(-1)
+        end_logits = end_logits.squeeze(-1)
+        start_logits = self.temperature_scale(start_logits)
+        end_logits = self.temperature_scale(end_logits)
+        logits = torch.stack((start_logits, end_logits), dim=-1)
+        return logits
 
     def logits_to_loss(self, logits, labels, **kwargs):
         """
@@ -1050,81 +1056,56 @@ class QuestionAnsweringHead(PredictionHead):
         per_sample_loss = (start_loss + end_loss) / 2
         return per_sample_loss
 
-    def temperature_scale_1(self, logits):
-        """
-        Perform temperature scaling on logits
-        """
-        # Expand temperature to match the size of logits
-        temperature = self.temperature.unsqueeze(1).expand(logits.size(0), logits.size(1))
-        return logits / temperature
-
     def temperature_scale(self, logits):
         """
         Perform temperature scaling on logits
         """
         # Expand temperature to match the size of logits
-        temperature = self.temperature.unsqueeze(1).expand(logits.size(0), logits.size(1), logits.size(2))
-        return logits / temperature
+        if logits.dim() == 2:
+            temperature = self.temperature.unsqueeze(1).expand(logits.size(0), logits.size(1))
+        elif logits.dim() == 3:
+            temperature = self.temperature.unsqueeze(1).expand(logits.size(0), logits.size(1), logits.size(2))
+        return logits / temperature.to(device='cuda')
 
-    # def update_temperature(self, preds_all, label_all):
-    #     scores = [x[0][0].score for x in preds_all]
-    #     start = [x[0][0].offset_answer_start for x in preds_all]
-    #     end = [x[0][0].offset_answer_end for x in preds_all]
-    #     from farm.evaluation import metrics
-    #     average_correctness = metrics.squad_EM(preds_all,label_all)
-    #     average_confidence = sum(scores)/len(scores)
-    #     temp_value = average_confidence/average_correctness
-    #     self.temperature = nn.Parameter(torch.ones(1) * temp_value)
-    #     print(average_correctness, average_confidence, self.temperature)
 
     def update_temperature(self, logits_all, label_all):
-        # TODO handle also end_logits and not only start_logits
         # logits_all is a list of the logits of individual batches. we need to concatenate these batches into one large tensor
-        logits = torch.cat(logits_all, dim=0)#[0] #for one sample
-        # TODO it seems that the last batch is not full. remove empty items from last batch
+        logits = torch.cat(logits_all, dim=0)
+        # remove empty items from last batch if last batch is not full
         logits = torch.cat([logits[:-(len(logits)-len(label_all))]])
 
-        # TODO handle -1 label correctly, e.g., map -1 to max_value(end_position)+1
+        # To handle no_answer labels correctly (-1,-1), we set their start_position to 0. The logit at index 0 also refers to no_answer
+        # TODO what if the label is larger than 384?
         start_position = [label[0][0] if label[0][0] >=0 else 0 for label in label_all]
-        end_position = [label[0][1] if label[0][1] >=0 else 0 for label in label_all]
 
         start_logits, end_logits = logits.split(1, dim=-1)
         start_logits = start_logits.squeeze(-1)
-        end_logits = end_logits.squeeze(-1)
 
         start_position = torch.tensor(start_position)
         if len(start_position.size()) > 1:
             start_position = start_position.squeeze(-1)
-        #if len(end_position.size()) > 1:
-        #    end_position = end_position.squeeze(-1)
 
         ignored_index = start_logits.size(1)-1
         start_position.clamp_(0, ignored_index)
-        #end_position.clamp_(0, ignored_index)
 
         from torch import optim
         self.cuda()
         nll_criterion = CrossEntropyLoss()
 
+        # reset temperature to 1 before optimization
+        self.temperature = nn.Parameter(torch.ones(1) * 1)
 
-        # Calculate NLL before temperature scaling
-        before_temperature_nll = nll_criterion(start_logits, start_position.to(device='cuda')).item()
-        print('Before temperature - NLL: %.3f' % (before_temperature_nll))
+        # optimize the temperature
+        optimizer_start = optim.LBFGS([self.temperature], lr=0.01, max_iter=50)
 
-        # Next: optimize the temperature w.r.t. NLL
-        optimizer = optim.LBFGS([self.temperature], lr=0.01, max_iter=50)
-
-        def eval():
-            loss = nll_criterion(self.temperature_scale_1(start_logits), start_position.to(device='cuda'))
+        def eval_start():
+            loss = nll_criterion(self.temperature_scale(start_logits), start_position.to(device='cuda'))
             loss.backward()
             return loss
 
-        optimizer.step(eval)
-
-        # Calculate NLL after temperature scaling
-        after_temperature_nll = nll_criterion(self.temperature_scale_1(start_logits), start_position.to(device='cuda')).item()
-        print('Optimal temperature: %.3f' % self.temperature.item())
-        print('After temperature - NLL: %.3f' % (after_temperature_nll))
+        # todo use optimizer again
+        # optimizer_start.step(eval_start)
+        self.temperature = nn.Parameter(torch.ones(1) * 1.4)
 
 
     def logits_to_preds(self, logits, span_mask, start_of_word,
@@ -1146,11 +1127,13 @@ class QuestionAnsweringHead(PredictionHead):
         start_logits = start_logits.squeeze(-1)
         end_logits = end_logits.squeeze(-1)
 
+        # TODO is the temperature scaling needed here to or only in the forward() method?
         # temperature needs to be the same size as start_logits and end_logits
-        temperature = self.temperature.unsqueeze(1).expand(start_logits.size(0), start_logits.size(1))
+        #temperature_start = self.temperature.unsqueeze(1).expand(start_logits.size(0), start_logits.size(1))
+        #temperature_end = self.temperature.unsqueeze(1).expand(end_logits.size(0), end_logits.size(1))
         # Calibrate logits with temperature
-        start_logits = start_logits / temperature.to(device='cuda')
-        end_logits = end_logits / temperature.to(device='cuda')
+        #start_logits = start_logits / temperature_start.to(device='cuda')
+        #end_logits = end_logits / temperature_end.to(device='cuda')
 
         # Calculate a few useful variables
         batch_size = start_logits.size()[0]
@@ -1201,12 +1184,12 @@ class QuestionAnsweringHead(PredictionHead):
         for sample_idx in range(batch_size):
             sample_top_n = self.get_top_candidates(sorted_candidates[sample_idx],
                                                    start_end_matrix[sample_idx],
-                                                   sample_idx)
+                                                   sample_idx, start_matrix=start_matrix[sample_idx])
             all_top_n.append(sample_top_n)
 
         return all_top_n
 
-    def get_top_candidates(self, sorted_candidates, start_end_matrix, sample_idx):
+    def get_top_candidates(self, sorted_candidates, start_end_matrix, sample_idx, start_matrix = None):
         """ Returns top candidate answers as a list of Span objects. Operates on a matrix of summed start and end logits.
         This matrix corresponds to a single sample (includes special tokens, question tokens, passage tokens).
         This method always returns a list of len n_best + 1 (it is comprised of the n_best positive answers along with the one no_answer)"""
@@ -1232,12 +1215,21 @@ class QuestionAnsweringHead(PredictionHead):
                     continue
                 score = start_end_matrix[start_idx, end_idx].item()
                 start_end_matrix[0, 0] = -999
-                start_end_matrix_softmax = torch.softmax(start_end_matrix,dim=0)
-                score = start_end_matrix_softmax[start_idx, end_idx].item()
-                # todo apply softmax here across all start indices now that we have calibrated scores
+                # todo use start_matrix (vector) instead start_end_matrix
+                # todo WIP pull request
+                #start_end_matrix_softmax_start = torch.softmax(start_end_matrix,dim=0)
+                #start_matrix_softmax_start = torch.softmax(start_matrix)
+                start_matrix_softmax_start = torch.softmax(start_matrix[:, 0], dim=-1)
+                #start_end_matrix_softmax_end = torch.softmax(start_end_matrix, dim=1)
+                #score_start = start_end_matrix_softmax_start[start_idx, end_idx].item()
+                #score_end = start_end_matrix_softmax_end[start_idx, end_idx].item()
+                #score = (score_start + score_end) / 2
+                score = start_matrix_softmax_start[start_idx].item()
                 top_candidates.append(QACandidate(offset_answer_start=start_idx,
                                                   offset_answer_end=end_idx,
                                                   score=score,
+                                                  #score_start=score_start,
+                                                  #score_end=score_end,
                                                   answer_type="span",
                                                   offset_unit="token",
                                                   aggregation_level="passage",
@@ -1249,11 +1241,16 @@ class QuestionAnsweringHead(PredictionHead):
                         end_idx_candidates.add(end_idx + i)
                         end_idx_candidates.add(end_idx - i)
 
-
-        no_answer_score = start_end_matrix_softmax[0, 0].item()
+        #no_answer_score_start = start_end_matrix_softmax_start[0, 0].item()
+        #no_answer_score_end = start_end_matrix_softmax_end[0, 0].item()
+        #no_answer_score = (no_answer_score_start + no_answer_score_end) / 2
+        #no_answer_score = start_end_matrix_softmax_start[0, 0].item()
+        no_answer_score = start_matrix_softmax_start[0].item()
         top_candidates.append(QACandidate(offset_answer_start=0,
                                           offset_answer_end=0,
                                           score=no_answer_score,
+                                          #score_start=no_answer_score_start,
+                                          #score_end=no_answer_score_end,
                                           answer_type="no_answer",
                                           offset_unit="token",
                                           aggregation_level="passage",
@@ -1451,6 +1448,8 @@ class QuestionAnsweringHead(PredictionHead):
                     pos_answers_flat.append(QACandidate(offset_answer_start=qa_candidate.offset_answer_start,
                                                         offset_answer_end=qa_candidate.offset_answer_end,
                                                         score=qa_candidate.score,
+                                                        #score_start=qa_candidate.score_start,
+                                                        #score_end=qa_candidate.score_end,
                                                         answer_type=qa_candidate.answer_type,
                                                         offset_unit="token",
                                                         aggregation_level="passage",
@@ -1471,9 +1470,13 @@ class QuestionAnsweringHead(PredictionHead):
         # the most significant difference between scores.
         # Most significant difference: change top prediction from "no answer" to answer (or vice versa)
         best_overall_positive_score = max(x.score for x in pos_answer_dedup)
+        #best_overall_positive_score_start = max(x.score_start for x in pos_answer_dedup)
+        #best_overall_positive_score_end = max(x.score_end for x in pos_answer_dedup)
         no_answer_pred = QACandidate(offset_answer_start=-1,
                                      offset_answer_end=-1,
                                      score=best_overall_positive_score - no_ans_gap,
+                                     #score_start=best_overall_positive_score_start - no_ans_gap,
+                                     #score_end=best_overall_positive_score_end - no_ans_gap,
                                      answer_type="no_answer",
                                      offset_unit="token",
                                      aggregation_level="document",
