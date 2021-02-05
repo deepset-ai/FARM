@@ -85,9 +85,7 @@ def test_dpr_modules(caplog=None):
                      ]
          }
 
-    sample = processor._dict_to_samples(d)
-    feats = processor._sample_to_features(sample[0])
-    dataset, tensor_names = convert_features_to_dataset(feats)
+    dataset, tensor_names, _ = processor.dataset_from_dicts(dicts=[d], return_baskets=False)
     features = {key: val.unsqueeze(0).to(device) for key, val in zip(tensor_names, dataset[0])}
 
     # test features
@@ -223,8 +221,8 @@ def test_dpr_processor(embed_title, passage_ids, passage_attns, use_fast, num_ha
 
 
     for i, d in enumerate(dict):
-        sample = processor._dict_to_samples(d)
-        feat = processor._sample_to_features(sample[0])
+        dataset, tensor_names, _, baskets = processor.dataset_from_dicts(dicts=[d], return_baskets=True)
+        feat = baskets[0].samples[0].features
         assert (torch.all(torch.eq(torch.tensor(feat[0]["query_input_ids"][:10]), query_input_ids[i])))
         assert (len(torch.tensor(feat[0]["query_segment_ids"]).nonzero()) == 0)
         assert (torch.all(torch.eq(torch.tensor(feat[0]["query_attention_mask"]).nonzero(), query_attention_mask[i])))
@@ -237,8 +235,6 @@ def test_dpr_processor(embed_title, passage_ids, passage_attns, use_fast, num_ha
         assert (len(torch.tensor(feat[0]["passage_segment_ids"]).nonzero()) == 0)
 
 
-#TODO add "use_fast" = True, once we update to tokenizers >= 0.9.0,
-# which includes a fix for https://github.com/huggingface/tokenizers/pull/389
 @pytest.mark.parametrize("use_fast", [False])
 @pytest.mark.parametrize("embed_title", [True, False])
 def test_dpr_processor_empty_title(use_fast, embed_title):
@@ -261,7 +257,7 @@ def test_dpr_processor_empty_title(use_fast, embed_title):
                                             label_list=["hard_negative", "positive"],
                                             metric="text_similarity_metric",
                                             shuffle_negatives=False)
-        _ = processor._dict_to_samples(dict)
+        _ = processor.dataset_from_dicts(dicts=[dict])
 
 
 if __name__=="__main__":

@@ -52,10 +52,10 @@ def dense_passage_retrieval():
     embed_title = True
     num_hard_negatives = 1
     similarity_function = "dot_product"
-    train_filename = "nq-train.json"
-    dev_filename = "nq-dev.json"
-    test_filename = "nq-dev.json"
-    max_samples = None # load a smaller dataset (e.g. for debugging)
+    train_filename = "biencoder-nq-dev.json"
+    dev_filename = None
+    test_filename = None
+    max_samples = 10 # load a smaller dataset (e.g. for debugging)
 
     # For multi GPU Training via DDP we need to get the local rank
     args = parse_arguments()

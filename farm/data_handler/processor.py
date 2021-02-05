@@ -1982,7 +1982,6 @@ class SquadProcessor(Processor):
         @param dicts: dict, input dictionary with SQuAD style information present
         @param indices: list, indices used during multiprocessing so that IDs assigned to our baskets is unique
         @param return_baskets: boolean, weather to return the baskets or not (baskets are needed during inference)
-        @param return_problematic: boolean, weather to return the IDs of baskets that created errors during processing
         """
         # Convert to standard format
         pre_baskets = [self.convert_qa_input_dict(x) for x in dicts] # TODO move to input object conversion
@@ -2773,57 +2772,6 @@ class TextSimilarityProcessor(Processor):
     "negative_ctxs": list of dictionaries of format {'title': str, 'text': str, 'score': int, 'title_score': int, 'passage_id': str}
     "hard_negative_ctxs": list of dictionaries of format {'title': str, 'text': str, 'score': int, 'title_score': int, 'passage_id': str}
     }
-
-    Example of 1 sample in DPR data json:
-    {
-    "dataset": "nq_dev_psgs_w100",
-    "question": "who sings does he love me with reba",
-    "answers": ["Linda Davis"],
-    "positive_ctxs": [
-    {
-    "title": "Does He Love You",
-    "text": "Does He Love You \"Does He Love You\" is a song written by Sandy Knox and Billy Stritch, and recorded as a duet by American country music artists Reba McEntire and Linda Davis. It was released in August 1993 as the first single from Reba's album \"Greatest Hits Volume Two\". It is one of country music's several songs about a love triangle. \"Does He Love You\" was written in 1982 by Billy Stritch. He recorded it with a trio in which he performed at the time, because he wanted a song that could be sung by the other two members",
-    "score": 1000,
-    "title_score": 1,
-    "passage_id": "11828866"
-    },
-    {
-    "title": "Does He Love You",
-    "text": "Does He Love You \"Does He Love You\" is a song written by Sandy Knox and Billy Stritch, and recorded as a duet by American country music artists Reba McEntire and Linda Davis. It was released in August 1993 as the first single from Reba's album \"Greatest Hits Volume Two\". It is one of country music's several songs about a love triangle. \"Does He Love You\" was written in 1982 by Billy Stritch. He recorded it with a trio in which he performed at the time, because he wanted a song that could be sung by the other two members",
-    "score": 13.394315,
-    "title_score": 0,
-    "passage_id": "11828866"
-    }, .... ]
-    "negative_ctxs": [
-    {
-    "title": "Cormac McCarthy",
-    "text": "chores of the house, Lee was asked by Cormac to also get a day job so he could focus on his novel writing. Dismayed with the situation, she moved to Wyoming, where she filed for divorce and landed her first job teaching. Cormac McCarthy is fluent in Spanish and lived in Ibiza, Spain, in the 1960s and later settled in El Paso, Texas, where he lived for nearly 20 years. In an interview with Richard B. Woodward from \"The New York Times\", \"McCarthy doesn't drink anymore \u2013 he quit 16 years ago in El Paso, with one of his young",
-    "score": 0,
-    "title_score": 0,
-    "passage_id": "2145653"
-    },
-    {
-    "title": "Pragmatic Sanction of 1549",
-    "text": "one heir, Charles effectively united the Netherlands as one entity. After Charles' abdication in 1555, the Seventeen Provinces passed to his son, Philip II of Spain. The Pragmatic Sanction is said to be one example of the Habsburg contest with particularism that contributed to the Dutch Revolt. Each of the provinces had its own laws, customs and political practices. The new policy, imposed from the outside, angered many inhabitants, who viewed their provinces as distinct entities. It and other monarchical acts, such as the creation of bishoprics and promulgation of laws against heresy, stoked resentments, which fired the eruption of",
-    "score": 0,
-    "title_score": 0,
-    "passage_id": "2271902"
-    }, ..... ]
-    "hard_negative_ctxs": [
-    {
-    "title": "Why Don't You Love Me (Beyonce\u0301 song)",
-    "text": "song. According to the lyrics of \"Why Don't You Love Me\", Knowles impersonates a woman who questions her love interest about the reason for which he does not value her fabulousness, convincing him she's the best thing for him as she sings: \"Why don't you love me... when I make me so damn easy to love?... I got beauty... I got class... I got style and I got ass...\". The singer further tells her love interest that the decision not to choose her is \"entirely foolish\". Originally released as a pre-order bonus track on the deluxe edition of \"I Am...",
-    "score": 14.678405,
-    "title_score": 0,
-    "passage_id": "14525568"
-    },
-    {
-    "title": "Does He Love You",
-    "text": "singing the second chorus. Reba stays behind the wall the whole time, while Linda is in front of her. It then briefly goes back to the dressing room, where Reba continues to smash her lover's picture. The next scene shows Reba approaching Linda's house in the pouring rain at night, while Linda stands on her porch as they sing the bridge. The scene then shifts to the next day, where Reba watches from afar as Linda and the man are seen on a speedboat, where he hugs her, implying that Linda is who he truly loves. Reba finally smiles at",
-    "score": 14.385411,
-    "title_score": 0,
-    "passage_id": "11828871"
-    }, ...]
     """
     def __init__(
         self,
@@ -2995,161 +2943,201 @@ class TextSimilarityProcessor(Processor):
         dicts = read_dpr_json(file, max_samples=self.max_samples)
         return dicts
 
+    def dataset_from_dicts(self, dicts, indices=None, return_baskets = False):
+        """
+        Convert input dictionaries into a pytorch dataset for TextSimilarity (e.g. DPR).
+        For conversion we have an internal representation called "baskets".
+        Each basket is one query and related text passages (positive passages fitting to the query and negative
+        passages that do not fit the query)
+        Each stage adds or transforms specific information to our baskets.
+
+        @param dicts: dict, input dictionary with DPR-style content
+                        {"query": str,
+                         "passages": List[
+                                        {'title': str,
+                                        'text': str,
+                                        'label': 'hard_negative',
+                                        'external_id': str},
+                                        ....
+                                        ]
+                         }
+        @param indices: list, indices used during multiprocessing so that IDs assigned to our baskets is unique
+        @param return_baskets: boolean, weather to return the baskets or not (baskets are needed during inference)
+        """
+
+        # Take the dict and insert into our basket structure, this stages also adds an internal IDs
+        baskets = self._fill_baskets(dicts, indices)
+
+        # Separat conversion of query
+        baskets = self._convert_queries(baskets=baskets)
+
+        # and context passages
+        baskets = self._convert_contexts(baskets=baskets)
+
+        # Convert features into pytorch dataset, this step also removes potential errors during preprocessing
+        dataset, tensor_names, problematic_ids, baskets = self._create_dataset(baskets)
+
+        if return_baskets:
+            return dataset, tensor_names, problematic_ids, baskets
+        else:
+            return dataset, tensor_names, problematic_ids
+
+    def _fill_baskets(self, dicts, indices):
+        baskets = []
+        if not indices:
+            indices = range(len(dicts))
+        for d, id_internal in zip(dicts,indices):
+            basket = SampleBasket(id_external=None,
+                                  id_internal=id_internal,
+                                  raw=d)
+            baskets.append(basket)
+        return baskets
+
+    def _convert_queries(self, baskets):
+        for basket in baskets:
+            clear_text = {}
+            tokenized = {}
+            features = {}
+            # extract query, positive context passages and titles, hard-negative passages and titles
+            if "query" in basket.raw.keys():
+                query = self._normalize_question(basket.raw["query"])
+
+                # featurize the query
+                query_inputs = self.query_tokenizer.encode_plus(
+                    text=query,
+                    max_length=self.max_seq_len_query,
+                    add_special_tokens=True,
+                    truncation=True,
+                    truncation_strategy='longest_first',
+                    padding="max_length",
+                    return_token_type_ids=True,
+                )
+
+                # tokenize query
+                tokenized_query = self.query_tokenizer.convert_ids_to_tokens(query_inputs["input_ids"])
+
+                if len(tokenized_query) == 0:
+                    logger.warning(
+                        f"The query could not be tokenized, likely because it contains a character that the query tokenizer does not recognize")
+                    return None
+
+                clear_text["query_text"] = query
+                tokenized["query_tokens"] = tokenized_query
+                features["query_input_ids"] = query_inputs["input_ids"]
+                features["query_segment_ids"] = query_inputs["token_type_ids"]
+                features["query_attention_mask"] = query_inputs["attention_mask"]
+            sample = Sample(id=None,
+                            clear_text=clear_text,
+                            tokenized=tokenized,
+                            features=[features])
+            basket.samples = [sample]
+        return baskets
+
+    def _convert_contexts(self, baskets):
+        for basket in baskets:
+            if "passages" in basket.raw.keys():
+                positive_context = list(filter(lambda x: x["label"] == "positive", basket.raw["passages"]))
+                if self.shuffle_positives:
+                    random.shuffle(positive_context)
+                positive_context = positive_context[:self.num_positives]
+                hard_negative_context = list(filter(lambda x: x["label"] == "hard_negative", basket.raw["passages"]))
+                if self.shuffle_negatives:
+                    random.shuffle(hard_negative_context)
+                hard_negative_context = hard_negative_context[:self.num_hard_negatives]
+
+                positive_ctx_titles = [passage.get("title", None) for passage in positive_context]
+                positive_ctx_texts = [passage["text"] for passage in positive_context]
+                hard_negative_ctx_titles = [passage.get("title", None) for passage in hard_negative_context]
+                hard_negative_ctx_texts = [passage["text"] for passage in hard_negative_context]
+
+                # all context passages and labels: 1 for positive context and 0 for hard-negative context
+                ctx_label = [1] * self.num_positives + [
+                    0] * self.num_hard_negatives  # (self.num_positives if self.num_positives < len(positive_context) else len(positive_context)) + \
+                # +(self.num_hard_negatives if self.num_hard_negatives < len(hard_negative_context) else len(hard_negative_context))
+
+                # featurize context passages
+                if self.embed_title:
+                    # concatenate title with positive context passages + negative context passages
+                    def _combine_title_context(titles, texts):
+                        res = []
+                        for title, ctx in zip(titles, texts):
+                            if title is None:
+                                title = ""
+                                logger.warning(
+                                    f"Couldn't find title although `embed_title` is set to True for DPR. Using title='' now. Related passage text: '{ctx}' ")
+                            res.append(tuple((title, ctx)))
+                        return res
+
+                    all_ctx = _combine_title_context(positive_ctx_titles, positive_ctx_texts) + _combine_title_context(
+                        hard_negative_ctx_titles, hard_negative_ctx_texts)
+                else:
+                    all_ctx = positive_ctx_texts + hard_negative_ctx_texts
+
+                # assign empty string tuples if hard_negative passages less than num_hard_negatives
+                all_ctx += [('', '')] * ((self.num_positives + self.num_hard_negatives) - len(all_ctx))
+
+                ctx_inputs = self.passage_tokenizer.batch_encode_plus(
+                    all_ctx,
+                    add_special_tokens=True,
+                    truncation=True,
+                    padding="max_length",
+                    max_length=self.max_seq_len_passage,
+                    return_token_type_ids=True
+                )
+
+                # segment IDs might contain 0s for titles and 1s for the context.
+                # TODO check if really needed in the first place or is concat of title and text string sufficient?
+                # We need to reset those, since when we combine query and context, the query should
+                # have 0s and context (including title) 1s
+                ctx_segment_ids = np.zeros_like(ctx_inputs["token_type_ids"], dtype=np.int32)
+
+                # tokenize query and contexts
+                tokenized_passage = [self.passage_tokenizer.convert_ids_to_tokens(ctx) for ctx in ctx_inputs["input_ids"]]
+
+                if len(tokenized_passage) == 0:
+                    logger.warning(
+                        f"The context could not be tokenized, likely because it contains a character that the context tokenizer does not recognize")
+                    return None
+
+                # for DPR we only have one sample containing query and corresponding (multiple) context features
+                sample = basket.samples[0]
+                sample.clear_text["passages"] = positive_context + hard_negative_context
+
+                sample.tokenized["passages_tokens"] = tokenized_passage
+                sample.features[0]["passage_input_ids"] = ctx_inputs["input_ids"]
+                sample.features[0]["passage_segment_ids"] = ctx_segment_ids
+                sample.features[0]["passage_attention_mask"] = ctx_inputs["attention_mask"]
+                sample.features[0]["label_ids"] = ctx_label
+
+        return baskets
+
+    def _create_dataset(self, baskets):
+        """
+        Convert python features into pytorch dataset.
+        Also removes potential errors during preprocessing.
+        Flattens nested basket structure to create a flat list of features
+        """
+        features_flat = []
+        basket_to_remove = []
+        problematic_ids = set()
+        for basket in baskets:
+            if self._check_sample_features(basket):
+                for sample in basket.samples:
+                    features_flat.extend(sample.features)
+            else:
+                # remove the entire basket
+                basket_to_remove.append(basket)
+        if len(basket_to_remove) > 0:
+            for basket in basket_to_remove:
+                # if basket_to_remove is not empty remove the related baskets
+                problematic_ids.add(basket.id_internal)
+                baskets.remove(basket)
+
+        dataset, tensor_names = convert_features_to_dataset(features=features_flat)
+        return dataset, tensor_names, problematic_ids, baskets
+
     def _normalize_question(self, question: str) -> str:
-        """
-        Removes '?' from queries/questions
-
-        :param question: string representing the question
-
-        Returns:
-            Question without the '?'
-        """
+        """Removes '?' from queries/questions"""
         if question[-1] == '?':
             question = question[:-1]
         return question
-
-    def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
-        """
-        Creates one sample from one dict consisting of the query, positive passages and hard negative passages
-        :param dictionary:  {"query": str,
-                            "passages": List[
-                                            {'title': str,
-                                            'text': str,
-                                            'label': 'hard_negative',
-                                            'external_id': str},
-                                            {'title': str,
-                                            'text': str,
-                                            'label': 'positive',
-                                            'external_id': str},
-                                            ....
-                                            ]
-                            }
-
-        Returns:
-                sample: instance of Sample
-        """
-
-
-        clear_text = {}
-        tokenized = {}
-        features = {}
-        # extract query, positive context passages and titles, hard-negative passages and titles
-        if "query" in dictionary.keys():
-            query = self._normalize_question(dictionary["query"])
-
-            # featurize the query
-            query_inputs = self.query_tokenizer.encode_plus(
-                text=query,
-                max_length=self.max_seq_len_query,
-                add_special_tokens=True,
-                truncation=True,
-                truncation_strategy='longest_first',
-                padding="max_length",
-                return_token_type_ids=True,
-            )
-
-            query_input_ids, query_segment_ids, query_padding_mask = query_inputs["input_ids"], query_inputs[
-                "token_type_ids"], query_inputs["attention_mask"]
-
-            # tokenize query
-            tokenized_query = self.query_tokenizer.convert_ids_to_tokens(query_input_ids)
-
-            if len(tokenized_query) == 0:
-                logger.warning(
-                    f"The query could not be tokenized, likely because it contains a character that the query tokenizer does not recognize")
-                return None
-
-            clear_text["query_text"] = query
-            tokenized["query_tokens"] = tokenized_query
-            features["query_input_ids"] = query_input_ids
-            features["query_segment_ids"] = query_segment_ids
-            features["query_attention_mask"] = query_padding_mask
-
-        if "passages" in dictionary.keys():
-            positive_context = list(filter(lambda x: x["label"] == "positive", dictionary["passages"]))
-            if self.shuffle_positives:
-                random.shuffle(positive_context)
-            positive_context = positive_context[:self.num_positives]
-            hard_negative_context = list(filter(lambda x: x["label"] == "hard_negative", dictionary["passages"]))
-            if self.shuffle_negatives:
-                random.shuffle(hard_negative_context)
-            hard_negative_context = hard_negative_context[:self.num_hard_negatives]
-
-            positive_ctx_titles = [passage.get("title", None) for passage in positive_context]
-            positive_ctx_texts = [passage["text"] for passage in positive_context]
-            hard_negative_ctx_titles = [passage.get("title", None) for passage in hard_negative_context]
-            hard_negative_ctx_texts = [passage["text"] for passage in hard_negative_context]
-
-            # all context passages and labels: 1 for positive context and 0 for hard-negative context
-            ctx_label = [1]*self.num_positives + [0]*self.num_hard_negatives #(self.num_positives if self.num_positives < len(positive_context) else len(positive_context)) + \
-            # +(self.num_hard_negatives if self.num_hard_negatives < len(hard_negative_context) else len(hard_negative_context))
-
-            # featurize context passages
-            if self.embed_title:
-                # concatenate title with positive context passages + negative context passages
-                def _combine_title_context(titles, texts):
-                    res = []
-                    for title, ctx in zip(titles, texts):
-                        if title is None:
-                            title = ""
-                            logger.warning(
-                                f"Couldn't find title although `embed_title` is set to True for DPR. Using title='' now. Related passage text: '{ctx}' ")
-                        res.append(tuple((title, ctx)))
-                    return res
-
-                all_ctx = _combine_title_context(positive_ctx_titles, positive_ctx_texts) + _combine_title_context(
-                    hard_negative_ctx_titles, hard_negative_ctx_texts)
-            else:
-                all_ctx = positive_ctx_texts + hard_negative_ctx_texts
-
-            # assign empty string tuples if hard_negative passages less than num_hard_negatives
-            all_ctx += [('', '')] * ((self.num_positives + self.num_hard_negatives)-len(all_ctx))
-
-
-            ctx_inputs = self.passage_tokenizer.batch_encode_plus(
-                all_ctx,
-                add_special_tokens=True,
-                truncation=True,
-                padding="max_length",
-                max_length=self.max_seq_len_passage,
-                return_token_type_ids=True
-            )
-
-
-            ctx_input_ids, ctx_segment_ids_, ctx_padding_mask = ctx_inputs["input_ids"], ctx_inputs["token_type_ids"], \
-                                                               ctx_inputs["attention_mask"]
-            ctx_segment_ids = list(torch.zeros((len(ctx_segment_ids_), len(ctx_segment_ids_[0]))).numpy())
-
-            # tokenize query and contexts
-            tokenized_passage = [self.passage_tokenizer.convert_ids_to_tokens(ctx) for ctx in ctx_input_ids]
-
-            if len(tokenized_passage) == 0:
-                logger.warning(f"The context could not be tokenized, likely because it contains a character that the context tokenizer does not recognize")
-                return None
-
-            clear_text["passages"] = positive_context + hard_negative_context
-            tokenized["passages_tokens"] = tokenized_passage
-            features["passage_input_ids"] = ctx_input_ids
-            features["passage_segment_ids"] = ctx_segment_ids
-            features["passage_attention_mask"] = ctx_padding_mask
-            features["label_ids"] = ctx_label
-
-
-        sample = Sample(id=None,
-                        clear_text=clear_text,
-                        tokenized=tokenized,
-                        features=features)
-        return [sample]
-
-    def _sample_to_features(self, sample) -> dict:
-        return [sample.features]
-
-    def _dict_to_samples_and_features(self, dictionary: dict, **kwargs) -> [Sample]:
-        samples = self._dict_to_samples(dictionary, **kwargs)
-        for sample in samples:
-            sample.features = self._sample_to_features(sample)
-
-        return samples
-
-
-

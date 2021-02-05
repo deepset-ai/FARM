@@ -29,15 +29,20 @@ def convert_features_to_dataset(features):
         else:
             try:
                 # Checking weather a non-integer will be silently converted to torch.long
-                if isinstance(features[0][t_name], numbers.Number):
-                    base = features[0][t_name]
-                elif isinstance(features[0][t_name], list):
-                    if len(features[0][t_name]) > 0:
-                        base = features[0][t_name][0]
+                check = features[0][t_name]
+                if isinstance(check, numbers.Number):
+                    base = check
+                elif isinstance(check, list):
+                    if len(check) > 0:
+                        temp = check[0]
+                        if isinstance(temp, list):
+                            base = temp[0]
+                        else:
+                            base = temp
                     else:
                         base = 1
                 else:
-                    base = features[0][t_name].ravel()[0]
+                    base = check.ravel()[0]
                 if not np.issubdtype(type(base), np.integer):
                     logger.warning(f"Problem during conversion to torch tensors:\n"
                                    f"A non-integer value for feature '{t_name}' with a value of: "
