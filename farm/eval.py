@@ -92,20 +92,20 @@ class Evaluator:
                 # TODO check why .fit() should be called on predictions, rather than on labels
                 preds_all[head_num] = mlb.fit_transform(preds_all[head_num])
                 label_all[head_num] = mlb.transform(label_all[head_num])
+            if head.model_type == "span_classification" and update_temp:
+                logger.info(f"temperature before update: {head.temperature}")
+                head.update_temperature(logits_all[head_num], label_all[head_num])
+                logger.info(f"temperature after update: {head.temperature}")
             if hasattr(head, 'aggregate_preds'):
                 # Needed to convert NQ ids from np arrays to strings
                 ids_all_str = [x.astype(str) for x in ids_all[head_num]]
                 ids_all_list = [list(x) for x in ids_all_str]
                 head_ids = ["-".join(x) for x in ids_all_list]
-                preds_all[head_num], label_all[head_num], logits_all[head_num] = head.aggregate_preds(preds=preds_all[head_num],
+                preds_all[head_num], label_all[head_num] = head.aggregate_preds(preds=preds_all[head_num],
                                                                                 labels=label_all[head_num],
                                                                                 passage_start_t=passage_start_t_all[head_num],
-                                                                                ids=head_ids, logits=logits_all[head_num])
+                                                                                ids=head_ids)
 
-            if head.model_type == "span_classification" and update_temp:
-                logger.info(f"temperature before update: {head.temperature}")
-                head.update_temperature(logits_all[head_num], label_all[head_num])
-                logger.info(f"temperature after update: {head.temperature}")
 
             result = {"loss": loss_all[head_num] / len(self.data_loader.dataset),
                       "task_name": head.task_name}

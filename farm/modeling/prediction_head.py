@@ -1071,8 +1071,8 @@ class QuestionAnsweringHead(PredictionHead):
     def update_temperature(self, logits, label_all):
         # logits_all is a list of the logits of individual batches. we need to concatenate these batches into one large tensor
         # is now done in aggregate_preds
-        #logits = torch.cat(logits, dim=0)
-        logits = torch.stack(logits)
+        logits = torch.cat(logits, dim=0)
+        #logits = torch.stack(logits)
         # remove empty items from last batch if last batch is not full
         #logits = torch.cat([logits[:-(len(logits)-len(label_all))]])
         # TODO aggregate. logits are not aggregated across longer passages yet
@@ -1348,7 +1348,7 @@ class QuestionAnsweringHead(PredictionHead):
                 return True
         return False
 
-    def aggregate_preds(self, preds, passage_start_t, ids, seq_2_start_t=None, labels=None, logits=None):
+    def aggregate_preds(self, preds, passage_start_t, ids, seq_2_start_t=None, labels=None):
         """ Aggregate passage level predictions to create document level predictions.
         This method assumes that all passages of each document are contained in preds
         i.e. that there are no incomplete documents. The output of this step
@@ -1358,9 +1358,6 @@ class QuestionAnsweringHead(PredictionHead):
         n_samples = len(preds)
         all_basket_preds = {}
         all_basket_labels = {}
-        all_basket_logits = {}
-        if logits:
-            logits = torch.cat(logits, dim=0)
 
         # Iterate over the preds of each sample - remove final number which is the sample id and not needed for aggregation
         for sample_idx in range(n_samples):
@@ -1389,14 +1386,11 @@ class QuestionAnsweringHead(PredictionHead):
             if basket_id not in all_basket_preds:
                 all_basket_preds[basket_id] = []
                 all_basket_labels[basket_id] = []
-                all_basket_logits[basket_id] = []
 
             # Add predictions and labels to dictionary grouped by their basket_ids
             all_basket_preds[basket_id].append(pred_d)
             if labels:
                 all_basket_labels[basket_id].append(label_d)
-            if True:
-                all_basket_logits[basket_id].append(logits[sample_idx])#todo merge logits if there are multiple passages for the same document
 
         # Pick n-best predictions and remove repeated labels
         all_basket_preds = {k: self.reduce_preds(v) for k, v in all_basket_preds.items()}
@@ -1406,19 +1400,11 @@ class QuestionAnsweringHead(PredictionHead):
         # Return aggregated predictions in order as a list of lists
         keys = [k for k in all_basket_preds]
         aggregated_preds = [all_basket_preds[k] for k in keys]
-        if True:
-            logits = [all_basket_logits[k][0] for k in keys]
         if labels:
             labels = [all_basket_labels[k] for k in keys]
-            if True:
-                return aggregated_preds, labels, logits
-            else:
-                return aggregated_preds, labels
+            return aggregated_preds, labels
         else:
-            if True:
-                return aggregated_preds, logits
-            else:
-                return aggregated_preds
+            return aggregated_preds
 
     @staticmethod
     def reduce_labels(labels):
