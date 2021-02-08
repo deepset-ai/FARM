@@ -8,7 +8,6 @@ from farm.modeling.language_model import LanguageModel, DPRContextEncoder, DPRQu
 from farm.modeling.prediction_head import TextSimilarityHead
 from farm.modeling.tokenization import Tokenizer
 from farm.utils import set_all_seeds, initialize_device_settings
-from farm.data_handler.dataset import convert_features_to_dataset
 
 
 def test_dpr_modules(caplog=None):
@@ -264,7 +263,7 @@ def test_dpr_processor_empty_title(use_fast, embed_title):
         _ = processor.dataset_from_dicts(dicts=[dict])
 
 def test_dpr_problematic():
-    dicts = [{
+    erroneous_dicts = [{
              'query2': 'where is castle on the hill based on',
              'answers': ['Framlingham Castle'],
              'passages': [{"text": 'Castle on the Hill "Castle on the Hill" is a song by English singer-songwriter Ed Sheeran. It was released as a digital download on 6 January 2017 as one of the double lead singles from his third studio album "÷" (2017), along with "Shape of You". "Castle on the Hill" was written and produced by Ed Sheeran and Benny Blanco. The song refers to Framlingham Castle in Sheeran\'s home town. Released on the same day as "Shape of You", "Castle on the Hill" reached number two in a number of countries, including the UK, Australia and Germany, while "Shape of',
@@ -321,9 +320,49 @@ def test_dpr_problematic():
 
 
 
-    dataset, tensor_names, problematic_ids, baskets = processor.dataset_from_dicts(dicts=dicts, return_baskets=True)
+    dataset, tensor_names, problematic_ids, baskets = processor.dataset_from_dicts(dicts=erroneous_dicts, return_baskets=True)
     assert problematic_ids == {0, 1}
 
+def test_dpr_save_load():
+    d = {'query': 'big little lies season 2 how many episodes',
+         'passages': [
+                         {'title': 'Big Little Lies (TV series)',
+                          'text': 'series garnered several accolades. It received 16 Emmy Award nominations and won eight, including Outstanding Limited Series and acting awards for Kidman, Skarsgård, and Dern. The trio also won Golden Globe Awards in addition to a Golden Globe Award for Best Miniseries or Television Film win for the series. Kidman and Skarsgård also received Screen Actors Guild Awards for their performances. Despite originally being billed as a miniseries, HBO renewed the series for a second season. Production on the second season began in March 2018 and is set to premiere in 2019. All seven episodes are being written by Kelley',
+                          'label': 'positive',
+                          'external_id': '18768923'},
+                         {'title': 'Little People, Big World',
+                          'text': 'final minutes of the season two-A finale, "Farm Overload". A crowd had gathered around Jacob, who was lying on the ground near the trebuchet. The first two episodes of season two-B focus on the accident, and how the local media reacted to it. The first season of "Little People, Big World" generated solid ratings for TLC (especially in the important 18–49 demographic), leading to the show\'s renewal for a second season. Critical reviews of the series have been generally positive, citing the show\'s positive portrayal of little people. Conversely, other reviews have claimed that the show has a voyeuristic bend',
+                          'label': 'hard_negative',
+                          'external_id': '7459116'},
+                         {'title': 'Cormac McCarthy',
+                          'text': 'chores of the house, Lee was asked by Cormac to also get a day job so he could focus on his novel writing. Dismayed with the situation, she moved to Wyoming, where she filed for divorce and landed her first job teaching. Cormac McCarthy is fluent in Spanish and lived in Ibiza, Spain, in the 1960s and later settled in El Paso, Texas, where he lived for nearly 20 years. In an interview with Richard B. Woodward from "The New York Times", "McCarthy doesn\'t drink anymore – he quit 16 years ago in El Paso, with one of his young',
+                          'label': 'negative',
+                          'passage_id': '2145653'}
+                     ]
+         }
+
+    query_tok = "facebook/dpr-question_encoder-single-nq-base"
+    query_tokenizer = Tokenizer.load(query_tok, use_fast=True)
+    passage_tok = "facebook/dpr-ctx_encoder-single-nq-base"
+    passage_tokenizer = Tokenizer.load(passage_tok, use_fast=True)
+    processor = TextSimilarityProcessor(query_tokenizer=query_tokenizer,
+                                        passage_tokenizer=passage_tokenizer,
+                                        max_seq_len_query=256,
+                                        max_seq_len_passage=256,
+                                        data_dir="data/retriever",
+                                        train_filename="nq-train.json",
+                                        test_filename="nq-dev.json",
+                                        embed_title=True,
+                                        num_hard_negatives=1,
+                                        label_list=["hard_negative", "positive"],
+                                        metric="text_similarity_metric",
+                                        shuffle_negatives=False)
+    processor.save(save_dir="testsave/dpr_processor")
+    dataset, tensor_names, _ = processor.dataset_from_dicts(dicts=[d], return_baskets=False)
+    loadedprocessor = TextSimilarityProcessor.load_from_dir(load_dir="testsave/dpr_processor")
+    dataset2, tensor_names, _ = loadedprocessor.dataset_from_dicts(dicts=[d], return_baskets=False)
+    assert np.array_equal(dataset.tensors[0],dataset2.tensors[0])
+
 if __name__=="__main__":
-    test_dpr_problematic()
+    test_dpr_save_load()
     # test_dpr_modules()

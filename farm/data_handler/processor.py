@@ -2844,8 +2844,8 @@ class TextSimilarityProcessor(Processor):
         self.max_seq_len_passage = max_seq_len_passage
 
         super(TextSimilarityProcessor, self).__init__(
-            tokenizer=query_tokenizer,
-            max_seq_len=max_seq_len_query,
+            tokenizer=None,
+            max_seq_len=None,
             train_filename=train_filename,
             dev_filename=dev_filename,
             test_filename=test_filename,
@@ -2876,14 +2876,14 @@ class TextSimilarityProcessor(Processor):
         processor_config_file = Path(load_dir) / "processor_config.json"
         config = json.load(open(processor_config_file))
         # init tokenizer
-        tokenizer = Tokenizer.load(load_dir, tokenizer_class=config["tokenizer"])
-        passage_tokenizer = Tokenizer.load(load_dir, tokenizer_class=config["passage_tokenizer"])
+        query_tokenizer = Tokenizer.load(load_dir, tokenizer_class=config["query_tokenizer"], subfolder="query")
+        passage_tokenizer = Tokenizer.load(load_dir, tokenizer_class=config["passage_tokenizer"], subfolder = "passage")
 
         # we have to delete the tokenizer string from config, because we pass it as Object
-        del config["tokenizer"]
+        del config["query_tokenizer"]
         del config["passage_tokenizer"]
 
-        processor = cls.load(tokenizer=tokenizer, passage_tokenizer=passage_tokenizer, processor_name="TextSimilarityProcessor", **config)
+        processor = cls.load(query_tokenizer=query_tokenizer, passage_tokenizer=passage_tokenizer, processor_name="TextSimilarityProcessor", **config)
         for task_name, task in config["tasks"].items():
             processor.add_task(name=task_name, metric=task["metric"], label_list=task["label_list"])
 
@@ -2900,16 +2900,18 @@ class TextSimilarityProcessor(Processor):
         :param save_dir: Directory where the files are to be saved
         :type save_dir: str
         """
+        if isinstance(save_dir,str):
+            save_dir = Path(save_dir)
         os.makedirs(save_dir, exist_ok=True)
         config = self.generate_config()
         # save tokenizer incl. attributes
-        config["tokenizer"] = self.tokenizer.__class__.__name__
+        config["query_tokenizer"] = self.query_tokenizer.__class__.__name__
         config["passage_tokenizer"] = self.passage_tokenizer.__class__.__name__
 
         # Because the fast tokenizers expect a str and not Path
         # always convert Path to str here.
-        self.tokenizer.save_pretrained(str(save_dir))
-        self.passage_tokenizer.save_pretrained(str(save_dir))
+        self.query_tokenizer.save_pretrained(str(save_dir / "query"))
+        self.passage_tokenizer.save_pretrained(str(save_dir / "passage"))
 
         # save processor
         config["processor"] = self.__class__.__name__
