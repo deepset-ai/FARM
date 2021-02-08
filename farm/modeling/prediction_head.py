@@ -1065,24 +1065,18 @@ class QuestionAnsweringHead(PredictionHead):
             temperature = self.temperature.unsqueeze(1).expand(logits.size(0), logits.size(1))
         elif logits.dim() == 3:
             temperature = self.temperature.unsqueeze(1).expand(logits.size(0), logits.size(1), logits.size(2))
+        # TODO torch.div(logits, self.temperature)
         return logits / temperature.to(device='cuda')
 
 
-    def update_temperature(self, logits, label_all):
-        # logits_all is a list of the logits of individual batches. we need to concatenate these batches into one large tensor
-        # is now done in aggregate_preds
+    def calibrate_conf(self, logits, label_all):
         logits = torch.cat(logits, dim=0)
-        #logits = torch.stack(logits)
-        # remove empty items from last batch if last batch is not full
-        #logits = torch.cat([logits[:-(len(logits)-len(label_all))]])
-        # TODO aggregate. logits are not aggregated across longer passages yet
 
         # To handle no_answer labels correctly (-1,-1), we set their start_position to 0. The logit at index 0 also refers to no_answer
         # TODO what if the label is larger than 384?
         # TODO some language models do not have the CLS token at position 0
         # TODO correctly map -1 to index of CLS token
         start_position = [label[0][0] if label[0][0] >=0 else 0 for label in label_all]
-
 
         start_logits, end_logits = logits.split(1, dim=-1)
         start_logits = start_logits.squeeze(-1)
@@ -1101,11 +1095,6 @@ class QuestionAnsweringHead(PredictionHead):
         # reset temperature to 1 before optimization
         self.temperature = nn.Parameter(torch.ones(1) * 1)
 
-        # TODO align start_logits with start_positions
-        # TODO look at pred to doc ix
-        # TODO look at label to doc idx
-        # TODO look at logits_to_loss in QAHead
-        # que
         # optimize the temperature
         optimizer_start = optim.LBFGS([self.temperature], lr=0.01, max_iter=50)
 
@@ -1114,9 +1103,7 @@ class QuestionAnsweringHead(PredictionHead):
             loss.backward()
             return loss
 
-        # todo use optimizer again
         optimizer_start.step(eval_start)
-        #self.temperature = nn.Parameter(torch.ones(1) * 1.4)
 
 
     def logits_to_preds(self, logits, span_mask, start_of_word,

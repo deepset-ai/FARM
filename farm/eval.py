@@ -37,7 +37,7 @@ class Evaluator:
         self.device = device
         self.report = report
 
-    def eval(self, model, return_preds_and_labels=False, update_temp=False):
+    def eval(self, model, return_preds_and_labels=False, calibrate_conf_scores=False):
         """
         Performs evaluation on a given model.
 
@@ -45,6 +45,8 @@ class Evaluator:
         :type model: AdaptiveModel
         :param return_preds_and_labels: Whether to add preds and labels in the returned dicts of the
         :type return_preds_and_labels: bool
+        :param calibrate_conf_scores: Whether to calibrate the temperature for temperature scaling of the confidence scores
+        :type calibrate_conf_scores: bool
         :return all_results: A list of dictionaries, one for each prediction head. Each dictionary contains the metrics
                              and reports generated during evaluation.
         :rtype all_results: list of dicts
@@ -92,10 +94,10 @@ class Evaluator:
                 # TODO check why .fit() should be called on predictions, rather than on labels
                 preds_all[head_num] = mlb.fit_transform(preds_all[head_num])
                 label_all[head_num] = mlb.transform(label_all[head_num])
-            if head.model_type == "span_classification" and update_temp:
-                logger.info(f"temperature before update: {head.temperature}")
-                head.update_temperature(logits_all[head_num], label_all[head_num])
-                logger.info(f"temperature after update: {head.temperature}")
+            if head.model_type == "span_classification" and calibrate_conf_scores:
+                logger.info(f"temperature before calibration: {head.temperature}")
+                head.calibrate_conf(logits_all[head_num], label_all[head_num])
+                logger.info(f"temperature after calibration: {head.temperature}")
             if hasattr(head, 'aggregate_preds'):
                 # Needed to convert NQ ids from np arrays to strings
                 ids_all_str = [x.astype(str) for x in ids_all[head_num]]
