@@ -3,6 +3,7 @@ import numbers
 import logging
 import torch
 from torch.utils.data import TensorDataset
+from collections.abc import Iterable
 
 logger = logging.getLogger(__name__)
 
@@ -32,15 +33,10 @@ def convert_features_to_dataset(features):
                 check = features[0][t_name]
                 if isinstance(check, numbers.Number):
                     base = check
-                elif isinstance(check, list):
-                    if len(check) > 0:
-                        temp = check[0]
-                        if isinstance(temp, list):
-                            base = temp[0]
-                        else:
-                            base = temp
-                    else:
-                        base = 1
+                # extract a base variable from a nested lists or tuples
+                elif isinstance(check, Iterable):
+                    base = list(_flatten(check))[0]
+                # extract a base variable from numpy arrays
                 else:
                     base = check.ravel()[0]
                 if not np.issubdtype(type(base), np.integer):
@@ -57,3 +53,10 @@ def convert_features_to_dataset(features):
 
     dataset = TensorDataset(*all_tensors)
     return dataset, tensor_names
+
+def _flatten(l):
+    for el in l:
+        if isinstance(el, Iterable) and not isinstance(el, (str, bytes)):
+            yield from _flatten(el)
+        else:
+            yield el
