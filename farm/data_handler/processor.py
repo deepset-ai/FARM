@@ -1979,9 +1979,9 @@ class SquadProcessor(Processor):
         Each basket is a question-document pair.
         Each stage adds or transforms specific information to our baskets.
 
-        @param dicts: dict, input dictionary with SQuAD style information present
-        @param indices: list, indices used during multiprocessing so that IDs assigned to our baskets is unique
-        @param return_baskets: boolean, weather to return the baskets or not (baskets are needed during inference)
+        :param dicts: dict, input dictionary with SQuAD style information present
+        :param indices: list, indices used during multiprocessing so that IDs assigned to our baskets is unique
+        :param return_baskets: boolean, weather to return the baskets or not (baskets are needed during inference)
         """
         # Convert to standard format
         pre_baskets = [self.convert_qa_input_dict(x) for x in dicts] # TODO move to input object conversion
@@ -2761,7 +2761,17 @@ class NaturalQuestionsProcessor(Processor):
 class TextSimilarityProcessor(Processor):
     """
     Used to handle the Dense Passage Retrieval (DPR) datasets that come in json format, example: nq-train.json, nq-dev.json, trivia-train.json, trivia-dev.json
+
     Datasets can be downloaded from the official DPR github repository (https://github.com/facebookresearch/DPR)
+    dataset format: list of dictionaries with keys: 'dataset', 'question', 'answers', 'positive_ctxs', 'negative_ctxs', 'hard_negative_ctxs'
+    Each sample is a dictionary of format:
+    {"dataset": str,
+    "question": str,
+    "answers": list of str
+    "positive_ctxs": list of dictionaries of format {'title': str, 'text': str, 'score': int, 'title_score': int, 'passage_id': str}
+    "negative_ctxs": list of dictionaries of format {'title': str, 'text': str, 'score': int, 'title_score': int, 'passage_id': str}
+    "hard_negative_ctxs": list of dictionaries of format {'title': str, 'text': str, 'score': int, 'title_score': int, 'passage_id': str}
+    }
 
     """
     def __init__(
@@ -2953,7 +2963,7 @@ class TextSimilarityProcessor(Processor):
         passages that do not fit the query)
         Each stage adds or transforms specific information to our baskets.
 
-        @param dicts: dict, input dictionary with DPR-style content
+        :param dicts: dict, input dictionary with DPR-style content
                         {"query": str,
                          "passages": List[
                                         {'title': str,
@@ -2963,8 +2973,8 @@ class TextSimilarityProcessor(Processor):
                                         ....
                                         ]
                          }
-        @param indices: list, indices used during multiprocessing so that IDs assigned to our baskets is unique
-        @param return_baskets: boolean, weather to return the baskets or not (baskets are needed during inference)
+        :param indices: list, indices used during multiprocessing so that IDs assigned to our baskets is unique
+        :param return_baskets: boolean, weather to return the baskets or not (baskets are needed during inference)
         """
 
         # Take the dict and insert into our basket structure, this stages also adds an internal IDs
@@ -3002,51 +3012,49 @@ class TextSimilarityProcessor(Processor):
         for basket in baskets:
             clear_text = {}
             tokenized = {}
-            features = {}
+            features = [{}]
             # extract query, positive context passages and titles, hard-negative passages and titles
-            try:
-                query = self._normalize_question(basket.raw["query"])
+            if "query" in basket.raw:
+                try:
+                    query = self._normalize_question(basket.raw["query"])
 
-                # featurize the query
-                query_inputs = self.query_tokenizer.encode_plus(
-                    text=query,
-                    max_length=self.max_seq_len_query,
-                    add_special_tokens=True,
-                    truncation=True,
-                    truncation_strategy='longest_first',
-                    padding="max_length",
-                    return_token_type_ids=True,
-                )
+                    # featurize the query
+                    query_inputs = self.query_tokenizer.encode_plus(
+                        text=query,
+                        max_length=self.max_seq_len_query,
+                        add_special_tokens=True,
+                        truncation=True,
+                        truncation_strategy='longest_first',
+                        padding="max_length",
+                        return_token_type_ids=True,
+                    )
 
-                # tokenize query
-                tokenized_query = self.query_tokenizer.convert_ids_to_tokens(query_inputs["input_ids"])
+                    # tokenize query
+                    tokenized_query = self.query_tokenizer.convert_ids_to_tokens(query_inputs["input_ids"])
 
-                if len(tokenized_query) == 0:
-                    logger.warning(
-                        f"The query could not be tokenized, likely because it contains a character that the query tokenizer does not recognize")
-                    return None
+                    if len(tokenized_query) == 0:
+                        logger.warning(
+                            f"The query could not be tokenized, likely because it contains a character that the query tokenizer does not recognize")
+                        return None
 
-                clear_text["query_text"] = query
-                tokenized["query_tokens"] = tokenized_query
-                features["query_input_ids"] = query_inputs["input_ids"]
-                features["query_segment_ids"] = query_inputs["token_type_ids"]
-                features["query_attention_mask"] = query_inputs["attention_mask"]
-                features_list = [features]
-            except Exception as e:
-                logger.debug(f"Something went wrong during conversion of query. Skipping example. See stacktrace: {e}")
-                features_list = None
+                    clear_text["query_text"] = query
+                    tokenized["query_tokens"] = tokenized_query
+                    features[0]["query_input_ids"] = query_inputs["input_ids"]
+                    features[0]["query_segment_ids"] = query_inputs["token_type_ids"]
+                    features[0]["query_attention_mask"] = query_inputs["attention_mask"]
+                except Exception as e:
+                    features = None
 
             sample = Sample(id=None,
                             clear_text=clear_text,
                             tokenized=tokenized,
-                            features=features_list)
+                            features=features)
             basket.samples = [sample]
         return baskets
 
     def _convert_contexts(self, baskets):
         for basket in baskets:
-            # IF the query could not be converted we skip the context as well
-            if basket.samples[0].features:
+            if "passages" in basket.raw:
                 try:
                     positive_context = list(filter(lambda x: x["label"] == "positive", basket.raw["passages"]))
                     if self.shuffle_positives:
@@ -3067,18 +3075,8 @@ class TextSimilarityProcessor(Processor):
                     # featurize context passages
                     if self.embed_title:
                         # concatenate title with positive context passages + negative context passages
-                        def _combine_title_context(titles, texts):
-                            res = []
-                            for title, ctx in zip(titles, texts):
-                                if title is None:
-                                    title = ""
-                                    logger.warning(
-                                        f"Couldn't find title although `embed_title` is set to True for DPR. Using title='' now. Related passage text: '{ctx}' ")
-                                res.append(tuple((title, ctx)))
-                            return res
-
-                        all_ctx = _combine_title_context(positive_ctx_titles, positive_ctx_texts) + _combine_title_context(
-                            hard_negative_ctx_titles, hard_negative_ctx_texts)
+                        all_ctx = self._combine_title_context(positive_ctx_titles, positive_ctx_texts) + \
+                                  self._combine_title_context(hard_negative_ctx_titles, hard_negative_ctx_texts)
                     else:
                         all_ctx = positive_ctx_texts + hard_negative_ctx_texts
 
@@ -3094,19 +3092,14 @@ class TextSimilarityProcessor(Processor):
                         return_token_type_ids=True
                     )
 
-                    # segment IDs might contain 0s for titles and 1s for the context.
-                    # TODO check if really needed in the first place or is concat of title and text string sufficient?
-                    # We need to reset those, since when we combine query and context, the query should
-                    # have 0s and context (including title) 1s
                     ctx_segment_ids = np.zeros_like(ctx_inputs["token_type_ids"], dtype=np.int32)
 
-                    # tokenize query and contexts
+                    # get tokens in string format
                     tokenized_passage = [self.passage_tokenizer.convert_ids_to_tokens(ctx) for ctx in ctx_inputs["input_ids"]]
 
                     if len(tokenized_passage) == 0:
                         logger.warning(
                             f"The context could not be tokenized, likely because it contains a character that the context tokenizer does not recognize")
-                        return None
 
                     # for DPR we only have one sample containing query and corresponding (multiple) context features
                     sample = basket.samples[0]
@@ -3118,8 +3111,6 @@ class TextSimilarityProcessor(Processor):
                     sample.features[0]["passage_attention_mask"] = ctx_inputs["attention_mask"]
                     sample.features[0]["label_ids"] = ctx_label
                 except Exception as e:
-                    logger.debug(
-                        f"Something went wrong during conversion of contexts. Skipping example. See stacktrace: {e}")
                     basket.samples[0].features = None
 
         return baskets
@@ -3149,8 +3140,20 @@ class TextSimilarityProcessor(Processor):
         dataset, tensor_names = convert_features_to_dataset(features=features_flat)
         return dataset, tensor_names, problematic_ids, baskets
 
-    def _normalize_question(self, question: str) -> str:
+    @staticmethod
+    def _normalize_question(question: str) -> str:
         """Removes '?' from queries/questions"""
         if question[-1] == '?':
             question = question[:-1]
         return question
+
+    @staticmethod
+    def _combine_title_context(titles, texts):
+        res = []
+        for title, ctx in zip(titles, texts):
+            if title is None:
+                title = ""
+                logger.warning(
+                    f"Couldn't find title although `embed_title` is set to True for DPR. Using title='' now. Related passage text: '{ctx}' ")
+            res.append(tuple((title, ctx)))
+        return res

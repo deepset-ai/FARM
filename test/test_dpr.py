@@ -264,7 +264,7 @@ def test_dpr_processor_empty_title(use_fast, embed_title):
 
 def test_dpr_problematic():
     erroneous_dicts = [{
-             'query2': 'where is castle on the hill based on',
+             'query': [1],
              'answers': ['Framlingham Castle'],
              'passages': [{"text": 'Castle on the Hill "Castle on the Hill" is a song by English singer-songwriter Ed Sheeran. It was released as a digital download on 6 January 2017 as one of the double lead singles from his third studio album "÷" (2017), along with "Shape of You". "Castle on the Hill" was written and produced by Ed Sheeran and Benny Blanco. The song refers to Framlingham Castle in Sheeran\'s home town. Released on the same day as "Shape of You", "Castle on the Hill" reached number two in a number of countries, including the UK, Australia and Germany, while "Shape of',
                            "title": 'Castle on the Hill',
@@ -323,6 +323,82 @@ def test_dpr_problematic():
     dataset, tensor_names, problematic_ids, baskets = processor.dataset_from_dicts(dicts=erroneous_dicts, return_baskets=True)
     assert problematic_ids == {0, 1}
 
+def test_dpr_query_only():
+    erroneous_dicts = [
+        {
+             'query': 'where is castle on the hill based on',
+             'answers': ['Framlingham Castle'],
+            },
+        {
+            'query': 'where is castle on the hill 2 based on',
+            'answers': ['Framlingham Castle 2'],
+        }]
+
+    query_tok = "facebook/dpr-question_encoder-single-nq-base"
+    query_tokenizer = Tokenizer.load(query_tok, use_fast=True)
+    passage_tok = "facebook/dpr-ctx_encoder-single-nq-base"
+    passage_tokenizer = Tokenizer.load(passage_tok, use_fast=True)
+    processor = TextSimilarityProcessor(query_tokenizer=query_tokenizer,
+                                        passage_tokenizer=passage_tokenizer,
+                                        max_seq_len_query=256,
+                                        max_seq_len_passage=256,
+                                        data_dir="data/retriever",
+                                        train_filename="nq-train.json",
+                                        test_filename="nq-dev.json",
+                                        embed_title=True,
+                                        num_hard_negatives=1,
+                                        label_list=["hard_negative", "positive"],
+                                        metric="text_similarity_metric",
+                                        shuffle_negatives=False)
+
+
+
+    dataset, tensor_names, problematic_ids, baskets = processor.dataset_from_dicts(dicts=erroneous_dicts, return_baskets=True)
+    assert len(problematic_ids) == 0
+    assert tensor_names == ['query_input_ids', 'query_segment_ids', 'query_attention_mask']
+
+def test_dpr_context_only():
+    erroneous_dicts = [{
+            'passages': [{"text": 'House of Windsor 2 The House of Windsor is the reigning royal house of the United',
+            "title": 'House of Windsor',
+            "label": "positive", "external_id": '1478954'},
+            {"text": "2005, and was to take place in a civil ceremony at Windsor Castle, with a subsequent religious",
+            "title": 'Camilla, Duchess of Cornwall',
+            "label": "hard_negative", "external_id": '1399730'}]
+             },
+        {
+            'passages': [{"text": 'House of Windsor The House of Windsor is the reigning royal house of the',
+            "title": 'House of Windsor',
+            "label": "positive", "external_id": '1478954'},
+            {"text": "2005, and was to take place in a civil ceremony at Windsor Castle, with a subsequent",
+            "title": 'Camilla, Duchess of Cornwall',
+            "label": "hard_negative", "external_id": '1399730'}]
+             }]
+
+    query_tok = "facebook/dpr-question_encoder-single-nq-base"
+    query_tokenizer = Tokenizer.load(query_tok, use_fast=True)
+    passage_tok = "facebook/dpr-ctx_encoder-single-nq-base"
+    passage_tokenizer = Tokenizer.load(passage_tok, use_fast=True)
+    processor = TextSimilarityProcessor(query_tokenizer=query_tokenizer,
+                                        passage_tokenizer=passage_tokenizer,
+                                        max_seq_len_query=256,
+                                        max_seq_len_passage=256,
+                                        data_dir="data/retriever",
+                                        train_filename="nq-train.json",
+                                        test_filename="nq-dev.json",
+                                        embed_title=True,
+                                        num_hard_negatives=1,
+                                        label_list=["hard_negative", "positive"],
+                                        metric="text_similarity_metric",
+                                        shuffle_negatives=False)
+
+
+
+    dataset, tensor_names, problematic_ids, baskets = processor.dataset_from_dicts(dicts=erroneous_dicts, return_baskets=True)
+    assert len(problematic_ids) == 0
+    assert tensor_names == ['passage_input_ids', 'passage_segment_ids', 'passage_attention_mask', 'label_ids']
+
+
 def test_dpr_save_load():
     d = {'query': 'big little lies season 2 how many episodes',
          'passages': [
@@ -364,5 +440,6 @@ def test_dpr_save_load():
     assert np.array_equal(dataset.tensors[0],dataset2.tensors[0])
 
 if __name__=="__main__":
-    test_dpr_save_load()
+    test_dpr_problematic()
+    #test_dpr_context_only()
     # test_dpr_modules()
