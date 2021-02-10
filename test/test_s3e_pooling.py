@@ -68,7 +68,7 @@ def test_s3e_fit():
 
     # Get embeddings for input text (you can vary the strategy and layer)
     result = inferencer.inference_from_dicts(dicts=basic_texts)
-    assert result[0]["context"] == ['a', 'man', 'is', 'walking', 'on', 'the', 'street', '.']
+    assert result[0]["context"] == basic_texts[0]["text"]
     assert result[0]["vec"][0] - 0.00527727306941057 < 1e-6
     assert result[0]["vec"][-2] - 0.06285100416478565 < 1e-6
 
@@ -94,7 +94,7 @@ def test_load_extract_s3e_embeddings():
 
     # Get embeddings for input text
     result = inferencer.inference_from_dicts(dicts=basic_texts)
-    assert result[0]["context"] == ['a', 'man', 'is', 'walking', 'on', 'the', 'street', '.']
+    assert result[0]["context"] == basic_texts[0]["text"]
     assert result[0]["vec"][0] - 0.00527727306941057 < 1e-6
     assert result[0]["vec"][-2] + 0.06285100416478565 < 1e-6
 

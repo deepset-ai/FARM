@@ -386,7 +386,7 @@ class LanguageModel(nn.Module):
         preds = []
         for vec, sample in zip(vecs, samples):
             pred = {}
-            pred["context"] = sample.tokenized["tokens"]
+            pred["context"] = sample.clear_text["text"]
             pred["vec"] = vec
             preds.append(pred)
         return preds

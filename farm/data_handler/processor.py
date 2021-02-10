@@ -497,9 +497,6 @@ class Processor(ABC):
         return ext_id
 
 
-#########################################
-# Processors for Text Classification ####
-#########################################
 class TextClassificationProcessor(Processor):
     """
     Used to handle the text classification datasets that come in tabular format (CSV, TSV, etc.)
@@ -642,14 +639,16 @@ class TextClassificationProcessor(Processor):
         input_ids_batch = tokenized_batch["input_ids"]
         segment_ids_batch = tokenized_batch["token_type_ids"]
         padding_masks_batch = tokenized_batch["attention_mask"]
+        tokens_batch = [x.tokens for x in tokenized_batch.encodings]
 
         # From here we operate on a per sample basis
-        for dictionary, input_ids, segment_ids, padding_mask in zip(
-                dicts, input_ids_batch, segment_ids_batch, padding_masks_batch
+        for dictionary, input_ids, segment_ids, padding_mask, tokens in zip(
+                dicts, input_ids_batch, segment_ids_batch, padding_masks_batch, tokens_batch
         ):
 
-            # TODO Build tokenized dict for debug mode
             tokenized = {}
+            if debug:
+                tokenized["tokens"] = tokens
 
             feat_dict = {"input_ids": input_ids,
                          "padding_mask": padding_mask,
@@ -658,7 +657,7 @@ class TextClassificationProcessor(Processor):
             # Create labels
             # i.e. not inference
             if not return_baskets:
-                label_dict = self.generate_labels(dictionary)
+                label_dict = self.convert_labels(dictionary)
                 feat_dict.update(label_dict)
 
             # Add Basket to self.baskets
@@ -679,28 +678,15 @@ class TextClassificationProcessor(Processor):
 
         # TODO populate problematic ids
         problematic_ids = set()
-        logger.warning("Currently no support in TextClassification processor for returning problematic ids")
+        logger.warning("Currently no support in Processor for returning problematic ids")
         dataset, tensornames = self._create_dataset()
-        ret = [dataset, tensornames, problematic_ids]
         if return_baskets:
-            ret.append(self.baskets)
-        return ret
+            return dataset, tensornames, problematic_ids, self.baskets
+        else:
+            return dataset, tensornames, problematic_ids
 
-    def _create_dataset(self):
-        # TODO this is the proposed new version to replace the mother function
-        features_flat = []
-        basket_to_remove = []
-        for basket in self.baskets:
-            if self._check_sample_features(basket):
-                for sample in basket.samples:
-                    features_flat.extend(sample.features)
-            else:
-                # remove the entire basket
-                basket_to_remove.append(basket)
-        dataset, tensor_names = convert_features_to_dataset(features=features_flat)
-        return dataset, tensor_names
 
-    def generate_labels(self, dictionary):
+    def convert_labels(self, dictionary):
         ret = {}
         # Add labels for different tasks
         for task_name, task in self.tasks.items():
@@ -720,6 +706,282 @@ class TextClassificationProcessor(Processor):
         return ret
 
 
+    def _create_dataset(self):
+        # TODO this is the proposed new version to replace the mother function
+        features_flat = []
+        basket_to_remove = []
+        for basket in self.baskets:
+            if self._check_sample_features(basket):
+                for sample in basket.samples:
+                    features_flat.extend(sample.features)
+            else:
+                # remove the entire basket
+                basket_to_remove.append(basket)
+        dataset, tensor_names = convert_features_to_dataset(features=features_flat)
+        return dataset, tensor_names
+
+
+class RegressionProcessor(TextClassificationProcessor):
+    """
+    Processor to handle a regression dataset in tab separated text + label,
+    It uses the text conversion functionality of a TextClassificationProcessor
+    but adds special label conversion (scaled float value as label)
+    """
+    def __init__(
+        self,
+        tokenizer,
+        max_seq_len,
+        data_dir,
+        train_filename="train.tsv",
+        dev_filename=None,
+        test_filename="test.tsv",
+        dev_split=0.1,
+        delimiter="\t",
+        quote_char="'",
+        skiprows=None,
+        label_column_name="label",
+        label_name="regression_label",
+        scaler_mean=None,
+        scaler_scale=None,
+        proxies=None,
+        text_column_name="text",
+        **kwargs
+    ):
+        """
+        :param tokenizer: Used to split a sentence (str) into tokens.
+        :param max_seq_len: Samples are truncated after this many tokens.
+        :type max_seq_len: int
+        :param data_dir: The directory in which the train and dev files can be found.
+                         If not available the dataset will be loaded automaticaly
+                         if the last directory has the same name as a predefined dataset.
+                         These predefined datasets are defined as the keys in the dict at
+                         `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
+        :type data_dir: str
+        :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
+        :type label_list: list
+        :param metric: name of metric that shall be used for evaluation, e.g. "acc" or "f1_macro".
+                 Alternatively you can also supply a custom function, that takes preds and labels as args and returns a
+                 numerical value. For using multiple metrics supply them as a list, e.g ["acc", my_custom_metric_fn].
+        :type metric: str, function, or list
+        :param train_filename: The name of the file containing training data.
+        :type train_filename: str
+        :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
+                             will be a slice of the train set.
+        :type dev_filename: str or None
+        :param test_filename: None
+        :type test_filename: str
+        :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
+        :type dev_split: float
+        :param delimiter: Separator used in the input tsv / csv file
+        :type delimiter: str
+        :param quote_char: Character used for quoting strings in the input tsv/ csv file
+        :type quote_char: str
+        :param skiprows: number of rows to skip in the tsvs (e.g. for multirow headers)
+        :type skiprows: int
+        :param label_column_name: name of the column in the input csv/tsv that shall be used as training labels
+        :type label_column_name: str
+        :param label_name: name for the internal label variable in FARM (only needed to adjust in rare cases)
+        :type label_name: str
+        :param scaler_mean: Value to substract from the label for normalization
+        :type scaler_mean: float
+        :param scaler_scale: Value to divide the label by for normalization
+        :type scaler_scale: float
+        :param proxies: proxy configuration to allow downloads of remote datasets.
+                        Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
+        :type proxies: dict
+        :param text_column_name: name of the column in the input csv/tsv that shall be used as training text
+        :type text_column_name: str
+        :param kwargs: placeholder for passing generic parameters
+        :type kwargs: object
+        """
+
+        # Custom processor attributes
+        self.delimiter = delimiter
+        self.quote_char = quote_char
+        self.skiprows = skiprows
+
+        super(RegressionProcessor, self).__init__(
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            train_filename=train_filename,
+            dev_filename=dev_filename,
+            test_filename=test_filename,
+            dev_split=dev_split,
+            data_dir=data_dir,
+            proxies=proxies
+        )
+
+        # Note that label_list is being hijacked to store the scaling mean and scale
+        self.add_task(name="regression",
+                      metric="mse",
+                      label_list=[scaler_mean, scaler_scale],
+                      label_column_name=label_column_name,
+                      task_type="regression",
+                      label_name=label_name,
+                      text_column_name=text_column_name)
+
+    def file_to_dicts(self, file: str) -> [dict]:
+        column_mapping = {}
+        for task in self.tasks.values():
+            column_mapping[task["label_column_name"]] = task["label_name"]
+            column_mapping[task["text_column_name"]] = "text"
+        dicts = read_tsv(
+            rename_columns=column_mapping,
+            filename=file,
+            delimiter=self.delimiter,
+            skiprows=self.skiprows,
+            quotechar=self.quote_char,
+            proxies=self.proxies
+        )
+
+        # collect all labels and compute scaling stats
+        train_labels = []
+        if self.train_filename in str(file):
+            for d in dicts:
+                train_labels.append(float(d[self.tasks["regression"]["label_name"]]))
+            scaler = StandardScaler()
+            scaler.fit(np.reshape(train_labels, (-1, 1)))
+            # add to label list in regression task
+            self.tasks["regression"]["label_list"] = [scaler.mean_.item(), scaler.scale_.item()]
+
+        return dicts
+
+    def convert_labels(self, dictionary: dict):
+        # For regression the label should be scaled
+        ret = {}
+        for task_name, task in self.tasks.items():
+            label_name = task["label_name"]
+            label_raw = dictionary[label_name]
+            label_list = task["label_list"]
+            if task["task_type"] == "regression":
+                label = float(label_raw)
+                scaled_label = (label - label_list[0]) / label_list[1]
+                ret[task["label_tensor_name"]] = [scaled_label]
+        return ret
+
+
+#########################################
+# Processor for Basic Inference ####
+#########################################
+class InferenceProcessor(TextClassificationProcessor):
+    """
+    Generic processor used at inference time:
+    - fast
+    - no labels
+    - pure encoding of text into pytorch dataset
+    - Doesn't read from file, but only consumes dictionaries (e.g. coming from API requests)
+    """
+
+    def __init__(
+        self,
+        tokenizer,
+        max_seq_len,
+        **kwargs,
+    ):
+
+        super(InferenceProcessor, self).__init__(
+            tokenizer=tokenizer,
+            max_seq_len=max_seq_len,
+            train_filename=None,
+            dev_filename=None,
+            test_filename=None,
+            dev_split=None,
+            data_dir=None,
+            tasks={},
+        )
+
+    @classmethod
+    def load_from_dir(cls, load_dir):
+        """
+         Overwriting method from parent class to **always** load the InferenceProcessor instead of the specific class stored in the config.
+
+        :param load_dir: str, directory that contains a 'processor_config.json'
+        :return: An instance of an InferenceProcessor
+        """
+        # read config
+        processor_config_file = Path(load_dir) / "processor_config.json"
+        config = json.load(open(processor_config_file))
+        # init tokenizer
+        tokenizer = Tokenizer.load(load_dir, tokenizer_class=config["tokenizer"])
+        # we have to delete the tokenizer string from config, because we pass it as Object
+        del config["tokenizer"]
+
+        processor = cls.load(tokenizer=tokenizer, processor_name="InferenceProcessor", **config)
+        for task_name, task in config["tasks"].items():
+            processor.add_task(name=task_name, metric=task["metric"], label_list=task["label_list"])
+
+        if processor is None:
+            raise Exception
+
+        return processor
+
+    def file_to_dicts(self, file: str) -> [dict]:
+        raise NotImplementedError
+
+    def convert_labels(self, dictionary: dict):
+        # For inference we do not need labels
+        ret = {}
+        return ret
+
+    def dataset_from_dicts(self, dicts, indices=None, return_baskets=False, debug=False):
+        """
+        Function to convert input dictionaries containing text into a torch dataset.
+        For normal operation with Language Models it calls the superclass' TextClassification.dataset_from_dicts method.
+        For slow tokenizers, s3e or wordembedding tokenizers the function works on _dict_to_samples and _sample_to_features
+        """
+        # TODO remove this sections once tokenizers work the same way for slow/fast and our special tokenizers
+        if not self.tokenizer.is_fast:
+            self.baskets = []
+            for d in dicts:
+                sample = self._dict_to_samples(dictionary=d)
+                features = self._sample_to_features(sample)
+                sample.features = features
+                basket = SampleBasket(id_internal=None,
+                                      raw=d,
+                                      id_external=None,
+                                      samples=[sample])
+                self.baskets.append(basket)
+            if indices and 0 not in indices:
+                pass
+            else:
+                self._log_samples(1)
+
+            problematic_ids = set()
+            logger.warning("Currently no support in InferenceProcessor for returning problematic ids")
+            dataset, tensornames = self._create_dataset()
+            ret = [dataset, tensornames, problematic_ids]
+            if return_baskets:
+                ret.append(self.baskets)
+            return ret
+        else:
+            return super().dataset_from_dicts(dicts=dicts,
+                                       indices=indices,
+                                       return_baskets=return_baskets,
+                                       debug=debug)
+
+    # Private method to keep s3e pooling and embedding extraction working
+    def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
+        # this tokenization also stores offsets
+        tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer)
+        # truncate tokens, offsets and start_of_word to max_seq_len that can be handled by the model
+        for seq_name in tokenized.keys():
+            tokenized[seq_name], _, _ = truncate_sequences(seq_a=tokenized[seq_name], seq_b=None,
+                                                           tokenizer=self.tokenizer,
+                                                           max_seq_len=self.max_seq_len)
+        return Sample(id=None, clear_text=dictionary, tokenized=tokenized)
+
+    # Private method to keep s3e pooling and embedding extraction working
+    def _sample_to_features(self, sample) -> dict:
+        features = sample_to_features_text(
+            sample=sample,
+            tasks=self.tasks,
+            max_seq_len=self.max_seq_len,
+            tokenizer=self.tokenizer,
+        )
+        return features
+
+
+# TODO remove inheritance from superclass to be able to convert text + text_b
 class TextPairClassificationProcessor(TextClassificationProcessor):
     """
     Used to handle text pair classification datasets (e.g. Answer Selection or Natural Inference) that come in
@@ -863,156 +1125,6 @@ class TextPairClassificationProcessor(TextClassificationProcessor):
                 feat_dict[task["label_tensor_name"]] = label_ids
 
         return [Sample(id=None, clear_text=dictionary, tokenized=token_dict, features=[feat_dict])]
-
-
-
-
-#########################################
-# Processors for Basic Inference ####
-#########################################
-class InferenceProcessor(Processor):
-    """
-    Generic processor used at inference time:
-    - fast
-    - no labels
-    - pure encoding of text into pytorch dataset
-    - Doesn't read from file, but only consumes dictionaries (e.g. coming from API requests)
-    """
-
-    def __init__(
-        self,
-        tokenizer,
-        max_seq_len,
-        **kwargs,
-    ):
-
-        super(InferenceProcessor, self).__init__(
-            tokenizer=tokenizer,
-            max_seq_len=max_seq_len,
-            train_filename=None,
-            dev_filename=None,
-            test_filename=None,
-            dev_split=None,
-            data_dir=None,
-            tasks={},
-        )
-
-    @classmethod
-    def load_from_dir(cls, load_dir):
-        """
-         Overwriting method from parent class to **always** load the InferenceProcessor instead of the specific class stored in the config.
-
-        :param load_dir: str, directory that contains a 'processor_config.json'
-        :return: An instance of an InferenceProcessor
-        """
-        # read config
-        processor_config_file = Path(load_dir) / "processor_config.json"
-        config = json.load(open(processor_config_file))
-        # init tokenizer
-        tokenizer = Tokenizer.load(load_dir, tokenizer_class=config["tokenizer"])
-        # we have to delete the tokenizer string from config, because we pass it as Object
-        del config["tokenizer"]
-
-        processor = cls.load(tokenizer=tokenizer, processor_name="InferenceProcessor", **config)
-        for task_name, task in config["tasks"].items():
-            processor.add_task(name=task_name, metric=task["metric"], label_list=task["label_list"])
-
-        if processor is None:
-            raise Exception
-
-        return processor
-
-    def file_to_dicts(self, file: str) -> [dict]:
-        raise NotImplementedError
-
-    def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
-        # this tokenization also stores offsets
-        tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer)
-        # truncate tokens, offsets and start_of_word to max_seq_len that can be handled by the model
-        for seq_name in tokenized.keys():
-            tokenized[seq_name], _, _ = truncate_sequences(seq_a=tokenized[seq_name], seq_b=None, tokenizer=self.tokenizer,
-                                                max_seq_len=self.max_seq_len)
-        return Sample(id=None, clear_text=dictionary, tokenized=tokenized)
-
-    def _sample_to_features(self, sample) -> dict:
-        features = sample_to_features_text(
-            sample=sample,
-            tasks=self.tasks,
-            max_seq_len=self.max_seq_len,
-            tokenizer=self.tokenizer,
-        )
-        return features
-
-    def dataset_from_dicts(self, dicts, indices=None, return_baskets=False, debug=False):
-        self.baskets = []
-
-        if not self.tokenizer.is_fast:
-            for d in dicts:
-                sample = self._dict_to_samples(dictionary=d)
-                features = self._sample_to_features(sample)
-                sample.features = features
-                basket = SampleBasket(id_internal=None,
-                                       raw=d,
-                                       id_external=None,
-                                       samples=[sample])
-                self.baskets.append(basket)
-        else:
-            # Tokenize in batches
-            texts = [x["text"] for x in dicts]
-            tokenized_batch = self.tokenizer.batch_encode_plus(
-                texts,
-                return_offsets_mapping=True,
-                return_special_tokens_mask=True,
-                return_token_type_ids=True,
-                return_attention_mask=True,
-                truncation=True,
-                max_length=self.max_seq_len,
-                add_special_tokens=True,
-                padding="max_length"
-            )
-            input_ids_batch = tokenized_batch["input_ids"]
-            segment_ids_batch = tokenized_batch["token_type_ids"]
-            padding_masks_batch = tokenized_batch["attention_mask"]
-            if self.tokenizer.is_fast:
-                tokens_batch = [x.tokens for x in tokenized_batch.encodings]
-            special_tokens_mask_batch = tokenized_batch["special_tokens_mask"]
-
-            # From here we operate on a per sample basis
-            for dictionary, input_ids, segment_ids, padding_mask, tokens, special_tokens_mask in zip(
-                    dicts, input_ids_batch, segment_ids_batch, padding_masks_batch, tokens_batch, special_tokens_mask_batch
-            ):
-
-                # TODO Build tokenized dict for debug mode
-                tokenized = {"tokens": [t for t, stm in zip(tokens, special_tokens_mask) if not stm]}
-
-                feat_dict = {"input_ids": input_ids,
-                             "padding_mask": padding_mask,
-                             "segment_ids": segment_ids}
-
-                # Add Basket to self.baskets
-                curr_sample = Sample(id=None,
-                                     clear_text=dictionary,
-                                     tokenized=tokenized,
-                                     features=[feat_dict])
-                basket = SampleBasket(id_internal=None,
-                                           raw=dictionary,
-                                           id_external=None,
-                                           samples=[curr_sample])
-                self.baskets.append(basket)
-
-        if indices and 0 not in indices:
-            pass
-        else:
-            self._log_samples(1)
-
-        # TODO populate problematic ids
-        problematic_ids = set()
-        logger.warning("Currently no support in InferenceProcessor for returning problematic ids")
-        dataset, tensornames = self._create_dataset()
-        ret = [dataset, tensornames, problematic_ids]
-        if return_baskets:
-            ret.append(self.baskets)
-        return ret
 
 
 #########################################
@@ -1779,26 +1891,6 @@ class BertStyleLMProcessor(Processor):
 #########################################
 # QA Processors ####
 #########################################
-
-class QAProcessor(Processor):
-    """
-    This is class inherits from Processor and is the parent to SquadProcessor and NaturalQuestionsProcessor.
-    Its main role is to extend the __init__() so that the number of starting, intermediate and end special tokens
-    are calculated from the tokenizer and store as attributes. These are used by the child processors in their
-    sample_to_features() methods
-    """
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.initialize_special_tokens_count()
-
-    def initialize_special_tokens_count(self):
-        vec = self.tokenizer.build_inputs_with_special_tokens(token_ids_0=["a"],
-                                                              token_ids_1=["b"])
-        self.sp_toks_start = vec.index("a")
-        self.sp_toks_mid = vec.index("b") - self.sp_toks_start - 1
-        self.sp_toks_end = len(vec) - vec.index("b") - 1
-
-
 class SquadProcessor(Processor):
     """ Used to handle the SQuAD dataset"""
 
@@ -1887,10 +1979,9 @@ class SquadProcessor(Processor):
         Each basket is a question-document pair.
         Each stage adds or transforms specific information to our baskets.
 
-        @param dicts: dict, input dictionary with SQuAD style information present
-        @param indices: list, indices used during multiprocessing so that IDs assigned to our baskets is unique
-        @param return_baskets: boolean, weather to return the baskets or not (baskets are needed during inference)
-        @param return_problematic: boolean, weather to return the IDs of baskets that created errors during processing
+        :param dicts: dict, input dictionary with SQuAD style information present
+        :param indices: list, indices used during multiprocessing so that IDs assigned to our baskets is unique
+        :param return_baskets: boolean, weather to return the baskets or not (baskets are needed during inference)
         """
         # Convert to standard format
         pre_baskets = [self.convert_qa_input_dict(x) for x in dicts] # TODO move to input object conversion
@@ -2076,8 +2167,10 @@ class SquadProcessor(Processor):
                         passage_len_t = len(sample.tokenized["passage_tokens"])
 
                         # Check that start and end are contained within this passage
-                        if passage_len_t > answer_start_t >= 0 and passage_len_t > answer_end_t > 0:
-                            # Then adjust the start and end offsets by adding question and special tokens
+                        # answer_end_t is 0 if the first token is the answer
+                        # answer_end_t is passage_len_t if the last token is the answer
+                        if passage_len_t > answer_start_t >= 0 and passage_len_t >= answer_end_t >= 0:
+                            # Then adjust the start and end offsets by adding question and special token
                             label_idxs[i][0] = self.sp_toks_start + question_len_t + self.sp_toks_mid + answer_start_t
                             label_idxs[i][1] = self.sp_toks_start + question_len_t + self.sp_toks_mid + answer_end_t
                         # If the start or end of the span answer is outside the passage, treat passage as no_answer
@@ -2235,7 +2328,7 @@ class SquadProcessor(Processor):
             logger.info(random_sample)
 
 
-class NaturalQuestionsProcessor(QAProcessor):
+class NaturalQuestionsProcessor(Processor):
     """ Used to handle the Natural Question QA dataset"""
 
     def __init__(
@@ -2323,6 +2416,14 @@ class NaturalQuestionsProcessor(QAProcessor):
         # Todo rename metric from squad to maybe QA spans or something like that
         self.add_task("question_answering", "squad", ["start_token", "end_token"])
         self.add_task("text_classification", "f1_macro", self.answer_type_list, label_name="answer_type")
+        self._initialize_special_tokens_count()
+
+    def _initialize_special_tokens_count(self):
+        vec = self.tokenizer.build_inputs_with_special_tokens(token_ids_0=["a"],
+                                                              token_ids_1=["b"])
+        self.sp_toks_start = vec.index("a")
+        self.sp_toks_mid = vec.index("b") - self.sp_toks_start - 1
+        self.sp_toks_end = len(vec) - vec.index("b") - 1
 
     def file_to_dicts(self, file: str) -> [dict]:
         dicts = read_jsonl(file, proxies=self.proxies)
@@ -2657,244 +2758,11 @@ class NaturalQuestionsProcessor(QAProcessor):
         return new_qas
 
 
-class RegressionProcessor(Processor):
-    """
-    Used to handle a regression dataset in tab separated text + label
-    """
-    def __init__(
-        self,
-        tokenizer,
-        max_seq_len,
-        data_dir,
-        train_filename="train.tsv",
-        dev_filename=None,
-        test_filename="test.tsv",
-        dev_split=0.1,
-        delimiter="\t",
-        quote_char="'",
-        skiprows=None,
-        label_column_name="label",
-        label_name="regression_label",
-        scaler_mean=None,
-        scaler_scale=None,
-        proxies=None,
-        text_column_name="text",
-        **kwargs
-    ):
-        """
-        :param tokenizer: Used to split a sentence (str) into tokens.
-        :param max_seq_len: Samples are truncated after this many tokens.
-        :type max_seq_len: int
-        :param data_dir: The directory in which the train and dev files can be found.
-                         If not available the dataset will be loaded automaticaly
-                         if the last directory has the same name as a predefined dataset.
-                         These predefined datasets are defined as the keys in the dict at
-                         `farm.data_handler.utils.DOWNSTREAM_TASK_MAP <https://github.com/deepset-ai/FARM/blob/master/farm/data_handler/utils.py>`_.
-        :type data_dir: str
-        :param label_list: list of labels to predict (strings). For most cases this should be: ["start_token", "end_token"]
-        :type label_list: list
-        :param metric: name of metric that shall be used for evaluation, e.g. "acc" or "f1_macro".
-                 Alternatively you can also supply a custom function, that takes preds and labels as args and returns a
-                 numerical value. For using multiple metrics supply them as a list, e.g ["acc", my_custom_metric_fn].
-        :type metric: str, function, or list
-        :param train_filename: The name of the file containing training data.
-        :type train_filename: str
-        :param dev_filename: The name of the file containing the dev data. If None and 0.0 < dev_split < 1.0 the dev set
-                             will be a slice of the train set.
-        :type dev_filename: str or None
-        :param test_filename: None
-        :type test_filename: str
-        :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
-        :type dev_split: float
-        :param delimiter: Separator used in the input tsv / csv file
-        :type delimiter: str
-        :param quote_char: Character used for quoting strings in the input tsv/ csv file
-        :type quote_char: str
-        :param skiprows: number of rows to skip in the tsvs (e.g. for multirow headers)
-        :type skiprows: int
-        :param label_column_name: name of the column in the input csv/tsv that shall be used as training labels
-        :type label_column_name: str
-        :param label_name: name for the internal label variable in FARM (only needed to adjust in rare cases)
-        :type label_name: str
-        :param scaler_mean: Value to substract from the label for normalization
-        :type scaler_mean: float
-        :param scaler_scale: Value to divide the label by for normalization
-        :type scaler_scale: float
-        :param proxies: proxy configuration to allow downloads of remote datasets.
-                        Format as in  "requests" library: https://2.python-requests.org//en/latest/user/advanced/#proxies
-        :type proxies: dict
-        :param text_column_name: name of the column in the input csv/tsv that shall be used as training text
-        :type text_column_name: str
-        :param kwargs: placeholder for passing generic parameters
-        :type kwargs: object
-        """
-
-        # Custom processor attributes
-        self.delimiter = delimiter
-        self.quote_char = quote_char
-        self.skiprows = skiprows
-
-        super(RegressionProcessor, self).__init__(
-            tokenizer=tokenizer,
-            max_seq_len=max_seq_len,
-            train_filename=train_filename,
-            dev_filename=dev_filename,
-            test_filename=test_filename,
-            dev_split=dev_split,
-            data_dir=data_dir,
-            proxies=proxies
-        )
-
-        # Note that label_list is being hijacked to store the scaling mean and scale
-        self.add_task(name="regression",
-                      metric="mse",
-                      label_list=[scaler_mean, scaler_scale],
-                      label_column_name=label_column_name,
-                      task_type="regression",
-                      label_name=label_name,
-                      text_column_name=text_column_name)
-
-    def file_to_dicts(self, file: str) -> [dict]:
-        column_mapping = {}
-        for task in self.tasks.values():
-            column_mapping[task["label_column_name"]] = task["label_name"]
-            column_mapping[task["text_column_name"]] = "text"
-        dicts = read_tsv(
-            rename_columns=column_mapping,
-            filename=file,
-            delimiter=self.delimiter,
-            skiprows=self.skiprows,
-            quotechar=self.quote_char,
-            proxies=self.proxies
-        )
-
-        # collect all labels and compute scaling stats
-        train_labels = []
-        if self.train_filename in str(file):
-            for d in dicts:
-                train_labels.append(float(d[self.tasks["regression"]["label_name"]]))
-            scaler = StandardScaler()
-            scaler.fit(np.reshape(train_labels, (-1, 1)))
-            # add to label list in regression task
-            self.tasks["regression"]["label_list"] = [scaler.mean_.item(), scaler.scale_.item()]
-
-        return dicts
-
-    def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
-        # this tokenization also stores offsets
-        tokenized = tokenize_with_metadata(dictionary["text"], self.tokenizer)
-        if len(tokenized["tokens"]) == 0:
-            text = dictionary["text"]
-            logger.warning(f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text}")
-            return []
-        # truncate tokens, offsets and start_of_word to max_seq_len that can be handled by the model
-        for seq_name in tokenized.keys():
-            tokenized[seq_name], _, _ = truncate_sequences(seq_a=tokenized[seq_name], seq_b=None,
-                                                           tokenizer=self.tokenizer,
-                                                           max_seq_len=self.max_seq_len)
-        # Samples don't have labels during Inference mode
-        label_key = self.tasks["regression"]["label_name"]
-        if label_key in dictionary:
-            label = float(dictionary[label_key])
-            scaled_label = (label - self.tasks["regression"]["label_list"][0]) / self.tasks["regression"]["label_list"][1]
-            dictionary[label_key] = scaled_label
-        return [Sample(id=None, clear_text=dictionary, tokenized=tokenized)]
-
-    def _sample_to_features(self, sample) -> dict:
-        features = sample_to_features_text(
-            sample=sample,
-            tasks=self.tasks,
-            max_seq_len=self.max_seq_len,
-            tokenizer=self.tokenizer
-        )
-        return features
-
-    def _dict_to_samples_and_features(self, dictionary: dict, **kwargs) -> [Sample]:
-        """This method is used so that we need to tokenize only once when using a fast tokenizer."""
-        text = dictionary["text"]
-        inputs = self.tokenizer.encode_plus(
-            text=text,
-            max_length=self.max_seq_len,
-            truncation=True,
-            add_special_tokens=True,
-            return_offsets_mapping=True,
-            return_token_type_ids=True,
-            return_special_tokens_mask=True,
-        )
-
-        # Get tokens as text with metadata
-        tokens = []
-        offsets = []
-        start_of_word = []
-        previous_token_end = -1
-        for token_id, is_special_token, offset in zip(inputs["input_ids"],
-                                                      inputs["special_tokens_mask"],
-                                                      inputs["offset_mapping"]):
-            if not is_special_token:
-                tokens.append(self.tokenizer.convert_ids_to_tokens(token_id))
-                offsets.append(offset[0])
-                start_of_word.append(True if offset[0] != previous_token_end else False)
-                previous_token_end = offset[1]
-
-        token_dict = {"tokens": tokens,
-                      "offsets": offsets,
-                      "start_of_word": start_of_word}
-
-        if len(token_dict["tokens"]) == 0:
-            logger.warning(f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text}")
-            return []
-
-        # Build feature dict
-        input_ids, segment_ids = inputs["input_ids"], inputs["token_type_ids"]
-
-        # The mask has 1 for real tokens and 0 for padding tokens. Only real
-        # tokens are attended to.
-        padding_mask = [1] * len(input_ids)
-        # Padding up to the sequence length.
-        # Normal case: adding multiple 0 to the right
-        # Special cases:
-        # a) xlnet pads on the left and uses  "4"  for padding token_type_ids
-        if "XLNetTokenizer" in self.tokenizer.__class__.__name__:
-            pad_on_left = True
-            segment_ids = pad(segment_ids, self.max_seq_len, 4, pad_on_left=pad_on_left)
-        else:
-            pad_on_left = False
-            segment_ids = pad(segment_ids, self.max_seq_len, 0, pad_on_left=pad_on_left)
-
-        input_ids = pad(input_ids, self.max_seq_len, self.tokenizer.pad_token_id, pad_on_left=pad_on_left)
-        padding_mask = pad(padding_mask, self.max_seq_len, 0, pad_on_left=pad_on_left)
-
-        assert len(input_ids) == self.max_seq_len
-        assert len(padding_mask) == self.max_seq_len
-        assert len(segment_ids) == self.max_seq_len
-
-        feat_dict = {"input_ids": input_ids,
-                     "padding_mask": padding_mask,
-                     "segment_ids": segment_ids}
-
-        # Add labels for different tasks
-        for task_name, task in self.tasks.items():
-            try:
-                label_name = task["label_name"]
-                label_raw = dictionary[label_name]
-                if task["task_type"] == "regression":
-                    label_ids = [float(label_raw)]
-                else:
-                    raise ValueError(task["task_type"])
-            except KeyError:
-                # For inference mode we don't expect labels
-                label_ids = None
-            if label_ids is not None:
-                feat_dict[task["label_tensor_name"]] = label_ids
-
-        return [Sample(id=None, clear_text=dictionary, tokenized=token_dict, features=[feat_dict])]
-
-
 class TextSimilarityProcessor(Processor):
     """
-    Used to handle the text DPR datasets that come in json format, example: nq-train.json, nq-dev.json, trivia-train.json, trivia-dev.json
-    Datasets can be downloaded from the official DPR github repository (https://github.com/facebookresearch/DPR)
+    Used to handle the Dense Passage Retrieval (DPR) datasets that come in json format, example: biencoder-nq-train.json, biencoder-nq-dev.json, trivia-train.json, trivia-dev.json
 
+    Datasets can be downloaded from the official DPR github repository (https://github.com/facebookresearch/DPR)
     dataset format: list of dictionaries with keys: 'dataset', 'question', 'answers', 'positive_ctxs', 'negative_ctxs', 'hard_negative_ctxs'
     Each sample is a dictionary of format:
     {"dataset": str,
@@ -2905,60 +2773,10 @@ class TextSimilarityProcessor(Processor):
     "hard_negative_ctxs": list of dictionaries of format {'title': str, 'text': str, 'score': int, 'title_score': int, 'passage_id': str}
     }
 
-    Example of 1 sample in DPR data json:
-    {
-    "dataset": "nq_dev_psgs_w100",
-    "question": "who sings does he love me with reba",
-    "answers": ["Linda Davis"],
-    "positive_ctxs": [
-    {
-    "title": "Does He Love You",
-    "text": "Does He Love You \"Does He Love You\" is a song written by Sandy Knox and Billy Stritch, and recorded as a duet by American country music artists Reba McEntire and Linda Davis. It was released in August 1993 as the first single from Reba's album \"Greatest Hits Volume Two\". It is one of country music's several songs about a love triangle. \"Does He Love You\" was written in 1982 by Billy Stritch. He recorded it with a trio in which he performed at the time, because he wanted a song that could be sung by the other two members",
-    "score": 1000,
-    "title_score": 1,
-    "passage_id": "11828866"
-    },
-    {
-    "title": "Does He Love You",
-    "text": "Does He Love You \"Does He Love You\" is a song written by Sandy Knox and Billy Stritch, and recorded as a duet by American country music artists Reba McEntire and Linda Davis. It was released in August 1993 as the first single from Reba's album \"Greatest Hits Volume Two\". It is one of country music's several songs about a love triangle. \"Does He Love You\" was written in 1982 by Billy Stritch. He recorded it with a trio in which he performed at the time, because he wanted a song that could be sung by the other two members",
-    "score": 13.394315,
-    "title_score": 0,
-    "passage_id": "11828866"
-    }, .... ]
-    "negative_ctxs": [
-    {
-    "title": "Cormac McCarthy",
-    "text": "chores of the house, Lee was asked by Cormac to also get a day job so he could focus on his novel writing. Dismayed with the situation, she moved to Wyoming, where she filed for divorce and landed her first job teaching. Cormac McCarthy is fluent in Spanish and lived in Ibiza, Spain, in the 1960s and later settled in El Paso, Texas, where he lived for nearly 20 years. In an interview with Richard B. Woodward from \"The New York Times\", \"McCarthy doesn't drink anymore \u2013 he quit 16 years ago in El Paso, with one of his young",
-    "score": 0,
-    "title_score": 0,
-    "passage_id": "2145653"
-    },
-    {
-    "title": "Pragmatic Sanction of 1549",
-    "text": "one heir, Charles effectively united the Netherlands as one entity. After Charles' abdication in 1555, the Seventeen Provinces passed to his son, Philip II of Spain. The Pragmatic Sanction is said to be one example of the Habsburg contest with particularism that contributed to the Dutch Revolt. Each of the provinces had its own laws, customs and political practices. The new policy, imposed from the outside, angered many inhabitants, who viewed their provinces as distinct entities. It and other monarchical acts, such as the creation of bishoprics and promulgation of laws against heresy, stoked resentments, which fired the eruption of",
-    "score": 0,
-    "title_score": 0,
-    "passage_id": "2271902"
-    }, ..... ]
-    "hard_negative_ctxs": [
-    {
-    "title": "Why Don't You Love Me (Beyonce\u0301 song)",
-    "text": "song. According to the lyrics of \"Why Don't You Love Me\", Knowles impersonates a woman who questions her love interest about the reason for which he does not value her fabulousness, convincing him she's the best thing for him as she sings: \"Why don't you love me... when I make me so damn easy to love?... I got beauty... I got class... I got style and I got ass...\". The singer further tells her love interest that the decision not to choose her is \"entirely foolish\". Originally released as a pre-order bonus track on the deluxe edition of \"I Am...",
-    "score": 14.678405,
-    "title_score": 0,
-    "passage_id": "14525568"
-    },
-    {
-    "title": "Does He Love You",
-    "text": "singing the second chorus. Reba stays behind the wall the whole time, while Linda is in front of her. It then briefly goes back to the dressing room, where Reba continues to smash her lover's picture. The next scene shows Reba approaching Linda's house in the pouring rain at night, while Linda stands on her porch as they sing the bridge. The scene then shifts to the next day, where Reba watches from afar as Linda and the man are seen on a speedboat, where he hugs her, implying that Linda is who he truly loves. Reba finally smiles at",
-    "score": 14.385411,
-    "title_score": 0,
-    "passage_id": "11828871"
-    }, ...]
     """
     def __init__(
         self,
-        tokenizer,
+        query_tokenizer,
         passage_tokenizer,
         max_seq_len_query,
         max_seq_len_passage,
@@ -2979,7 +2797,7 @@ class TextSimilarityProcessor(Processor):
         **kwargs
     ):
         """
-        :param tokenizer: Used to split a question (str) into tokens
+        :param query_tokenizer: Used to split a question (str) into tokens
         :param passage_tokenizer: Used to split a passage (str) into tokens.
         :param max_seq_len_query: Query samples are truncated after this many tokens.
         :type max_seq_len_query: int
@@ -3025,7 +2843,7 @@ class TextSimilarityProcessor(Processor):
 
         # Custom processor attributes
         self.max_samples = max_samples
-        self.query_tokenizer = tokenizer
+        self.query_tokenizer = query_tokenizer
         self.passage_tokenizer = passage_tokenizer
         self.embed_title = embed_title
         self.num_hard_negatives = num_hard_negatives
@@ -3036,8 +2854,8 @@ class TextSimilarityProcessor(Processor):
         self.max_seq_len_passage = max_seq_len_passage
 
         super(TextSimilarityProcessor, self).__init__(
-            tokenizer=tokenizer,
-            max_seq_len=max_seq_len_query,
+            tokenizer=None,
+            max_seq_len=None,
             train_filename=train_filename,
             dev_filename=dev_filename,
             test_filename=test_filename,
@@ -3068,14 +2886,14 @@ class TextSimilarityProcessor(Processor):
         processor_config_file = Path(load_dir) / "processor_config.json"
         config = json.load(open(processor_config_file))
         # init tokenizer
-        tokenizer = Tokenizer.load(load_dir, tokenizer_class=config["tokenizer"])
-        passage_tokenizer = Tokenizer.load(load_dir, tokenizer_class=config["passage_tokenizer"])
+        query_tokenizer = Tokenizer.load(load_dir, tokenizer_class=config["query_tokenizer"], subfolder="query")
+        passage_tokenizer = Tokenizer.load(load_dir, tokenizer_class=config["passage_tokenizer"], subfolder = "passage")
 
         # we have to delete the tokenizer string from config, because we pass it as Object
-        del config["tokenizer"]
+        del config["query_tokenizer"]
         del config["passage_tokenizer"]
 
-        processor = cls.load(tokenizer=tokenizer, passage_tokenizer=passage_tokenizer, processor_name="TextSimilarityProcessor", **config)
+        processor = cls.load(query_tokenizer=query_tokenizer, passage_tokenizer=passage_tokenizer, processor_name="TextSimilarityProcessor", **config)
         for task_name, task in config["tasks"].items():
             processor.add_task(name=task_name, metric=task["metric"], label_list=task["label_list"])
 
@@ -3092,16 +2910,18 @@ class TextSimilarityProcessor(Processor):
         :param save_dir: Directory where the files are to be saved
         :type save_dir: str
         """
+        if isinstance(save_dir,str):
+            save_dir = Path(save_dir)
         os.makedirs(save_dir, exist_ok=True)
         config = self.generate_config()
         # save tokenizer incl. attributes
-        config["tokenizer"] = self.tokenizer.__class__.__name__
+        config["query_tokenizer"] = self.query_tokenizer.__class__.__name__
         config["passage_tokenizer"] = self.passage_tokenizer.__class__.__name__
 
         # Because the fast tokenizers expect a str and not Path
         # always convert Path to str here.
-        self.tokenizer.save_pretrained(str(save_dir))
-        self.passage_tokenizer.save_pretrained(str(save_dir))
+        self.query_tokenizer.save_pretrained(str(save_dir / "query"))
+        self.passage_tokenizer.save_pretrained(str(save_dir / "passage"))
 
         # save processor
         config["processor"] = self.__class__.__name__
@@ -3114,173 +2934,222 @@ class TextSimilarityProcessor(Processor):
         Converts a Dense Passage Retrieval (DPR) data file in json format to a list of dictionaries.
 
         :param file: filename of DPR data in json format
+                Each sample is a dictionary of format:
+                {"dataset": str,
+                "question": str,
+                "answers": list of str
+                "positive_ctxs": list of dictionaries of format {'title': str, 'text': str, 'score': int, 'title_score': int, 'passage_id': str}
+                "negative_ctxs": list of dictionaries of format {'title': str, 'text': str, 'score': int, 'title_score': int, 'passage_id': str}
+                "hard_negative_ctxs": list of dictionaries of format {'title': str, 'text': str, 'score': int, 'title_score': int, 'passage_id': str}
+                }
+
 
         Returns:
         list of dictionaries: List[dict]
-        each dictionary:
-        {"query": str,
-        "passages": [{"text": document_text, "title": xxx, "label": "positive", "external_id": abb123},
-        {"text": document_text, "title": xxx, "label": "hard_negative", "external_id": abb134},
-        ...]}
+            each dictionary:
+            {"query": str,
+            "passages": [{"text": document_text, "title": xxx, "label": "positive", "external_id": abb123},
+            {"text": document_text, "title": xxx, "label": "hard_negative", "external_id": abb134},
+            ...]}
         """
         dicts = read_dpr_json(file, max_samples=self.max_samples)
         return dicts
 
-    def _normalize_question(self, question: str) -> str:
+    def dataset_from_dicts(self, dicts, indices=None, return_baskets = False):
         """
-        Removes '?' from queries/questions
+        Convert input dictionaries into a pytorch dataset for TextSimilarity (e.g. DPR).
+        For conversion we have an internal representation called "baskets".
+        Each basket is one query and related text passages (positive passages fitting to the query and negative
+        passages that do not fit the query)
+        Each stage adds or transforms specific information to our baskets.
 
-        :param question: string representing the question
-
-        Returns:
-            Question without the '?'
+        :param dicts: dict, input dictionary with DPR-style content
+                        {"query": str,
+                         "passages": List[
+                                        {'title': str,
+                                        'text': str,
+                                        'label': 'hard_negative',
+                                        'external_id': str},
+                                        ....
+                                        ]
+                         }
+        :param indices: list, indices used during multiprocessing so that IDs assigned to our baskets is unique
+        :param return_baskets: boolean, weather to return the baskets or not (baskets are needed during inference)
         """
+
+        # Take the dict and insert into our basket structure, this stages also adds an internal IDs
+        baskets = self._fill_baskets(dicts, indices)
+
+        # Separat conversion of query
+        baskets = self._convert_queries(baskets=baskets)
+
+        # and context passages. When converting the context the label is also assigned.
+        baskets = self._convert_contexts(baskets=baskets)
+
+        # Convert features into pytorch dataset, this step also removes and logs potential errors during preprocessing
+        dataset, tensor_names, problematic_ids, baskets = self._create_dataset(baskets)
+
+        if problematic_ids:
+            logger.error(f"There were {len(problematic_ids)} errors during preprocessing at positions: {problematic_ids}")
+
+        if return_baskets:
+            return dataset, tensor_names, problematic_ids, baskets
+        else:
+            return dataset, tensor_names, problematic_ids
+
+    def _fill_baskets(self, dicts, indices):
+        baskets = []
+        if not indices:
+            indices = range(len(dicts))
+        for d, id_internal in zip(dicts,indices):
+            basket = SampleBasket(id_external=None,
+                                  id_internal=id_internal,
+                                  raw=d)
+            baskets.append(basket)
+        return baskets
+
+    def _convert_queries(self, baskets):
+        for basket in baskets:
+            clear_text = {}
+            tokenized = {}
+            features = [{}]
+            # extract query, positive context passages and titles, hard-negative passages and titles
+            if "query" in basket.raw:
+                try:
+                    query = self._normalize_question(basket.raw["query"])
+
+                    # featurize the query
+                    query_inputs = self.query_tokenizer.encode_plus(
+                        text=query,
+                        max_length=self.max_seq_len_query,
+                        add_special_tokens=True,
+                        truncation=True,
+                        truncation_strategy='longest_first',
+                        padding="max_length",
+                        return_token_type_ids=True,
+                    )
+
+                    # tokenize query
+                    tokenized_query = self.query_tokenizer.convert_ids_to_tokens(query_inputs["input_ids"])
+
+                    if len(tokenized_query) == 0:
+                        logger.warning(
+                            f"The query could not be tokenized, likely because it contains a character that the query tokenizer does not recognize")
+                        return None
+
+                    clear_text["query_text"] = query
+                    tokenized["query_tokens"] = tokenized_query
+                    features[0]["query_input_ids"] = query_inputs["input_ids"]
+                    features[0]["query_segment_ids"] = query_inputs["token_type_ids"]
+                    features[0]["query_attention_mask"] = query_inputs["attention_mask"]
+                except Exception as e:
+                    features = None
+
+            sample = Sample(id=None,
+                            clear_text=clear_text,
+                            tokenized=tokenized,
+                            features=features)
+            basket.samples = [sample]
+        return baskets
+
+    def _convert_contexts(self, baskets):
+        for basket in baskets:
+            if "passages" in basket.raw:
+                try:
+                    positive_context = list(filter(lambda x: x["label"] == "positive", basket.raw["passages"]))
+                    if self.shuffle_positives:
+                        random.shuffle(positive_context)
+                    positive_context = positive_context[:self.num_positives]
+                    hard_negative_context = list(filter(lambda x: x["label"] == "hard_negative", basket.raw["passages"]))
+                    if self.shuffle_negatives:
+                        random.shuffle(hard_negative_context)
+                    hard_negative_context = hard_negative_context[:self.num_hard_negatives]
+
+                    positive_ctx_titles = [passage.get("title", None) for passage in positive_context]
+                    positive_ctx_texts = [passage["text"] for passage in positive_context]
+                    hard_negative_ctx_titles = [passage.get("title", None) for passage in hard_negative_context]
+                    hard_negative_ctx_texts = [passage["text"] for passage in hard_negative_context]
+
+                    # all context passages and labels: 1 for positive context and 0 for hard-negative context
+                    ctx_label = [1] * self.num_positives + [0] * self.num_hard_negatives
+                    # featurize context passages
+                    if self.embed_title:
+                        # concatenate title with positive context passages + negative context passages
+                        all_ctx = self._combine_title_context(positive_ctx_titles, positive_ctx_texts) + \
+                                  self._combine_title_context(hard_negative_ctx_titles, hard_negative_ctx_texts)
+                    else:
+                        all_ctx = positive_ctx_texts + hard_negative_ctx_texts
+
+                    # assign empty string tuples if hard_negative passages less than num_hard_negatives
+                    all_ctx += [('', '')] * ((self.num_positives + self.num_hard_negatives) - len(all_ctx))
+
+                    ctx_inputs = self.passage_tokenizer.batch_encode_plus(
+                        all_ctx,
+                        add_special_tokens=True,
+                        truncation=True,
+                        padding="max_length",
+                        max_length=self.max_seq_len_passage,
+                        return_token_type_ids=True
+                    )
+
+                    # TODO check if we need this and potentially remove
+                    ctx_segment_ids = np.zeros_like(ctx_inputs["token_type_ids"], dtype=np.int32)
+
+                    # get tokens in string format
+                    tokenized_passage = [self.passage_tokenizer.convert_ids_to_tokens(ctx) for ctx in ctx_inputs["input_ids"]]
+
+                    # for DPR we only have one sample containing query and corresponding (multiple) context features
+                    sample = basket.samples[0]
+                    sample.clear_text["passages"] = positive_context + hard_negative_context
+                    sample.tokenized["passages_tokens"] = tokenized_passage
+                    sample.features[0]["passage_input_ids"] = ctx_inputs["input_ids"]
+                    sample.features[0]["passage_segment_ids"] = ctx_segment_ids
+                    sample.features[0]["passage_attention_mask"] = ctx_inputs["attention_mask"]
+                    sample.features[0]["label_ids"] = ctx_label
+                except Exception as e:
+                    basket.samples[0].features = None
+
+        return baskets
+
+    def _create_dataset(self, baskets):
+        """
+        Convert python features into pytorch dataset.
+        Also removes potential errors during preprocessing.
+        Flattens nested basket structure to create a flat list of features
+        """
+        features_flat = []
+        basket_to_remove = []
+        problematic_ids = set()
+        for basket in baskets:
+            if self._check_sample_features(basket):
+                for sample in basket.samples:
+                    features_flat.extend(sample.features)
+            else:
+                # remove the entire basket
+                basket_to_remove.append(basket)
+        if len(basket_to_remove) > 0:
+            for basket in basket_to_remove:
+                # if basket_to_remove is not empty remove the related baskets
+                problematic_ids.add(basket.id_internal)
+                baskets.remove(basket)
+
+        dataset, tensor_names = convert_features_to_dataset(features=features_flat)
+        return dataset, tensor_names, problematic_ids, baskets
+
+    @staticmethod
+    def _normalize_question(question: str) -> str:
+        """Removes '?' from queries/questions"""
         if question[-1] == '?':
             question = question[:-1]
         return question
 
-    def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
-        """
-        Creates one sample from one dict consisting of the query, positive passages and hard negative passages
-        :param dictionary:  {"query": str,
-                            "passages": List[
-                                            {'title': str,
-                                            'text': str,
-                                            'label': 'hard_negative',
-                                            'external_id': str},
-                                            {'title': str,
-                                            'text': str,
-                                            'label': 'positive',
-                                            'external_id': str},
-                                            ....
-                                            ]
-                            }
-
-        Returns:
-                sample: instance of Sample
-        """
-
-
-        clear_text = {}
-        tokenized = {}
-        features = {}
-        # extract query, positive context passages and titles, hard-negative passages and titles
-        if "query" in dictionary.keys():
-            query = self._normalize_question(dictionary["query"])
-
-            # featurize the query
-            query_inputs = self.query_tokenizer.encode_plus(
-                text=query,
-                max_length=self.max_seq_len_query,
-                add_special_tokens=True,
-                truncation=True,
-                truncation_strategy='longest_first',
-                padding="max_length",
-                return_token_type_ids=True,
-            )
-
-            query_input_ids, query_segment_ids, query_padding_mask = query_inputs["input_ids"], query_inputs[
-                "token_type_ids"], query_inputs["attention_mask"]
-
-            # tokenize query
-            tokenized_query = self.query_tokenizer.convert_ids_to_tokens(query_input_ids)
-
-            if len(tokenized_query) == 0:
+    @staticmethod
+    def _combine_title_context(titles, texts):
+        res = []
+        for title, ctx in zip(titles, texts):
+            if title is None:
+                title = ""
                 logger.warning(
-                    f"The query could not be tokenized, likely because it contains a character that the query tokenizer does not recognize")
-                return None
-
-            clear_text["query_text"] = query
-            tokenized["query_tokens"] = tokenized_query
-            features["query_input_ids"] = query_input_ids
-            features["query_segment_ids"] = query_segment_ids
-            features["query_attention_mask"] = query_padding_mask
-
-        if "passages" in dictionary.keys():
-            positive_context = list(filter(lambda x: x["label"] == "positive", dictionary["passages"]))
-            if self.shuffle_positives:
-                random.shuffle(positive_context)
-            positive_context = positive_context[:self.num_positives]
-            hard_negative_context = list(filter(lambda x: x["label"] == "hard_negative", dictionary["passages"]))
-            if self.shuffle_negatives:
-                random.shuffle(hard_negative_context)
-            hard_negative_context = hard_negative_context[:self.num_hard_negatives]
-
-            positive_ctx_titles = [passage.get("title", None) for passage in positive_context]
-            positive_ctx_texts = [passage["text"] for passage in positive_context]
-            hard_negative_ctx_titles = [passage.get("title", None) for passage in hard_negative_context]
-            hard_negative_ctx_texts = [passage["text"] for passage in hard_negative_context]
-
-            # all context passages and labels: 1 for positive context and 0 for hard-negative context
-            ctx_label = [1]*self.num_positives + [0]*self.num_hard_negatives #(self.num_positives if self.num_positives < len(positive_context) else len(positive_context)) + \
-            # +(self.num_hard_negatives if self.num_hard_negatives < len(hard_negative_context) else len(hard_negative_context))
-
-            # featurize context passages
-            if self.embed_title:
-                # concatenate title with positive context passages + negative context passages
-                def _combine_title_context(titles, texts):
-                    res = []
-                    for title, ctx in zip(titles, texts):
-                        if title is None:
-                            title = ""
-                            logger.warning(
-                                f"Couldn't find title although `embed_title` is set to True for DPR. Using title='' now. Related passage text: '{ctx}' ")
-                        res.append(tuple((title, ctx)))
-                    return res
-
-                all_ctx = _combine_title_context(positive_ctx_titles, positive_ctx_texts) + _combine_title_context(
-                    hard_negative_ctx_titles, hard_negative_ctx_texts)
-            else:
-                all_ctx = positive_ctx_texts + hard_negative_ctx_texts
-
-            # assign empty string tuples if hard_negative passages less than num_hard_negatives
-            all_ctx += [('', '')] * ((self.num_positives + self.num_hard_negatives)-len(all_ctx))
-
-
-            ctx_inputs = self.passage_tokenizer.batch_encode_plus(
-                all_ctx,
-                add_special_tokens=True,
-                truncation=True,
-                padding="max_length",
-                max_length=self.max_seq_len_passage,
-                return_token_type_ids=True
-            )
-
-
-            ctx_input_ids, ctx_segment_ids_, ctx_padding_mask = ctx_inputs["input_ids"], ctx_inputs["token_type_ids"], \
-                                                               ctx_inputs["attention_mask"]
-            ctx_segment_ids = list(torch.zeros((len(ctx_segment_ids_), len(ctx_segment_ids_[0]))).numpy())
-
-            # tokenize query and contexts
-            tokenized_passage = [self.passage_tokenizer.convert_ids_to_tokens(ctx) for ctx in ctx_input_ids]
-
-            if len(tokenized_passage) == 0:
-                logger.warning(f"The context could not be tokenized, likely because it contains a character that the context tokenizer does not recognize")
-                return None
-
-            clear_text["passages"] = positive_context + hard_negative_context
-            tokenized["passages_tokens"] = tokenized_passage
-            features["passage_input_ids"] = ctx_input_ids
-            features["passage_segment_ids"] = ctx_segment_ids
-            features["passage_attention_mask"] = ctx_padding_mask
-            features["label_ids"] = ctx_label
-
-
-        sample = Sample(id=None,
-                        clear_text=clear_text,
-                        tokenized=tokenized,
-                        features=features)
-        return [sample]
-
-    def _sample_to_features(self, sample) -> dict:
-        return [sample.features]
-
-    def _dict_to_samples_and_features(self, dictionary: dict, **kwargs) -> [Sample]:
-        samples = self._dict_to_samples(dictionary, **kwargs)
-        for sample in samples:
-            sample.features = self._sample_to_features(sample)
-
-        return samples
-
-
-
+                    f"Couldn't find title although `embed_title` is set to True for DPR. Using title='' now. Related passage text: '{ctx}' ")
+            res.append(tuple((title, ctx)))
+        return res

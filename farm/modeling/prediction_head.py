@@ -697,11 +697,11 @@ class TokenClassificationHead(PredictionHead):
         for preds_seq, probs_seq, sample, spans_seq in zip(
             preds, probs, samples, spans
         ):
-            tags, spans_seq = convert_iob_to_simple_tags(preds_seq, spans_seq)
+            tags, spans_seq, tag_probs = convert_iob_to_simple_tags(preds_seq, spans_seq, probs_seq)
             seq_res = []
             # TODO: Though we filter out tags and spans for non-entity words,
             # TODO: we do not yet filter out probs of non-entity words. This needs to be implemented still
-            for tag, prob, span in zip(tags, probs_seq, spans_seq):
+            for tag, tag_prob, span in zip(tags, tag_probs, spans_seq):
                 context = sample.clear_text["text"][span[0]: span[1]]
                 seq_res.append(
                     {
@@ -709,10 +709,10 @@ class TokenClassificationHead(PredictionHead):
                         "end": span[1],
                         "context": f"{context}",
                         "label": f"{tag}",
-                        "probability": np.float32(0.0),
+                        "probability": tag_prob,
                     }
                 )
-            res["predictions"].extend(seq_res)
+            res["predictions"].append(seq_res)
         return res
 
 
@@ -930,7 +930,7 @@ class QuestionAnsweringHead(PredictionHead):
                  no_ans_boost=0.0,
                  context_window_size=100,
                  n_best=5,
-                 n_best_per_sample=1,
+                 n_best_per_sample=None,
                  duplicate_filtering=-1,
                  **kwargs):
         """
@@ -968,10 +968,16 @@ class QuestionAnsweringHead(PredictionHead):
         self.no_ans_boost = no_ans_boost
         self.context_window_size = context_window_size
         self.n_best = n_best
-        self.n_best_per_sample = n_best_per_sample
+        if n_best_per_sample:
+            self.n_best_per_sample = n_best_per_sample
+        else:
+            # increasing n_best_per_sample to n_best ensures that there are n_best predictions in total
+            # otherwise this might not be the case for very short documents with only one "sample"
+            self.n_best_per_sample = n_best
         self.duplicate_filtering = duplicate_filtering
         self.generate_config()
         self.temperature = nn.Parameter(torch.ones(1) * 1)
+
 
 
     @classmethod
