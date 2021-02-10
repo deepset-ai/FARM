@@ -3,11 +3,12 @@ import numbers
 import logging
 import torch
 from torch.utils.data import TensorDataset
+from collections.abc import Iterable
+from farm.utils import flatten_list
 
 logger = logging.getLogger(__name__)
 
 
-# TODO we need the option to handle different dtypes
 def convert_features_to_dataset(features):
     """
     Converts a list of feature dictionaries (one for each sample) into a PyTorch Dataset.
@@ -16,8 +17,7 @@ def convert_features_to_dataset(features):
                      names of the type of feature and the keys are the features themselves.
     :Return: a Pytorch dataset and a list of tensor names.
     """
-    # features can be an empty list in cases where down sampling occurs (e.g. Natural Questions downsamples
-    # instances of is_impossible
+    # features can be an empty list in cases where down sampling occurs (e.g. Natural Questions downsamples instances of is_impossible)
     if len(features) == 0:
         return None, None
     tensor_names = list(features[0].keys())
@@ -29,15 +29,15 @@ def convert_features_to_dataset(features):
         else:
             try:
                 # Checking weather a non-integer will be silently converted to torch.long
-                if isinstance(features[0][t_name], numbers.Number):
-                    base = features[0][t_name]
-                elif isinstance(features[0][t_name], list):
-                    if len(features[0][t_name]) > 0:
-                        base = features[0][t_name][0]
-                    else:
-                        base = 1
+                check = features[0][t_name]
+                if isinstance(check, numbers.Number):
+                    base = check
+                # extract a base variable from a nested lists or tuples
+                elif isinstance(check, Iterable):
+                    base = list(flatten_list(check))[0]
+                # extract a base variable from numpy arrays
                 else:
-                    base = features[0][t_name].ravel()[0]
+                    base = check.ravel()[0]
                 if not np.issubdtype(type(base), np.integer):
                     logger.warning(f"Problem during conversion to torch tensors:\n"
                                    f"A non-integer value for feature '{t_name}' with a value of: "

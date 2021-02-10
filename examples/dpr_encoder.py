@@ -72,19 +72,19 @@ def dense_passage_retrieval():
     # i.e., nq-train.json, nq-dev.json or trivia-train.json, trivia-dev.json
     label_list = ["hard_negative", "positive"]
     metric = "text_similarity_metric"
-    processor = TextSimilarityProcessor(tokenizer=query_tokenizer,
-                             passage_tokenizer=passage_tokenizer,
-                             max_seq_len_query=64,
-                             max_seq_len_passage=256,
-                             label_list=label_list,
-                             metric=metric,
-                             data_dir="../data/retriever",
-                             train_filename=train_filename,
-                             dev_filename=dev_filename,
-                             test_filename=test_filename,
-                             embed_title=embed_title,
-                             num_hard_negatives=num_hard_negatives,
-                             max_samples=max_samples)
+    processor = TextSimilarityProcessor(query_tokenizer=query_tokenizer,
+                                        passage_tokenizer=passage_tokenizer,
+                                        max_seq_len_query=64,
+                                        max_seq_len_passage=256,
+                                        label_list=label_list,
+                                        metric=metric,
+                                        data_dir="../data/retriever",
+                                        train_filename=train_filename,
+                                        dev_filename=dev_filename,
+                                        test_filename=test_filename,
+                                        embed_title=embed_title,
+                                        num_hard_negatives=num_hard_negatives,
+                                        max_samples=max_samples)
 
     # 3. Create a DataSilo that loads several datasets (train/dev/test), provides DataLoaders for them and calculates a few descriptive statistics of our datasets
     # NOTE: In FARM, the dev set metrics differ from test set metrics in that they are calculated on a token level instead of a word level
