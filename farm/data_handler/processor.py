@@ -2760,7 +2760,7 @@ class NaturalQuestionsProcessor(Processor):
 
 class TextSimilarityProcessor(Processor):
     """
-    Used to handle the Dense Passage Retrieval (DPR) datasets that come in json format, example: nq-train.json, nq-dev.json, trivia-train.json, trivia-dev.json
+    Used to handle the Dense Passage Retrieval (DPR) datasets that come in json format, example: biencoder-nq-train.json, biencoder-nq-dev.json, trivia-train.json, trivia-dev.json
 
     Datasets can be downloaded from the official DPR github repository (https://github.com/facebookresearch/DPR)
     dataset format: list of dictionaries with keys: 'dataset', 'question', 'answers', 'positive_ctxs', 'negative_ctxs', 'hard_negative_ctxs'
@@ -3092,19 +3092,15 @@ class TextSimilarityProcessor(Processor):
                         return_token_type_ids=True
                     )
 
+                    # TODO check if we need this and potentially remove
                     ctx_segment_ids = np.zeros_like(ctx_inputs["token_type_ids"], dtype=np.int32)
 
                     # get tokens in string format
                     tokenized_passage = [self.passage_tokenizer.convert_ids_to_tokens(ctx) for ctx in ctx_inputs["input_ids"]]
 
-                    if len(tokenized_passage) == 0:
-                        logger.warning(
-                            f"The context could not be tokenized, likely because it contains a character that the context tokenizer does not recognize")
-
                     # for DPR we only have one sample containing query and corresponding (multiple) context features
                     sample = basket.samples[0]
                     sample.clear_text["passages"] = positive_context + hard_negative_context
-
                     sample.tokenized["passages_tokens"] = tokenized_passage
                     sample.features[0]["passage_input_ids"] = ctx_inputs["input_ids"]
                     sample.features[0]["passage_segment_ids"] = ctx_segment_ids
