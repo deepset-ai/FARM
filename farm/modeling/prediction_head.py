@@ -1734,4 +1734,9 @@ class TextSimilarityHead(PredictionHead):
         return labels
 
     def formatted_preds(self, logits: Tuple[torch.Tensor, torch.Tensor], **kwargs):
-        raise NotImplementedError("formatted_preds is not supported in TextSimilarityHead yet!")
+        predictions = [None, None]
+        if logits[0] is not None:
+            predictions[0] = logits[0].cpu()
+        if logits[1] is not None:
+            predictions[1] = logits[1].cpu()
+        return {'predictions': tuple(predictions)}

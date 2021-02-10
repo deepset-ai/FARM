@@ -69,7 +69,7 @@ class BaseBiAdaptiveModel:
             all_preds.append(preds)
         return all_preds
 
-    def formatted_preds(self, logits, language_model1, language_model2, **kwargs):
+    def formatted_preds(self, logits, **kwargs):
         """
         Format predictions to strings for inference output
 
