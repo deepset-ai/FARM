@@ -81,7 +81,8 @@ class Evaluator:
                 if head.model_type == "span_classification":
                     ids_all[head_num] += list(to_numpy(batch["id"]))
                     passage_start_t_all[head_num] += list(to_numpy(batch["passage_start_t"]))
-                    logits_all[head_num] += list(to_numpy(logits))
+                    if calibrate_conf_scores:
+                        logits_all[head_num] += list(to_numpy(logits))
 
 
         # Evaluate per prediction head

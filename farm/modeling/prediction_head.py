@@ -10,6 +10,7 @@ from typing import List, Tuple
 
 import torch
 from torch import nn
+from torch import optim
 from torch.nn import CrossEntropyLoss, MSELoss, BCEWithLogitsLoss, NLLLoss
 from farm.data_handler.utils import is_json
 from farm.utils import convert_iob_to_simple_tags, try_get, all_gather_list
@@ -1017,13 +1018,7 @@ class QuestionAnsweringHead(PredictionHead):
 
         """
         logits = self.feed_forward(X)
-        start_logits, end_logits = logits.split(1, dim=-1)
-        start_logits = start_logits.squeeze(-1)
-        end_logits = end_logits.squeeze(-1)
-        start_logits = self.temperature_scale(start_logits)
-        end_logits = self.temperature_scale(end_logits)
-        logits = torch.stack((start_logits, end_logits), dim=-1)
-        return logits
+        return self.temperature_scale(logits)
 
     def logits_to_loss(self, logits, labels, **kwargs):
         """
@@ -1056,26 +1051,19 @@ class QuestionAnsweringHead(PredictionHead):
         per_sample_loss = (start_loss + end_loss) / 2
         return per_sample_loss
 
+
     def temperature_scale(self, logits):
-        """
-        Perform temperature scaling on logits
-        """
-        # Expand temperature to match the size of logits
-        if logits.dim() == 2:
-            temperature = self.temperature.unsqueeze(1).expand(logits.size(0), logits.size(1))
-        elif logits.dim() == 3:
-            temperature = self.temperature.unsqueeze(1).expand(logits.size(0), logits.size(1), logits.size(2))
-        # TODO torch.div(logits, self.temperature)
-        return logits / temperature.to(device='cuda')
+        return torch.div(logits, self.temperature)
 
 
     def calibrate_conf(self, logits, label_all):
+        """
+        Learning a temperature parameter to apply temperature scaling to calibrate confidence scores
+        """
         logits = torch.cat(logits, dim=0)
 
         # To handle no_answer labels correctly (-1,-1), we set their start_position to 0. The logit at index 0 also refers to no_answer
-        # TODO what if the label is larger than 384?
-        # TODO some language models do not have the CLS token at position 0
-        # TODO correctly map -1 to index of CLS token
+        # TODO some language models do not have the CLS token at position 0. For these models, we need to map start_position==-1 to the index of CLS token
         start_position = [label[0][0] if label[0][0] >=0 else 0 for label in label_all]
 
         start_logits, end_logits = logits.split(1, dim=-1)
@@ -1088,18 +1076,12 @@ class QuestionAnsweringHead(PredictionHead):
         ignored_index = start_logits.size(1)-1
         start_position.clamp_(0, ignored_index)
 
-        from torch import optim
-        self.cuda()
         nll_criterion = CrossEntropyLoss()
 
-        # reset temperature to 1 before optimization
-        self.temperature = nn.Parameter(torch.ones(1) * 1)
-
-        # optimize the temperature
         optimizer_start = optim.LBFGS([self.temperature], lr=0.01, max_iter=50)
 
         def eval_start():
-            loss = nll_criterion(self.temperature_scale(start_logits), start_position.to(device='cuda'))
+            loss = nll_criterion(self.temperature_scale(start_logits), start_position.to(device=start_logits.device))
             loss.backward()
             return loss
 
@@ -1124,14 +1106,6 @@ class QuestionAnsweringHead(PredictionHead):
         start_logits, end_logits = logits.split(1, dim=-1)
         start_logits = start_logits.squeeze(-1)
         end_logits = end_logits.squeeze(-1)
-
-        # TODO is the temperature scaling needed here to or only in the forward() method?
-        # temperature needs to be the same size as start_logits and end_logits
-        #temperature_start = self.temperature.unsqueeze(1).expand(start_logits.size(0), start_logits.size(1))
-        #temperature_end = self.temperature.unsqueeze(1).expand(end_logits.size(0), end_logits.size(1))
-        # Calibrate logits with temperature
-        #start_logits = start_logits / temperature_start.to(device='cuda')
-        #end_logits = end_logits / temperature_end.to(device='cuda')
 
         # Calculate a few useful variables
         batch_size = start_logits.size()[0]
@@ -1211,8 +1185,6 @@ class QuestionAnsweringHead(PredictionHead):
                     continue
                 if self.duplicate_filtering > -1 and (start_idx in start_idx_candidates or end_idx in end_idx_candidates):
                     continue
-                score = start_end_matrix[start_idx, end_idx].item()
-                start_end_matrix[0, 0] = -999
                 start_matrix_softmax_start = torch.softmax(start_matrix[:, 0], dim=-1)
                 score = start_matrix_softmax_start[start_idx].item()
                 top_candidates.append(QACandidate(offset_answer_start=start_idx,
