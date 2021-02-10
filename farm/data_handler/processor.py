@@ -10,30 +10,26 @@ from pathlib import Path
 from random import randint
 
 import numpy as np
-import torch
 from numpy.random import random as random_float
 from sklearn.preprocessing import StandardScaler
-from transformers import AutoConfig
 from tokenizers import Encoding
+from tokenizers.pre_tokenizers import WhitespaceSplit
+from transformers import AutoConfig
 
 from farm.data_handler.dataset import convert_features_to_dataset
-from farm.data_handler.input_features import get_roberta_seq_2_start, get_camembert_seq_2_start
 from farm.data_handler.input_features import sample_to_features_text
 from farm.data_handler.nq_utils import (
     sample_to_features_qa_Natural_Questions,
     create_samples_qa_Natural_Question,
     convert_qa_input_dict,
 )
-
 from farm.data_handler.samples import (
     Sample,
     SampleBasket,
     get_passage_offsets,
     offset_to_token_idx_vecorized
 )
-
 from farm.data_handler.utils import (
-    pad,
     expand_labels,
     read_tsv,
     read_tsv_sentence_pair,
@@ -55,8 +51,6 @@ from farm.modeling.tokenization import (
 )
 from farm.utils import MLFlowLogger as MlLogger
 from farm.utils import try_get
-
-from tokenizers.pre_tokenizers import WhitespaceSplit
 
 ID_NAMES = ["example_id", "external_id", "doc_id", "id"]
 
@@ -721,6 +715,36 @@ class TextClassificationProcessor(Processor):
         return dataset, tensor_names
 
 
+class TextPairClassificationProcessor(TextClassificationProcessor):
+    """
+    Used to handle text pair classification datasets (e.g. Answer Selection or Natural Inference) that come in
+    tsv format. The columns should be called text, text_b and label.
+    """
+    def __init__(self, **kwargs):
+        super(TextPairClassificationProcessor, self).__init__(**kwargs)
+
+    def file_to_dicts(self, file: str) -> [dict]:
+        column_mapping = {}
+        for task in self.tasks.values():
+            column_mapping[task["label_column_name"]] = task["label_name"]
+
+        dicts = read_tsv_sentence_pair(
+            rename_columns=column_mapping,
+            filename=file,
+            delimiter=self.delimiter,
+            skiprows=self.skiprows,
+            proxies=self.proxies,
+        )
+
+
+        # during tokenization inside TextClassificationProcessor only the "text" field is tokenized
+        # To convert text pairs we combine text and text_b into a tuple, then the tokenizer takes care of
+        # adding separator tokens and correct segment IDs
+        for d in dicts:
+            d["text"] = (d["text"], d["text_b"])
+        return dicts
+
+
 class RegressionProcessor(TextClassificationProcessor):
     """
     Processor to handle a regression dataset in tab separated text + label,
@@ -825,6 +849,7 @@ class RegressionProcessor(TextClassificationProcessor):
         for task in self.tasks.values():
             column_mapping[task["label_column_name"]] = task["label_name"]
             column_mapping[task["text_column_name"]] = "text"
+
         dicts = read_tsv(
             rename_columns=column_mapping,
             filename=file,
@@ -834,16 +859,7 @@ class RegressionProcessor(TextClassificationProcessor):
             proxies=self.proxies
         )
 
-        # collect all labels and compute scaling stats
-        train_labels = []
-        if self.train_filename in str(file):
-            for d in dicts:
-                train_labels.append(float(d[self.tasks["regression"]["label_name"]]))
-            scaler = StandardScaler()
-            scaler.fit(np.reshape(train_labels, (-1, 1)))
-            # add to label list in regression task
-            self.tasks["regression"]["label_list"] = [scaler.mean_.item(), scaler.scale_.item()]
-
+        self._set_label_scaling(dicts=dicts, file=file)
         return dicts
 
     def convert_labels(self, dictionary: dict):
@@ -858,6 +874,50 @@ class RegressionProcessor(TextClassificationProcessor):
                 scaled_label = (label - label_list[0]) / label_list[1]
                 ret[task["label_tensor_name"]] = [scaled_label]
         return ret
+
+    def _set_label_scaling(self, dicts, file):
+        # collect all labels and compute scaling stats
+        # for regression with Mean Squared Error loss we need to have labels centered around 0 with unit variance
+        train_labels = []
+        if self.train_filename in str(file):
+            for d in dicts:
+                train_labels.append(float(d[self.tasks["regression"]["label_name"]]))
+            scaler = StandardScaler()
+            scaler.fit(np.reshape(train_labels, (-1, 1)))
+            # add to label list in regression task
+            self.tasks["regression"]["label_list"] = [scaler.mean_.item(), scaler.scale_.item()]
+
+
+class TextPairRegressionProcessor(RegressionProcessor):
+    """
+    Used to handle text pair regression datasets that come in tsv format.
+    The columns should be called text, text_b and label.
+    """
+
+    def __init__(self, **kwargs):
+        super(TextPairRegressionProcessor, self).__init__(**kwargs)
+
+    def file_to_dicts(self, file: str) -> [dict]:
+        column_mapping = {}
+        for task in self.tasks.values():
+            column_mapping[task["label_column_name"]] = task["label_name"]
+
+        dicts = read_tsv_sentence_pair(
+            rename_columns=column_mapping,
+            filename=file,
+            delimiter=self.delimiter,
+            skiprows=self.skiprows,
+            proxies=self.proxies,
+        )
+
+        self._set_label_scaling(dicts=dicts, file=file)
+
+        # during tokenization inside RegressionProcessor only the "text" field is tokenized
+        # To convert text pairs we combine text and text_b into a tuple, then the tokenizers takes care of
+        # adding separator tokens and correct segment IDs
+        for d in dicts:
+            d["text"] = (d["text"], d["text_b"])
+        return dicts
 
 
 #########################################
@@ -980,151 +1040,6 @@ class InferenceProcessor(TextClassificationProcessor):
         )
         return features
 
-
-# TODO remove inheritance from superclass to be able to convert text + text_b
-class TextPairClassificationProcessor(TextClassificationProcessor):
-    """
-    Used to handle text pair classification datasets (e.g. Answer Selection or Natural Inference) that come in
-    tsv format. The columns should be called text, text_b and label.
-    """
-    def __init__(self, **kwargs):
-        super(TextPairClassificationProcessor, self).__init__(**kwargs)
-
-    def file_to_dicts(self, file: str) -> [dict]:
-        column_mapping = {task["label_column_name"]: task["label_name"] for task in self.tasks.values()}
-        dicts = read_tsv_sentence_pair(
-            rename_columns=column_mapping,
-            filename=file,
-            delimiter=self.delimiter,
-            skiprows=self.skiprows,
-            proxies=self.proxies,
-        )
-        return dicts
-
-    def _dict_to_samples(self, dictionary: dict, **kwargs) -> [Sample]:
-        tokenized_a = tokenize_with_metadata(dictionary["text"], self.tokenizer)
-        tokenized_b = tokenize_with_metadata(dictionary["text_b"], self.tokenizer)
-
-        if len(tokenized_a["tokens"]) == 0:
-            text = dictionary["text"]
-            logger.warning(f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text}")
-            return []
-        if len(tokenized_b["tokens"]) == 0:
-            text_b = dictionary["text_b"]
-            logger.warning(f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {text_b}")
-            return []
-
-        tokenized = {"tokens": tokenized_a["tokens"],
-                     "tokens_b": tokenized_b["tokens"]}
-        tokenized["tokens"], tokenized["tokens_b"], _ = truncate_sequences(seq_a=tokenized["tokens"],
-                                                                           seq_b=tokenized["tokens_b"],
-                                                                           tokenizer=self.tokenizer,
-                                                                           max_seq_len=self.max_seq_len)
-        return [Sample(id=None, clear_text=dictionary, tokenized=tokenized)]
-
-    def _dict_to_samples_and_features(self, dictionary: dict, **kwargs) -> [Sample]:
-        """This method is used so that we need to tokenize only once when using a fast tokenizer."""
-        seq_a = dictionary["text"]
-        seq_b = dictionary["text_b"]
-
-        inputs = self.tokenizer.encode_plus(
-            text=seq_a,
-            text_pair=seq_b,
-            max_length=self.max_seq_len,
-            truncation=True,
-            add_special_tokens=True,
-            return_offsets_mapping=False,
-            return_token_type_ids=True,
-            return_special_tokens_mask=True,
-        )
-        input_ids, segment_ids = inputs["input_ids"], inputs["token_type_ids"]
-
-        # Find position of [SEP]-token
-        # seq_2_start_t is the index of the first token in the second text sequence (e.g. passage)
-        if "RobertaTokenizer" in self.tokenizer.__class__.__name__:
-            seq_2_start_t = get_roberta_seq_2_start(input_ids)
-        elif "CamembertTokenizer" in self.tokenizer.__class__.__name__:
-            seq_2_start_t = get_camembert_seq_2_start(input_ids)
-        else:
-            seq_2_start_t = segment_ids.index(1)
-
-        # Get tokens as text with metadata
-        tokens_a = []
-        tokens_b = []
-        for idx, (token_id, is_special_token) in enumerate(zip(input_ids,
-                                                               inputs["special_tokens_mask"])):
-            if not is_special_token:
-                if idx < seq_2_start_t:
-                    tokens_a.append(self.tokenizer.convert_ids_to_tokens(token_id))
-                else:
-                    tokens_b.append(self.tokenizer.convert_ids_to_tokens(token_id))
-
-        token_dict = {"tokens": tokens_a,
-                      "tokens_b": tokens_b}
-
-        if len(token_dict["tokens"]) == 0:
-            logger.warning(f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {seq_a}")
-            return []
-        if len(token_dict["tokens_b"]) == 0:
-            logger.warning(f"The following text could not be tokenized, likely because it contains a character that the tokenizer does not recognize: {seq_b}")
-            return []
-
-        # Build feature dict
-
-        # The mask has 1 for real tokens and 0 for padding tokens. Only real
-        # tokens are attended to.
-        padding_mask = [1] * len(input_ids)
-        # Padding up to the sequence length.
-        # Normal case: adding multiple 0 to the right
-        # Special cases:
-        # a) xlnet pads on the left and uses  "4"  for padding token_type_ids
-        if "XLNetTokenizer" in self.tokenizer.__class__.__name__:
-            pad_on_left = True
-            segment_ids = pad(segment_ids, self.max_seq_len, 4, pad_on_left=pad_on_left)
-        else:
-            pad_on_left = False
-            segment_ids = pad(segment_ids, self.max_seq_len, 0, pad_on_left=pad_on_left)
-
-        input_ids = pad(input_ids, self.max_seq_len, self.tokenizer.pad_token_id, pad_on_left=pad_on_left)
-        padding_mask = pad(padding_mask, self.max_seq_len, 0, pad_on_left=pad_on_left)
-
-        assert len(input_ids) == self.max_seq_len
-        assert len(padding_mask) == self.max_seq_len
-        assert len(segment_ids) == self.max_seq_len
-
-        feat_dict = {"input_ids": input_ids,
-                     "padding_mask": padding_mask,
-                     "segment_ids": segment_ids}
-
-        # Add labels for different tasks
-        for task_name, task in self.tasks.items():
-            try:
-                label_name = task["label_name"]
-                label_raw = dictionary[label_name]
-                label_list = task["label_list"]
-                if task["task_type"] == "classification":
-                    # id of label
-                    try:
-                        label_ids = [label_list.index(label_raw)]
-                    except ValueError as e:
-                        raise ValueError(f'[Task: {task_name}] Observed label {label_raw} not in defined label_list')
-                elif task["task_type"] == "multilabel_classification":
-                    # multi-hot-format
-                    label_ids = [0] * len(label_list)
-                    for l in label_raw.split(","):
-                        if l != "":
-                            label_ids[label_list.index(l)] = 1
-                elif task["task_type"] == "regression":
-                    label_ids = [float(label_raw)]
-                else:
-                    raise ValueError(task["task_type"])
-            except KeyError:
-                # For inference mode we don't expect labels
-                label_ids = None
-            if label_ids is not None:
-                feat_dict[task["label_tensor_name"]] = label_ids
-
-        return [Sample(id=None, clear_text=dictionary, tokenized=token_dict, features=[feat_dict])]
 
 
 #########################################
