@@ -32,7 +32,7 @@ def average_rank(query_tensors, passage_tensors, dpr_data, batch_size = 128):
             query_idx = query_to_idx[d['query']]
             query_tensor = query_tensors[query_idx]
             queries_t.append(query_tensor)
-            target_id = list(filter(lambda x: x['label'] == 'positiv', d))[0]['external_id']
+            target_id = list(filter(lambda x: x['label'] == 'positive', d))[0]['external_id']
             target_idx = passage_to_idx[target_id]
             target_idxs.append(target_idx)
 
@@ -123,7 +123,8 @@ def evaluate_dpr():
 
     # 5) do passage inference
     passage_inferencer = Inferencer(model, processor, task_type="dpr", gpu=True, batch_size=batch_size)
-    passage_results = passage_inferencer.inference_from_dicts(passages, multiprocessing_chunksize=batch_size*20)
+    passage_data = [{'passages': [p]} for p in passages]
+    passage_results = passage_inferencer.inference_from_dicts(passage_data, multiprocessing_chunksize=batch_size*20)
     passage_tensors = torch.cat(list(map(lambda x: x['predictions'][1], passage_results)))
     del passage_inferencer # release mem
     gc.collect()
