@@ -173,6 +173,29 @@ def test_text_pair_regression(caplog):
     assert np.isclose(result[0]["predictions"][0]["pred"], 0.7976, rtol=0.05)
     model.close_multiprocessing_pool()
 
+def test_segment_ids(caplog):
+    if caplog:
+        caplog.set_level(logging.CRITICAL)
+    lang_model = "microsoft/MiniLM-L12-H384-uncased"
+
+    tokenizer = Tokenizer.load(pretrained_model_name_or_path=lang_model)
+
+    processor = TextPairRegressionProcessor(tokenizer=tokenizer,
+                                                label_list=None,
+                                                metric="f1_macro",
+                                                max_seq_len=128,
+                                                train_filename="sample.tsv",
+                                                dev_filename="sample.tsv",
+                                                test_filename=None,
+                                                data_dir=Path("samples/text_pair"),
+                                                delimiter="\t")
+
+    dicts = processor.file_to_dicts(file="samples/text_pair/sample.tsv")
+    dataset, tensornames, _, baskets = processor.dataset_from_dicts(dicts=dicts,return_baskets=True, debug=True)
+    assert set(baskets[0].samples[0].features[0]["segment_ids"]) == set([0,1])
+    assert tokenizer.sep_token in baskets[0].samples[0].tokenized["tokens"]
+
+
 
 if __name__ == "__main__":
     test_text_pair_regression()
