@@ -33,7 +33,7 @@ def convert_features_to_dataset(features):
                 if isinstance(check, numbers.Number):
                     base = check
                 # extract a base variable from a nested lists or tuples
-                elif isinstance(check, Iterable):
+                elif isinstance(check, list):
                     base = list(flatten_list(check))[0]
                 # extract a base variable from numpy arrays
                 else:

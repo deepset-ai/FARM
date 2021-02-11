@@ -52,9 +52,13 @@ def dense_passage_retrieval():
     embed_title = True
     num_hard_negatives = 1
     similarity_function = "dot_product"
-    train_filename = "nq-train.json"
-    dev_filename = "nq-dev.json"
-    test_filename = "nq-dev.json"
+    # data can be downloaded and unpacked into data_dir:
+    # https://dl.fbaipublicfiles.com/dpr/data/retriever/biencoder-nq-train.json.gz
+    # https://dl.fbaipublicfiles.com/dpr/data/retriever/biencoder-nq-dev.json.gz
+    data_dir = "../data/retriever"
+    train_filename = "biencoder-nq-train.json"
+    dev_filename = "biencoder-nq-dev.json"
+    test_filename = "biencoder-nq-dev.json"
     max_samples = None # load a smaller dataset (e.g. for debugging)
 
     # For multi GPU Training via DDP we need to get the local rank
@@ -78,7 +82,7 @@ def dense_passage_retrieval():
                                         max_seq_len_passage=256,
                                         label_list=label_list,
                                         metric=metric,
-                                        data_dir="../data/retriever",
+                                        data_dir=data_dir,
                                         train_filename=train_filename,
                                         dev_filename=dev_filename,
                                         test_filename=test_filename,
