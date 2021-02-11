@@ -1191,15 +1191,17 @@ class QuestionAnsweringHead(PredictionHead):
                     continue
                 if self.duplicate_filtering > -1 and (start_idx in start_idx_candidates or end_idx in end_idx_candidates):
                     continue
+                score = start_end_matrix[start_idx, end_idx].item()
                 start_matrix_softmax_start = torch.softmax(start_matrix[:, 0], dim=-1)
-                score = start_matrix_softmax_start[start_idx].item()
+                confidence = start_matrix_softmax_start[start_idx].item()
                 top_candidates.append(QACandidate(offset_answer_start=start_idx,
                                                   offset_answer_end=end_idx,
                                                   score=score,
                                                   answer_type="span",
                                                   offset_unit="token",
                                                   aggregation_level="passage",
-                                                  passage_id=sample_idx))
+                                                  passage_id=sample_idx,
+                                                  confidence=confidence))
                 if self.duplicate_filtering > -1:
                     for i in range(0, self.duplicate_filtering + 1):
                         start_idx_candidates.add(start_idx + i)
@@ -1207,14 +1209,16 @@ class QuestionAnsweringHead(PredictionHead):
                         end_idx_candidates.add(end_idx + i)
                         end_idx_candidates.add(end_idx - i)
 
-        no_answer_score = start_matrix_softmax_start[0].item()
+        no_answer_score = start_end_matrix[0, 0].item()
+        no_answer_confidence = start_matrix_softmax_start[0].item()
         top_candidates.append(QACandidate(offset_answer_start=0,
                                           offset_answer_end=0,
                                           score=no_answer_score,
                                           answer_type="no_answer",
                                           offset_unit="token",
                                           aggregation_level="passage",
-                                          passage_id=None))
+                                          passage_id=None,
+                                          confidence=no_answer_confidence))
 
         return top_candidates
 
@@ -1387,18 +1391,25 @@ class QuestionAnsweringHead(PredictionHead):
         # Initialize variables
         passage_no_answer = []
         passage_best_score = []
+        passage_best_confidence = []
         no_answer_scores = []
+        no_answer_confidences = []
         n_samples = len(preds)
 
         # Iterate over the top predictions for each sample
         for sample_idx, sample_preds in enumerate(preds):
             best_pred = sample_preds[0]
             best_pred_score = best_pred.score
-            no_answer_score = self.get_no_answer_score(sample_preds) + self.no_ans_boost
+            best_pred_confidence = best_pred.confidence
+            no_answer_score, no_answer_confidence = self.get_no_answer_score_and_confidence(sample_preds)
+            no_answer_score += self.no_ans_boost
+            no_answer_confidence += self.no_ans_boost
             no_answer = no_answer_score > best_pred_score
             passage_no_answer.append(no_answer)
             no_answer_scores.append(no_answer_score)
+            no_answer_confidences.append(no_answer_confidence)
             passage_best_score.append(best_pred_score)
+            passage_best_confidence.append(best_pred_confidence)
 
         # Get all predictions in flattened list and sort by score
         pos_answers_flat = []
@@ -1412,7 +1423,8 @@ class QuestionAnsweringHead(PredictionHead):
                                                         offset_unit="token",
                                                         aggregation_level="passage",
                                                         passage_id=str(sample_idx),
-                                                        n_passages_in_doc=n_samples)
+                                                        n_passages_in_doc=n_samples,
+                                                        confidence=qa_candidate.confidence)
                                             )
 
         # TODO add switch for more variation in answers, e.g. if varied_ans then never return overlapping answers
@@ -1420,6 +1432,7 @@ class QuestionAnsweringHead(PredictionHead):
 
         # This is how much no_ans_boost needs to change to turn a no_answer to a positive answer (or vice versa)
         no_ans_gap = -min([nas - pbs for nas, pbs in zip(no_answer_scores, passage_best_score)])
+        no_ans_gap_confidence = -min([nas - pbs for nas, pbs in zip(no_answer_confidences, passage_best_confidence)])
 
         # "no answer" scores and positive answers scores are difficult to compare, because
         # + a positive answer score is related to a specific text qa_candidate
@@ -1428,6 +1441,7 @@ class QuestionAnsweringHead(PredictionHead):
         # the most significant difference between scores.
         # Most significant difference: change top prediction from "no answer" to answer (or vice versa)
         best_overall_positive_score = max(x.score for x in pos_answer_dedup)
+        best_overall_positive_confidence = max(x.confidence for x in pos_answer_dedup)
         no_answer_pred = QACandidate(offset_answer_start=-1,
                                      offset_answer_end=-1,
                                      score=best_overall_positive_score - no_ans_gap,
@@ -1435,7 +1449,8 @@ class QuestionAnsweringHead(PredictionHead):
                                      offset_unit="token",
                                      aggregation_level="document",
                                      passage_id=None,
-                                     n_passages_in_doc=n_samples)
+                                     n_passages_in_doc=n_samples,
+                                     confidence=best_overall_positive_confidence - no_ans_gap_confidence)
 
         # Add no answer to positive answers, sort the order and return the n_best
         n_preds = [no_answer_pred] + pos_answer_dedup
@@ -1458,14 +1473,16 @@ class QuestionAnsweringHead(PredictionHead):
 
 
     @staticmethod
-    def get_no_answer_score(preds):
+    def get_no_answer_score_and_confidence(preds):
         for qa_answer in preds:
             start = qa_answer.offset_answer_start
             end = qa_answer.offset_answer_end
             score = qa_answer.score
+            confidence = qa_answer.confidence
             if start == -1 and end == -1:
-                return score
+                return score, confidence
         raise Exception
+
 
     @staticmethod
     def pred_to_doc_idxs(pred, passage_start_t):

@@ -210,7 +210,7 @@ def squad_f1_single(pred, label, pred_idx=0):
 def confidence(preds):
     conf = 0
     for pred in preds:
-        conf += pred[0][0].score
+        conf += pred[0][0].confidence
     return conf/len(preds) if len(preds) else 0
 
 
@@ -219,7 +219,7 @@ def metrics_per_bin(preds, labels, num_bins=10):
     label_bins = [[] for _ in range(num_bins)]
     count_per_bin = [0]*num_bins
     for (pred, label) in zip(preds, labels):
-        current_score = pred[0][0].score
+        current_score = pred[0][0].confidence
         if current_score >= 1.0:
             current_score = 0.9999
         pred_bins[int(current_score*num_bins)].append(pred)
