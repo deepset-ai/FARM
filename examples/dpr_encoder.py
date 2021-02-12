@@ -45,8 +45,8 @@ def dense_passage_retrieval():
     n_epochs = 3
     distributed = False # enable for multi GPU training via DDP
     evaluate_every = 1000
-    question_lang_model = "facebook/dpr-question_encoder-single-nq-base"
-    passage_lang_model = "facebook/dpr-ctx_encoder-single-nq-base"
+    question_lang_model = "bert-base-uncased"
+    passage_lang_model = "bert-base-uncased"
     do_lower_case = True
     use_fast = True
     embed_title = True
@@ -97,8 +97,8 @@ def dense_passage_retrieval():
 
     # 4. Create an BiAdaptiveModel+
     # a) which consists of 2 pretrained language models as a basis
-    question_language_model = LanguageModel.load(pretrained_model_name_or_path="bert-base-uncased", language_model_class="DPRQuestionEncoder")
-    passage_language_model = LanguageModel.load(pretrained_model_name_or_path="bert-base-uncased", language_model_class="DPRContextEncoder")
+    question_language_model = LanguageModel.load(pretrained_model_name_or_path=question_lang_model, language_model_class="DPRQuestionEncoder")
+    passage_language_model = LanguageModel.load(pretrained_model_name_or_path=passage_lang_model, language_model_class="DPRContextEncoder")
 
 
     # b) and a prediction head on top that is suited for our task => Question Answering

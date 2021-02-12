@@ -481,9 +481,9 @@ def test_dpr_training():
 
     data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=False)
 
-    question_language_model = LanguageModel.load(pretrained_model_name_or_path="bert-base-uncased",
+    question_language_model = LanguageModel.load(pretrained_model_name_or_path=question_lang_model,
                                                  language_model_class="DPRQuestionEncoder")
-    passage_language_model = LanguageModel.load(pretrained_model_name_or_path="bert-base-uncased",
+    passage_language_model = LanguageModel.load(pretrained_model_name_or_path=passage_lang_model,
                                                 language_model_class="DPRContextEncoder")
 
     prediction_head = TextSimilarityHead(similarity_function=similarity_function)
