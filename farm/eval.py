@@ -37,7 +37,7 @@ class Evaluator:
         self.device = device
         self.report = report
 
-    def eval(self, model, return_preds_and_labels=False):
+    def eval(self, model, return_preds_and_labels=False, calibrate_conf_scores=False):
         """
         Performs evaluation on a given model.
 
@@ -45,6 +45,8 @@ class Evaluator:
         :type model: AdaptiveModel
         :param return_preds_and_labels: Whether to add preds and labels in the returned dicts of the
         :type return_preds_and_labels: bool
+        :param calibrate_conf_scores: Whether to calibrate the temperature for temperature scaling of the confidence scores
+        :type calibrate_conf_scores: bool
         :return all_results: A list of dictionaries, one for each prediction head. Each dictionary contains the metrics
                              and reports generated during evaluation.
         :rtype all_results: list of dicts
@@ -57,6 +59,7 @@ class Evaluator:
         label_all = [[] for _ in model.prediction_heads]
         ids_all = [[] for _ in model.prediction_heads]
         passage_start_t_all = [[] for _ in model.prediction_heads]
+        logits_all = [[] for _ in model.prediction_heads]
 
         for step, batch in enumerate(
             tqdm(self.data_loader, desc="Evaluating", mininterval=10)
@@ -78,6 +81,8 @@ class Evaluator:
                 if head.model_type == "span_classification":
                     ids_all[head_num] += list(to_numpy(batch["id"]))
                     passage_start_t_all[head_num] += list(to_numpy(batch["passage_start_t"]))
+                    if calibrate_conf_scores:
+                        logits_all[head_num] += list(to_numpy(logits))
 
 
         # Evaluate per prediction head
@@ -90,6 +95,15 @@ class Evaluator:
                 # TODO check why .fit() should be called on predictions, rather than on labels
                 preds_all[head_num] = mlb.fit_transform(preds_all[head_num])
                 label_all[head_num] = mlb.transform(label_all[head_num])
+            if head.model_type == "span_classification" and calibrate_conf_scores:
+                temperature_previous = head.temperature_for_confidence.item()
+                logger.info(f"temperature used for confidence scores before calibration: {temperature_previous}")
+                head.calibrate_conf(logits_all[head_num], label_all[head_num])
+                temperature_current = head.temperature_for_confidence.item()
+                logger.info(f"temperature used for confidence scores after calibration: {temperature_current}")
+                temperature_change = (abs(temperature_current - temperature_previous) / temperature_previous) * 100.0
+                if temperature_change > 50:
+                    logger.warning(f"temperature used for calibration of confidence scores changed by more than {temperature_change} percent")
             if hasattr(head, 'aggregate_preds'):
                 # Needed to convert NQ ids from np arrays to strings
                 ids_all_str = [x.astype(str) for x in ids_all[head_num]]
@@ -99,6 +113,7 @@ class Evaluator:
                                                                                 labels=label_all[head_num],
                                                                                 passage_start_t=passage_start_t_all[head_num],
                                                                                 ids=head_ids)
+
 
             result = {"loss": loss_all[head_num] / len(self.data_loader.dataset),
                       "task_name": head.task_name}

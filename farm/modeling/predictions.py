@@ -37,6 +37,7 @@ class QACandidate:
                  probability: float=None,
                  n_passages_in_doc: int=None,
                  passage_id: str=None,
+                 confidence: float=None,
                  ):
         """
         :param answer_type: The category that this answer falls into e.g. "no_answer", "yes", "no" or "span"
@@ -48,6 +49,7 @@ class QACandidate:
         :param probability: The probability the model assigns to the answer
         :param n_passages_in_doc: Number of passages that make up the document
         :param passage_id: The id of the passage which contains this candidate answer
+        :param confidence: The (calibrated) confidence score representing the model's predicted accuracy of the index of the start of the answer span
         """
 
         # self.answer_type can be "no_answer", "yes", "no" or "span"
@@ -79,6 +81,7 @@ class QACandidate:
 
         self.n_passages_in_doc = n_passages_in_doc
         self.passage_id = passage_id
+        self.confidence = confidence
 
         # This attribute is used by Haystack to store sample metadata
         self.meta = None

@@ -146,15 +146,32 @@ def compute_report_metrics(head, preds, labels):
 
 
 def squad_EM(preds, labels):
-    # TODO write comment describing function
+    """
+    Count how often the pair of predicted start and end index exactly matches one of the labels
+    """
     n_docs = len(preds)
     n_correct = 0
-    for doc_idx in range(n_docs):
-        qa_candidate = preds[doc_idx][0][0]
+    for (pred, label) in zip(preds, labels):
+        qa_candidate = pred[0][0]
         pred_start = qa_candidate.offset_answer_start
         pred_end = qa_candidate.offset_answer_end
-        curr_labels = labels[doc_idx]
+        curr_labels = label
         if (pred_start, pred_end) in curr_labels:
+            n_correct += 1
+    return n_correct/n_docs if n_docs else 0
+
+def squad_EM_start(preds, labels):
+    """
+    Count how often the predicted start index exactly matches the start index given by one of the labels
+    """
+    n_docs = len(preds)
+    n_correct = 0
+    for (pred, label) in zip(preds, labels):
+        qa_candidate = pred[0][0]
+        pred_start = qa_candidate.offset_answer_start
+        curr_labels = label
+        curr_labels_start = [curr_label[0] for curr_label in curr_labels]
+        if pred_start in curr_labels_start:
             n_correct += 1
     return n_correct/n_docs if n_docs else 0
 
@@ -188,6 +205,33 @@ def squad_f1_single(pred, label, pred_idx=0):
     recall = n_overlap / len(label_span)
     f1 = (2 * precision * recall) / (precision + recall)
     return f1
+
+
+def confidence(preds):
+    conf = 0
+    for pred in preds:
+        conf += pred[0][0].confidence
+    return conf/len(preds) if len(preds) else 0
+
+
+def metrics_per_bin(preds, labels, num_bins=10):
+    pred_bins = [[] for _ in range(num_bins)]
+    label_bins = [[] for _ in range(num_bins)]
+    count_per_bin = [0]*num_bins
+    for (pred, label) in zip(preds, labels):
+        current_score = pred[0][0].confidence
+        if current_score >= 1.0:
+            current_score = 0.9999
+        pred_bins[int(current_score*num_bins)].append(pred)
+        label_bins[int(current_score*num_bins)].append(label)
+        count_per_bin[int(current_score*num_bins)] += 1
+
+    em_per_bin = [0]*num_bins
+    confidence_per_bin = [0]*num_bins
+    for i in range(num_bins):
+        em_per_bin[i] = squad_EM_start(preds=pred_bins[i], labels=label_bins[i])
+        confidence_per_bin[i] = confidence(preds=pred_bins[i])
+    return em_per_bin, confidence_per_bin, count_per_bin
 
 def squad_base(preds, labels):
     em = squad_EM(preds=preds, labels=labels)
