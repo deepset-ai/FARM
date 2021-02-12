@@ -932,6 +932,7 @@ class QuestionAnsweringHead(PredictionHead):
                  n_best=5,
                  n_best_per_sample=None,
                  duplicate_filtering=-1,
+                 temperature_for_confidence=1.0,
                  **kwargs):
         """
         :param layer_dims: dimensions of Feed Forward block, e.g. [768,2], for adjusting to BERT embedding. Output should be always 2
@@ -952,6 +953,8 @@ class QuestionAnsweringHead(PredictionHead):
         :param duplicate_filtering: Answers are filtered based on their position. Both start and end position of the answers are considered.
                                     The higher the value, answers that are more apart are filtered out. 0 corresponds to exact duplicates. -1 turns off duplicate removal.
         :type duplicate_filtering: int
+        :param temperature_for_confidence: The divisor that is used to scale logits to calibrate confidence scores
+        :type temperature_for_confidence: float
         """
         super(QuestionAnsweringHead, self).__init__()
         if len(kwargs) > 0:
@@ -976,8 +979,7 @@ class QuestionAnsweringHead(PredictionHead):
             self.n_best_per_sample = n_best
         self.duplicate_filtering = duplicate_filtering
         self.generate_config()
-        self.temperature = nn.Parameter(torch.ones(1) * 1)
-
+        self.temperature_for_confidence = nn.Parameter(torch.ones(1) * temperature_for_confidence)
 
 
     @classmethod
@@ -1059,7 +1061,7 @@ class QuestionAnsweringHead(PredictionHead):
 
 
     def temperature_scale(self, logits):
-        return torch.div(logits, self.temperature)
+        return torch.div(logits, self.temperature_for_confidence)
 
 
     def calibrate_conf(self, logits, label_all):
@@ -1084,7 +1086,7 @@ class QuestionAnsweringHead(PredictionHead):
 
         nll_criterion = CrossEntropyLoss()
 
-        optimizer_start = optim.LBFGS([self.temperature], lr=0.01, max_iter=50)
+        optimizer_start = optim.LBFGS([self.temperature_for_confidence], lr=0.01, max_iter=50)
 
         def eval_start():
             loss = nll_criterion(self.temperature_scale(start_logits), start_position.to(device=start_logits.device))
@@ -1403,7 +1405,7 @@ class QuestionAnsweringHead(PredictionHead):
             best_pred_confidence = best_pred.confidence
             no_answer_score, no_answer_confidence = self.get_no_answer_score_and_confidence(sample_preds)
             no_answer_score += self.no_ans_boost
-            no_answer_confidence += self.no_ans_boost
+            # TODO we might want to apply some kind of a no_ans_boost to no_answer_confidence too
             no_answer = no_answer_score > best_pred_score
             passage_no_answer.append(no_answer)
             no_answer_scores.append(no_answer_score)

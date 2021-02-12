@@ -96,9 +96,14 @@ class Evaluator:
                 preds_all[head_num] = mlb.fit_transform(preds_all[head_num])
                 label_all[head_num] = mlb.transform(label_all[head_num])
             if head.model_type == "span_classification" and calibrate_conf_scores:
-                logger.info(f"temperature before calibration: {head.temperature}")
+                temperature_previous = head.temperature_for_confidence.item()
+                logger.info(f"temperature used for confidence scores before calibration: {temperature_previous}")
                 head.calibrate_conf(logits_all[head_num], label_all[head_num])
-                logger.info(f"temperature after calibration: {head.temperature}")
+                temperature_current = head.temperature_for_confidence.item()
+                logger.info(f"temperature used for confidence scores after calibration: {temperature_current}")
+                temperature_change = (abs(temperature_current - temperature_previous) / temperature_previous) * 100.0
+                if temperature_change > 50:
+                    logger.warning(f"temperature used for calibration of confidence scores changed by more than {temperature_change} percent")
             if hasattr(head, 'aggregate_preds'):
                 # Needed to convert NQ ids from np arrays to strings
                 ids_all_str = [x.astype(str) for x in ids_all[head_num]]
