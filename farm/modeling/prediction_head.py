@@ -1180,6 +1180,7 @@ class QuestionAnsweringHead(PredictionHead):
         start_idx_candidates = set()
         end_idx_candidates = set()
 
+        no_answer_score = start_end_matrix[0, 0].item()
         # Iterate over all candidates and break when we have all our n_best candidates
         for candidate_idx in range(n_candidates):
             if len(top_candidates) == self.n_best_per_sample:
@@ -1194,6 +1195,7 @@ class QuestionAnsweringHead(PredictionHead):
                 if self.duplicate_filtering > -1 and (start_idx in start_idx_candidates or end_idx in end_idx_candidates):
                     continue
                 score = start_end_matrix[start_idx, end_idx].item()
+                conf_scores = [no_answer_score,score]
                 start_matrix_softmax_start = torch.softmax(start_matrix[:, 0], dim=-1)
                 confidence = start_matrix_softmax_start[start_idx].item()
                 top_candidates.append(QACandidate(offset_answer_start=start_idx,
@@ -1203,7 +1205,9 @@ class QuestionAnsweringHead(PredictionHead):
                                                   offset_unit="token",
                                                   aggregation_level="passage",
                                                   passage_id=sample_idx,
-                                                  confidence=confidence))
+                                                  confidence=confidence,
+                                                  conf_scores=conf_scores,
+                                                  ))
                 if self.duplicate_filtering > -1:
                     for i in range(0, self.duplicate_filtering + 1):
                         start_idx_candidates.add(start_idx + i)
@@ -1211,7 +1215,7 @@ class QuestionAnsweringHead(PredictionHead):
                         end_idx_candidates.add(end_idx + i)
                         end_idx_candidates.add(end_idx - i)
 
-        no_answer_score = start_end_matrix[0, 0].item()
+        no_answer_conf_scores = [no_answer_score,top_candidates[0].score]
         no_answer_confidence = start_matrix_softmax_start[0].item()
         top_candidates.append(QACandidate(offset_answer_start=0,
                                           offset_answer_end=0,
@@ -1220,7 +1224,9 @@ class QuestionAnsweringHead(PredictionHead):
                                           offset_unit="token",
                                           aggregation_level="passage",
                                           passage_id=None,
-                                          confidence=no_answer_confidence))
+                                          confidence=no_answer_confidence,
+                                          conf_scores=no_answer_conf_scores,
+                                          ))
 
         return top_candidates
 
@@ -1426,14 +1432,20 @@ class QuestionAnsweringHead(PredictionHead):
                                                         aggregation_level="passage",
                                                         passage_id=str(sample_idx),
                                                         n_passages_in_doc=n_samples,
-                                                        confidence=qa_candidate.confidence)
+                                                        confidence=qa_candidate.confidence,
+                                                        conf_scores=qa_candidate.conf_scores,
+                                                        )
                                             )
 
         # TODO add switch for more variation in answers, e.g. if varied_ans then never return overlapping answers
         pos_answer_dedup = self.deduplicate(pos_answers_flat)
 
         # This is how much no_ans_boost needs to change to turn a no_answer to a positive answer (or vice versa)
-        no_ans_gap = -min([nas - pbs for nas, pbs in zip(no_answer_scores, passage_best_score)])
+        no_ans_diffs = np.array([nas - pbs for nas, pbs in zip(no_answer_scores, passage_best_score)])
+        no_ans_gap = -min(no_ans_diffs)
+        no_ans_idx = np.argmin(no_ans_diffs)
+        no_ans_conf_scores = [no_answer_scores[no_ans_idx],passage_best_score[no_ans_idx]]
+
         no_ans_gap_confidence = -min([nas - pbs for nas, pbs in zip(no_answer_confidences, passage_best_confidence)])
 
         # "no answer" scores and positive answers scores are difficult to compare, because
@@ -1452,7 +1464,9 @@ class QuestionAnsweringHead(PredictionHead):
                                      aggregation_level="document",
                                      passage_id=None,
                                      n_passages_in_doc=n_samples,
-                                     confidence=best_overall_positive_confidence - no_ans_gap_confidence)
+                                     confidence=best_overall_positive_confidence - no_ans_gap_confidence,
+                                     conf_scores=no_ans_conf_scores,
+                                     )
 
         # Add no answer to positive answers, sort the order and return the n_best
         n_preds = [no_answer_pred] + pos_answer_dedup

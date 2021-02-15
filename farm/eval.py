@@ -10,6 +10,7 @@ from farm.utils import to_numpy
 from farm.utils import MLFlowLogger as MlLogger
 from farm.modeling.adaptive_model import AdaptiveModel
 from farm.modeling.biadaptive_model import BiAdaptiveModel
+from farm.evaluation.metrics import squad_f1_single
 from farm.visual.ascii.images import BUSH_SEP
 
 logger = logging.getLogger(__name__)
@@ -105,7 +106,7 @@ class Evaluator:
                 if temperature_change > 50:
                     logger.warning(f"temperature used for calibration of confidence scores changed by more than {temperature_change} percent")
             if hasattr(head, 'aggregate_preds'):
-                # Needed to convert NQ ids from np arrays to strings
+                #Needed to convert NQ ids from np arrays to strings
                 ids_all_str = [x.astype(str) for x in ids_all[head_num]]
                 ids_all_list = [list(x) for x in ids_all_str]
                 head_ids = ["-".join(x) for x in ids_all_list]
@@ -114,6 +115,57 @@ class Evaluator:
                                                                                 passage_start_t=passage_start_t_all[head_num],
                                                                                 ids=head_ids)
 
+                import pickle
+                #pickle.dump([preds_all,label_all],open("../data/squad20/res.pkl","wb"))
+                # temp = pickle.load(open("../data/squad20/res.pkl","rb"))
+                # preds_all, label_all = temp[0], temp[1]
+                ############# scale scores here
+                # calc f1 per pred and label
+
+                for THRESHOLD in [0.2,0.4,0.6,0.8]:
+
+
+                    def _squad_f1(preds, labels):
+                        f1_scores = []
+                        n_docs = len(preds)
+                        for i in range(n_docs):
+                            best_pred = preds[i][0]
+                            best_f1 = max([squad_f1_single(best_pred, label) for label in labels[i]])
+                            f1_scores.append(best_f1)
+                        return f1_scores
+
+
+                    conf_labels = []
+                    features = []
+                    f1_scores = np.array(_squad_f1(preds_all[head_num], label_all[head_num]))
+                    for pred in preds_all[head_num]:
+                        features.append(pred[0][0].conf_scores)
+                    conf_labels = f1_scores > THRESHOLD
+                    # apply logistic regression
+                    from sklearn.linear_model import LogisticRegression
+                    clf = LogisticRegression(random_state=0, solver="lbfgs").fit(features, conf_labels)
+                    # scale confidence
+                    confidences_correct = clf.predict_proba(features)[:,1]
+                    for pred, conf in zip(preds_all[head_num], confidences_correct):
+                        pred[0][0].confidence = conf
+                    coefs = clf.coef_
+                    #logger.info(f"Logreg coeffs are: {coefs}")
+                    # TODO implement application of logistic fucntion with coef as input params for inference without training a sklearn clf
+                    # TODO order of results is messed up, since original order is based on only start+end scores but confidence on start+end+noans
+
+
+                    from farm.evaluation.metrics import metrics_per_bin
+
+                    em_per_bin, confidence_per_bin, count_per_bin = metrics_per_bin(preds_all[head_num],label_all[head_num])
+
+                    print(f"Statistics on f1 score larger: {THRESHOLD}")
+                    print(f"Logreg coeffs are: {coefs}")
+                    print("EM per bin")
+                    print(em_per_bin)
+                    # print("conf per bin")
+                    # print(confidence_per_bin)
+                    print("count per bin")
+                    print(count_per_bin)
 
             result = {"loss": loss_all[head_num] / len(self.data_loader.dataset),
                       "task_name": head.task_name}

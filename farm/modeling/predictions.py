@@ -38,6 +38,7 @@ class QACandidate:
                  n_passages_in_doc: int=None,
                  passage_id: str=None,
                  confidence: float=None,
+                 conf_scores: list = None
                  ):
         """
         :param answer_type: The category that this answer falls into e.g. "no_answer", "yes", "no" or "span"
@@ -82,6 +83,7 @@ class QACandidate:
         self.n_passages_in_doc = n_passages_in_doc
         self.passage_id = passage_id
         self.confidence = confidence
+        self.conf_scores = conf_scores
 
         # This attribute is used by Haystack to store sample metadata
         self.meta = None

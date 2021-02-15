@@ -431,6 +431,8 @@ class DataSilo:
         logger.info("================")
 
         self.counts = {}
+        clipped = -1
+        ave_len = -1
 
         if self.data["train"]:
             self.counts["train"] = len(self.data["train"])
@@ -440,8 +442,7 @@ class DataSilo:
                 clipped, ave_len, seq_lens, max_seq_len = self._calc_length_stats_biencoder()
             else:
                 logger.warning(f"Could not compute length statistics because 'input_ids' or 'query_input_ids' and 'passage_input_ids' are missing.")
-                clipped = -1
-                ave_len = -1
+
         else:
             self.counts["train"] = 0
 
