@@ -1164,12 +1164,14 @@ class QuestionAnsweringHead(PredictionHead):
         for sample_idx in range(batch_size):
             sample_top_n = self.get_top_candidates(sorted_candidates[sample_idx],
                                                    start_end_matrix[sample_idx],
-                                                   sample_idx, start_matrix=start_matrix[sample_idx])
+                                                   sample_idx,
+                                                   start_logits=start_logits[sample_idx],
+                                                   end_logits=end_logits[sample_idx])
             all_top_n.append(sample_top_n)
 
         return all_top_n
 
-    def get_top_candidates(self, sorted_candidates, start_end_matrix, sample_idx, start_matrix = None):
+    def get_top_candidates(self, sorted_candidates, start_end_matrix, sample_idx, start_logits = None, end_logits = None):
         """ Returns top candidate answers as a list of Span objects. Operates on a matrix of summed start and end logits.
         This matrix corresponds to a single sample (includes special tokens, question tokens, passage tokens).
         This method always returns a list of len n_best + 1 (it is comprised of the n_best positive answers along with the one no_answer)"""
@@ -1195,9 +1197,11 @@ class QuestionAnsweringHead(PredictionHead):
                 if self.duplicate_filtering > -1 and (start_idx in start_idx_candidates or end_idx in end_idx_candidates):
                     continue
                 score = start_end_matrix[start_idx, end_idx].item()
-                conf_scores = [no_answer_score,score]
-                start_matrix_softmax_start = torch.softmax(start_matrix[:, 0], dim=-1)
-                confidence = start_matrix_softmax_start[start_idx].item()
+                score_start = start_logits[start_idx].item() # start and end matrix are replicated max seq len times
+                score_end = end_logits[end_idx].item()
+                conf_scores = [start_logits[0].item(), end_logits[0].item(), score_start, score_end]
+                start_softmaxed = torch.nn.Softmax(dim=0)(start_logits)
+                confidence = start_softmaxed[start_idx].item()
                 top_candidates.append(QACandidate(offset_answer_start=start_idx,
                                                   offset_answer_end=end_idx,
                                                   score=score,
@@ -1215,8 +1219,8 @@ class QuestionAnsweringHead(PredictionHead):
                         end_idx_candidates.add(end_idx + i)
                         end_idx_candidates.add(end_idx - i)
 
-        no_answer_conf_scores = [no_answer_score,top_candidates[0].score]
-        no_answer_confidence = start_matrix_softmax_start[0].item()
+        no_answer_conf_scores = top_candidates[0].conf_scores
+        no_answer_confidence = start_softmaxed[0].item()
         top_candidates.append(QACandidate(offset_answer_start=0,
                                           offset_answer_end=0,
                                           score=no_answer_score,
@@ -1444,7 +1448,7 @@ class QuestionAnsweringHead(PredictionHead):
         no_ans_diffs = np.array([nas - pbs for nas, pbs in zip(no_answer_scores, passage_best_score)])
         no_ans_gap = -min(no_ans_diffs)
         no_ans_idx = np.argmin(no_ans_diffs)
-        no_ans_conf_scores = [no_answer_scores[no_ans_idx],passage_best_score[no_ans_idx]]
+        no_ans_conf_scores = pos_answers_flat[no_ans_idx].conf_scores
 
         no_ans_gap_confidence = -min([nas - pbs for nas, pbs in zip(no_answer_confidences, passage_best_confidence)])
 
