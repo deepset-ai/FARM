@@ -82,6 +82,8 @@ def question_answering_confidence():
     model.prediction_heads[0].temperature_for_confidence = torch.nn.Parameter((torch.ones(1) * 1.0).to(device=device))
 
     # 6b. ...or we can run the evaluator on the dev set and use it to calibrate confidence scores with a technique called temperature scaling.
+    # It will align the confidence scores with the model's accuracy based on the dev set data by tuning the temperature parameter.
+    # During the calibration, this parameter is automatically set internally as an attribute of the prediction head.
     evaluator_dev = Evaluator(
         data_loader=data_silo.get_data_loader("dev"),
         tasks=data_silo.processor.tasks,
@@ -90,7 +92,7 @@ def question_answering_confidence():
     result_dev = evaluator_dev.eval(model, return_preds_and_labels=True, calibrate_conf_scores=True)
     # evaluator_dev.log_results(result_dev, "Dev", logging=False, steps=len(data_silo.get_data_loader("dev")))
 
-    # 7. Finally, run the evaluator on the test set to see how good the calibration of the confidence scores was
+    # 7. Optionally, run the evaluator on the test set to see how well the confidence scores are aligned with the model's accuracy
     evaluator_test = Evaluator(
         data_loader=data_silo.get_data_loader("test"),
         tasks=data_silo.processor.tasks,
@@ -99,23 +101,28 @@ def question_answering_confidence():
     result_test = evaluator_test.eval(model, return_preds_and_labels=True)[0]
     logger.info("Grouping predictions by confidence score and calculating metrics for each bin.")
     em_per_bin, confidence_per_bin, count_per_bin = metrics_per_bin(result_test["preds"], result_test["labels"], num_bins=10)
-    for bin in range(10):
-        logger.info(f"Bin {bin} - exact match: {em_per_bin[bin]}, average confidence score: {confidence_per_bin[bin]}")
+    for bin_number in range(10):
+        logger.info(f"Bin {bin_number} - exact match: {em_per_bin[bin_number]}, average confidence score: {confidence_per_bin[bin_number]}")
 
-    # 8. Hooray! You have a model with calibrated confidence scores. Store it:
+    # 8. Hooray! You have a model with calibrated confidence scores.
+    # Store the model and the temperature parameter will be stored automatically as an attribute of the prediction head.
     save_dir = Path("../saved_models/qa-confidence-tutorial")
     model.save(save_dir)
     processor.save(save_dir)
 
-    # 8. When making a prediction with the calibrated model, we could filter out predictions where the model is not confident enough
+    # 9. When making a prediction with the calibrated model, we could filter out predictions where the model is not confident enough
+    # To this end, load the stored model, which will automatically load the stored temperature parameter.
+    # The confidence scores are automatically adjusted based on this temperature parameter.
+    # For each prediction, we can check the model's confidence and decide whether to output the prediction or not.
+    inferencer = QAInferencer.load(save_dir, batch_size=40, gpu=True)
+    logger.info(f"Loaded model with stored temperature: {inferencer.model.prediction_heads[0].temperature_for_confidence}")
+
     QA_input = [
         {
             "questions": ["Who counted the game among the best ever made?"],
             "text": "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
         }]
-
-    model = QAInferencer.load(save_dir, batch_size=40, gpu=True)
-    result = model.inference_from_dicts(dicts=QA_input, return_json=False)[0]
+    result = inferencer.inference_from_dicts(dicts=QA_input, return_json=False)[0]
     if result.prediction[0].confidence > 0.9:
         print(result.prediction[0].answer)
     else:
