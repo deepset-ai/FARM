@@ -72,7 +72,10 @@ def question_answering_confidence():
     # The multiple predictions are used for evaluating top n recall.
     model.prediction_heads[0].n_best = accuracy_at
 
-    # 5. The calibration of model confidence scores sets one parameter, which is called temperature and can be accessed through the prediction_head
+    # 5. The calibration of model confidence scores sets one parameter, which is called temperature and can be accessed through the prediction_head.
+    # This temperature is applied to each logit in the forward pass, where each logit is divided by the temperature.
+    # A softmax function is applied to the logits afterward to get confidence scores in the range [0,1].
+    # A temperature larger than 1 decreases the model’s confidence scores.
     logger.info(f"Parameter used for temperature scaling of model confidence scores: {model.prediction_heads[0].temperature_for_confidence}")
 
     # 6a. We can either manually set the temperature (default value is 1.0)...
