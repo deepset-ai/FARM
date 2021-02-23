@@ -91,7 +91,7 @@ def test_text_pair_classification(caplog=None):
         {"text": ("how many seasons of the blacklist are there on netflix", "Retrieved March 27 , 2018 .")},
     ]
 
-    model = Inferencer.load(save_dir,num_processes=1)
+    model = Inferencer.load(save_dir)
     result = model.inference_from_dicts(dicts=basic_texts)
 
     assert result[0]["predictions"][0]["label"] == "1"

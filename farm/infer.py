@@ -475,7 +475,7 @@ class Inferencer:
         """
         indices = list(range(len(dicts)))
         dataset, tensor_names, problematic_ids, baskets = self.processor.dataset_from_dicts(
-            dicts, indices=indices , return_baskets=True
+            dicts, indices=indices, return_baskets=True
         )
         self.problematic_sample_ids = problematic_ids
         if self.benchmarking:
