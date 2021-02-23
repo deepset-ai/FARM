@@ -473,8 +473,9 @@ class Inferencer:
         :return: list of predictions
         :rtype: list
         """
+        indices = list(range(len(dicts)))
         dataset, tensor_names, problematic_ids, baskets = self.processor.dataset_from_dicts(
-            dicts, indices=[i for i in range(len(dicts))], return_baskets=True
+            dicts, indices=indices, return_baskets=True
         )
         self.problematic_sample_ids = problematic_ids
         if self.benchmarking:

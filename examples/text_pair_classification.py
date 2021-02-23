@@ -98,9 +98,13 @@ def text_pair_classification():
 
     # 9. Load it & harvest your fruits (Inference)
     #    Add your own text adapted to the dataset you provide
+    # For correct Text Pair Classification on raw dictionaries (inference mode), we need to put both
+    # texts (text, text_b) into a tuple.
+    # See corresponding conversion in the file_to_dicts() method of TextPairClassificationProcessor: https://github.com/deepset-ai/FARM/blob/5ab5b1620cb51ceb874d4b30c887e377ad1a6e9a/farm/data_handler/processor.py#L744
     basic_texts = [
-        {"text": "how many times have real madrid won the champions league in a row", "text_b": "They have also won the competition the most times in a row, winning it five times from 1956 to 1960"},
-        {"text": "how many seasons of the blacklist are there on netflix", "text_b": "Retrieved March 27 , 2018 ."},
+        {"text": ("how many times have real madrid won the champions league in a row",
+                  "They have also won the competition the most times in a row, winning it five times from 1956 to 1960")},
+        {"text": ("how many seasons of the blacklist are there on netflix", "Retrieved March 27 , 2018 .")},
     ]
 
     model = Inferencer.load(save_dir)

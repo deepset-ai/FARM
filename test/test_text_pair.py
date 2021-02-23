@@ -16,7 +16,7 @@ from farm.train import Trainer
 from farm.utils import set_all_seeds, initialize_device_settings
 
 
-def test_text_pair_classification(caplog):
+def test_text_pair_classification(caplog=None):
     if caplog:
         caplog.set_level(logging.CRITICAL)
 
@@ -83,9 +83,12 @@ def test_text_pair_classification(caplog):
     model.save(save_dir)
     processor.save(save_dir)
 
+
+    # For correct Text Pair Classification on raw dictionaries, we need to put both texts (text, text_b) into a tuple
+    # See corresponding operation in the file_to_dicts method of TextPairClassificationProcessor here: https://github.com/deepset-ai/FARM/blob/5ab5b1620cb51ceb874d4b30c887e377ad1a6e9a/farm/data_handler/processor.py#L744
     basic_texts = [
-        {"text": "how many times have real madrid won the champions league in a row", "text_b": "They have also won the competition the most times in a row, winning it five times from 1956 to 1960"},
-        {"text": "how many seasons of the blacklist are there on netflix", "text_b": "Retrieved March 27 , 2018 ."},
+        {"text": ("how many times have real madrid won the champions league in a row", "They have also won the competition the most times in a row, winning it five times from 1956 to 1960")},
+        {"text": ("how many seasons of the blacklist are there on netflix", "Retrieved March 27 , 2018 .")},
     ]
 
     model = Inferencer.load(save_dir)
@@ -96,7 +99,7 @@ def test_text_pair_classification(caplog):
     model.close_multiprocessing_pool()
 
 
-def test_text_pair_regression(caplog):
+def test_text_pair_regression(caplog=None):
     if caplog:
         caplog.set_level(logging.CRITICAL)
 
@@ -163,8 +166,8 @@ def test_text_pair_regression(caplog):
     processor.save(save_dir)
 
     basic_texts = [
-        {"text": "how many times have real madrid won the champions league in a row", "text_b": "They have also won the competition the most times in a row, winning it five times from 1956 to 1960"},
-        {"text": "how many seasons of the blacklist are there on netflix", "text_b": "Retrieved March 27 , 2018 ."},
+        {"text": ("how many times have real madrid won the champions league in a row", "They have also won the competition the most times in a row, winning it five times from 1956 to 1960")},
+        {"text": ("how many seasons of the blacklist are there on netflix", "Retrieved March 27 , 2018 .")},
     ]
 
     model = Inferencer.load(save_dir)
@@ -173,7 +176,7 @@ def test_text_pair_regression(caplog):
     assert np.isclose(result[0]["predictions"][0]["pred"], 0.7976, rtol=0.05)
     model.close_multiprocessing_pool()
 
-def test_segment_ids(caplog):
+def test_segment_ids(caplog=None):
     if caplog:
         caplog.set_level(logging.CRITICAL)
     lang_model = "microsoft/MiniLM-L12-H384-uncased"
@@ -198,6 +201,7 @@ def test_segment_ids(caplog):
 
 
 if __name__ == "__main__":
+    test_text_pair_classification()
     test_text_pair_regression()
 
 # fmt: on
