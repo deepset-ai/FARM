@@ -181,7 +181,7 @@ class Tokenizer:
                 tokenizer_class = "DPRQuestionEncoderTokenizer"
             elif config.architectures[0] == "DPRContextEncoder":
                 tokenizer_class = "DPRContextEncoderTokenizer"
-            elif config.archictectures[0] == "DPRReader":
+            elif config.architectures[0] == "DPRReader":
                 raise NotImplementedError("DPRReader models are currently not supported.")
         else:
             # Fall back to inferring type from model name
