@@ -6,6 +6,7 @@ import random
 import tarfile
 import tempfile
 import string
+import uuid
 from contextlib import ExitStack
 from itertools import islice
 from pathlib import Path
@@ -183,7 +184,7 @@ def read_ner_file(filename, sep="\t", proxies=None):
         data.append({"text": " ".join(sentence), "ner_label": label})
     return data
 
-def read_dpr_json(file, max_samples=None, proxies=None):
+def read_dpr_json(file, max_samples=None, proxies=None, num_hard_negatives=1, num_positives=1, shuffle_negatives=True, shuffle_positives=False):
     """
     Reads a Dense Passage Retrieval (DPR) data file in json format and returns a list of dictionaries.
 
@@ -214,9 +215,15 @@ def read_dpr_json(file, max_samples=None, proxies=None):
     if not (os.path.exists(file)):
         logger.info(f" Couldn't find {file} locally. Trying to download ...")
         _download_extract_downstream_data(file, proxies=proxies)
-    dicts = json.load(open(file))
-    if max_samples:
-        dicts = random.sample(dicts, min(max_samples, len(dicts)))
+
+    if "jsonl" in file:
+        dicts = []
+        with open(file, encoding='utf-8') as f:
+            for line in f:
+                dicts.append(json.loads(line))
+    else:
+        dicts = json.load(open(file, encoding='utf-8'))
+
     # convert DPR dictionary to standard dictionary
     query_json_keys = ["question", "questions", "query"]
     positive_context_json_keys = ["positive_contexts", "positive_ctxs", "positive_context", "positive_ctx"]
@@ -228,13 +235,25 @@ def read_dpr_json(file, max_samples=None, proxies=None):
         for key, val in dict.items():
             if key in query_json_keys:
                 sample["query"] = val
-            elif key in positive_context_json_keys+hard_negative_json_keys:
-                for passage in val:
+            elif key in positive_context_json_keys:
+                if shuffle_positives:
+                    random.shuffle(val)
+                for passage in val[:num_positives]:
                     passages.append({
                         "title": passage["title"],
                         "text": passage["text"],
-                        "label": "positive" if key in positive_context_json_keys else "hard_negative",
-                        "external_id": passage["passage_id"]
+                        "label": "positive",
+                        "external_id": passage.get("passage_id", uuid.uuid4().hex.upper()[0:8])
+                        })
+            elif key in hard_negative_json_keys:
+                if shuffle_negatives:
+                    random.shuffle(val)
+                for passage in val[:num_hard_negatives]:
+                    passages.append({
+                        "title": passage["title"],
+                        "text": passage["text"],
+                        "label": "hard_negative",
+                        "external_id": passage.get("passage_id", uuid.uuid4().hex.upper()[0:8])
                         })
         sample["passages"] = passages
         standard_dicts.append(sample)
