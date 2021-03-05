@@ -55,8 +55,8 @@ Use a `public model  <https://huggingface.co/models>`__  or your own to get pred
     nlp = Inferencer.load("deepset/bert-large-uncased-whole-word-masking-squad2", task_type="question_answering")
 
     # Run predictions
-    QA_input = [{"qas": ["Why is model conversion important?"],
-                 "context": "Model conversion lets people easily switch between frameworks."}]
+    QA_input = [{"questions": ["Why is model conversion important?"],
+                 "text": "Model conversion lets people easily switch between frameworks."}]
     result = nlp.inference_from_dicts(dicts=QA_input)
 
 3. Showcase your model (API + UI)
