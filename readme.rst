@@ -179,7 +179,7 @@ Use a `public model  <https://huggingface.co/models>`__  or your own to get pred
     :alt: FARM Inferennce UI
 
 One docker container exposes a REST API (localhost:5000) and another one runs a simple demo UI (localhost:3000).
-You can use both of them individually and mount your own models. Check out the docs for details.
+You can use both of them individually and mount your own models. Check out the `docs <https://farm.deepset.ai/basic_usage.html#showcase-your-model-api-ui>`__ for details.
 
 Advanced Usage
 ##############
