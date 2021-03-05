@@ -216,13 +216,16 @@ def read_dpr_json(file, max_samples=None, proxies=None, num_hard_negatives=1, nu
         logger.info(f" Couldn't find {file} locally. Trying to download ...")
         _download_extract_downstream_data(file, proxies=proxies)
 
-    if "jsonl" in file:
+    if file.suffix.lower() == ".jsonl":
         dicts = []
         with open(file, encoding='utf-8') as f:
             for line in f:
                 dicts.append(json.loads(line))
     else:
         dicts = json.load(open(file, encoding='utf-8'))
+
+    if max_samples:
+        dicts = random.sample(dicts, min(max_samples, len(dicts)))
 
     # convert DPR dictionary to standard dictionary
     query_json_keys = ["question", "questions", "query"]
