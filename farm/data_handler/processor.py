@@ -2867,7 +2867,7 @@ class TextSimilarityProcessor(Processor):
             {"text": document_text, "title": xxx, "label": "hard_negative", "external_id": abb134},
             ...]}
         """
-        dicts = read_dpr_json(file, max_samples=self.max_samples)
+        dicts = read_dpr_json(file, max_samples=self.max_samples, num_hard_negatives=self.num_hard_negatives, num_positives=self.num_positives, shuffle_negatives=self.shuffle_negatives, shuffle_positives=self.shuffle_positives)
         return dicts
 
     def dataset_from_dicts(self, dicts, indices=None, return_baskets = False):
