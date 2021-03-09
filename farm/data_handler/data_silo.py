@@ -431,6 +431,8 @@ class DataSilo:
         logger.info("================")
 
         self.counts = {}
+        clipped = -1
+        ave_len = -1
 
         if self.data["train"]:
             self.counts["train"] = len(self.data["train"])
