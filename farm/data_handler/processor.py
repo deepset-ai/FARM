@@ -1215,9 +1215,9 @@ class NERProcessor(Processor):
                     # This is expected during inference since there are no labels
                     # During training, this is a problem
                     label_ids = None
-                    logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
-                                   "\nIf your are running in *inference* mode: Don't worry!"
-                                   "\nIf you are running in *training* mode: Verify you are supplying a proper label list to your processor and check that labels in input data are correct.")
+                    # logger.warning(f"[Task: {task_name}] Could not convert labels to ids via label_list!"
+                    #                "\nIf your are running in *inference* mode: Don't worry!"
+                    #                "\nIf you are running in *training* mode: Verify you are supplying a proper label list to your processor and check that labels in input data are correct.")
 
                 if label_ids:
                     feature_dict[label_tensor_name] = label_ids
