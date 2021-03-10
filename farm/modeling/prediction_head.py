@@ -1647,6 +1647,8 @@ class TextSimilarityHead(PredictionHead):
         :return: cosine similarity score of each query with each context/passage (dimension: n1xn2)
         """
         # q_vector: n1 x D, ctx_vectors: n2 x D, result n1 x n2
+        # n1 = batch_size = number of queries
+        # n2 = (batch_size * num_positives) + (batch_size * num_hard_negatives)
         cosine_similarities = []
         passages_per_batch = passage_vectors.shape[0]
         for query_vector in query_vectors:
