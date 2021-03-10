@@ -1647,7 +1647,13 @@ class TextSimilarityHead(PredictionHead):
         :return: cosine similarity score of each query with each context/passage (dimension: n1xn2)
         """
         # q_vector: n1 x D, ctx_vectors: n2 x D, result n1 x n2
-        return nn.functional.cosine_similarity(query_vectors, passage_vectors, dim=1)
+        cosine_similarities = []
+        passages_per_batch = passage_vectors.shape[0]
+        for query_vector in query_vectors:
+            query_vector_repeated = query_vector.repeat(passages_per_batch, 1)
+            current_cosine_similarities = nn.functional.cosine_similarity(query_vector_repeated, passage_vectors, dim=1)
+            cosine_similarities.append(current_cosine_similarities)
+        return torch.stack(cosine_similarities)
 
     def get_similarity_function(self):
         """
