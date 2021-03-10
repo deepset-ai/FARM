@@ -127,8 +127,8 @@ class Evaluator:
                 try:
                     result["report"] = compute_report_metrics(head, preds_all[head_num], label_all[head_num])
                 except:
-                    logger.error(f"Couldn't create eval report for head {head_num} with following preds and labels:"
-                                 f"\n Preds: {preds_all[head_num]} \n Labels: {label_all[head_num]}")
+                    # logger.error(f"Couldn't create eval report for head {head_num} with following preds and labels:"
+                    #              f"\n Preds: {preds_all[head_num]} \n Labels: {label_all[head_num]}")
                     result["report"] = "Error"
 
             if return_preds_and_labels:
