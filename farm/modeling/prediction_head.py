@@ -1619,9 +1619,14 @@ class TextSimilarityHead(PredictionHead):
         """
         Calculates dot product similarity scores for two 2-dimensional tensors
 
-        :param query_vectors: tensor of query embeddings from BiAdaptive model of dimension n1 x D, where n1 is the number of queries/batch size and D is embedding size
+        :param query_vectors: tensor of query embeddings from BiAdaptive model
+                        of dimension n1 x D,
+                        where n1 is the number of queries/batch size and D is embedding size
         :type query_vectors: torch.Tensor
-        :param passage_vectors: tensor of context/passage embeddings from BiAdaptive model of dimension n2 x D, where n2 is the number of queries/batch size and D is embedding size
+        :param passage_vectors: tensor of context/passage embeddings from BiAdaptive model
+                        of dimension n2 x D,
+                        where n2 is (batch_size * num_positives) + (batch_size * num_hard_negatives)
+                        and D is embedding size
         :type passage_vectors: torch.Tensor
 
         :return dot_product: similarity score of each query with each context/passage (dimension: n1xn2)
@@ -1641,14 +1646,13 @@ class TextSimilarityHead(PredictionHead):
         :type query_vectors: torch.Tensor
         :param passage_vectors: tensor of context/passage embeddings from BiAdaptive model
                           of dimension n2 x D,
-                          where n2 is the number of queries/batch size and D is embedding size
+                          where n2 is (batch_size * num_positives) + (batch_size * num_hard_negatives)
+                          and D is embedding size
         :type passage_vectors: torch.Tensor
 
         :return: cosine similarity score of each query with each context/passage (dimension: n1xn2)
         """
         # q_vector: n1 x D, ctx_vectors: n2 x D, result n1 x n2
-        # n1 = batch_size = number of queries
-        # n2 = (batch_size * num_positives) + (batch_size * num_hard_negatives)
         cosine_similarities = []
         passages_per_batch = passage_vectors.shape[0]
         for query_vector in query_vectors:
