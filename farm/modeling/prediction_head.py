@@ -697,7 +697,7 @@ class TokenClassificationHead(PredictionHead):
         for preds_seq, probs_seq, sample, spans_seq in zip(
             preds, probs, samples, spans
         ):
-            tags, spans_seq, tag_probs = convert_iob_to_simple_tags(preds_seq, spans_seq, probs_seq)
+            tags, spans_seq, tag_probs = preds_seq, spans_seq, probs_seq # convert_iob_to_simple_tags(preds_seq, spans_seq, probs_seq)
             seq_res = []
             # TODO: Though we filter out tags and spans for non-entity words,
             # TODO: we do not yet filter out probs of non-entity words. This needs to be implemented still
