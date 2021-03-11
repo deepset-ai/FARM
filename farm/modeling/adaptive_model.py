@@ -70,7 +70,7 @@ class BaseAdaptiveModel:
             all_preds.append(preds)
         return all_preds
 
-    def formatted_preds(self, logits, **kwargs):
+    def formatted_preds(self, logits, logits2, **kwargs):
         """
         Format predictions for inference.
 
@@ -133,7 +133,7 @@ class BaseAdaptiveModel:
                 preds_final.append(preds)
 
             head = self.prediction_heads[1]
-            logits_for_head = logits[1]
+            logits_for_head = logits2[0]
             preds = head.formatted_preds(logits=logits_for_head, **kwargs)
             # TODO This is very messy - we need better definition of what the output should look like
             if type(preds) == list:

@@ -581,8 +581,12 @@ class Inferencer:
             # get logits
             with torch.no_grad():
                 logits = self.model.forward(**batch)[0]
+                logits2 = []
+                if len(self.model.forward(**batch)) > 1:
+                    logits2 = self.model.forward(**batch)[1]
                 preds = self.model.formatted_preds(
                     logits=[logits],
+                    logits2=[logits2],
                     samples=batch_samples,
                     tokenizer=self.processor.tokenizer,
                     return_class_probs=self.return_class_probs,
