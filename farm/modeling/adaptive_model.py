@@ -119,9 +119,6 @@ class BaseAdaptiveModel:
                 kwargs["preds"] = preds_flat
             except KeyError:
                 kwargs["preds"] = None
-
-            print(self.prediction_heads)
-            print(logits_for_head)
             
             head = self.prediction_heads[0]
             logits_for_head = logits[0]
