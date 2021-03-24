@@ -15,6 +15,7 @@ import pandas as pd
 from tqdm import tqdm
 import time
 import pickle
+from typing import Optional
 
 from farm.visual.ascii.images import WELCOME_BARN, WORKER_M, WORKER_F, WORKER_X
 
