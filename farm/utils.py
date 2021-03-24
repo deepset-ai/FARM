@@ -227,6 +227,107 @@ class TensorBoardLogger(BaseMLLogger):
             TensorBoardLogger.summary_writer.add_text(tag=key, text_string=str(value))
 
 
+class WANDBLogger(BaseMLLogger):
+    """
+    WeightsANDBiases logger. See <a href="https://docs.wandb.ai">here</a> for more details.
+    """
+
+    experiment = None
+    save_dir = None
+    offset_step = 0
+    sync_step = True
+    prefix = ''
+    log_checkpoint = False
+
+    @classmethod
+    def init_experiment(cls,
+                        experiment_name,
+                        project_name,
+                        api: Optional[str] = None,
+                        notes=None,
+                        tags=None,
+                        entity=None,
+                        save_dir: Optional[str] = None,
+                        offline: Optional[bool] = False,
+                        _id: Optional[str] = None,
+                        log_checkpoint: Optional[bool] = False,
+                        sync_step: Optional[bool] = True,
+                        prefix: Optional[str] = '',
+                        notebook: Optional[str] = 'FARM',
+                        **kwargs):
+        if offline:
+            os.environ['WANDB_MODE'] = 'dryrun'
+        if api is not None:
+            os.environ['WANDB_API_KEY'] = api
+        os.environ['WANDB_RESUME'] = "allow"
+        os.environ['WANDB_RUN_ID'] = wandb.util.generate_id() if _id is None else _id
+        os.environ['WANDB_NOTEBOOK_NAME'] = notebook
+
+        if wandb.run is not None:
+            cls.end_run()
+
+        cls.experiment = wandb.init(
+            name=experiment_name,
+            dir=save_dir,
+            project=project_name,
+            notes=notes,
+            tags=tags,
+            entity=entity,
+            **kwargs
+        )
+
+        cls.offset_step = cls.experiment.step
+        cls.prefix = prefix
+        cls.sync_step = sync_step
+        cls.log_checkpoint = log_checkpoint
+
+        cls.disable_logging = False
+
+        return cls(tracking_uri=cls.experiment.url)
+
+    @classmethod
+    def end_run(cls):
+        if not cls.disable_logging and cls.experiment is not None:
+            # Save the global step for future training logged on same W&B run
+            cls.offset_step = cls.experiment.step
+            # Send all checkpoints to the W&B server
+            if cls.log_checkpoint:
+                logger.info(f'Finalizing the experiment. Uploading checkpoints from {cls.save_dir}')
+                wandb.save(os.path.join(cls.save_dir, "*ckpt"))
+                cls.experiment.finish()
+        cls.disable()
+
+    @classmethod
+    def log_metrics(cls, metrics, step, **kwargs):
+        if not cls.disable_logging:
+            metrics = {f'{cls.prefix}{k}': v for k, v in metrics.items()}
+            if cls.sync_step and step + cls.offset_step < cls.experiment.step:
+                logger.warning(
+                    'Trying to log at a previous step. Use `sync_step=False`'
+                    ' or try logging with `commit=False` when calling manually `wandb.log`.'
+                )
+            if cls.sync_step:
+                cls.experiment.log(metrics, step=(step + cls.offset_step) if step is not None else None)
+            elif step is not None:
+                cls.experiment.log({**metrics, 'step': step + cls.offset_step}, **kwargs)
+            else:
+                cls.experiment.log(metrics)
+
+    @classmethod
+    def log_params(cls, params):
+        if not cls.disable_logging:
+            cls.experiment.config.update(params, allow_val_change=True)
+
+    @classmethod
+    def log_artifacts(cls, dir_path, artifact_path=None):
+        raise NotImplementedError
+
+    @classmethod
+    def disable(cls):
+        logger.warning(f"ML Logging is turned off. No parameters, metrics or artifacts will be logged to {cls.experiment.url}")
+        cls.disable_logging = True
+
+
 def to_numpy(container):
     try:
         return container.cpu().numpy()
