@@ -35,30 +35,31 @@ def dense_passage_retrieval():
     )
 
     ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
-    ml_logger.init_experiment(experiment_name="FARM-dense_passage_retrieval", run_name="Run_dpr")
+    ml_logger.init_experiment(experiment_name="FARM-Gdpr", run_name="Run_dpr")
 
     ##########################
     ########## Settings
     ##########################
     set_all_seeds(seed=42)
-    batch_size = 4
-    n_epochs = 3
+    batch_size = 16
+    n_epochs = 10
     distributed = False # enable for multi GPU training via DDP
-    evaluate_every = 1000
-    question_lang_model = "bert-base-uncased"
-    passage_lang_model = "bert-base-uncased"
-    do_lower_case = True
+    evaluate_every = 100
+    question_lang_model = "deepset/gbert-base"
+    passage_lang_model = "deepset/gbert-base"
+    #do_lower_case = False
     use_fast = True
     embed_title = True
     num_hard_negatives = 1
-    similarity_function = "dot_product"
+    similarity_function = "cosine_no_in_batch"
     # data can be downloaded and unpacked into data_dir:
     # https://dl.fbaipublicfiles.com/dpr/data/retriever/biencoder-nq-train.json.gz
     # https://dl.fbaipublicfiles.com/dpr/data/retriever/biencoder-nq-dev.json.gz
-    data_dir = "../data/retriever"
-    train_filename = "biencoder-nq-train.json"
-    dev_filename = "biencoder-nq-dev.json"
-    test_filename = "biencoder-nq-dev.json"
+    data_dir = "../data/germanQA/dpr/"
+    train_filename = "20210219_Combined_formulate_short_answers_dpr.train.json"
+    dev_split = 0.05
+    dev_filename = None#"20210219_Combined_formulate_short_answers_dpr.train.json"
+    test_filename = None#"20210219_Combined_formulate_short_answers_dpr.train.json"
     max_samples = None # load a smaller dataset (e.g. for debugging)
 
     # For multi GPU Training via DDP we need to get the local rank
@@ -66,10 +67,8 @@ def dense_passage_retrieval():
     device, n_gpu = initialize_device_settings(use_cuda=True, local_rank=args.local_rank)
 
     # 1.Create question and passage tokenizers
-    query_tokenizer = Tokenizer.load(pretrained_model_name_or_path=question_lang_model,
-                                     do_lower_case=do_lower_case, use_fast=use_fast)
-    passage_tokenizer = Tokenizer.load(pretrained_model_name_or_path=passage_lang_model,
-                                       do_lower_case=do_lower_case, use_fast=use_fast)
+    query_tokenizer = Tokenizer.load(pretrained_model_name_or_path=question_lang_model, use_fast=use_fast)
+    passage_tokenizer = Tokenizer.load(pretrained_model_name_or_path=passage_lang_model, use_fast=use_fast)
 
     # 2. Create a DataProcessor that handles all the conversion from raw text into a pytorch Dataset
     # data_dir "data/retriever" should contain DPR training and dev files downloaded from https://github.com/facebookresearch/DPR
@@ -86,6 +85,7 @@ def dense_passage_retrieval():
                                         train_filename=train_filename,
                                         dev_filename=dev_filename,
                                         test_filename=test_filename,
+                                        dev_split=dev_split,
                                         embed_title=embed_title,
                                         num_hard_negatives=num_hard_negatives,
                                         max_samples=max_samples)
@@ -117,10 +117,10 @@ def dense_passage_retrieval():
     # 5. Create an optimizer
     model, optimizer, lr_schedule = initialize_optimizer(
         model=model,
-        learning_rate=1e-5,
-        optimizer_opts={"name": "TransformersAdamW", "correct_bias": True, "weight_decay": 0.0, \
-                        "eps": 1e-08},
-        schedule_opts={"name": "LinearWarmup", "num_warmup_steps": 100},
+        learning_rate=1e-6,
+        # optimizer_opts={"name": "TransformersAdamW", "correct_bias": True, "weight_decay": 0.0, \
+        #                 "eps": 1e-08},
+        schedule_opts={"name": "LinearWarmup", "num_warmup_steps": 500},
         n_batches=len(data_silo.loaders["train"]),
         n_epochs=n_epochs,
         grad_acc_steps=1,

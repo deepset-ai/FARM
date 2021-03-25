@@ -1661,14 +1661,43 @@ class TextSimilarityHead(PredictionHead):
             cosine_similarities.append(current_cosine_similarities)
         return torch.stack(cosine_similarities)
 
+    @classmethod
+    def cosine_no_in_batch_scores(cls, query_vectors, passage_vectors):
+        """
+        Calculates cosine similarity scores for two 2-dimensional tensors
+
+        :param query_vectors: tensor of query embeddings from BiAdaptive model
+                          of dimension n1 x D,
+                          where n1 is the number of queries/batch size and D is embedding size
+        :type query_vectors: torch.Tensor
+        :param passage_vectors: tensor of context/passage embeddings from BiAdaptive model
+                          of dimension n2 x D,
+                          where n2 is (batch_size * num_positives) + (batch_size * num_hard_negatives)
+                          and D is embedding size
+        :type passage_vectors: torch.Tensor
+
+        :return: cosine similarity score of each query with each context/passage (dimension: n1xn2)
+        """
+        # q_vector: n1 x D, ctx_vectors: n2 x D, result n1 x n2
+        cosine_similarities = []
+        passages_per_batch = passage_vectors.shape[0]
+        for i,query_vector in enumerate(query_vectors):
+            query_vector_repeated = query_vector.repeat(2, 1)
+            current_cosine_similarities = nn.functional.cosine_similarity(query_vector_repeated, passage_vectors[i:i+2,:], dim=1)
+            cosine_similarities.append(current_cosine_similarities)
+        return torch.stack(cosine_similarities)
+
     def get_similarity_function(self):
         """
         Returns the type of similarity function used to compare queries and passages/contexts
         """
-        if "dot_product" in self.similarity_function:
+        if "dot_product" == self.similarity_function:
             return TextSimilarityHead.dot_product_scores
-        elif "cosine" in self.similarity_function:
+        elif "cosine" == self.similarity_function:
             return TextSimilarityHead.cosine_scores
+        elif "cosine_no_in_batch" == self.similarity_function:
+            return TextSimilarityHead.cosine_no_in_batch_scores
+
 
     def forward(self, query_vectors:torch.Tensor, passage_vectors:torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
@@ -1700,6 +1729,25 @@ class TextSimilarityHead(PredictionHead):
         """
 
         sim_func = self.get_similarity_function()
+        scores = sim_func(query_vectors, passage_vectors)
+
+        if len(query_vectors.size()) > 1:
+            q_num = query_vectors.size(0)
+            scores = scores.view(q_num, -1)
+
+        softmax_scores = nn.functional.log_softmax(scores, dim=1)
+        return softmax_scores
+
+    def _embeddings_to_scores_all(self, query_vectors:torch.Tensor, passage_vectors:torch.Tensor):
+        """
+        Calculates similarity scores between all given query_vectors and passage_vectors
+
+        :param query_vectors: Tensor of queries encoded by the query encoder model
+        :param passage_vectors: Tensor of passages encoded by the passage encoder model
+        :return: Tensor of log softmax similarity scores of each query with each passage (dimension: n1xn2)
+        """
+
+        sim_func = self.cosine_scores
         scores = sim_func(query_vectors, passage_vectors)
 
         if len(query_vectors.size()) > 1:
@@ -1768,7 +1816,8 @@ class TextSimilarityHead(PredictionHead):
 
         # Get similarity scores
         softmax_scores = self._embeddings_to_scores(global_query_vectors, global_passage_vectors)
-        targets = global_positive_idx_per_question.squeeze(-1).to(softmax_scores.device)
+        #targets = global_positive_idx_per_question.squeeze(-1).to(softmax_scores.device)
+        targets = torch.tensor([1]*softmax_scores.shape[0]).to(softmax_scores.device)
 
         # Calculate loss
         loss = self.loss_fct(softmax_scores, targets)
@@ -1784,7 +1833,7 @@ class TextSimilarityHead(PredictionHead):
         :return: predicted ranks of passages for each query
         """
         query_vectors, passage_vectors = logits
-        softmax_scores = self._embeddings_to_scores(query_vectors, passage_vectors)
+        softmax_scores = self._embeddings_to_scores_all(query_vectors, passage_vectors)
         _, sorted_scores = torch.sort(softmax_scores, dim=1, descending=True)
         return sorted_scores
 
