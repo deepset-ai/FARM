@@ -2868,6 +2868,9 @@ class TextSimilarityProcessor(Processor):
             ...]}
         """
         dicts = read_dpr_json(file, max_samples=self.max_samples, num_hard_negatives=self.num_hard_negatives, num_positives=self.num_positives, shuffle_negatives=self.shuffle_negatives, shuffle_positives=self.shuffle_positives)
+
+        # shuffle dicts to make sure that similar positive passages do not end up in one batch
+        dicts = random.sample(dicts, len(dicts))
         return dicts
 
     def dataset_from_dicts(self, dicts, indices=None, return_baskets = False):

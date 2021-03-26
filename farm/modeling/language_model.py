@@ -1447,16 +1447,20 @@ class DPRQuestionEncoder(LanguageModel):
             dpr_question_encoder.model = transformers.DPRQuestionEncoder.from_pretrained(farm_lm_model, config=dpr_config, **kwargs)
             dpr_question_encoder.language = dpr_question_encoder.model.config.language
         else:
-            model_type = AutoConfig.from_pretrained(pretrained_model_name_or_path).model_type
-            if model_type == "dpr":
+            original_model_config = AutoConfig.from_pretrained(pretrained_model_name_or_path)
+            if original_model_config.model_type == "dpr":
                 # "pretrained dpr model": load existing pretrained DPRQuestionEncoder model
                 dpr_question_encoder.model = transformers.DPRQuestionEncoder.from_pretrained(
                     str(pretrained_model_name_or_path), **kwargs)
             else:
                 # "from scratch": load weights from different architecture (e.g. bert) into DPRQuestionEncoder
-                dpr_question_encoder.model = transformers.DPRQuestionEncoder(config=transformers.DPRConfig(**kwargs))
+                # but keep config values from original architecture
+                # TODO test for architectures other than BERT, e.g. Electra
+                original_config_dict = vars(original_model_config)
+                original_config_dict.update(kwargs)
+                dpr_question_encoder.model = transformers.DPRQuestionEncoder(config=transformers.DPRConfig(**original_config_dict))
                 dpr_question_encoder.model.base_model.bert_model = AutoModel.from_pretrained(
-                    str(pretrained_model_name_or_path), **kwargs)
+                    str(pretrained_model_name_or_path), **original_config_dict)
             dpr_question_encoder.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
 
         return dpr_question_encoder
