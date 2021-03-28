@@ -17,6 +17,7 @@ sklearn
 # Metrics or logging related
 seqeval
 mlflow<=1.13.1
+wandb==0.10.14
 # huggingface repository
 transformers==4.1.1
 # accessing dictionary elements with dot notation
