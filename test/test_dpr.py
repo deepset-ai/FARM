@@ -2,6 +2,7 @@ import pytest
 import torch
 import logging
 import numpy as np
+from pathlib import Path
 from farm.data_handler.processor import TextSimilarityProcessor
 from farm.data_handler.data_silo import DataSilo
 from farm.train import Trainer
@@ -402,7 +403,7 @@ def test_dpr_context_only():
     assert tensor_names == ['passage_input_ids', 'passage_segment_ids', 'passage_attention_mask', 'label_ids']
 
 
-def test_dpr_save_load():
+def test_dpr_processor_save_load():
     d = {'query': 'big little lies season 2 how many episodes',
          'passages': [
                          {'title': 'Big Little Lies (TV series)',
@@ -441,6 +442,7 @@ def test_dpr_save_load():
     loadedprocessor = TextSimilarityProcessor.load_from_dir(load_dir="testsave/dpr_processor")
     dataset2, tensor_names, _ = loadedprocessor.dataset_from_dicts(dicts=[d], return_baskets=False)
     assert np.array_equal(dataset.tensors[0],dataset2.tensors[0])
+
 
 
 def test_dpr_training():
@@ -524,6 +526,36 @@ def test_dpr_training():
 
     trainer.train()
 
+    ######## save and load model again
+    save_dir = Path("testsave/dpr-model")
+    model.save(save_dir)
+    del model
+
+    model2 = BiAdaptiveModel.load(save_dir, device=device)
+    model2, optimizer2, lr_schedule = initialize_optimizer(
+        model=model2,
+        learning_rate=1e-5,
+        optimizer_opts={"name": "TransformersAdamW", "correct_bias": True, "weight_decay": 0.0, \
+                        "eps": 1e-08},
+        schedule_opts={"name": "LinearWarmup", "num_warmup_steps": 100},
+        n_batches=len(data_silo.loaders["train"]),
+        n_epochs=n_epochs,
+        grad_acc_steps=1,
+        device=device,
+        distributed=distributed
+    )
+    trainer2 = Trainer(
+        model=model2,
+        optimizer=optimizer,
+        data_silo=data_silo,
+        epochs=n_epochs,
+        n_gpu=n_gpu,
+        lr_schedule=lr_schedule,
+        evaluate_every=evaluate_every,
+        device=device,
+    )
+
+    trainer2.train()
 
 
 if __name__=="__main__":

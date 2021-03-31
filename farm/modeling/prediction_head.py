@@ -1709,7 +1709,7 @@ class TextSimilarityHead(PredictionHead):
         softmax_scores = nn.functional.log_softmax(scores, dim=1)
         return softmax_scores
 
-    def logits_to_loss(self, logits: Tuple[torch.Tensor, torch.Tensor], **kwargs):
+    def logits_to_loss(self, logits: Tuple[torch.Tensor, torch.Tensor], label_ids, **kwargs):
         """
         Computes the loss (Default: NLLLoss) by applying a similarity function (Default: dot product) to the input
         tuple of (query_vectors, passage_vectors) and afterwards applying the loss function on similarity scores.
@@ -1729,8 +1729,7 @@ class TextSimilarityHead(PredictionHead):
         query_vectors, passage_vectors = logits
 
         # Prepare Labels
-        lm_label_ids = kwargs.get(self.label_tensor_name)
-        positive_idx_per_question = torch.nonzero((lm_label_ids.view(-1) == 1), as_tuple=False)
+        positive_idx_per_question = torch.nonzero((label_ids.view(-1) == 1), as_tuple=False)
 
         # Gather global embeddings from all distributed nodes (DDP)
         if rank != -1:
@@ -1788,13 +1787,12 @@ class TextSimilarityHead(PredictionHead):
         _, sorted_scores = torch.sort(softmax_scores, dim=1, descending=True)
         return sorted_scores
 
-    def prepare_labels(self, **kwargs):
+    def prepare_labels(self, label_ids, **kwargs):
         """
         Returns a tensor with passage labels(0:hard_negative/1:positive) for each query
 
         :return: passage labels(0:hard_negative/1:positive) for each query
         """
-        label_ids = kwargs.get(self.label_tensor_name)
         labels = torch.zeros(label_ids.size(0), label_ids.numel())
         
         positive_indices = torch.nonzero(label_ids.view(-1) == 1, as_tuple=False)

@@ -1447,16 +1447,23 @@ class DPRQuestionEncoder(LanguageModel):
             dpr_question_encoder.model = transformers.DPRQuestionEncoder.from_pretrained(farm_lm_model, config=dpr_config, **kwargs)
             dpr_question_encoder.language = dpr_question_encoder.model.config.language
         else:
-            model_type = AutoConfig.from_pretrained(pretrained_model_name_or_path).model_type
-            if model_type == "dpr":
+            original_model_config = AutoConfig.from_pretrained(pretrained_model_name_or_path)
+            if original_model_config.model_type == "dpr":
                 # "pretrained dpr model": load existing pretrained DPRQuestionEncoder model
                 dpr_question_encoder.model = transformers.DPRQuestionEncoder.from_pretrained(
                     str(pretrained_model_name_or_path), **kwargs)
             else:
                 # "from scratch": load weights from different architecture (e.g. bert) into DPRQuestionEncoder
-                dpr_question_encoder.model = transformers.DPRQuestionEncoder(config=transformers.DPRConfig(**kwargs))
+                # but keep config values from original architecture
+                # TODO test for architectures other than BERT, e.g. Electra
+                if original_model_config.model_type != "bert":
+                    logger.warning(f"Using a model of type '{original_model_config.model_type}' which might be incompatible with DPR encoders."
+                                   f"Bert based encoders are supported that need input_ids,token_type_ids,attention_mask as input tensors.")
+                original_config_dict = vars(original_model_config)
+                original_config_dict.update(kwargs)
+                dpr_question_encoder.model = transformers.DPRQuestionEncoder(config=transformers.DPRConfig(**original_config_dict))
                 dpr_question_encoder.model.base_model.bert_model = AutoModel.from_pretrained(
-                    str(pretrained_model_name_or_path), **kwargs)
+                    str(pretrained_model_name_or_path), **original_config_dict)
             dpr_question_encoder.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
 
         return dpr_question_encoder
@@ -1541,16 +1548,25 @@ class DPRContextEncoder(LanguageModel):
             dpr_context_encoder.language = dpr_context_encoder.model.config.language
         else:
             # Pytorch-transformer Style
-            model_type = AutoConfig.from_pretrained(pretrained_model_name_or_path).model_type
-            if model_type == "dpr":
+            original_model_config = AutoConfig.from_pretrained(pretrained_model_name_or_path)
+            if original_model_config.model_type == "dpr":
                 # "pretrained dpr model": load existing pretrained DPRContextEncoder model
                 dpr_context_encoder.model = transformers.DPRContextEncoder.from_pretrained(
                     str(pretrained_model_name_or_path), **kwargs)
             else:
                 # "from scratch": load weights from different architecture (e.g. bert) into DPRContextEncoder
-                dpr_context_encoder.model = transformers.DPRContextEncoder(config=transformers.DPRConfig(**kwargs))
+                # but keep config values from original architecture
+                # TODO test for architectures other than BERT, e.g. Electra
+                if original_model_config.model_type != "bert":
+                    logger.warning(
+                        f"Using a model of type '{original_model_config.model_type}' which might be incompatible with DPR encoders."
+                        f"Bert based encoders are supported that need input_ids,token_type_ids,attention_mask as input tensors.")
+                original_config_dict = vars(original_model_config)
+                original_config_dict.update(kwargs)
+                dpr_context_encoder.model = transformers.DPRContextEncoder(
+                    config=transformers.DPRConfig(**original_config_dict))
                 dpr_context_encoder.model.base_model.bert_model = AutoModel.from_pretrained(
-                    str(pretrained_model_name_or_path), **kwargs)
+                    str(pretrained_model_name_or_path), **original_config_dict)
             dpr_context_encoder.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
 
         return dpr_context_encoder
