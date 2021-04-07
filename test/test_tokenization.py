@@ -108,15 +108,18 @@ def test_save_load(caplog):
     lang_names = ["bert-base-cased", "roberta-base", "xlnet-base-cased"]
     tokenizers = []
     for lang_name in lang_names:
-        t = Tokenizer.load(lang_name, lower_case=False)
+        if "xlnet" in lang_name.lower():
+            t = Tokenizer.load(lang_name, lower_case=False, use_fast=True, from_slow=True)
+        else:
+            t = Tokenizer.load(lang_name, lower_case=False)
         t.add_tokens(new_tokens=["neverseentokens"])
         tokenizers.append(t)
 
     basic_text = "Some Text with neverseentokens plus !215?#. and a combined-token_with/chars"
 
     for tokenizer in tokenizers:
-        save_dir = f"testsave"
         tokenizer_type = tokenizer.__class__.__name__
+        save_dir = f"testsave/{tokenizer_type}"
         tokenizer.save_pretrained(save_dir)
         tokenizer_loaded = Tokenizer.load(save_dir, tokenizer_class=tokenizer_type)
         encoded_before = tokenizer.encode_plus(basic_text).encodings[0]
