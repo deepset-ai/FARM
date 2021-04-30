@@ -464,8 +464,10 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
                 transformers_model2 = AutoModel.from_config(config=self.language_model2.model.config)
 
             # transfer weights for language model + prediction head
-            setattr(transformers_model1, transformers_model1.base_model_prefix, self.language_model1.model)
-            setattr(transformers_model2, transformers_model2.base_model_prefix, self.language_model2.model)
+            setattr(transformers_model1, transformers_model1.base_model_prefix,
+                    getattr(self.language_model1.model, self.language_model1.model.base_model_prefix))
+            setattr(transformers_model2, transformers_model2.base_model_prefix,
+                    getattr(self.language_model2.model, self.language_model2.model.base_model_prefix))
             logger.warning("No prediction head weights are required for DPR")
 
         else:
