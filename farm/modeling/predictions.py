@@ -102,6 +102,7 @@ class QACandidate:
         and end indices that are stored in the object. """
         if string == "":
             self.answer = "no_answer"
+            self.aggregation_level = "document"
             if self.offset_answer_start != 0 or self.offset_answer_end != 0:
                 logger.error(f"Both start and end offsets should be 0: \n"
                              f"{self.offset_answer_start}, {self.offset_answer_end} with a no_answer. ")
@@ -189,7 +190,16 @@ class QACandidate:
         else:
             end_ch = token_offsets[end_t]
 
-        final_text = clear_text[start_ch: end_ch].strip()
+        final_text = clear_text[start_ch: end_ch]
+
+        # if the final_text is more than whitespaces we trim it otherwise return a no_answer
+        # final_text can be an empty string if start_t points to the very final token of the passage
+        # final_text can be a whitespace if there is a whitespace token in the text, e.g.,
+        # if the original text contained multiple consecutive whitespaces
+        if len(final_text.strip()) > 0:
+            final_text = final_text.strip()
+        else:
+            return "", 0, 0
         end_ch = int(start_ch + len(final_text))
 
         return final_text, start_ch, end_ch
