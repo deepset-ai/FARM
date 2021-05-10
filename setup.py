@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+import os
+import re
 from io import open
 
 from setuptools import find_packages, setup
@@ -44,9 +47,24 @@ def get_dependency_links(filename):
 dependency_links = get_dependency_links('requirements.txt')
 parsed_requirements = parse_requirements('requirements.txt')
 
+
+def versionfromfile(*filepath):
+    infile = os.path.join(*filepath)
+    with open(infile) as fp:
+        version_match = re.search(
+            r"^__version__\s*=\s*['\"]([^'\"]*)['\"]", fp.read(), re.M
+        )
+        if version_match:
+            return version_match.group(1)
+        raise RuntimeError("Unable to find version string in {}.".format(infile))
+
+
+here = os.path.abspath(os.path.dirname(__file__))
+
+
 setup(
     name="farm",
-    version="0.7.1",
+    version=versionfromfile(here, "farm", "_version.py"),
     author="Timo Moeller, Malte Pietsch, Branden Chan, Tanay Soni, Bogdan Kostic, Julian Risch",
     author_email="timo.moeller@deepset.ai",
     description="Framework for finetuning and evaluating transformer based language models",
