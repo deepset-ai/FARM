@@ -102,7 +102,6 @@ class QACandidate:
         and end indices that are stored in the object. """
         if string == "":
             self.answer = "no_answer"
-            self.aggregation_level = "document"
             if self.offset_answer_start != 0 or self.offset_answer_end != 0:
                 logger.error(f"Both start and end offsets should be 0: \n"
                              f"{self.offset_answer_start}, {self.offset_answer_end} with a no_answer. ")

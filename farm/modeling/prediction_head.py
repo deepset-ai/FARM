@@ -1423,7 +1423,7 @@ class QuestionAnsweringHead(PredictionHead):
                                                         score=qa_candidate.score,
                                                         answer_type=qa_candidate.answer_type,
                                                         offset_unit="token",
-                                                        aggregation_level="passage",
+                                                        aggregation_level="document",
                                                         passage_id=str(sample_idx),
                                                         n_passages_in_doc=n_samples,
                                                         confidence=qa_candidate.confidence)
