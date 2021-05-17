@@ -1446,9 +1446,20 @@ class DPRQuestionEncoder(LanguageModel):
         farm_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(farm_lm_config):
             # FARM style
-            dpr_config = transformers.DPRConfig.from_pretrained(farm_lm_config)
+            original_model_config = AutoConfig.from_pretrained(farm_lm_config)
             farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
-            dpr_question_encoder.model = transformers.DPRQuestionEncoder.from_pretrained(farm_lm_model, config=dpr_config, **kwargs)
+            if original_model_config.model_type == "dpr":
+                dpr_question_encoder.model = dpr_question_encoder.model = transformers.DPRQuestionEncoder.from_pretrained(
+                    farm_lm_model, **kwargs)
+            else:
+                if original_model_config.model_type != "bert":
+                    logger.warning(f"Using a model of type '{original_model_config.model_type}' which might be incompatible with DPR encoders."
+                                   f"Bert based encoders are supported that need input_ids,token_type_ids,attention_mask as input tensors.")
+                original_config_dict = vars(original_model_config)
+                original_config_dict.update(kwargs)
+                dpr_question_encoder.model = transformers.DPRQuestionEncoder(config=transformers.DPRConfig(**original_config_dict))
+                language_model_class = cls.get_language_model_class(farm_lm_config)
+                dpr_question_encoder.model.base_model.bert_model = cls.subclasses[language_model_class].load(str(pretrained_model_name_or_path))
             dpr_question_encoder.language = dpr_question_encoder.model.config.language
         else:
             original_model_config = AutoConfig.from_pretrained(pretrained_model_name_or_path)
@@ -1544,12 +1555,28 @@ class DPRContextEncoder(LanguageModel):
             dpr_context_encoder.name = pretrained_model_name_or_path
         # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
         farm_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
+
         if os.path.exists(farm_lm_config):
             # FARM style
-            dpr_config = transformers.DPRConfig.from_pretrained(farm_lm_config)
+            original_model_config = AutoConfig.from_pretrained(farm_lm_config)
             farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
-            dpr_context_encoder.model = transformers.DPRContextEncoder.from_pretrained(farm_lm_model, config=dpr_config, **kwargs)
+            if original_model_config.model_type == "dpr":
+                dpr_context_encoder.model = dpr_context_encoder.model = transformers.DPRContextEncoder.from_pretrained(
+                    farm_lm_model, **kwargs)
+            else:
+                if original_model_config.model_type != "bert":
+                    logger.warning(
+                        f"Using a model of type '{original_model_config.model_type}' which might be incompatible with DPR encoders."
+                        f"Bert based encoders are supported that need input_ids,token_type_ids,attention_mask as input tensors.")
+                original_config_dict = vars(original_model_config)
+                original_config_dict.update(kwargs)
+                dpr_context_encoder.model = transformers.DPRContextEncoder(
+                    config=transformers.DPRConfig(**original_config_dict))
+                language_model_class = cls.get_language_model_class(farm_lm_config)
+                dpr_context_encoder.model.base_model.bert_model = cls.subclasses[language_model_class].load(
+                    str(pretrained_model_name_or_path))
             dpr_context_encoder.language = dpr_context_encoder.model.config.language
+
         else:
             # Pytorch-transformer Style
             original_model_config = AutoConfig.from_pretrained(pretrained_model_name_or_path)
