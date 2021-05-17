@@ -1448,9 +1448,10 @@ class DPRQuestionEncoder(LanguageModel):
             # FARM style
             original_model_config = AutoConfig.from_pretrained(farm_lm_config)
             farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
-            if original_model_config.model_type == "dpr":
-                dpr_question_encoder.model = dpr_question_encoder.model = transformers.DPRQuestionEncoder.from_pretrained(
-                    farm_lm_model, **kwargs)
+
+            if original_model_config.model_type == "dpr" or original_model_config.model_type == "bert":
+                dpr_config = transformers.DPRConfig.from_pretrained(farm_lm_config)
+                dpr_question_encoder.model = transformers.DPRQuestionEncoder.from_pretrained(farm_lm_model, config=dpr_config, **kwargs)
             else:
                 if original_model_config.model_type != "bert":
                     logger.warning(f"Using a model of type '{original_model_config.model_type}' which might be incompatible with DPR encoders."
@@ -1560,9 +1561,10 @@ class DPRContextEncoder(LanguageModel):
             # FARM style
             original_model_config = AutoConfig.from_pretrained(farm_lm_config)
             farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
-            if original_model_config.model_type == "dpr":
-                dpr_context_encoder.model = dpr_context_encoder.model = transformers.DPRContextEncoder.from_pretrained(
-                    farm_lm_model, **kwargs)
+
+            if original_model_config.model_type == "dpr" or original_model_config.model_type == "bert":
+                dpr_config = transformers.DPRConfig.from_pretrained(farm_lm_config)
+                dpr_context_encoder.model = transformers.DPRContextEncoder.from_pretrained(farm_lm_model,config=dpr_config,**kwargs)
             else:
                 if original_model_config.model_type != "bert":
                     logger.warning(
