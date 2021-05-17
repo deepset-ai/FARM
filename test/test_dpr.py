@@ -444,6 +444,99 @@ def test_dpr_processor_save_load():
     assert np.array_equal(dataset.tensors[0],dataset2.tensors[0])
 
 
+def test_dpr_processor_save_load_non_bert_tokenizer():
+    d = {'query': "Comment s'appelle le portail open data du gouvernement ?",
+         'passages': [
+             {'title': 'Etalab',
+              'text': "Etalab est une administration publique française qui fait notamment office de Chief Data Officer de l'État et coordonne la conception et la mise en œuvre de sa stratégie dans le domaine de la donnée (ouverture et partage des données publiques ou open data, exploitation des données et intelligence artificielle...). Ainsi, Etalab développe et maintient le portail des données ouvertes du gouvernement français data.gouv.fr. Etalab promeut également une plus grande ouverture l'administration sur la société (gouvernement ouvert) : transparence de l'action publique, innovation ouverte, participation citoyenne... elle promeut l’innovation, l’expérimentation, les méthodes de travail ouvertes, agiles et itératives, ainsi que les synergies avec la société civile pour décloisonner l’administration et favoriser l’adoption des meilleures pratiques professionnelles dans le domaine du numérique. À ce titre elle étudie notamment l’opportunité de recourir à des technologies en voie de maturation issues du monde de la recherche. Cette entité chargée de l'innovation au sein de l'administration doit contribuer à l'amélioration du service public grâce au numérique. Elle est rattachée à la Direction interministérielle du numérique, dont les missions et l’organisation ont été fixées par le décret du 30 octobre 2019.  Dirigé par Laure Lucchesi depuis 2016, elle rassemble une équipe pluridisciplinaire d'une trentaine de personnes.",
+              'label': 'positive',
+              'external_id': '1'},
+         ]
+         }
+
+    # load model from model hub
+    query_embedding_model = "etalab-ia/dpr-question_encoder-fr_qa-camembert"
+    passage_embedding_model = "etalab-ia/dpr-ctx_encoder-fr_qa-camembert"
+    query_tokenizer = Tokenizer.load(pretrained_model_name_or_path=query_embedding_model) #tokenizer class is inferred automatically
+    query_encoder = LanguageModel.load(pretrained_model_name_or_path=query_embedding_model,
+                                       language_model_class="DPRQuestionEncoder")
+    passage_tokenizer = Tokenizer.load(pretrained_model_name_or_path=passage_embedding_model)
+    passage_encoder = LanguageModel.load(pretrained_model_name_or_path=passage_embedding_model,
+                                         language_model_class="DPRContextEncoder")
+
+    processor = TextSimilarityProcessor(query_tokenizer=query_tokenizer,
+                                        passage_tokenizer=passage_tokenizer,
+                                        max_seq_len_passage=256,
+                                        max_seq_len_query=256,
+                                        label_list=["hard_negative", "positive"],
+                                        metric="text_similarity_metric",
+                                        embed_title=True,
+                                        num_hard_negatives=0,
+                                        num_positives=1)
+    prediction_head = TextSimilarityHead(similarity_function="dot_product")
+
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")
+    model = BiAdaptiveModel(
+        language_model1=query_encoder,
+        language_model2=passage_encoder,
+        prediction_heads=[prediction_head],
+        embeds_dropout_prob=0.1,
+        lm1_output_types=["per_sequence"],
+        lm2_output_types=["per_sequence"],
+        device=device,
+    )
+    model.connect_heads_with_processor(processor.tasks, require_labels=False)
+
+    # save model to disk
+    save_dir = "testsave/dpr_model"
+    query_encoder_dir = "query_encoder"
+    passage_encoder_dir = "passage_encoder"
+    model.save(Path(save_dir), lm1_name=query_encoder_dir, lm2_name=passage_encoder_dir)
+    query_tokenizer.save_pretrained(save_dir + f"/{query_encoder_dir}")
+    passage_tokenizer.save_pretrained(save_dir + f"/{passage_encoder_dir}")
+
+    # load model from disk
+    loaded_query_tokenizer = Tokenizer.load(
+        pretrained_model_name_or_path=Path(save_dir) / query_encoder_dir)  # tokenizer class is inferred automatically
+    loaded_query_encoder = LanguageModel.load(pretrained_model_name_or_path=Path(save_dir) / query_encoder_dir,
+                                       language_model_class="DPRQuestionEncoder")
+    loaded_passage_tokenizer = Tokenizer.load(pretrained_model_name_or_path=Path(save_dir) / passage_encoder_dir)
+    loaded_passage_encoder = LanguageModel.load(pretrained_model_name_or_path=Path(save_dir) / passage_encoder_dir,
+                                         language_model_class="DPRContextEncoder")
+
+    loaded_processor = TextSimilarityProcessor(query_tokenizer=loaded_query_tokenizer,
+                                        passage_tokenizer=loaded_passage_tokenizer,
+                                        max_seq_len_passage=256,
+                                        max_seq_len_query=256,
+                                        label_list=["hard_negative", "positive"],
+                                        metric="text_similarity_metric",
+                                        embed_title=True,
+                                        num_hard_negatives=0,
+                                        num_positives=1)
+    loaded_prediction_head = TextSimilarityHead(similarity_function="dot_product")
+
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")
+    loaded_model = BiAdaptiveModel(
+        language_model1=loaded_query_encoder,
+        language_model2=loaded_passage_encoder,
+        prediction_heads=[loaded_prediction_head],
+        embeds_dropout_prob=0.1,
+        lm1_output_types=["per_sequence"],
+        lm2_output_types=["per_sequence"],
+        device=device,
+    )
+    loaded_model.connect_heads_with_processor(loaded_processor.tasks, require_labels=False)
+
+    # compare model loaded from model hub with model loaded from disk
+    dataset, tensor_names, _ = processor.dataset_from_dicts(dicts=[d], return_baskets=False)
+    dataset2, tensor_names2, _ = loaded_processor.dataset_from_dicts(dicts=[d], return_baskets=False)
+    assert np.array_equal(dataset.tensors[0], dataset2.tensors[0])
 
 def test_dpr_training():
     batch_size = 1
