@@ -404,7 +404,7 @@ def test_dpr_context_only():
 
 
 def test_dpr_processor_save_load():
-    d = {'query': 'big little lies season 2 how many episodes',
+    d = {'query': 'big little lies season 2 how many episodes ?',
          'passages': [
                          {'title': 'Big Little Lies (TV series)',
                           'text': 'series garnered several accolades. It received 16 Emmy Award nominations and won eight, including Outstanding Limited Series and acting awards for Kidman, Skarsgård, and Dern. The trio also won Golden Globe Awards in addition to a Golden Globe Award for Best Miniseries or Television Film win for the series. Kidman and Skarsgård also received Screen Actors Guild Awards for their performances. Despite originally being billed as a miniseries, HBO renewed the series for a second season. Production on the second season began in March 2018 and is set to premiere in 2019. All seven episodes are being written by Kelley',
@@ -500,10 +500,11 @@ def test_dpr_processor_save_load_non_bert_tokenizer():
 
     # load model from disk
     loaded_query_tokenizer = Tokenizer.load(
-        pretrained_model_name_or_path=Path(save_dir) / query_encoder_dir)  # tokenizer class is inferred automatically
+        pretrained_model_name_or_path=Path(save_dir) / query_encoder_dir, use_fast=True)  # tokenizer class is inferred automatically
     loaded_query_encoder = LanguageModel.load(pretrained_model_name_or_path=Path(save_dir) / query_encoder_dir,
                                        language_model_class="DPRQuestionEncoder")
-    loaded_passage_tokenizer = Tokenizer.load(pretrained_model_name_or_path=Path(save_dir) / passage_encoder_dir)
+    loaded_passage_tokenizer = Tokenizer.load(
+        pretrained_model_name_or_path=Path(save_dir) / passage_encoder_dir, use_fast=True)
     loaded_passage_encoder = LanguageModel.load(pretrained_model_name_or_path=Path(save_dir) / passage_encoder_dir,
                                          language_model_class="DPRContextEncoder")
 

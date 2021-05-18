@@ -294,7 +294,21 @@ class LanguageModel(nn.Module):
         model_to_save = (
             self.model.module if hasattr(self.model, "module") else self.model
         )  # Only save the model it-self
-        torch.save(model_to_save.state_dict(), save_name)
+
+        state_dict = model_to_save.state_dict()
+        keys = state_dict.keys()
+
+        # if we save a question_encoder or a cty_encoder of a dpr model, we need to adjust the names of the model weights
+        # this adjustment removes a prefix name that otherwise would prevent the weights from being loaded again
+        if model_to_save.base_model_prefix.startswith("question_") or model_to_save.base_model_prefix.startswith("ctx_"):
+            for key in list(keys):
+                if key.startswith("question_encoder.bert_model.model.") or key.startswith("ctx_encoder.bert_model.model."):
+                    new_key = key.split("_encoder.bert_model.model.", 1)[1]
+                elif key.startswith("question_encoder.bert_model.") or key.startswith("ctx_encoder.bert_model."):
+                    new_key = key.split("_encoder.bert_model.", 1)[1]
+                state_dict[new_key] = state_dict.pop(key)
+
+        torch.save(state_dict, save_name)
         self.save_config(save_dir)
 
     @classmethod
@@ -1572,8 +1586,7 @@ class DPRContextEncoder(LanguageModel):
                         f"Bert based encoders are supported that need input_ids,token_type_ids,attention_mask as input tensors.")
                 original_config_dict = vars(original_model_config)
                 original_config_dict.update(kwargs)
-                dpr_context_encoder.model = transformers.DPRContextEncoder(
-                    config=transformers.DPRConfig(**original_config_dict))
+                dpr_context_encoder.model = transformers.DPRContextEncoder(config=transformers.DPRConfig(**original_config_dict))
                 language_model_class = cls.get_language_model_class(farm_lm_config)
                 dpr_context_encoder.model.base_model.bert_model = cls.subclasses[language_model_class].load(
                     str(pretrained_model_name_or_path))
