@@ -570,6 +570,7 @@ class TextClassificationProcessor(Processor):
         self.skiprows = skiprows
         self.header = header
         self.max_samples = max_samples
+        logger.warning(f"Currently no support in Processor for returning problematic ids")
 
         super(TextClassificationProcessor, self).__init__(
             tokenizer=tokenizer,
@@ -672,7 +673,6 @@ class TextClassificationProcessor(Processor):
 
         # TODO populate problematic ids
         problematic_ids = set()
-        logger.warning("Currently no support in Processor for returning problematic ids")
         dataset, tensornames = self._create_dataset()
         if return_baskets:
             return dataset, tensornames, problematic_ids, self.baskets
