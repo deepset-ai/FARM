@@ -1722,7 +1722,7 @@ class TextSimilarityHead(PredictionHead):
         # Check if DDP is initialized
         try:
             rank = torch.distributed.get_rank()
-        except AssertionError:
+        except (AssertionError, RuntimeError):
             rank = -1
 
         # Prepare predicted scores

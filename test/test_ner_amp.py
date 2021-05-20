@@ -94,7 +94,7 @@ def test_ner_amp(caplog):
 
     assert result[0]["predictions"][0][0]["context"] == "Crown"
     assert isinstance(result[0]["predictions"][0][0]["probability"], np.float32)
-    assert result[0]["predictions"][0][0]["probability"] > 0.124
+    assert np.isclose(result[0]["predictions"][0][0]["probability"], 0.124, rtol=0.05)
     assert result[0]["predictions"][0][0]["label"] == "OTH"
 
 
