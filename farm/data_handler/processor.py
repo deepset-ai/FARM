@@ -1007,7 +1007,6 @@ class InferenceProcessor(TextClassificationProcessor):
                 self._log_samples(1)
 
             problematic_ids = set()
-            logger.warning("Currently no support in InferenceProcessor for returning problematic ids")
             dataset, tensornames = self._create_dataset()
             ret = [dataset, tensornames, problematic_ids]
             if return_baskets:
