@@ -33,7 +33,8 @@ from transformers import (
     XLNetTokenizer, XLNetTokenizerFast,
     CamembertTokenizer, CamembertTokenizerFast,
     DPRContextEncoderTokenizer, DPRContextEncoderTokenizerFast,
-    DPRQuestionEncoderTokenizer, DPRQuestionEncoderTokenizerFast
+    DPRQuestionEncoderTokenizer, DPRQuestionEncoderTokenizerFast,
+    BigBirdTokenizer, BigBirdTokenizerFast
 )
 from transformers.models.bert.tokenization_bert import load_vocab
 from transformers.tokenization_utils import PreTrainedTokenizer
@@ -138,6 +139,11 @@ class Tokenizer:
                 ret = DPRContextEncoderTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
                 ret = DPRContextEncoderTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        elif "BigBirdTokenizer" in tokenizer_class:
+            if use_fast:
+                ret = BigBirdTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            else:
+                ret = BigBirdTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         if ret is None:
             raise Exception("Unable to load tokenizer")
         else:
@@ -226,6 +232,8 @@ class Tokenizer:
             tokenizer_class = "DPRQuestionEncoderTokenizer"
         elif "dpr-ctx_encoder" in pretrained_model_name_or_path.lower():
             tokenizer_class = "DPRContextEncoderTokenizer"
+        elif "bigbird" in pretrained_model_name_or_path.lower():
+            tokenizer_class = "BigBirdTokenizer"
         else:
             raise ValueError(f"Could not infer tokenizer_class from model config or "
                              f"name '{pretrained_model_name_or_path}'. Set arg `tokenizer_class` "
