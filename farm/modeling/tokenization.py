@@ -203,6 +203,8 @@ class Tokenizer:
         # fall back to inferring tokenizer class from model name.
         if "albert" in pretrained_model_name_or_path.lower():
             tokenizer_class = "AlbertTokenizer"
+        elif "bigbird" in pretrained_model_name_or_path.lower():
+            tokenizer_class = "BigBirdTokenizer"
         elif "xlm-roberta" in pretrained_model_name_or_path.lower():
             tokenizer_class = "XLMRobertaTokenizer"
         elif "roberta" in pretrained_model_name_or_path.lower():
@@ -232,8 +234,6 @@ class Tokenizer:
             tokenizer_class = "DPRQuestionEncoderTokenizer"
         elif "dpr-ctx_encoder" in pretrained_model_name_or_path.lower():
             tokenizer_class = "DPRContextEncoderTokenizer"
-        elif "bigbird" in pretrained_model_name_or_path.lower():
-            tokenizer_class = "BigBirdTokenizer"
         else:
             raise ValueError(f"Could not infer tokenizer_class from model config or "
                              f"name '{pretrained_model_name_or_path}'. Set arg `tokenizer_class` "
