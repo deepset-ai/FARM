@@ -164,7 +164,7 @@ class Tokenizer:
                 return tokenizer_class
 
         model_type = config.model_type
-        print(model_type)
+
         if model_type == "xlm-roberta":
             tokenizer_class = "XLMRobertaTokenizer"
         elif model_type == "roberta":
@@ -190,6 +190,8 @@ class Tokenizer:
                 tokenizer_class = "DPRContextEncoderTokenizer"
             elif config.architectures[0] == "DPRReader":
                 raise NotImplementedError("DPRReader models are currently not supported.")
+        elif model_type == "big_bird":
+            tokenizer_class = "BigBirdTokenizer"
         else:
             # Fall back to inferring type from model name
             logger.warning("Could not infer Tokenizer type from config. Trying to infer "
@@ -202,9 +204,10 @@ class Tokenizer:
     def _infer_tokenizer_class_from_string(pretrained_model_name_or_path):
         # If inferring tokenizer class from config doesn't succeed,
         # fall back to inferring tokenizer class from model name.
+
         if "albert" in pretrained_model_name_or_path.lower():
             tokenizer_class = "AlbertTokenizer"
-        elif "big_bird" in pretrained_model_name_or_path.lower():
+        elif "bigbird" in pretrained_model_name_or_path.lower():
             tokenizer_class = "BigBirdTokenizer"
         elif "xlm-roberta" in pretrained_model_name_or_path.lower():
             tokenizer_class = "XLMRobertaTokenizer"
