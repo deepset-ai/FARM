@@ -164,6 +164,7 @@ class Tokenizer:
                 return tokenizer_class
 
         model_type = config.model_type
+        print(model_type)
         if model_type == "xlm-roberta":
             tokenizer_class = "XLMRobertaTokenizer"
         elif model_type == "roberta":
@@ -203,7 +204,7 @@ class Tokenizer:
         # fall back to inferring tokenizer class from model name.
         if "albert" in pretrained_model_name_or_path.lower():
             tokenizer_class = "AlbertTokenizer"
-        elif "bigbird" in pretrained_model_name_or_path.lower():
+        elif "big_bird" in pretrained_model_name_or_path.lower():
             tokenizer_class = "BigBirdTokenizer"
         elif "xlm-roberta" in pretrained_model_name_or_path.lower():
             tokenizer_class = "XLMRobertaTokenizer"
