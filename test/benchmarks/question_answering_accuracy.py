@@ -87,7 +87,7 @@ def test_evaluation():
     result = [{ "run": "FARM internal evaluation",
           "f1_change": f1_score - gold_f1,
           "em_change": em_score - gold_EM,
-          "tnacc_change": tnacc - gold_tnrecall,
+          "tnacc_change": tnacc - gold_tnacc,
           "elapsed_change": elapsed - gold_elapsed,
           "f1": f1_score,
           "em": em_score,
@@ -95,7 +95,7 @@ def test_evaluation():
           "elapsed": elapsed,
           "f1_gold": gold_f1,
           "em_gold": gold_EM,
-          "tnacc_gold": gold_tnrecall,
+          "tnacc_gold": gold_tnacc,
           "elapsed_gold": gold_elapsed
           }]
     logger.info("\n\n" + pformat(result[0]) + "\n")
