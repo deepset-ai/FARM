@@ -67,10 +67,10 @@ jobs:
           apt-get install python3-dev -y
           pip install -r requirements.txt
           pip install .
-          cd test/benchmarks && python question_answering_components.py
-          echo -en "## Benchmarks: QA per component\n" >> report.md
-          cat results_per_component.md >> report.md
-          python question_answering_accuracy.py
+          cd test/benchmarks && python question_answering_accuracy.py
           echo -en "## Benchmarks: QA Accuracy\n" >> report.md
           cat results_accuracy.md >> report.md
+          python question_answering_components.py
+          echo -en "## Benchmarks: QA per component\n" >> report.md
+          cat results_per_component.md >> report.md
           cml-send-comment report.md
