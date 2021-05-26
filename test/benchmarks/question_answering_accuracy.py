@@ -60,7 +60,7 @@ def test_evaluation():
 
     starttime = time()
 
-    data_silo = DataSilo(processor=processor, batch_size=40, max_processes=1)
+    data_silo = DataSilo(processor=processor, batch_size=40*4, max_processes=1)
     model.connect_heads_with_processor(data_silo.processor.tasks, require_labels=True)
     model, _ = optimize_model(model=model, device=device, local_rank=-1, optimizer=None, distributed=False, use_amp=None)
 
@@ -85,7 +85,7 @@ def test_evaluation():
         np.testing.assert_allclose(tnacc, gold_tnacc, rtol=0.001, err_msg=f"FARM Eval changed for top 1 accuracy by: {em_score-gold_EM}")
         np.testing.assert_allclose(elapsed, gold_elapsed, rtol=0.1, err_msg=f"FARM Eval speed changed significantly by: {elapsed - gold_elapsed} seconds")
 
-    result = [{ "run": "FARM internal evaluation",
+    benchmark_result = [{ "run": "FARM internal evaluation",
           "f1_change": f1_score - gold_f1,
           "em_change": em_score - gold_EM,
           "tnacc_change": tnacc - gold_tnacc,
@@ -99,11 +99,11 @@ def test_evaluation():
           "tnacc_gold": gold_tnacc,
           "elapsed_gold": gold_elapsed
           }]
-    logger.info("\n\n" + pformat(result[0]) + "\n")
+    logger.info("\n\n" + pformat(benchmark_result[0]) + "\n")
 
     # # 2. Test FARM predictions with outside eval script
     starttime = time()
-    model = Inferencer(model=model, processor=processor, task_type="question_answering", batch_size=40, gpu=device.type=="cuda", num_processes =1)
+    model = Inferencer(model=model, processor=processor, task_type="question_answering", batch_size=40*4, gpu=device.type=="cuda", num_processes =1)
     filename = data_dir / evaluation_filename
     result = model.inference_from_file(file=filename, return_json=False, multiprocessing_chunksize=80)
     results_squad = [x.to_squad_eval() for x in result]
@@ -140,7 +140,7 @@ def test_evaluation():
         np.testing.assert_allclose(elapsed, gold_elapsed, rtol=0.1,
                                    err_msg=f"Inference speed changed significantly by: {elapsed - gold_elapsed} seconds")
 
-    result.append({"run": "outside eval script",
+    benchmark_result.append({"run": "outside eval script",
           "f1_change": f1_score - gold_f1,
           "em_change": em_score - gold_EM,
           "tnacc_change": "-",
@@ -154,8 +154,8 @@ def test_evaluation():
           "tnacc_gold": "-",
           "elapsed_gold": gold_elapsed
           })
-    logger.info("\n\n" + pformat(result[1]) + "\n")
-    return result
+    logger.info("\n\n" + pformat(benchmark_result[1]) + "\n")
+    return benchmark_result
 
 
 def train_evaluation_single(seed=42):
@@ -166,7 +166,7 @@ def train_evaluation_single(seed=42):
     device, n_gpu = initialize_device_settings(use_cuda=True)
     # GPU utilization on 4x V100
     # 40*4, 14.3/16GB on master, 12.6/16 on others
-    batch_size = 40
+    batch_size = 40*4
     n_epochs = 2
     evaluate_every = 2000000 # disabling dev eval
     lang_model = "roberta-base"
@@ -251,7 +251,7 @@ def train_evaluation_single(seed=42):
                                    err_msg=f"FARM Training changed for top 5 accuracy by: {tnacc - gold_tnrecall}")
         np.testing.assert_allclose(elapsed, gold_elapsed, rtol=0.1, err_msg=f"FARM Training speed changed significantly by: {elapsed - gold_elapsed} seconds")
 
-    result = {"run": "train evaluation",
+    benchmark_result = {"run": "train evaluation",
               "f1_change": f1_score - gold_f1,
               "em_change": em_score - gold_EM,
               "tnacc_change": tnacc - gold_tnrecall,
@@ -265,17 +265,17 @@ def train_evaluation_single(seed=42):
               "tnacc_gold": gold_tnrecall,
               "elapsed_gold": gold_elapsed
               }
-    logger.info("\n\n" + pformat(result) + "\n")
-    return result
+    logger.info("\n\n" + pformat(benchmark_result) + "\n")
+    return benchmark_result
 
 if __name__ == "__main__":
     logger.info("QA Accuracy Benchmark")
-    results = []
-    results.append(test_evaluation())
-    results.append(train_evaluation_single(seed=42))
+    benchmark_results = []
+    benchmark_results.append(test_evaluation())
+    benchmark_results.append(train_evaluation_single(seed=42))
 
     output_file = f"results_accuracy.csv"
-    df = pd.DataFrame.from_records(results)
+    df = pd.DataFrame.from_records(benchmark_results)
     df.to_csv(output_file)
     with open(output_file.replace(".csv", ".md"), "w") as f:
         f.write(str(df.to_markdown()))
