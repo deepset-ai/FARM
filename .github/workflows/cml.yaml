@@ -23,7 +23,7 @@ jobs:
           MACHINE="cml$(date +%s)"
           docker-machine create \
             --driver amazonec2 \
-            --amazonec2-instance-type p3.2xlarge \
+            --amazonec2-instance-type p3.8xlarge \
             --amazonec2-vpc-id $VPC \
             --amazonec2-region us-east-1 \
             --amazonec2-zone c \
@@ -70,4 +70,7 @@ jobs:
           cd test/benchmarks && python question_answering_components.py
           echo -en "## Benchmarks: QA per component\n" >> report.md
           cat results_per_component.md >> report.md
+          python question_answering_accuracy.py
+          echo -en "## Benchmarks: QA Accuracy\n" >> report.md
+          cat results_accuracy.md >> report.md
           cml-send-comment report.md

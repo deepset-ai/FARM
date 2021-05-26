@@ -4,6 +4,7 @@ from pathlib import Path
 from time import time
 
 import numpy as np
+import pandas as pd
 from dotmap import DotMap
 
 from farm.data_handler.data_silo import DataSilo
@@ -28,7 +29,7 @@ def test_evaluation():
     lang_model = "deepset/roberta-base-squad2"
     do_lower_case = False
 
-    test_assertions = True
+    test_assertions = False
 
     data_dir = Path("testsave/data/squad20")
     evaluation_filename = "dev-v2.0.json"
@@ -81,6 +82,20 @@ def test_evaluation():
         np.testing.assert_allclose(tnacc, gold_tnacc, rtol=0.001, err_msg=f"FARM Eval changed for top 1 accuracy by: {em_score-gold_EM}")
         np.testing.assert_allclose(elapsed, gold_elapsed, rtol=0.1, err_msg=f"FARM Eval speed changed significantly by: {elapsed - gold_elapsed} seconds")
 
+    result = [{ "run": "FARM internal evaluation",
+          "f1_change": f1_score - gold_f1,
+          "em_change": em_score - gold_EM,
+          "tnacc_change": tnacc - gold_tnrecall,
+          "elapsed_change": elapsed - gold_elapsed,
+          "f1": f1_score,
+          "em": em_score,
+          "tnacc": tnacc,
+          "elapsed": elapsed,
+          "f1_gold": gold_f1,
+          "em_gold": gold_EM,
+          "tnacc_gold": gold_tnrecall,
+          "elapsed_gold": gold_elapsed
+          }]
 
     # # 2. Test FARM predictions with outside eval script
     starttime = time()
@@ -121,6 +136,22 @@ def test_evaluation():
         np.testing.assert_allclose(elapsed, gold_elapsed, rtol=0.1,
                                    err_msg=f"Inference speed changed significantly by: {elapsed - gold_elapsed} seconds")
 
+    result.append({"run": "outside eval script",
+          "f1_change": f1_score - gold_f1,
+          "em_change": em_score - gold_EM,
+          "tnacc_change": "-",
+          "elapsed_change": elapsed - gold_elapsed,
+          "f1": f1_score,
+          "em": em_score,
+          "tnacc": "-",
+          "elapsed": elapsed,
+          "f1_gold": gold_f1,
+          "em_gold": gold_EM,
+          "tnacc_gold": "-",
+          "elapsed_gold": gold_elapsed
+          })
+    return result
+
 
 def train_evaluation_single(seed=42):
     ##########################
@@ -135,6 +166,7 @@ def train_evaluation_single(seed=42):
     evaluate_every = 2000000 # disabling dev eval
     lang_model = "roberta-base"
     do_lower_case = False  # roberta is a cased model
+    test_assertions = False
     train_filename = "train-v2.0.json"
     dev_filename = "dev-v2.0.json"
 
@@ -205,17 +237,41 @@ def train_evaluation_single(seed=42):
     gold_EM = 77.714
     gold_tnrecall = 97.3721 #
     gold_elapsed = 1135
-    np.testing.assert_allclose(f1_score, gold_f1, rtol=0.01,
-                               err_msg=f"FARM Training changed for f1 score by: {f1_score - gold_f1}")
-    np.testing.assert_allclose(em_score, gold_EM, rtol=0.01,
-                               err_msg=f"FARM Training changed for EM by: {em_score - gold_EM}")
-    np.testing.assert_allclose(tnacc, gold_tnrecall, rtol=0.01,
-                               err_msg=f"FARM Training changed for top 5 accuracy by: {em_score - gold_EM}")
-    np.testing.assert_allclose(elapsed, gold_elapsed, rtol=0.1, err_msg=f"FARM Training speed changed significantly by: {elapsed - gold_elapsed} seconds")
+    if test_assertions:
+        np.testing.assert_allclose(f1_score, gold_f1, rtol=0.01,
+                                   err_msg=f"FARM Training changed for f1 score by: {f1_score - gold_f1}")
+        np.testing.assert_allclose(em_score, gold_EM, rtol=0.01,
+                                   err_msg=f"FARM Training changed for EM by: {em_score - gold_EM}")
+        np.testing.assert_allclose(tnacc, gold_tnrecall, rtol=0.01,
+                                   err_msg=f"FARM Training changed for top 5 accuracy by: {tnacc - gold_tnrecall}")
+        np.testing.assert_allclose(elapsed, gold_elapsed, rtol=0.1, err_msg=f"FARM Training speed changed significantly by: {elapsed - gold_elapsed} seconds")
+
+    result = {"run": "train evaluation",
+              "f1_change": f1_score - gold_f1,
+              "em_change": em_score - gold_EM,
+              "tnacc_change": tnacc - gold_tnrecall,
+              "elapsed_change": elapsed - gold_elapsed,
+              "f1": f1_score,
+              "em": em_score,
+              "tnacc": tnacc,
+              "elapsed": elapsed,
+              "f1_gold": gold_f1,
+              "em_gold": gold_EM,
+              "tnacc_gold": gold_tnrecall,
+              "elapsed_gold": gold_elapsed
+              }
+    return result
 
 if __name__ == "__main__":
     logging.disable(logging.WARNING)
 
-    test_evaluation()
+    results = []
+    results.append(test_evaluation())
+    results.append(train_evaluation_single(seed=42))
 
-    train_evaluation_single(seed=42)
+    output_file = f"results_accuracy.csv"
+    df = pd.DataFrame.from_records(results)
+    df.to_csv(output_file)
+    with open(output_file.replace(".csv", ".md"), "w") as f:
+        f.write(str(df.to_markdown()))
+
