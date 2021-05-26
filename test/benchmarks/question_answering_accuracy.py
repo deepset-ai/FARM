@@ -59,7 +59,7 @@ def test_evaluation():
 
     starttime = time()
 
-    data_silo = DataSilo(processor=processor, batch_size=40*4)
+    data_silo = DataSilo(processor=processor, batch_size=40)
     model.connect_heads_with_processor(data_silo.processor.tasks, require_labels=True)
     model, _ = optimize_model(model=model, device=device, local_rank=-1, optimizer=None, distributed=False, use_amp=None)
 
@@ -102,7 +102,7 @@ def test_evaluation():
 
     # # 2. Test FARM predictions with outside eval script
     starttime = time()
-    model = Inferencer(model=model, processor=processor, task_type="question_answering", batch_size=40*4, gpu=device.type=="cuda")
+    model = Inferencer(model=model, processor=processor, task_type="question_answering", batch_size=40, gpu=device.type=="cuda")
     filename = data_dir / evaluation_filename
     result = model.inference_from_file(file=filename, return_json=False, multiprocessing_chunksize=80)
     results_squad = [x.to_squad_eval() for x in result]
@@ -165,7 +165,7 @@ def train_evaluation_single(seed=42):
     device, n_gpu = initialize_device_settings(use_cuda=True)
     # GPU utilization on 4x V100
     # 40*4, 14.3/16GB on master, 12.6/16 on others
-    batch_size = 40*4
+    batch_size = 40
     n_epochs = 2
     evaluate_every = 2000000 # disabling dev eval
     lang_model = "roberta-base"
