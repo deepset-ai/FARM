@@ -59,7 +59,7 @@ def test_evaluation():
 
     starttime = time()
 
-    data_silo = DataSilo(processor=processor, batch_size=40)
+    data_silo = DataSilo(processor=processor, batch_size=40, max_processes=1)
     model.connect_heads_with_processor(data_silo.processor.tasks, require_labels=True)
     model, _ = optimize_model(model=model, device=device, local_rank=-1, optimizer=None, distributed=False, use_amp=None)
 
@@ -189,7 +189,7 @@ def train_evaluation_single(seed=42):
         test_filename=None,
         data_dir=Path("testsave/data/squad20"),
     )
-    data_silo = DataSilo(processor=processor, batch_size=batch_size, distributed=False)
+    data_silo = DataSilo(processor=processor, batch_size=batch_size, max_processes=1)
     language_model = LanguageModel.load(lang_model)
     prediction_head = QuestionAnsweringHead(n_best=5)
     model = AdaptiveModel(
