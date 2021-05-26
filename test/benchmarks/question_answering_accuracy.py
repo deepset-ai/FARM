@@ -4,6 +4,7 @@ from pathlib import Path
 from time import time
 
 import numpy as np
+from pprint import pformat
 import pandas as pd
 from dotmap import DotMap
 
@@ -21,6 +22,7 @@ from farm.modeling.tokenization import Tokenizer
 from farm.train import Trainer
 from farm.utils import set_all_seeds, initialize_device_settings
 
+logger = logging.getLogger(__name__)
 
 def test_evaluation():
     ##########################
@@ -96,6 +98,7 @@ def test_evaluation():
           "tnacc_gold": gold_tnrecall,
           "elapsed_gold": gold_elapsed
           }]
+    logger.info("\n\n" + pformat(result[0]) + "\n")
 
     # # 2. Test FARM predictions with outside eval script
     starttime = time()
@@ -150,6 +153,7 @@ def test_evaluation():
           "tnacc_gold": "-",
           "elapsed_gold": gold_elapsed
           })
+    logger.info("\n\n" + pformat(result[1]) + "\n")
     return result
 
 
@@ -260,11 +264,11 @@ def train_evaluation_single(seed=42):
               "tnacc_gold": gold_tnrecall,
               "elapsed_gold": gold_elapsed
               }
+    logger.info("\n\n" + pformat(result) + "\n")
     return result
 
 if __name__ == "__main__":
-    logging.disable(logging.WARNING)
-
+    logger.info("QA Accuracy Benchmark")
     results = []
     results.append(test_evaluation())
     results.append(train_evaluation_single(seed=42))
