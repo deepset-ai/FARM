@@ -23,7 +23,8 @@ from farm.train import Trainer
 from farm.utils import set_all_seeds, initialize_device_settings
 
 logger = logging.getLogger(__name__)
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
+n_gpu_factor=1
+error_messages = []
 
 def test_evaluation():
     ##########################
@@ -60,7 +61,7 @@ def test_evaluation():
 
     starttime = time()
 
-    data_silo = DataSilo(processor=processor, batch_size=40*4, max_processes=1)
+    data_silo = DataSilo(processor=processor, batch_size=40*n_gpu_factor, max_processes=1)
     model.connect_heads_with_processor(data_silo.processor.tasks, require_labels=True)
     model, _ = optimize_model(model=model, device=device, local_rank=-1, optimizer=None, distributed=False, use_amp=None)
 
@@ -68,31 +69,40 @@ def test_evaluation():
 
     # 1. Test FARM internal evaluation
     results = evaluator.eval(model)
-    f1_score = results[0]["f1"]
-    em_score = results[0]["EM"]
-    tnacc = results[0]["top_n_accuracy"]
+    f1_score = results[0]["f1"] * 100
+    em_score = results[0]["EM"] * 100
+    tnacc = results[0]["top_n_accuracy"] * 100
     elapsed = time() - starttime
     print(results)
     print(elapsed)
 
-    gold_EM = 0.784721
-    gold_f1 = 0.826671
-    gold_tnacc = 0.843594 # top 1 recall
+    gold_EM = 78.4721
+    gold_f1 = 82.6671
+    gold_tnacc = 84.3594 # top 1 recall
     gold_elapsed = 40 # 4x V100
     if test_assertions:
         np.testing.assert_allclose(em_score, gold_EM, rtol=0.001, err_msg=f"FARM Eval changed for EM by: {em_score-gold_EM}")
         np.testing.assert_allclose(f1_score, gold_f1, rtol=0.001, err_msg=f"FARM Eval changed for f1 score by: {f1_score-gold_f1}")
-        np.testing.assert_allclose(tnacc, gold_tnacc, rtol=0.001, err_msg=f"FARM Eval changed for top 1 accuracy by: {em_score-gold_EM}")
+        np.testing.assert_allclose(tnacc, gold_tnacc, rtol=0.001, err_msg=f"FARM Eval changed for top 1 accuracy by: {tnacc-gold_tnacc}")
         np.testing.assert_allclose(elapsed, gold_elapsed, rtol=0.1, err_msg=f"FARM Eval speed changed significantly by: {elapsed - gold_elapsed} seconds")
 
+    if not np.allclose(f1_score, gold_f1, rtol=0.001):
+        error_messages.append(f"FARM Eval changed for f1 score by: {round(f1_score - gold_f1, 4)}")
+    if not np.allclose(em_score, gold_EM, rtol=0.001):
+        error_messages.append(f"FARM Eval changed for EM by: {round(em_score - gold_EM, 4)}")
+    if not np.allclose(tnacc, gold_tnacc, rtol=0.001):
+        error_messages.append(f"FARM Eval changed for top 1 accuracy by: {round(tnacc-gold_tnacc, 4)}")
+    if not np.allclose(elapsed, gold_elapsed, rtol=0.1):
+        error_messages.append(f"FARM Eval speed changed significantly by: {round(elapsed - gold_elapsed, 4)} seconds")
+
     benchmark_result = [{ "run": "FARM internal evaluation",
-          "f1_change": f1_score - gold_f1,
-          "em_change": em_score - gold_EM,
-          "tnacc_change": tnacc - gold_tnacc,
-          "elapsed_change": elapsed - gold_elapsed,
+          "f1_change": round(f1_score - gold_f1, 4),
+          "em_change": round(em_score - gold_EM, 4),
+          "tnacc_change": round(tnacc - gold_tnacc, 4),
+          "elapsed_change": round(elapsed - gold_elapsed, 4),
           "f1": f1_score,
           "em": em_score,
-          "tnacc": tnacc,
+          "tnacc": round(tnacc, 4),
           "elapsed": elapsed,
           "f1_gold": gold_f1,
           "em_gold": gold_EM,
@@ -103,7 +113,7 @@ def test_evaluation():
 
     # # 2. Test FARM predictions with outside eval script
     starttime = time()
-    model = Inferencer(model=model, processor=processor, task_type="question_answering", batch_size=40*4, gpu=device.type=="cuda", num_processes =1)
+    model = Inferencer(model=model, processor=processor, task_type="question_answering", batch_size=40*n_gpu_factor, gpu=device.type=="cuda", num_processes =1)
     filename = data_dir / evaluation_filename
     result = model.inference_from_file(file=filename, return_json=False, multiprocessing_chunksize=80)
     results_squad = [x.to_squad_eval() for x in result]
@@ -139,12 +149,18 @@ def test_evaluation():
                                    err_msg=f"Eval with official script changed for f1 score by: {f1_score - gold_f1}")
         np.testing.assert_allclose(elapsed, gold_elapsed, rtol=0.1,
                                    err_msg=f"Inference speed changed significantly by: {elapsed - gold_elapsed} seconds")
+    if not np.allclose(f1_score, gold_f1, rtol=0.001):
+        error_messages.append(f"Eval with official script changed for f1 score by: {round(f1_score - gold_f1, 4)}")
+    if not np.allclose(em_score, gold_EM, rtol=0.001):
+        error_messages.append(f"Eval with official script changed for EM by: {round(em_score - gold_EM, 4)}")
+    if not np.allclose(elapsed, gold_elapsed, rtol=0.1):
+        error_messages.append(f"Inference speed changed significantly by: {round(elapsed - gold_elapsed,4)} seconds")
 
     benchmark_result.append({"run": "outside eval script",
-          "f1_change": f1_score - gold_f1,
-          "em_change": em_score - gold_EM,
+          "f1_change": round(f1_score - gold_f1, 4),
+          "em_change": round(em_score - gold_EM, 4),
           "tnacc_change": "-",
-          "elapsed_change": elapsed - gold_elapsed,
+          "elapsed_change": round(elapsed - gold_elapsed, 4),
           "f1": f1_score,
           "em": em_score,
           "tnacc": "-",
@@ -166,7 +182,7 @@ def train_evaluation_single(seed=42):
     device, n_gpu = initialize_device_settings(use_cuda=True)
     # GPU utilization on 4x V100
     # 40*4, 14.3/16GB on master, 12.6/16 on others
-    batch_size = 40*4
+    batch_size = 40*n_gpu_factor
     n_epochs = 2
     evaluate_every = 2000000 # disabling dev eval
     lang_model = "roberta-base"
@@ -250,33 +266,47 @@ def train_evaluation_single(seed=42):
         np.testing.assert_allclose(tnacc, gold_tnrecall, rtol=0.01,
                                    err_msg=f"FARM Training changed for top 5 accuracy by: {tnacc - gold_tnrecall}")
         np.testing.assert_allclose(elapsed, gold_elapsed, rtol=0.1, err_msg=f"FARM Training speed changed significantly by: {elapsed - gold_elapsed} seconds")
+    if not np.allclose(f1_score, gold_f1, rtol=0.01):
+        error_messages.append(f"FARM Training changed for f1 score by: {round(f1_score - gold_f1, 4)}")
+    if not np.allclose(em_score, gold_EM, rtol=0.01):
+        error_messages.append(f"FARM Training changed for EM by: {round(em_score - gold_EM, 4)}")
+    if not np.allclose(tnacc, gold_tnrecall, rtol=0.01):
+        error_messages.append(f"FARM Training changed for top 5 accuracy by: {round(tnacc - gold_tnrecall, 4)}")
+    if not np.allclose(elapsed, gold_elapsed, rtol=0.1):
+        error_messages.append(f"FARM Training speed changed significantly by: {round(elapsed - gold_elapsed, 4)} seconds")
 
-    benchmark_result = {"run": "train evaluation",
-              "f1_change": f1_score - gold_f1,
-              "em_change": em_score - gold_EM,
-              "tnacc_change": tnacc - gold_tnrecall,
-              "elapsed_change": elapsed - gold_elapsed,
+    benchmark_result = [{"run": "train evaluation",
+              "f1_change": round(f1_score - gold_f1, 4),
+              "em_change": round(em_score - gold_EM, 4),
+              "tnacc_change": round(tnacc - gold_tnrecall, 4),
+              "elapsed_change": round(elapsed - gold_elapsed, 4),
               "f1": f1_score,
               "em": em_score,
-              "tnacc": tnacc,
+              "tnacc": round(tnacc, 4),
               "elapsed": elapsed,
               "f1_gold": gold_f1,
               "em_gold": gold_EM,
               "tnacc_gold": gold_tnrecall,
               "elapsed_gold": gold_elapsed
-              }
+              }]
     logger.info("\n\n" + pformat(benchmark_result) + "\n")
     return benchmark_result
 
 if __name__ == "__main__":
     logger.info("QA Accuracy Benchmark")
     benchmark_results = []
-    benchmark_results.append(test_evaluation())
-    benchmark_results.append(train_evaluation_single(seed=42))
+    benchmark_results.extend(test_evaluation())
+    benchmark_results.extend(train_evaluation_single(seed=42))
 
     output_file = f"results_accuracy.csv"
     df = pd.DataFrame.from_records(benchmark_results)
     df.to_csv(output_file)
     with open(output_file.replace(".csv", ".md"), "w") as f:
+        if error_messages:
+            f.write("### :warning: QA Accuracy Benchmark Failed\n")
+            for error_message in error_messages:
+                f.write(error_message+"\n")
+        else:
+            f.write("### :heavy_check_mark: QA Accuracy Benchmark Passed\n")
         f.write(str(df.to_markdown()))
 
