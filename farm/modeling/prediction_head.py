@@ -1031,9 +1031,13 @@ class QuestionAnsweringHead(PredictionHead):
     def logits_to_loss(self, logits, labels, **kwargs):
         """
         Combine predictions and labels to a per sample loss.
+
+        Multiple answers (e.g. Squad dev set) are managed as follows:
+        - labels shape depends from max_answers: labels.shape = [batch_size, max_answers, 2];
+        - only the first answer is used during training.
+
         """
-        # todo explain how we only use first answer for train
-        # labels.shape =  [batch_size, n_max_answers, 2]. n_max_answers is by default 6 since this is the
+        # labels.shape =  [batch_size, max_answers, 2]. max_answers is by default 6 since this is the
         # most that occurs in the SQuAD dev set. The 2 in the final dimension corresponds to [start, end]
         start_position = labels[:, 0, 0]
         end_position = labels[:, 0, 1]

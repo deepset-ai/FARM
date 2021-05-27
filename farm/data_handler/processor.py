@@ -2044,6 +2044,11 @@ class SquadProcessor(Processor):
         """
         Converts answers that are pure strings into the token based representation with start and end token offset.
         Can handle multiple answers per question document pair as is common for development/text sets
+
+        Multiple answers (e.g. Squad dev set) are managed as follows:
+        - an array of max_answers size is preallocated (max_answers is by default 6 since this is the most that occurs in the SQuAD dev set);
+        - only the first answer is used during training;
+        - multiple answers are used only during the evaluation process.
         """
         for basket in baskets:
             error_in_answer = False
@@ -2057,6 +2062,12 @@ class SquadProcessor(Processor):
                     label_idxs[0, :] = 0
                 else:
                     # For all other cases we use start and end token indices, that are relative to the passage
+                    if len(basket.raw["answers"]) > 1:
+                        logger.warning("More than one answer per question: be aware that multiple answers are not taken into consideration "
+                                       "during training (only the first answer is used). Multiple answers are used only in evaluation process.")
+                        if len(basket.raw["answers"]) > self.max_answers:
+                            logger.warning("More answers than max_answers: {} > {}. Surplus answers will not be taken into consideration "
+                                           "in evaluation.".format(len(basket.raw["answers"]), self.max_answers))
                     for i, answer in enumerate(basket.raw["answers"]):
                         # Calculate start and end relative to document
                         answer_len_c = len(answer["text"])
