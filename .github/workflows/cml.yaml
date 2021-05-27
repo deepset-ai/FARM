@@ -43,6 +43,7 @@ jobs:
             --gpus all \
             -v /docker_machine/machine:/root/.docker/machine \
             --net host \
+            --ipc host \
             -e DOCKER_MACHINE=$MACHINE \
             -e repo_token=$repo_token \
             -e RUNNER_LABELS=$RUNNER_LABELS \
