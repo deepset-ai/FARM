@@ -23,7 +23,7 @@ from farm.train import Trainer
 from farm.utils import set_all_seeds, initialize_device_settings
 
 logger = logging.getLogger(__name__)
-n_gpu_factor=1
+n_gpu_factor=4
 error_messages = []
 
 def test_evaluation():
