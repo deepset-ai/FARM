@@ -258,7 +258,7 @@ def train_evaluation_single(seed=42):
 
     gold_f1 = 82.155
     gold_EM = 78.6575#77.714
-    gold_tnrecall = 95.1318#97.3721
+    gold_tnrecall = 97.3721
     gold_elapsed = 1135
     if test_assertions:
         np.testing.assert_allclose(f1_score, gold_f1, rtol=0.01,
