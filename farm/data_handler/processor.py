@@ -1984,6 +1984,13 @@ class SquadProcessor(Processor):
             if basket.raw["document_text"] == "":
                 logger.warning("Ignoring sample with empty context")
                 continue
+            # error: question has a token length > than self.max_query_length
+            if len(basket.raw["question_tokens"]) > self.max_query_length:
+                str_err = "Question <{}> has a token length of {} greater than self.max_query_length({}).".format(basket.raw["question_text"],
+                                                                                                                 len(basket.raw["question_tokens"]),
+                                                                                                                 self.max_query_length)
+                logger.error(str_err)
+                assert False, str_err
             ########## end checking
 
 
@@ -2021,6 +2028,8 @@ class SquadProcessor(Processor):
                               "question_text": basket.raw["question_text"],
                               "passage_id": passage_span["passage_id"],
                               }
+                # FAB001
+
                 tokenized = {"passage_start_t": passage_start_t,
                              "passage_start_c": passage_start_c,
                              "passage_tokens": passage_tokens,
