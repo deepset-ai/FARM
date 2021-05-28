@@ -23,6 +23,7 @@ from farm.train import Trainer
 from farm.utils import set_all_seeds, initialize_device_settings
 
 logger = logging.getLogger(__name__)
+os.environ["TOKENIZERS_PARALLELISM"] = "true"
 n_gpu_factor=4
 error_messages = []
 
@@ -61,7 +62,7 @@ def test_evaluation():
 
     starttime = time()
 
-    data_silo = DataSilo(processor=processor, batch_size=40*n_gpu_factor)#, max_processes=1)
+    data_silo = DataSilo(processor=processor, batch_size=40*n_gpu_factor)
     model.connect_heads_with_processor(data_silo.processor.tasks, require_labels=True)
     model, _ = optimize_model(model=model, device=device, local_rank=-1, optimizer=None, distributed=False, use_amp=None)
 
@@ -113,7 +114,7 @@ def test_evaluation():
 
     # # 2. Test FARM predictions with outside eval script
     starttime = time()
-    model = Inferencer(model=model, processor=processor, task_type="question_answering", batch_size=40*n_gpu_factor, gpu=device.type=="cuda")#, num_processes =1)
+    model = Inferencer(model=model, processor=processor, task_type="question_answering", batch_size=40*n_gpu_factor, gpu=device.type=="cuda")
     filename = data_dir / evaluation_filename
     result = model.inference_from_file(file=filename, return_json=False, multiprocessing_chunksize=80)
     results_squad = [x.to_squad_eval() for x in result]
@@ -206,7 +207,7 @@ def train_evaluation_single(seed=42):
         test_filename=None,
         data_dir=Path("testsave/data/squad20"),
     )
-    data_silo = DataSilo(processor=processor, batch_size=batch_size, max_processes=1)
+    data_silo = DataSilo(processor=processor, batch_size=batch_size)
     language_model = LanguageModel.load(lang_model)
     prediction_head = QuestionAnsweringHead(n_best=5)
     model = AdaptiveModel(
