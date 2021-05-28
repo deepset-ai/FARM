@@ -45,6 +45,7 @@ def test_evaluation():
     model = AdaptiveModel.convert_from_transformers(lang_model, device=device, task_type="question_answering")
     model.prediction_heads[0].no_ans_boost = 0
     model.prediction_heads[0].n_best = 1
+    model.prediction_heads[0].n_best_per_sample = 1
 
     tokenizer = Tokenizer.load(pretrained_model_name_or_path=lang_model,do_lower_case=do_lower_case)
     processor = SquadProcessor(
@@ -209,7 +210,7 @@ def train_evaluation_single(seed=42):
     )
     data_silo = DataSilo(processor=processor, batch_size=batch_size)
     language_model = LanguageModel.load(lang_model)
-    prediction_head = QuestionAnsweringHead(n_best=5)
+    prediction_head = QuestionAnsweringHead(n_best=5, n_best_per_sample=1)
     model = AdaptiveModel(
         language_model=language_model,
         prediction_heads=[prediction_head],

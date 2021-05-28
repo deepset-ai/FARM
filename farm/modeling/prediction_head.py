@@ -1180,6 +1180,7 @@ class QuestionAnsweringHead(PredictionHead):
         start_idx_candidates = set()
         end_idx_candidates = set()
 
+        start_matrix_softmax_start = torch.softmax(start_matrix[:, 0], dim=-1)
         # Iterate over all candidates and break when we have all our n_best candidates
         for candidate_idx in range(n_candidates):
             if len(top_candidates) == self.n_best_per_sample:
@@ -1194,7 +1195,6 @@ class QuestionAnsweringHead(PredictionHead):
                 if self.duplicate_filtering > -1 and (start_idx in start_idx_candidates or end_idx in end_idx_candidates):
                     continue
                 score = start_end_matrix[start_idx, end_idx].item()
-                start_matrix_softmax_start = torch.softmax(start_matrix[:, 0], dim=-1)
                 confidence = start_matrix_softmax_start[start_idx].item()
                 top_candidates.append(QACandidate(offset_answer_start=start_idx,
                                                   offset_answer_end=end_idx,
