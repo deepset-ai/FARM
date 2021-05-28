@@ -100,7 +100,7 @@ def distilbert_squad(request):
         tokenizer=tokenizer,
         max_seq_len=20,
         doc_stride=10,
-        max_query_length=6,
+        max_query_length=7,
         train_filename="train-sample.json",
         dev_filename="dev-sample.json",
         test_filename=None,
