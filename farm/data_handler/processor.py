@@ -1984,13 +1984,6 @@ class SquadProcessor(Processor):
             if basket.raw["document_text"] == "":
                 logger.warning("Ignoring sample with empty context")
                 continue
-            # error: question has a token length > than self.max_query_length
-            if len(basket.raw["question_tokens"]) > self.max_query_length:
-                str_err = "Question <{}> has a token length of {} greater than self.max_query_length({}).".format(basket.raw["question_text"],
-                                                                                                                 len(basket.raw["question_tokens"]),
-                                                                                                                 self.max_query_length)
-                logger.error(str_err)
-                assert False, str_err
             ########## end checking
 
 
@@ -2028,8 +2021,6 @@ class SquadProcessor(Processor):
                               "question_text": basket.raw["question_text"],
                               "passage_id": passage_span["passage_id"],
                               }
-                # FAB001
-
                 tokenized = {"passage_start_t": passage_start_t,
                              "passage_start_c": passage_start_c,
                              "passage_tokens": passage_tokens,
@@ -2071,11 +2062,8 @@ class SquadProcessor(Processor):
                     label_idxs[0, :] = 0
                 else:
                     # For all other cases we use start and end token indices, that are relative to the passage
-                    if len(basket.raw["answers"]) > 1:
-                        logger.warning("More than one answer per question: be aware that multiple answers are not taken into consideration "
-                                       "during training (only the first answer is used). Multiple answers are used only in evaluation process.")
-                        if len(basket.raw["answers"]) > self.max_answers:
-                            logger.warning("More answers than max_answers: {} > {}. Surplus answers will not be taken into consideration "
+                    if len(basket.raw["answers"]) > self.max_answers:
+                        logger.warning("More answers than max_answers: {} > {}. Surplus answers will not be taken into consideration "
                                            "in evaluation.".format(len(basket.raw["answers"]), self.max_answers))
                     for i, answer in enumerate(basket.raw["answers"]):
                         # Calculate start and end relative to document
