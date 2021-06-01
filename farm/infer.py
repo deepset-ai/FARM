@@ -160,8 +160,8 @@ class Inferencer:
         task_type=None,
         return_class_probs=False,
         strict=True,
-        max_seq_len=256,
-        doc_stride=128,
+        max_seq_len=None,
+        doc_stride=None,
         extraction_layer=None,
         extraction_strategy=None,
         s3e_stats=None,
@@ -255,6 +255,13 @@ class Inferencer:
             else:
                 processor = Processor.load_from_dir(model_name_or_path)
 
+            # if max_seq_len or doc_stride are explicit set then overwrite, otherwise use the default values loaded from model
+            if max_seq_len is not None:
+                processor.max_seq_len = max_seq_len
+            if doc_stride is not None:
+                processor.doc_stride = doc_stride
+
+
         # b) or from remote transformers model hub
         else:
             if not task_type:
@@ -266,6 +273,13 @@ class Inferencer:
                                                             revision=revision,
                                                             device=device,
                                                             task_type=task_type)
+
+            # if max_seq_len or doc_stride are not explicit set use these default
+            if max_seq_len is None:
+                max_seq_len = 256
+            if doc_stride is None:
+                doc_stride = 128
+
             processor = Processor.convert_from_transformers(model_name_or_path,
                                                             revision=revision,
                                                             task_type=task_type,
@@ -275,14 +289,14 @@ class Inferencer:
                                                             tokenizer_args=tokenizer_args,
                                                             use_fast=use_fast)
 
-        # override processor attributes loaded from config or HF with inferencer params
-        processor.max_seq_len = max_seq_len
-        processor.multithreading_rust = multithreading_rust
+
         if hasattr(processor, "doc_stride"):
-            assert doc_stride < max_seq_len, "doc_stride is longer than max_seq_len. This means that there will be gaps " \
+            assert processor.doc_stride < processor.max_seq_len, "doc_stride ({}) is longer than max_seq_len ({}). This means that there will be gaps " \
                                              "as the passage windows slide, causing the model to skip over parts of the document. " \
-                                             "Please set a lower value for doc_stride (Suggestions: doc_stride=128, max_seq_len=384) "
-            processor.doc_stride = doc_stride
+                                             "Please set a lower value for doc_stride (Suggestions: doc_stride=128, max_seq_len=384) ".format(processor.doc_stride, processor.max_seq_len)
+
+        # override processor attributes loaded from config or HF with inferencer params
+        processor.multithreading_rust = multithreading_rust
 
         return cls(
             model,
