@@ -503,7 +503,7 @@ def test_dpr_processor_save_load_non_bert_tokenizer():
     model.connect_heads_with_processor(processor.tasks, require_labels=False)
 
     # save model that was loaded from model hub to disk
-    save_dir = "testsave/dpr_model"
+    save_dir = "testsave/dpr_model_non_bert"
     query_encoder_dir = "query_encoder"
     passage_encoder_dir = "passage_encoder"
     model.save(Path(save_dir), lm1_name=query_encoder_dir, lm2_name=passage_encoder_dir)
@@ -610,7 +610,7 @@ def test_dpr_processor_save_load_non_bert_tokenizer():
     assert np.array_equal(all_embeddings["query"][0], all_embeddings2["query"][0])
 
     # save the model that was loaded from disk to disk
-    save_dir = "testsave/dpr_model"
+    save_dir = "testsave/dpr_model_non_bert"
     query_encoder_dir = "query_encoder"
     passage_encoder_dir = "passage_encoder"
     loaded_model.save(Path(save_dir), lm1_name=query_encoder_dir, lm2_name=passage_encoder_dir)
