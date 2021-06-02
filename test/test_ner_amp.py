@@ -92,10 +92,10 @@ def test_ner_amp(caplog):
     model = Inferencer.load(save_dir, num_processes=0)
     result = model.inference_from_dicts(dicts=basic_texts)
 
-    assert result[0]["predictions"][0][0]["context"] == "Crown"
+    assert result[0]["predictions"][0][0]["context"] == "1980"
     assert isinstance(result[0]["predictions"][0][0]["probability"], np.float32)
-    assert result[0]["predictions"][0][0]["probability"] > 0.124
-    assert result[0]["predictions"][0][0]["label"] == "OTH"
+    assert np.isclose(result[0]["predictions"][0][0]["probability"], 0.161, rtol=0.05)
+    assert result[0]["predictions"][0][0]["label"] == "LOC"
 
 
 if __name__ == "__main__":

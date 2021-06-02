@@ -570,6 +570,7 @@ class TextClassificationProcessor(Processor):
         self.skiprows = skiprows
         self.header = header
         self.max_samples = max_samples
+        logger.warning(f"Currently no support in Processor for returning problematic ids")
 
         super(TextClassificationProcessor, self).__init__(
             tokenizer=tokenizer,
@@ -672,7 +673,6 @@ class TextClassificationProcessor(Processor):
 
         # TODO populate problematic ids
         problematic_ids = set()
-        logger.warning("Currently no support in Processor for returning problematic ids")
         dataset, tensornames = self._create_dataset()
         if return_baskets:
             return dataset, tensornames, problematic_ids, self.baskets
@@ -1007,7 +1007,6 @@ class InferenceProcessor(TextClassificationProcessor):
                 self._log_samples(1)
 
             problematic_ids = set()
-            logger.warning("Currently no support in InferenceProcessor for returning problematic ids")
             dataset, tensornames = self._create_dataset()
             ret = [dataset, tensornames, problematic_ids]
             if return_baskets:
@@ -1861,10 +1860,10 @@ class SquadProcessor(Processor):
         self.ph_output_type = "per_token_squad"
 
         assert doc_stride < (max_seq_len - max_query_length), \
-            "doc_stride is longer than max_seq_len minus space reserved for query tokens. \nThis means that there will be gaps " \
+            "doc_stride ({}) is longer than max_seq_len ({}) minus space reserved for query tokens ({}). \nThis means that there will be gaps " \
             "as the passage windows slide, causing the model to skip over parts of the document.\n" \
             "Please set a lower value for doc_stride (Suggestions: doc_stride=128, max_seq_len=384)\n " \
-            "Or decrease max_query_length"
+            "Or decrease max_query_length".format(doc_stride, max_seq_len, max_query_length)
 
         self.doc_stride = doc_stride
         self.max_query_length = max_query_length
@@ -1941,10 +1940,10 @@ class SquadProcessor(Processor):
         """
         # check again for doc stride vs max_seq_len when. Parameters can be changed for already initialized models (e.g. in haystack)
         assert self.doc_stride < (self.max_seq_len - self.max_query_length), \
-            "doc_stride is longer than max_seq_len minus space reserved for query tokens. \nThis means that there will be gaps " \
+            "doc_stride ({}) is longer than max_seq_len ({}) minus space reserved for query tokens ({}). \nThis means that there will be gaps " \
             "as the passage windows slide, causing the model to skip over parts of the document.\n" \
             "Please set a lower value for doc_stride (Suggestions: doc_stride=128, max_seq_len=384)\n " \
-            "Or decrease max_query_length"
+            "Or decrease max_query_length".format(self.doc_stride, self.max_seq_len, self.max_query_length)
 
         try:
             # Check if infer_dict is already in internal json format

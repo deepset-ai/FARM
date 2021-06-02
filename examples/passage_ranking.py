@@ -69,6 +69,7 @@ def text_pair_classification():
     #    We will be using the msmarco dev set as our final evaluation set
     processor = TextPairClassificationProcessor(tokenizer=tokenizer,
                                                 label_list=label_list,
+                                                metric="f1_macro",
                                                 train_filename=train_filename,
                                                 test_filename=None,
                                                 dev_split=0.001,
