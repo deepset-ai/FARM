@@ -208,8 +208,6 @@ class LanguageModel(nn.Module):
                 language_model_class = "DPRContextEncoder"
             elif config.archictectures[0] == "DPRReader":
                 raise NotImplementedError("DPRReader models are currently not supported.")
-        elif model_type == "big_bird":
-            language_model_class = "BigBird"
         else:
             # Fall back to inferring type from model name
             logger.warning("Could not infer LanguageModel class from config. Trying to infer "
