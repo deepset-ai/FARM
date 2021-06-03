@@ -448,8 +448,8 @@ def test_dpr_processor_save_load():
     dataset2, tensor_names, _ = loadedprocessor.dataset_from_dicts(dicts=[d], return_baskets=False)
     assert np.array_equal(dataset.tensors[0],dataset2.tensors[0])
 
-
-def test_dpr_processor_save_load_non_bert_tokenizer():
+@pytest.mark.parametrize("query_and_passage_model", [{"query":"etalab-ia/dpr-question_encoder-fr_qa-camembert","passage":"etalab-ia/dpr-ctx_encoder-fr_qa-camembert"}, {"query":"deepset/gbert-base-germandpr-question_encoder","passage":"deepset/gbert-base-germandpr-ctx_encoder"},{"query":"facebook/dpr-question_encoder-single-nq-base", "passage":"facebook/dpr-ctx_encoder-single-nq-base"}])
+def test_dpr_processor_save_load_non_bert_tokenizer(query_and_passage_model):
     """
     This test compares 1) a model that was loaded from model hub with
     2) a model from model hub that was saved to disk and then loaded from disk and
@@ -466,9 +466,9 @@ def test_dpr_processor_save_load_non_bert_tokenizer():
          }
 
     # load model from model hub
-    query_embedding_model = "etalab-ia/dpr-question_encoder-fr_qa-camembert"
-    passage_embedding_model = "etalab-ia/dpr-ctx_encoder-fr_qa-camembert"
-    query_tokenizer = Tokenizer.load(pretrained_model_name_or_path=query_embedding_model) #tokenizer class is inferred automatically
+    query_embedding_model = query_and_passage_model["query"]
+    passage_embedding_model = query_and_passage_model["passage"]
+    query_tokenizer = Tokenizer.load(pretrained_model_name_or_path=query_embedding_model)  # tokenizer class is inferred automatically
     query_encoder = LanguageModel.load(pretrained_model_name_or_path=query_embedding_model,
                                        language_model_class="DPRQuestionEncoder")
     passage_tokenizer = Tokenizer.load(pretrained_model_name_or_path=passage_embedding_model)
