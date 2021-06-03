@@ -19,7 +19,7 @@ seqeval
 mlflow<=1.13.1
 # huggingface repository
 #transformers==4.7.0
-transformers==4.7.0.dev0
+transformers
 --find-links=https://github.com/huggingface/transformers/tarball/master#egg=transformers
 # accessing dictionary elements with dot notation
 dotmap
