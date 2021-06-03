@@ -36,6 +36,14 @@
 	:target: https://pepy.tech/project/farm
 	:alt: Downloads
 
+.. image:: https://img.shields.io/badge/Jobs-We're%20hiring-blue
+	:target: https://apply.workable.com/deepset/
+	:alt: Jobs
+
+.. image:: https://img.shields.io/twitter/follow/deepset_ai?style=social
+	:target: https://twitter.com/intent/follow?screen_name=deepset_ai
+	:alt: Twitter
+
 What is it?
 ############
 FARM makes **Transfer Learning** with BERT & Co **simple, fast and enterprise-ready**.
