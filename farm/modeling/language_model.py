@@ -1463,7 +1463,7 @@ class DPRQuestionEncoder(LanguageModel):
             original_model_config = AutoConfig.from_pretrained(farm_lm_config)
             farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
 
-            if original_model_config.model_type == "dpr" or original_model_config.model_type == "bert":
+            if original_model_config.model_type == "dpr":
                 dpr_config = transformers.DPRConfig.from_pretrained(farm_lm_config)
                 dpr_question_encoder.model = transformers.DPRQuestionEncoder.from_pretrained(farm_lm_model, config=dpr_config, **kwargs)
             else:
@@ -1576,7 +1576,7 @@ class DPRContextEncoder(LanguageModel):
             original_model_config = AutoConfig.from_pretrained(farm_lm_config)
             farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
 
-            if original_model_config.model_type == "dpr" or original_model_config.model_type == "bert":
+            if original_model_config.model_type == "dpr":
                 dpr_config = transformers.DPRConfig.from_pretrained(farm_lm_config)
                 dpr_context_encoder.model = transformers.DPRContextEncoder.from_pretrained(farm_lm_model,config=dpr_config,**kwargs)
             else:
