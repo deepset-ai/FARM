@@ -19,7 +19,7 @@ seqeval
 mlflow<=1.13.1
 # huggingface repository
 #transformers==4.7.0
-git+https://github.com/huggingface/transformers.git
+-e git+https://github.com/huggingface/transformers.git@61c506349134db0a0a2fd6fb2eff8e29a2f84e79#egg=transformers
 # accessing dictionary elements with dot notation
 dotmap
 # for inference-rest-apis
