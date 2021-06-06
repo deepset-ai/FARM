@@ -71,7 +71,20 @@ def pearson_and_spearman(preds, labels):
         "corr": (pearson_corr + spearman_corr) / 2,
     }
 
+
 def compute_metrics(metric, preds, labels):
+    """
+    Calculate the named metric values for the list of predictions vs list of labels.
+
+    :param metric: The name of a predefined metric; a function that takes a prediction list and a label
+        list and returns a dict from metric names to values, or recursively a list of metrics.
+        Predefined metrics are: mcc, acc, acc_f1, pear_spear, seq_f1, f1_macro, squad, mse, r2,
+        top_n_accuracy, text_similarity_metric.
+    :type metric: Samples are truncated after this many tokens.
+    :param preds: list of predictions
+    :param labels: list of target labels
+    :return: a dictionary mapping metric names to values.
+    """
     assert len(preds) == len(labels)
     if metric == "mcc":
         return {"mcc": matthews_corrcoef(labels, preds)}
@@ -98,6 +111,11 @@ def compute_metrics(metric, preds, labels):
         return text_similarity_metric(preds, labels)
     # elif metric == "masked_accuracy":
     #     return simple_accuracy(preds, labels, ignore=-1)
+    elif isinstance(metric, list):
+        ret = {}
+        for m in metric:
+            ret.update(compute_metrics(m, preds, labels))
+        return ret
     elif metric in registered_metrics:
         metric_func = registered_metrics[metric]
         return metric_func(preds, labels)
