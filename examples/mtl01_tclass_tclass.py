@@ -37,12 +37,14 @@ print("Devices available: {}".format(device))
 LANG_MODEL = "bert-base-german-cased" 
 BATCH_SIZE = 32
 MAX_SEQ_LEN = 128
-EMBEDS_DROPOUT_PROB=0.1
+EMBEDS_DROPOUT_PROB = 0.1
 LEARNING_RATE = 3e-5
 MAX_N_EPOCHS = 6
 N_GPU = 1
-EVAL_EVERY=70
-DATA_DIR="../data/germeval18"
+EVAL_EVERY = 70
+DATA_DIR = "../data/germeval18"
+PREDICT = "both"                # coarse, fine or both
+DO_ROUND_ROBIN = False            # round robin training of heads?
 
 
 logger.info("Loading Tokenizer")
@@ -64,21 +66,32 @@ processor = TextClassificationProcessor(tokenizer=tokenizer,
                                         dev_split=0.1,
                                         text_column_name="text",
                                         )
-processor.add_task(name="coarse", 
-                       task_type="classification",
-                       label_list=LABEL_LIST_COARSE, 
-                       metric=metrics_coarse, 
-                       text_column_name="text",
-                       label_column_name="coarse_label")
-processor.add_task(name="fine", 
-                       task_type="classification",
-                       label_list=LABEL_LIST_FINE, 
-                       metric=metrics_fine, 
-                       text_column_name="text",
-                       label_column_name="fine_label")
-
+prediction_heads = []
+if PREDICT == "coarse" or PREDICT == "both":
+    processor.add_task(name="coarse",
+                           task_type="classification",
+                           label_list=LABEL_LIST_COARSE,
+                           metric=metrics_coarse,
+                           text_column_name="text",
+                           label_column_name="coarse_label")
+    prediction_head_coarse = TextClassificationHead(
+        num_labels=len(LABEL_LIST_COARSE),
+        task_name="coarse",
+        class_weights=None)
+    prediction_heads.append(prediction_head_coarse)
+if PREDICT == "fine" or PREDICT == "both":
+    processor.add_task(name="fine",
+                           task_type="classification",
+                           label_list=LABEL_LIST_FINE,
+                           metric=metrics_fine,
+                           text_column_name="text",
+                           label_column_name="fine_label")
+    prediction_head_fine = TextClassificationHead(
+        num_labels=len(LABEL_LIST_FINE),
+        task_name="fine",
+        class_weights=None)
+    prediction_heads.append(prediction_head_fine)
 # processor.save("mtl01-model")
-
 
 data_silo = DataSilo(
     processor=processor,
@@ -86,21 +99,26 @@ data_silo = DataSilo(
 
 language_model = LanguageModel.load(LANG_MODEL)
 
-prediction_head_coarse = TextClassificationHead(
-    num_labels=len(LABEL_LIST_COARSE), 
-    task_name="coarse", 
-    class_weights=None)
-prediction_head_fine = TextClassificationHead(
-    num_labels=len(LABEL_LIST_FINE), 
-    task_name="fine", 
-    class_weights=None)
+
+def loss_round_robin(tensors, global_step, batch=None):
+    if global_step % 2:
+        return tensors[0]
+    else:
+        return tensors[1]
+
+
+if PREDICT == "both" and DO_ROUND_ROBIN:
+    loss_fn = loss_round_robin
+else:
+    loss_fn = None
 
 
 model = AdaptiveModel(
     language_model=language_model,
-    prediction_heads=[prediction_head_coarse, prediction_head_fine],
+    prediction_heads=prediction_heads,
     embeds_dropout_prob=EMBEDS_DROPOUT_PROB,
     lm_output_types=["per_sequence", "per_sequence"],
+    loss_aggregation_fn=loss_fn,
     device=device)
 
 
@@ -129,13 +147,12 @@ model = trainer.train()
 # model.save("mtl01-model")
 
 
-inferencer = Inferencer(model=model, 
+inferencer = Inferencer(model=model,
                         processor=processor,
-                        batch_size=4, gpu=True, 
+                        batch_size=4, gpu=True,
                         # TODO: how to mix for multihead?
                         task_type="classification"
                         )
-
 basic_texts = [
     {"text": "Some text you want to classify"},
     {"text": "A second sample"},
@@ -145,19 +162,21 @@ basic_texts = [
 ret = inferencer.inference_from_dicts(basic_texts)
 logger.info(f"Result of inference: {ret}")
 
-
+logger.info(f"Evaluating on training set...")
 evaluator = Evaluator(
-    data_loader=data_silo.get_data_loader("test"),
+    data_loader=data_silo.get_data_loader("train"),
     tasks=processor.tasks,
     device=device)
 
 result = evaluator.eval(
-    inferencer.model, 
+    inferencer.model,
     return_preds_and_labels=True)
 
 evaluator.log_results(
-    result, 
+    result,
     "Test",
     steps=len(data_silo.get_data_loader("test")))
 
+inferencer.close_multiprocessing_pool()
+logger.info("PROCESSING FINISHED")
 
