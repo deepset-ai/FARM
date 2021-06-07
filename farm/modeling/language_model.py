@@ -298,9 +298,10 @@ class LanguageModel(nn.Module):
         state_dict = model_to_save.state_dict()
         keys = state_dict.keys()
 
-        # if we save a question_encoder or a cty_encoder of a dpr model, we need to adjust the names of the model weights
-        # this adjustment removes a prefix name that otherwise would prevent the weights from being loaded again
-        if model_to_save.base_model_prefix.startswith("question_") or model_to_save.base_model_prefix.startswith("ctx_"):
+        # If we save a question_encoder or a ctx_encoder of a dpr model that is not based on a standard BERT model,
+        # e.g., a Camembert model, we need to adjust the names of the model weights.
+        # This adjustment removes a prefix name that otherwise would prevent the weights from being loaded again.
+        if self.model.config.model_type !="dpr" and (model_to_save.base_model_prefix.startswith("question_") or model_to_save.base_model_prefix.startswith("ctx_")):
             for key in list(keys):
                 if key.startswith("question_encoder.bert_model.model.") or key.startswith("ctx_encoder.bert_model.model."):
                     new_key = key.split("_encoder.bert_model.model.", 1)[1]
