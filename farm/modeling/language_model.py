@@ -282,12 +282,14 @@ class LanguageModel(nn.Module):
             string = self.model.config.to_json_string()
             file.write(string)
 
-    def save(self, save_dir):
+    def save(self, save_dir, state_dict=None):
         """
         Save the model state_dict and its config file so that it can be loaded again.
 
         :param save_dir: The directory in which the model should be saved.
         :type save_dir: str
+        :param state_dict: A dictionary containing a whole state of the module including names of layers. By default, the unchanged state dict of the module is used
+        :type state_dict: dict
         """
         # Save Weights
         save_name = Path(save_dir) / "language_model.bin"
@@ -295,20 +297,8 @@ class LanguageModel(nn.Module):
             self.model.module if hasattr(self.model, "module") else self.model
         )  # Only save the model it-self
 
-        state_dict = model_to_save.state_dict()
-        keys = state_dict.keys()
-
-        # If we save a question_encoder or a ctx_encoder of a dpr model that is not based on a standard BERT model,
-        # e.g., a Camembert model, we need to adjust the names of the model weights.
-        # This adjustment removes a prefix name that otherwise would prevent the weights from being loaded again.
-        if self.model.config.model_type !="dpr" and (model_to_save.base_model_prefix.startswith("question_") or model_to_save.base_model_prefix.startswith("ctx_")):
-            for key in list(keys):
-                if key.startswith("question_encoder.bert_model.model.") or key.startswith("ctx_encoder.bert_model.model."):
-                    new_key = key.split("_encoder.bert_model.model.", 1)[1]
-                elif key.startswith("question_encoder.bert_model.") or key.startswith("ctx_encoder.bert_model."):
-                    new_key = key.split("_encoder.bert_model.", 1)[1]
-                state_dict[new_key] = state_dict.pop(key)
-
+        if not state_dict:
+            state_dict = model_to_save.state_dict()
         torch.save(state_dict, save_name)
         self.save_config(save_dir)
 
@@ -1499,6 +1489,32 @@ class DPRQuestionEncoder(LanguageModel):
 
         return dpr_question_encoder
 
+    def save(self, save_dir, state_dict=None):
+        """
+        Save the model state_dict and its config file so that it can be loaded again.
+
+        :param save_dir: The directory in which the model should be saved.
+        :type save_dir: str
+        :param state_dict: A dictionary containing a whole state of the module including names of layers. By default, the unchanged state dict of the module is used
+        :type state_dict: Optional[dict]
+        """
+        model_to_save = (
+            self.model.module if hasattr(self.model, "module") else self.model
+        )  # Only save the model it-self
+
+        if self.model.config.model_type != "dpr" and model_to_save.base_model_prefix.startswith("question_"):
+            state_dict = model_to_save.state_dict()
+            keys = state_dict.keys()
+            for key in list(keys):
+                new_key = key
+                if key.startswith("question_encoder.bert_model.model."):
+                    new_key = key.split("_encoder.bert_model.model.", 1)[1]
+                elif key.startswith("question_encoder.bert_model."):
+                    new_key = key.split("_encoder.bert_model.", 1)[1]
+                state_dict[new_key] = state_dict.pop(key)
+
+        super(DPRQuestionEncoder, self).save(save_dir=save_dir, state_dict=state_dict)
+
     def forward(
         self,
         query_input_ids,
@@ -1617,6 +1633,32 @@ class DPRContextEncoder(LanguageModel):
             dpr_context_encoder.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
 
         return dpr_context_encoder
+
+    def save(self, save_dir, state_dict=None):
+        """
+        Save the model state_dict and its config file so that it can be loaded again.
+
+        :param save_dir: The directory in which the model should be saved.
+        :type save_dir: str
+        :param state_dict: A dictionary containing a whole state of the module including names of layers. By default, the unchanged state dict of the module is used
+        :type state_dict: Optional[dict]
+        """
+        model_to_save = (
+            self.model.module if hasattr(self.model, "module") else self.model
+        )  # Only save the model it-self
+
+        if self.model.config.model_type != "dpr" and model_to_save.base_model_prefix.startswith("ctx_"):
+            state_dict = model_to_save.state_dict()
+            keys = state_dict.keys()
+            for key in list(keys):
+                new_key = key
+                if key.startswith("ctx_encoder.bert_model.model."):
+                    new_key = key.split("_encoder.bert_model.model.", 1)[1]
+                elif key.startswith("ctx_encoder.bert_model."):
+                    new_key = key.split("_encoder.bert_model.", 1)[1]
+                state_dict[new_key] = state_dict.pop(key)
+
+        super(DPRContextEncoder, self).save(save_dir=save_dir, state_dict=state_dict)
 
     def forward(
         self,
