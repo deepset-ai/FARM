@@ -10,7 +10,7 @@ class NamedDataLoader(DataLoader):
     the name of the tensor and the value is the tensor itself.
     """
 
-    def __init__(self, dataset, batch_size, sampler=None, tensor_names=None, num_workers=0, pin_memory=False):
+    def __init__(self, dataset, batch_size, sampler=None, tensor_names=None, num_workers=0, pin_memory=False, shuffle=True):
         """
         :param dataset: The dataset that will be wrapped by this NamedDataLoader
         :type dataset: Dataset
@@ -24,6 +24,8 @@ class NamedDataLoader(DataLoader):
         :type num_workers: int
         :param pin_memory: argument for Data Loader to use page-locked memory for faster transfer of data to GPU
         :type pin_memory: bool
+        :param shuffle: set to ``True`` to have the data reshuffled at every epoch (default: ``True``).
+        :type shuffle: bool
         """
 
         def collate_fn(batch):
@@ -64,6 +66,7 @@ class NamedDataLoader(DataLoader):
             collate_fn=collate_fn,
             pin_memory=pin_memory,
             num_workers=num_workers,
+            shuffle=shuffle,
         )
 
     def __len__(self):
@@ -74,20 +77,20 @@ class NamedDataLoader(DataLoader):
         else:
             return super().__len__()
 
-
-def covert_dataset_to_dataloader(dataset, sampler, batch_size):
-    """
-    Wraps a PyTorch Dataset with a DataLoader.
-
-    :param dataset: Dataset to be wrapped.
-    :type dataset: Dataset
-    :param sampler: PyTorch sampler used to pick samples in a batch.
-    :type sampler: Sampler
-    :param batch_size: Number of samples in the batch.
-    :return: A DataLoader that wraps the input Dataset.
-    """
-    sampler_initialized = sampler(dataset)
-    data_loader = DataLoader(
-        dataset, sampler=sampler_initialized, batch_size=batch_size
-    )
-    return data_loader
+# TODO remove
+# def covert_dataset_to_dataloader(dataset, sampler, batch_size):
+#     """
+#     Wraps a PyTorch Dataset with a DataLoader.
+#
+#     :param dataset: Dataset to be wrapped.
+#     :type dataset: Dataset
+#     :param sampler: PyTorch sampler used to pick samples in a batch.
+#     :type sampler: Sampler
+#     :param batch_size: Number of samples in the batch.
+#     :return: A DataLoader that wraps the input Dataset.
+#     """
+#     sampler_initialized = sampler(dataset)
+#     data_loader = DataLoader(
+#         dataset, sampler=sampler_initialized, batch_size=batch_size
+#     )
+#     return data_loader
