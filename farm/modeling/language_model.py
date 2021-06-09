@@ -275,22 +275,31 @@ class LanguageModel(nn.Module):
         with open(save_filename, "w") as file:
             setattr(self.model.config, "name", self.__class__.__name__)
             setattr(self.model.config, "language", self.language)
+            # For DPR models, transformers overwrites the model_type with the one set in DPRConfig
+            # Therefore, we copy the model_type from the model config to DPRConfig
+            if self.__class__.__name__ == "DPRQuestionEncoder" or self.__class__.__name__ == "DPRContextEncoder":
+                setattr(transformers.DPRConfig, "model_type", self.model.config.model_type)
             string = self.model.config.to_json_string()
             file.write(string)
 
-    def save(self, save_dir):
+    def save(self, save_dir, state_dict=None):
         """
         Save the model state_dict and its config file so that it can be loaded again.
 
         :param save_dir: The directory in which the model should be saved.
         :type save_dir: str
+        :param state_dict: A dictionary containing a whole state of the module including names of layers. By default, the unchanged state dict of the module is used
+        :type state_dict: dict
         """
         # Save Weights
         save_name = Path(save_dir) / "language_model.bin"
         model_to_save = (
             self.model.module if hasattr(self.model, "module") else self.model
         )  # Only save the model it-self
-        torch.save(model_to_save.state_dict(), save_name)
+
+        if not state_dict:
+            state_dict = model_to_save.state_dict()
+        torch.save(state_dict, save_name)
         self.save_config(save_dir)
 
     @classmethod
@@ -1442,9 +1451,21 @@ class DPRQuestionEncoder(LanguageModel):
         farm_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
         if os.path.exists(farm_lm_config):
             # FARM style
-            dpr_config = transformers.DPRConfig.from_pretrained(farm_lm_config)
+            original_model_config = AutoConfig.from_pretrained(farm_lm_config)
             farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
-            dpr_question_encoder.model = transformers.DPRQuestionEncoder.from_pretrained(farm_lm_model, config=dpr_config, **kwargs)
+
+            if original_model_config.model_type == "dpr":
+                dpr_config = transformers.DPRConfig.from_pretrained(farm_lm_config)
+                dpr_question_encoder.model = transformers.DPRQuestionEncoder.from_pretrained(farm_lm_model, config=dpr_config, **kwargs)
+            else:
+                if original_model_config.model_type != "bert":
+                    logger.warning(f"Using a model of type '{original_model_config.model_type}' which might be incompatible with DPR encoders."
+                                   f"Bert based encoders are supported that need input_ids,token_type_ids,attention_mask as input tensors.")
+                original_config_dict = vars(original_model_config)
+                original_config_dict.update(kwargs)
+                dpr_question_encoder.model = transformers.DPRQuestionEncoder(config=transformers.DPRConfig(**original_config_dict))
+                language_model_class = cls.get_language_model_class(farm_lm_config)
+                dpr_question_encoder.model.base_model.bert_model = cls.subclasses[language_model_class].load(str(pretrained_model_name_or_path)).model
             dpr_question_encoder.language = dpr_question_encoder.model.config.language
         else:
             original_model_config = AutoConfig.from_pretrained(pretrained_model_name_or_path)
@@ -1467,6 +1488,32 @@ class DPRQuestionEncoder(LanguageModel):
             dpr_question_encoder.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
 
         return dpr_question_encoder
+
+    def save(self, save_dir, state_dict=None):
+        """
+        Save the model state_dict and its config file so that it can be loaded again.
+
+        :param save_dir: The directory in which the model should be saved.
+        :type save_dir: str
+        :param state_dict: A dictionary containing a whole state of the module including names of layers. By default, the unchanged state dict of the module is used
+        :type state_dict: Optional[dict]
+        """
+        model_to_save = (
+            self.model.module if hasattr(self.model, "module") else self.model
+        )  # Only save the model it-self
+
+        if self.model.config.model_type != "dpr" and model_to_save.base_model_prefix.startswith("question_"):
+            state_dict = model_to_save.state_dict()
+            keys = state_dict.keys()
+            for key in list(keys):
+                new_key = key
+                if key.startswith("question_encoder.bert_model.model."):
+                    new_key = key.split("_encoder.bert_model.model.", 1)[1]
+                elif key.startswith("question_encoder.bert_model."):
+                    new_key = key.split("_encoder.bert_model.", 1)[1]
+                state_dict[new_key] = state_dict.pop(key)
+
+        super(DPRQuestionEncoder, self).save(save_dir=save_dir, state_dict=state_dict)
 
     def forward(
         self,
@@ -1540,12 +1587,28 @@ class DPRContextEncoder(LanguageModel):
             dpr_context_encoder.name = pretrained_model_name_or_path
         # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
         farm_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
+
         if os.path.exists(farm_lm_config):
             # FARM style
-            dpr_config = transformers.DPRConfig.from_pretrained(farm_lm_config)
+            original_model_config = AutoConfig.from_pretrained(farm_lm_config)
             farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
-            dpr_context_encoder.model = transformers.DPRContextEncoder.from_pretrained(farm_lm_model, config=dpr_config, **kwargs)
+
+            if original_model_config.model_type == "dpr":
+                dpr_config = transformers.DPRConfig.from_pretrained(farm_lm_config)
+                dpr_context_encoder.model = transformers.DPRContextEncoder.from_pretrained(farm_lm_model,config=dpr_config,**kwargs)
+            else:
+                if original_model_config.model_type != "bert":
+                    logger.warning(
+                        f"Using a model of type '{original_model_config.model_type}' which might be incompatible with DPR encoders."
+                        f"Bert based encoders are supported that need input_ids,token_type_ids,attention_mask as input tensors.")
+                original_config_dict = vars(original_model_config)
+                original_config_dict.update(kwargs)
+                dpr_context_encoder.model = transformers.DPRContextEncoder(config=transformers.DPRConfig(**original_config_dict))
+                language_model_class = cls.get_language_model_class(farm_lm_config)
+                dpr_context_encoder.model.base_model.bert_model = cls.subclasses[language_model_class].load(
+                    str(pretrained_model_name_or_path)).model
             dpr_context_encoder.language = dpr_context_encoder.model.config.language
+
         else:
             # Pytorch-transformer Style
             original_model_config = AutoConfig.from_pretrained(pretrained_model_name_or_path)
@@ -1570,6 +1633,32 @@ class DPRContextEncoder(LanguageModel):
             dpr_context_encoder.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
 
         return dpr_context_encoder
+
+    def save(self, save_dir, state_dict=None):
+        """
+        Save the model state_dict and its config file so that it can be loaded again.
+
+        :param save_dir: The directory in which the model should be saved.
+        :type save_dir: str
+        :param state_dict: A dictionary containing a whole state of the module including names of layers. By default, the unchanged state dict of the module is used
+        :type state_dict: Optional[dict]
+        """
+        model_to_save = (
+            self.model.module if hasattr(self.model, "module") else self.model
+        )  # Only save the model it-self
+
+        if self.model.config.model_type != "dpr" and model_to_save.base_model_prefix.startswith("ctx_"):
+            state_dict = model_to_save.state_dict()
+            keys = state_dict.keys()
+            for key in list(keys):
+                new_key = key
+                if key.startswith("ctx_encoder.bert_model.model."):
+                    new_key = key.split("_encoder.bert_model.model.", 1)[1]
+                elif key.startswith("ctx_encoder.bert_model."):
+                    new_key = key.split("_encoder.bert_model.", 1)[1]
+                state_dict[new_key] = state_dict.pop(key)
+
+        super(DPRContextEncoder, self).save(save_dir=save_dir, state_dict=state_dict)
 
     def forward(
         self,
