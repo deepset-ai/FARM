@@ -235,7 +235,9 @@ class RegressionHead(PredictionHead):
         preds = self.logits_to_preds(logits)
         contexts = [sample.clear_text["text"] for sample in samples]
 
-        res = {"task": "regression", "predictions": []}
+        res = {"task": "regression",
+               "task_name": self.task_name,
+               "predictions": []}
         for pred, context in zip(preds, contexts):
             res["predictions"].append(
                 {
@@ -410,7 +412,9 @@ class TextClassificationHead(PredictionHead):
         if len(contexts_b) != 0:
             contexts = ["|".join([a, b]) for a,b in zip(contexts, contexts_b)]
 
-        res = {"task": "text_classification", "predictions": []}
+        res = {"task": "text_classification",
+               "task_name": self.task_name,
+               "predictions": []}
         for pred, prob, context in zip(preds, probs, contexts):
             if not return_class_probs:
                 pred_dict = {
@@ -526,7 +530,9 @@ class MultiLabelTextClassificationHead(PredictionHead):
         probs = self.logits_to_probs(logits)
         contexts = [sample.clear_text["text"] for sample in samples]
 
-        res = {"task": "text_classification", "predictions": []}
+        res = {"task": "text_classification",
+               "task_name": self.task_name,
+               "predictions": []}
         for pred, prob, context in zip(preds, probs, contexts):
             res["predictions"].append(
                 {
@@ -693,7 +699,9 @@ class TokenClassificationHead(PredictionHead):
 
         # align back with original input by getting the original word spans
         spans = [s.tokenized["word_spans"] for s in samples]
-        res = {"task": "ner", "predictions": []}
+        res = {"task": "ner",
+               "task_name": self.task_name,
+               "predictions": []}
         for preds_seq, probs_seq, sample, spans_seq in zip(
             preds, probs, samples, spans
         ):
