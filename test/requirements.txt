@@ -1,5 +1,0 @@
-pytest
-pytest-azurepipelines
-pytest-benchmark
-onnxruntime
-sentence-transformers

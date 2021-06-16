@@ -19,6 +19,8 @@ seqeval
 mlflow<=1.13.1
 # huggingface repository
 transformers==4.6.1
+#sentence transformers
+sentence-transformers
 # accessing dictionary elements with dot notation
 dotmap
 # for inference-rest-apis
