@@ -1706,9 +1706,8 @@ class BertStyleLMProcessor(Processor):
         :type max_predictions_per_seq: int
         :return: (list of int, list of int), masked tokens and related labels for LM prediction
         """
-
+        
         # 1. Combine tokens to one group (e.g. all subtokens of a word)
-
 
         # tokens can have different ids depending on the model
         pad_token_id = self.tokenizer.vocab["[PAD]"]
@@ -1716,7 +1715,6 @@ class BertStyleLMProcessor(Processor):
         sep_token_id = self.tokenizer.vocab["[CLS]"]
         mask_token_id = self.tokenizer.vocab["[MASK]"]
 
-        
         cand_indices = []
         for (i, token) in enumerate(tokens):
             if token == cls_token_id or token == sep_token_id or token == pad_token_id: # CLS, SEP and PAD tokens
