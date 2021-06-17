@@ -1748,7 +1748,7 @@ class BertStyleLMProcessor(Processor):
                 original_token = tokens[index]
                 # 80% randomly change token to mask token
                 if prob < 0.8:
-                    tokens[index] = 103
+                    tokens[index] = mask_token_id
 
                 # 10% randomly change token to random token
                 # TODO currently custom vocab is not included here
