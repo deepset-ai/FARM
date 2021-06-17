@@ -1706,10 +1706,18 @@ class BertStyleLMProcessor(Processor):
         :type max_predictions_per_seq: int
         :return: (list of int, list of int), masked tokens and related labels for LM prediction
         """
+        
         # 1. Combine tokens to one group (e.g. all subtokens of a word)
+
+        # tokens can have different ids depending on the model
+        pad_token_id = self.tokenizer.vocab["[PAD]"]
+        cls_token_id = self.tokenizer.vocab["[SEP]"]
+        sep_token_id = self.tokenizer.vocab["[CLS]"]
+        mask_token_id = self.tokenizer.vocab["[MASK]"]
+
         cand_indices = []
         for (i, token) in enumerate(tokens):
-            if token == 101 or token == 102 or token == 0:
+            if token == cls_token_id or token == sep_token_id or token == pad_token_id: # CLS, SEP and PAD tokens
                 continue
             if (token_groups and len(cand_indices) >= 1 and not token_groups[i]):
                 cand_indices[-1].append(i)
@@ -1723,7 +1731,7 @@ class BertStyleLMProcessor(Processor):
 
         output_label = [-1] * len(tokens)
         num_masked = 0
-        assert 103 not in tokens #mask token
+        assert mask_token_id not in tokens #mask token
 
         # 2. Mask the first groups until we reach the number of tokens we wanted to mask (num_to_mask)
         for index_set in cand_indices:
@@ -1740,7 +1748,7 @@ class BertStyleLMProcessor(Processor):
                 original_token = tokens[index]
                 # 80% randomly change token to mask token
                 if prob < 0.8:
-                    tokens[index] = 103
+                    tokens[index] = mask_token_id
 
                 # 10% randomly change token to random token
                 # TODO currently custom vocab is not included here
