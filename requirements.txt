@@ -18,9 +18,7 @@ sklearn
 seqeval
 mlflow<=1.13.1
 # huggingface repository
-#transformers==4.7.0
-transformers
---find-links=https://github.com/huggingface/transformers/tarball/master#egg=transformers
+transformers==4.7.0
 # accessing dictionary elements with dot notation
 dotmap
 # for inference-rest-apis
