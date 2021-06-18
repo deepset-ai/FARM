@@ -61,14 +61,12 @@ def semantic_answer_similarity(result, sts_model_path_or_string="paraphrase-xlm-
 
         # Add debug information
         if debug:
-            # Exclude no answer labels from debug info
-            if len(result[i].ground_truth_answer) == 0:
-                pass
-            else:
-                current_info = _add_debug_info(result=result, i=i, sims=sims)
+            current_info = _add_debug_info(result=result, i=i, sims=sims)
+            if current_info is not None:
                 debug_info.append(current_info)
 
     return np.mean(top1_sim), np.mean(topn_sim), result, debug_info
+
 
 # helper fct to extract labels and predictions in text form
 def _extract_QA_result(result):
@@ -90,12 +88,17 @@ def _extract_QA_result(result):
 
     return text_preds, text_labels
 
+
 # helper fct to add debug info
 def _add_debug_info(result,i,sims):
     current_preds = [[result[i].prediction]]
     current_labels = [
         [(x["answer_start"], x["answer_start"] + len(x["text"])) for x in result[i].ground_truth_answer]]
-    if top_n_accuracy(preds=current_preds, labels=current_labels) == 0:
+    # Exclude no answer labels from debug info
+    if len(result[i].ground_truth_answer) == 0:
+        return None
+    # Only add debug info if there is no overlap between predictions and labels
+    elif top_n_accuracy(preds=current_preds, labels=current_labels) == 0:
         current_info = {}
         current_info["question"] = result[i].question
         current_info["top1_sim"] = np.max(sims[0, :])
@@ -106,4 +109,6 @@ def _add_debug_info(result,i,sims):
         current_info["topn_sim"] = np.max(sims)
         current_info["topn_label"] = result[i].ground_truth_answer[idx[1]]["text"]
         current_info["topn_pred"] = result[i].prediction[idx[0]].answer
-    return current_info
+        return current_info
+    else:
+        return None
