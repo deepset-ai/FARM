@@ -1,4 +1,0 @@
-pytest
-pytest-azurepipelines
-pytest-benchmark
-onnxruntime

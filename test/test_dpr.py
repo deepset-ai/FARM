@@ -3,6 +3,11 @@ import torch
 import logging
 import numpy as np
 from pathlib import Path
+
+from torch.utils.data import SequentialSampler
+from tqdm import tqdm
+
+from farm.data_handler.dataloader import NamedDataLoader
 from farm.data_handler.processor import TextSimilarityProcessor
 from farm.data_handler.data_silo import DataSilo
 from farm.train import Trainer
@@ -404,7 +409,7 @@ def test_dpr_context_only():
 
 
 def test_dpr_processor_save_load():
-    d = {'query': 'big little lies season 2 how many episodes',
+    d = {'query': 'big little lies season 2 how many episodes ?',
          'passages': [
                          {'title': 'Big Little Lies (TV series)',
                           'text': 'series garnered several accolades. It received 16 Emmy Award nominations and won eight, including Outstanding Limited Series and acting awards for Kidman, Skarsgård, and Dern. The trio also won Golden Globe Awards in addition to a Golden Globe Award for Best Miniseries or Television Film win for the series. Kidman and Skarsgård also received Screen Actors Guild Awards for their performances. Despite originally being billed as a miniseries, HBO renewed the series for a second season. Production on the second season began in March 2018 and is set to premiere in 2019. All seven episodes are being written by Kelley',
@@ -443,7 +448,244 @@ def test_dpr_processor_save_load():
     dataset2, tensor_names, _ = loadedprocessor.dataset_from_dicts(dicts=[d], return_baskets=False)
     assert np.array_equal(dataset.tensors[0],dataset2.tensors[0])
 
+@pytest.mark.parametrize("query_and_passage_model", [{"query":"etalab-ia/dpr-question_encoder-fr_qa-camembert","passage":"etalab-ia/dpr-ctx_encoder-fr_qa-camembert"}, {"query":"deepset/gbert-base-germandpr-question_encoder","passage":"deepset/gbert-base-germandpr-ctx_encoder"},{"query":"facebook/dpr-question_encoder-single-nq-base", "passage":"facebook/dpr-ctx_encoder-single-nq-base"}])
+def test_dpr_processor_save_load_non_bert_tokenizer(query_and_passage_model):
+    """
+    This test compares 1) a model that was loaded from model hub with
+    2) a model from model hub that was saved to disk and then loaded from disk and
+    3) a model in FARM style that was saved to disk and then loaded from disk
+    """
 
+    d = {'query': "Comment s'appelle le portail open data du gouvernement?",
+         'passages': [
+             {'title': 'Etalab',
+              'text': "Etalab est une administration publique française qui fait notamment office de Chief Data Officer de l'État et coordonne la conception et la mise en œuvre de sa stratégie dans le domaine de la donnée (ouverture et partage des données publiques ou open data, exploitation des données et intelligence artificielle...). Ainsi, Etalab développe et maintient le portail des données ouvertes du gouvernement français data.gouv.fr. Etalab promeut également une plus grande ouverture l'administration sur la société (gouvernement ouvert) : transparence de l'action publique, innovation ouverte, participation citoyenne... elle promeut l’innovation, l’expérimentation, les méthodes de travail ouvertes, agiles et itératives, ainsi que les synergies avec la société civile pour décloisonner l’administration et favoriser l’adoption des meilleures pratiques professionnelles dans le domaine du numérique. À ce titre elle étudie notamment l’opportunité de recourir à des technologies en voie de maturation issues du monde de la recherche. Cette entité chargée de l'innovation au sein de l'administration doit contribuer à l'amélioration du service public grâce au numérique. Elle est rattachée à la Direction interministérielle du numérique, dont les missions et l’organisation ont été fixées par le décret du 30 octobre 2019.  Dirigé par Laure Lucchesi depuis 2016, elle rassemble une équipe pluridisciplinaire d'une trentaine de personnes.",
+              'label': 'positive',
+              'external_id': '1'},
+         ]
+         }
+
+    # load model from model hub
+    query_embedding_model = query_and_passage_model["query"]
+    passage_embedding_model = query_and_passage_model["passage"]
+    query_tokenizer = Tokenizer.load(pretrained_model_name_or_path=query_embedding_model)  # tokenizer class is inferred automatically
+    query_encoder = LanguageModel.load(pretrained_model_name_or_path=query_embedding_model,
+                                       language_model_class="DPRQuestionEncoder")
+    passage_tokenizer = Tokenizer.load(pretrained_model_name_or_path=passage_embedding_model)
+    passage_encoder = LanguageModel.load(pretrained_model_name_or_path=passage_embedding_model,
+                                         language_model_class="DPRContextEncoder")
+
+    processor = TextSimilarityProcessor(query_tokenizer=query_tokenizer,
+                                        passage_tokenizer=passage_tokenizer,
+                                        max_seq_len_passage=256,
+                                        max_seq_len_query=256,
+                                        label_list=["hard_negative", "positive"],
+                                        metric="text_similarity_metric",
+                                        embed_title=True,
+                                        num_hard_negatives=0,
+                                        num_positives=1)
+    prediction_head = TextSimilarityHead(similarity_function="dot_product")
+
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")
+    model = BiAdaptiveModel(
+        language_model1=query_encoder,
+        language_model2=passage_encoder,
+        prediction_heads=[prediction_head],
+        embeds_dropout_prob=0.1,
+        lm1_output_types=["per_sequence"],
+        lm2_output_types=["per_sequence"],
+        device=device,
+    )
+    model.connect_heads_with_processor(processor.tasks, require_labels=False)
+
+    # save model that was loaded from model hub to disk
+    save_dir = "testsave/dpr_model"
+    query_encoder_dir = "query_encoder"
+    passage_encoder_dir = "passage_encoder"
+    model.save(Path(save_dir), lm1_name=query_encoder_dir, lm2_name=passage_encoder_dir)
+    query_tokenizer.save_pretrained(save_dir + f"/{query_encoder_dir}")
+    passage_tokenizer.save_pretrained(save_dir + f"/{passage_encoder_dir}")
+
+    # load model from disk
+    loaded_query_tokenizer = Tokenizer.load(
+        pretrained_model_name_or_path=Path(save_dir) / query_encoder_dir, use_fast=True)  # tokenizer class is inferred automatically
+    loaded_query_encoder = LanguageModel.load(pretrained_model_name_or_path=Path(save_dir) / query_encoder_dir,
+                                       language_model_class="DPRQuestionEncoder")
+    loaded_passage_tokenizer = Tokenizer.load(
+        pretrained_model_name_or_path=Path(save_dir) / passage_encoder_dir, use_fast=True)
+    loaded_passage_encoder = LanguageModel.load(pretrained_model_name_or_path=Path(save_dir) / passage_encoder_dir,
+                                         language_model_class="DPRContextEncoder")
+
+    loaded_processor = TextSimilarityProcessor(query_tokenizer=loaded_query_tokenizer,
+                                        passage_tokenizer=loaded_passage_tokenizer,
+                                        max_seq_len_passage=256,
+                                        max_seq_len_query=256,
+                                        label_list=["hard_negative", "positive"],
+                                        metric="text_similarity_metric",
+                                        embed_title=True,
+                                        num_hard_negatives=0,
+                                        num_positives=1)
+    loaded_prediction_head = TextSimilarityHead(similarity_function="dot_product")
+
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")
+    loaded_model = BiAdaptiveModel(
+        language_model1=loaded_query_encoder,
+        language_model2=loaded_passage_encoder,
+        prediction_heads=[loaded_prediction_head],
+        embeds_dropout_prob=0.1,
+        lm1_output_types=["per_sequence"],
+        lm2_output_types=["per_sequence"],
+        device=device,
+    )
+    loaded_model.connect_heads_with_processor(loaded_processor.tasks, require_labels=False)
+
+    # compare model loaded from model hub with model loaded from disk
+    dataset, tensor_names, _ = processor.dataset_from_dicts(dicts=[d], return_baskets=False)
+    dataset2, tensor_names2, _ = loaded_processor.dataset_from_dicts(dicts=[d], return_baskets=False)
+    assert np.array_equal(dataset.tensors[0], dataset2.tensors[0])
+
+    # generate embeddings with model loaded from model hub
+    dataset, tensor_names, _, baskets = processor.dataset_from_dicts(
+        dicts=[d], indices=[i for i in range(len([d]))], return_baskets=True
+    )
+
+    data_loader = NamedDataLoader(
+        dataset=dataset, sampler=SequentialSampler(dataset), batch_size=16, tensor_names=tensor_names
+    )
+    all_embeddings = {"query": [], "passages": []}
+    model.eval()
+
+    for i, batch in enumerate(tqdm(data_loader, desc=f"Creating Embeddings", unit=" Batches", disable=True)):
+        batch = {key: batch[key].to(device) for key in batch}
+
+        # get logits
+        with torch.no_grad():
+            query_embeddings, passage_embeddings = model.forward(**batch)[0]
+            if query_embeddings is not None:
+                all_embeddings["query"].append(query_embeddings.cpu().numpy())
+            if passage_embeddings is not None:
+                all_embeddings["passages"].append(passage_embeddings.cpu().numpy())
+
+    if all_embeddings["passages"]:
+        all_embeddings["passages"] = np.concatenate(all_embeddings["passages"])
+    if all_embeddings["query"]:
+        all_embeddings["query"] = np.concatenate(all_embeddings["query"])
+
+    # generate embeddings with model loaded from disk
+    dataset2, tensor_names2, _, baskets2 = loaded_processor.dataset_from_dicts(
+        dicts=[d], indices=[i for i in range(len([d]))], return_baskets=True
+    )
+
+    data_loader = NamedDataLoader(
+        dataset=dataset2, sampler=SequentialSampler(dataset2), batch_size=16, tensor_names=tensor_names2
+    )
+    all_embeddings2 = {"query": [], "passages": []}
+    loaded_model.eval()
+
+    for i, batch in enumerate(tqdm(data_loader, desc=f"Creating Embeddings", unit=" Batches", disable=True)):
+        batch = {key: batch[key].to(device) for key in batch}
+
+        # get logits
+        with torch.no_grad():
+            query_embeddings, passage_embeddings = loaded_model.forward(**batch)[0]
+            if query_embeddings is not None:
+                all_embeddings2["query"].append(query_embeddings.cpu().numpy())
+            if passage_embeddings is not None:
+                all_embeddings2["passages"].append(passage_embeddings.cpu().numpy())
+
+    if all_embeddings2["passages"]:
+        all_embeddings2["passages"] = np.concatenate(all_embeddings2["passages"])
+    if all_embeddings2["query"]:
+        all_embeddings2["query"] = np.concatenate(all_embeddings2["query"])
+
+    # compare embeddings of model loaded from model hub and model loaded from disk
+    assert np.array_equal(all_embeddings["query"][0], all_embeddings2["query"][0])
+
+    # save the model that was loaded from disk to disk
+    save_dir = "testsave/dpr_model"
+    query_encoder_dir = "query_encoder"
+    passage_encoder_dir = "passage_encoder"
+    loaded_model.save(Path(save_dir), lm1_name=query_encoder_dir, lm2_name=passage_encoder_dir)
+    loaded_query_tokenizer.save_pretrained(save_dir + f"/{query_encoder_dir}")
+    loaded_passage_tokenizer.save_pretrained(save_dir + f"/{passage_encoder_dir}")
+
+    # load model from disk
+    query_tokenizer = Tokenizer.load(
+        pretrained_model_name_or_path=Path(save_dir) / query_encoder_dir)  # tokenizer class is inferred automatically
+    query_encoder = LanguageModel.load(pretrained_model_name_or_path=Path(save_dir) / query_encoder_dir,
+                                       language_model_class="DPRQuestionEncoder")
+    passage_tokenizer = Tokenizer.load(pretrained_model_name_or_path=Path(save_dir) / passage_encoder_dir)
+    passage_encoder = LanguageModel.load(pretrained_model_name_or_path=Path(save_dir) / passage_encoder_dir,
+                                         language_model_class="DPRContextEncoder")
+
+    processor = TextSimilarityProcessor(query_tokenizer=query_tokenizer,
+                                        passage_tokenizer=passage_tokenizer,
+                                        max_seq_len_passage=256,
+                                        max_seq_len_query=256,
+                                        label_list=["hard_negative", "positive"],
+                                        metric="text_similarity_metric",
+                                        embed_title=True,
+                                        num_hard_negatives=0,
+                                        num_positives=1)
+    prediction_head = TextSimilarityHead(similarity_function="dot_product")
+
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+    else:
+        device = torch.device("cpu")
+    model = BiAdaptiveModel(
+        language_model1=query_encoder,
+        language_model2=passage_encoder,
+        prediction_heads=[prediction_head],
+        embeds_dropout_prob=0.1,
+        lm1_output_types=["per_sequence"],
+        lm2_output_types=["per_sequence"],
+        device=device,
+    )
+    model.connect_heads_with_processor(processor.tasks, require_labels=False)
+
+    # compare a model loaded from disk that originated from the model hub and was then saved disk with
+    # a model loaded from disk that also originated from a FARM style model that was saved to disk
+    dataset3, tensor_names3, _ = processor.dataset_from_dicts(dicts=[d], return_baskets=False)
+    dataset2, tensor_names2, _ = loaded_processor.dataset_from_dicts(dicts=[d], return_baskets=False)
+    assert np.array_equal(dataset3.tensors[0], dataset2.tensors[0])
+
+    # generate embeddings with model loaded from disk that originated from a FARM style model that was saved to disk earlier
+    dataset3, tensor_names3, _, baskets3 = loaded_processor.dataset_from_dicts(
+        dicts=[d], indices=[i for i in range(len([d]))], return_baskets=True
+    )
+
+    data_loader = NamedDataLoader(
+        dataset=dataset3, sampler=SequentialSampler(dataset3), batch_size=16, tensor_names=tensor_names3
+    )
+    all_embeddings3 = {"query": [], "passages": []}
+    loaded_model.eval()
+
+    for i, batch in enumerate(tqdm(data_loader, desc=f"Creating Embeddings", unit=" Batches", disable=True)):
+        batch = {key: batch[key].to(device) for key in batch}
+
+        # get logits
+        with torch.no_grad():
+            query_embeddings, passage_embeddings = loaded_model.forward(**batch)[0]
+            if query_embeddings is not None:
+                all_embeddings3["query"].append(query_embeddings.cpu().numpy())
+            if passage_embeddings is not None:
+                all_embeddings3["passages"].append(passage_embeddings.cpu().numpy())
+
+    if all_embeddings3["passages"]:
+        all_embeddings3["passages"] = np.concatenate(all_embeddings3["passages"])
+    if all_embeddings3["query"]:
+        all_embeddings3["query"] = np.concatenate(all_embeddings3["query"])
+
+    # compare embeddings of model loaded from model hub and model loaded from disk that originated from a FARM style
+    # model that was saved to disk earlier
+    assert np.array_equal(all_embeddings["query"][0], all_embeddings3["query"][0])
 
 def test_dpr_training():
     batch_size = 1

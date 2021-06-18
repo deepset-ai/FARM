@@ -110,14 +110,19 @@ class BaseAdaptiveModel:
         # This case is triggered by Natural Questions
         else:
             preds_final = [list() for _ in range(n_heads)]
-            preds = kwargs["preds"]
-            preds_for_heads = stack(preds)
-            logits_for_heads = [None] * n_heads
+            preds = kwargs.get("preds")
+            if preds is not None:
+                preds_for_heads = stack(preds)
+                logits_for_heads = [None] * n_heads
+                del kwargs["preds"]
+            else:
+                preds_for_heads = [None] * n_heads
+                logits_for_heads = logits
+            preds_final = [list() for _ in range(n_heads)]
 
-            samples = [s for b in kwargs["baskets"] for s in b.samples]
-            kwargs["samples"] = samples
-
-            del kwargs["preds"]
+            if not "samples" in kwargs:
+                samples = [s for b in kwargs["baskets"] for s in b.samples]
+                kwargs["samples"] = samples
 
             for i, (head, preds_for_head, logits_for_head) in enumerate(zip(self.prediction_heads, preds_for_heads, logits_for_heads)):
                 preds = head.formatted_preds(logits=logits_for_head, preds=preds_for_head, **kwargs)

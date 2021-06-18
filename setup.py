@@ -73,7 +73,7 @@ setup(
     keywords="BERT NLP deep-learning language-model transformer qa question-answering transfer-learning",
     license="Apache",
     url="https://github.com/deepset-ai/FARM",
-    download_url="https://github.com/deepset-ai/FARM/archive/0.7.1.tar.gz",
+    download_url="https://github.com/deepset-ai/FARM/archive/v"+versionfromfile(here, "farm", "_version.py")+".tar.gz",
     packages=find_packages(exclude=["*.tests", "*.tests.*", "tests.*", "tests"]),
     dependency_links=dependency_links,
     install_requires=parsed_requirements,
