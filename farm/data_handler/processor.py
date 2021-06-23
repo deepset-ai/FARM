@@ -375,7 +375,7 @@ class Processor(ABC):
     def log_problematic(problematic_sample_ids):
         if problematic_sample_ids:
             n_problematic = len(problematic_sample_ids)
-            problematic_id_str = ", ".join(problematic_sample_ids)
+            problematic_id_str = ", ".join([str(i) for i in problematic_sample_ids])
             logger.error(
                 f"Unable to convert {n_problematic} samples to features. Their ids are : {problematic_id_str}")
 
