@@ -42,7 +42,8 @@ from transformers import (
     XLMRobertaModel, XLMRobertaConfig,
     DistilBertModel, DistilBertConfig,
     ElectraModel, ElectraConfig,
-    CamembertModel, CamembertConfig
+    CamembertModel, CamembertConfig,
+    BigBirdModel, BigBirdConfig
 )
 
 from transformers import AutoModel, AutoConfig
@@ -208,6 +209,8 @@ class LanguageModel(nn.Module):
                 language_model_class = "DPRContextEncoder"
             elif config.archictectures[0] == "DPRReader":
                 raise NotImplementedError("DPRReader models are currently not supported.")
+        elif model_type == "big_bird":
+            language_model_class = "BigBird"
         else:
             # Fall back to inferring type from model name
             logger.warning("Could not infer LanguageModel class from config. Trying to infer "
@@ -222,6 +225,8 @@ class LanguageModel(nn.Module):
         # fall back to inferring Language model class from model name.
         if "xlm" in model_name_or_path.lower() and "roberta" in model_name_or_path.lower():
             language_model_class = "XLMRoberta"
+        elif "bigbird" in model_name_or_path.lower():
+            language_model_class = "BigBird"
         elif "roberta" in model_name_or_path.lower():
             language_model_class = "Roberta"
         elif "codebert" in model_name_or_path.lower():
@@ -1703,3 +1708,99 @@ class DPRContextEncoder(LanguageModel):
 
     def disable_hidden_states_output(self):
         self.model.ctx_encoder.config.output_hidden_states = False
+
+
+class BigBird(LanguageModel):
+    """
+    A BERT model that wraps HuggingFace's implementation
+    (https://github.com/huggingface/transformers) to fit the LanguageModel class.
+    Paper: https://arxiv.org/abs/1810.04805
+
+    """
+
+    def __init__(self):
+        super(BigBird, self).__init__()
+        self.model = None
+        self.name = "big_bird"
+
+    @classmethod
+    def from_scratch(cls, vocab_size, name="big_bird", language="en"):
+        big_bird = cls()
+        big_bird.name = name
+        big_bird.language = language
+        config = BigBirdConfig(vocab_size=vocab_size)
+        big_bird.model = BigBirdModel(config)
+        return big_bird
+
+    @classmethod
+    def load(cls, pretrained_model_name_or_path, language=None, **kwargs):
+        """
+        Load a pretrained model by supplying
+
+        * the name of a remote model on s3 ("bert-base-cased" ...)
+        * OR a local path of a model trained via transformers ("some_dir/huggingface_model")
+        * OR a local path of a model trained via FARM ("some_dir/farm_model")
+
+        :param pretrained_model_name_or_path: The path of the saved pretrained model or its name.
+        :type pretrained_model_name_or_path: str
+
+        """
+
+        big_bird = cls()
+        if "farm_lm_name" in kwargs:
+            big_bird.name = kwargs["farm_lm_name"]
+        else:
+            big_bird.name = pretrained_model_name_or_path
+        # We need to differentiate between loading model using FARM format and Pytorch-Transformers format
+        farm_lm_config = Path(pretrained_model_name_or_path) / "language_model_config.json"
+        if os.path.exists(farm_lm_config):
+            # FARM style
+            big_bird_config = BigBirdConfig.from_pretrained(farm_lm_config)
+            farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
+            big_bird.model = BigBirdModel.from_pretrained(farm_lm_model, config=big_bird_config, **kwargs)
+            big_bird.language = big_bird.model.config.language
+        else:
+            # Pytorch-transformer Style
+            big_bird.model = BigBirdModel.from_pretrained(str(pretrained_model_name_or_path), **kwargs)
+            big_bird.language = cls._get_or_infer_language_from_name(language, pretrained_model_name_or_path)
+        return big_bird
+
+    def forward(
+        self,
+        input_ids,
+        segment_ids,
+        padding_mask,
+        **kwargs,
+    ):
+        """
+        Perform the forward pass of the BERT model.
+
+        :param input_ids: The ids of each token in the input sequence. Is a tensor of shape [batch_size, max_seq_len]
+        :type input_ids: torch.Tensor
+        :param segment_ids: The id of the segment. For example, in next sentence prediction, the tokens in the
+           first sentence are marked with 0 and those in the second are marked with 1.
+           It is a tensor of shape [batch_size, max_seq_len]
+        :type segment_ids: torch.Tensor
+        :param padding_mask: A mask that assigns a 1 to valid input tokens and 0 to padding tokens
+           of shape [batch_size, max_seq_len]
+        :return: Embeddings for each token in the input sequence.
+
+        """
+        output_tuple = self.model(
+            input_ids,
+            token_type_ids=segment_ids,
+            attention_mask=padding_mask,
+        )
+        if self.model.encoder.config.output_hidden_states == True:
+            sequence_output, pooled_output, all_hidden_states = output_tuple[0], output_tuple[1], output_tuple[2]
+            return sequence_output, pooled_output, all_hidden_states
+        else:
+            sequence_output, pooled_output = output_tuple[0], output_tuple[1]
+            return sequence_output, pooled_output
+
+    def enable_hidden_states_output(self):
+        self.model.encoder.config.output_hidden_states = True
+
+    def disable_hidden_states_output(self):
+        self.model.encoder.config.output_hidden_states = False
+

@@ -33,7 +33,8 @@ from transformers import (
     XLNetTokenizer, XLNetTokenizerFast,
     CamembertTokenizer, CamembertTokenizerFast,
     DPRContextEncoderTokenizer, DPRContextEncoderTokenizerFast,
-    DPRQuestionEncoderTokenizer, DPRQuestionEncoderTokenizerFast
+    DPRQuestionEncoderTokenizer, DPRQuestionEncoderTokenizerFast,
+    BigBirdTokenizer, BigBirdTokenizerFast
 )
 from transformers.models.bert.tokenization_bert import load_vocab
 from transformers.tokenization_utils import PreTrainedTokenizer
@@ -138,6 +139,11 @@ class Tokenizer:
                 ret = DPRContextEncoderTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
             else:
                 ret = DPRContextEncoderTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
+        elif "BigBirdTokenizer" in tokenizer_class:
+            if use_fast:
+                ret = BigBirdTokenizerFast.from_pretrained(pretrained_model_name_or_path, **kwargs)
+            else:
+                ret = BigBirdTokenizer.from_pretrained(pretrained_model_name_or_path, **kwargs)
         if ret is None:
             raise Exception("Unable to load tokenizer")
         else:
@@ -158,6 +164,7 @@ class Tokenizer:
                 return tokenizer_class
 
         model_type = config.model_type
+
         if model_type == "xlm-roberta":
             tokenizer_class = "XLMRobertaTokenizer"
         elif model_type == "roberta":
@@ -183,6 +190,8 @@ class Tokenizer:
                 tokenizer_class = "DPRContextEncoderTokenizer"
             elif config.architectures[0] == "DPRReader":
                 raise NotImplementedError("DPRReader models are currently not supported.")
+        elif model_type == "big_bird":
+            tokenizer_class = "BigBirdTokenizer"
         else:
             # Fall back to inferring type from model name
             logger.warning("Could not infer Tokenizer type from config. Trying to infer "
@@ -195,8 +204,11 @@ class Tokenizer:
     def _infer_tokenizer_class_from_string(pretrained_model_name_or_path):
         # If inferring tokenizer class from config doesn't succeed,
         # fall back to inferring tokenizer class from model name.
+
         if "albert" in pretrained_model_name_or_path.lower():
             tokenizer_class = "AlbertTokenizer"
+        elif "bigbird" in pretrained_model_name_or_path.lower():
+            tokenizer_class = "BigBirdTokenizer"
         elif "xlm-roberta" in pretrained_model_name_or_path.lower():
             tokenizer_class = "XLMRobertaTokenizer"
         elif "roberta" in pretrained_model_name_or_path.lower():
