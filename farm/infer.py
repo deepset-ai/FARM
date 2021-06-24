@@ -173,6 +173,7 @@ class Inferencer:
         multithreading_rust=True,
         dummy_ph=False,
         benchmarking=False,
+        **kwargs
     ):
         """
         Load an Inferencer incl. all relevant components (model, tokenizer, processor ...) either by
@@ -265,7 +266,8 @@ class Inferencer:
             model = AdaptiveModel.convert_from_transformers(model_name_or_path,
                                                             revision=revision,
                                                             device=device,
-                                                            task_type=task_type)
+                                                            task_type=task_type,
+                                                            **kwargs)
             processor = Processor.convert_from_transformers(model_name_or_path,
                                                             revision=revision,
                                                             task_type=task_type,
@@ -273,7 +275,8 @@ class Inferencer:
                                                             doc_stride=doc_stride,
                                                             tokenizer_class=tokenizer_class,
                                                             tokenizer_args=tokenizer_args,
-                                                            use_fast=use_fast)
+                                                            use_fast=use_fast,
+                                                            **kwargs)
 
         # override processor attributes loaded from config or HF with inferencer params
         processor.max_seq_len = max_seq_len
