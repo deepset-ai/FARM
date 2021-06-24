@@ -1668,7 +1668,7 @@ class BigBird(LanguageModel):
             # FARM style
             big_bird_config = BigBirdConfig.from_pretrained(farm_lm_config)
             farm_lm_model = Path(pretrained_model_name_or_path) / "language_model.bin"
-            big_bird.model = BigBirdModel.from_pretrained(farm_lm_model, config=bert_config, **kwargs)
+            big_bird.model = BigBirdModel.from_pretrained(farm_lm_model, config=big_bird_config, **kwargs)
             big_bird.language = big_bird.model.config.language
         else:
             # Pytorch-transformer Style
