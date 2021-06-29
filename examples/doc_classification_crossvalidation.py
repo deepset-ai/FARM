@@ -1,4 +1,9 @@
 # fmt: off
+"""
+Example code demonstrating how to do classification crossvalidation.
+This uses about 6G GPU memory. To lower the requirement, decrease the batch size and perhaps use
+gradient accumulation.
+"""
 import logging
 import json
 from pathlib import Path
@@ -228,11 +233,11 @@ def doc_classification_crossvalidation():
     model.connect_heads_with_processor(data_silo.processor.tasks, require_labels=True)
 
     result = evaluator_origtest.eval(model)
-    logger.info("TEST F1 MICRO:   ", result[0]["f1_micro"])
-    logger.info("TEST F1 MACRO:   ", result[0]["f1_macro"])
-    logger.info("TEST F1 OFFENSE: ", result[0]["f1_offense"])
-    logger.info("TEST F1 OTHER:   ", result[0]["f1_other"])
-    logger.info("TEST MCC:        ", result[0]["mcc"])
+    logger.info(f"TEST F1 MICRO:   {result[0]['f1_micro']}")
+    logger.info(f"TEST F1 MACRO:   {result[0]['f1_macro']}")
+    logger.info(f"TEST F1 OFFENSE: {result[0]['f1_offense']}")
+    logger.info(f"TEST F1 OTHER:   {result[0]['f1_other']}")
+    logger.info(f"TEST MCC:        {result[0]['mcc']}")
 
 
 if __name__ == "__main__":
