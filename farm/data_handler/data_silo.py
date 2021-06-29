@@ -1208,8 +1208,8 @@ class DataSiloForHoldout:
             n_actual_train = len(train_idx) - n_dev
             if stratified:
                 devidxs = list(range(len(train_idx)))
-                dev_split = StratifiedShuffleSplit(n_splits=1, train_size=n_actual_train).split(devidxs, Y[devidxs])
-                actual_train_idx, dev_idx = next(dev_split)
+                dev_splitter = StratifiedShuffleSplit(n_splits=1, train_size=n_actual_train).split(devidxs, Y[devidxs])
+                actual_train_idx, dev_idx = next(dev_splitter)
             else:
                 actual_train_idx = train_idx[:n_actual_train]
                 dev_idx = train_idx[n_actual_train:]
