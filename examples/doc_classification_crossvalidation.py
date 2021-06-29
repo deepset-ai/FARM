@@ -1,12 +1,10 @@
 # fmt: off
-"""
-Example code demonstrating how to do classification crossvalidation.
-This uses about 6G GPU memory. To lower the requirement, decrease the batch size and perhaps use
-gradient accumulation.
-"""
 import logging
+import numbers
 import json
+import statistics
 from pathlib import Path
+from collections import defaultdict
 import torch
 
 from farm.data_handler.data_silo import DataSilo, DataSiloForCrossVal
@@ -21,6 +19,7 @@ from farm.utils import set_all_seeds, MLFlowLogger, initialize_device_settings
 from farm.eval import Evaluator
 from sklearn.metrics import matthews_corrcoef, f1_score
 from farm.evaluation.metrics import simple_accuracy, register_metrics
+
 
 def doc_classification_crossvalidation():
     ##########################
@@ -166,10 +165,9 @@ def doc_classification_crossvalidation():
 
     # for each fold, run the whole training, earlystopping to get a model, then evaluate the model
     # on the test set of each fold
-    # Remember all the results for overall metrics over all predictions of all folds and for averaging
+
+    # remember all individual evaluation results
     allresults = []
-    all_preds = []
-    all_labels = []
     bestfold = None
     bestf1_offense = -1
     save_dir = Path("saved_models/bert-german-doc-tutorial-es")
@@ -187,8 +185,6 @@ def doc_classification_crossvalidation():
         evaluator_test.log_results(result, "Test", steps=len(silo.get_data_loader("test")), num_fold=num_fold)
 
         allresults.append(result)
-        all_preds.extend(result[0].get("preds"))
-        all_labels.extend(result[0].get("labels"))
 
         # keep track of best fold
         f1_offense = result[0]["f1_offense"]
@@ -204,18 +200,36 @@ def doc_classification_crossvalidation():
     with open("doc_classification_xval.results.json", "wt") as fp:
         json.dump(allresults, fp)
 
-    # calculate overall metrics across all folds
-    xval_f1_micro = f1_score(all_labels, all_preds, labels=label_list, average="micro")
-    xval_f1_macro = f1_score(all_labels, all_preds, labels=label_list, average="macro")
-    xval_f1_offense = f1_score(all_labels, all_preds, labels=label_list, pos_label="OFFENSE")
-    xval_f1_other = f1_score(all_labels, all_preds, labels=label_list, pos_label="OTHER")
-    xval_mcc = matthews_corrcoef(all_labels, all_preds)
+    # log the best fold metric and fold
+    logger.info(f"Best fold f1_offense: {bestf1_offense} in fold {bestfold}")
 
-    logger.info("XVAL F1 MICRO:   ", xval_f1_micro)
-    logger.info("XVAL F1 MACRO:   ", xval_f1_macro)
-    logger.info("XVAL F1 OFFENSE: ", xval_f1_offense)
-    logger.info("XVAL F1 OTHER:   ", xval_f1_other)
-    logger.info("XVAL MCC:        ", xval_mcc)
+    # calculate overall metrics across all folds: we only have one head so we do this only for the first head
+    # information in each of the per-fold results
+
+    # First create a dict where for each metric, we have a list of values from each fold
+    xval_metric_lists_head0 = defaultdict(list)
+    for results in allresults:
+        head0results = results[0]
+        for name in head0results.keys():
+            if name not in ["preds", "labels"] and not name.startswith("_") and \
+                    isinstance(head0results[name], numbers.Number):
+                xval_metric_lists_head0[name].append(head0results[name])
+    # Now calculate the mean and stdev for each metric, also copy over the task name
+    xval_metric = {}
+    xval_metric["task_name"] = allresults[0][0].get("task_name", "UNKNOWN TASKNAME")
+    for name in xval_metric_lists_head0.keys():
+        values = xval_metric_lists_head0[name]
+        vmean = statistics.mean(values)
+        vstdev = statistics.stdev(values)
+        xval_metric[name+"_mean"] = vmean
+        xval_metric[name+"_stdev"] = vstdev
+
+    logger.info(f"XVAL Accuracy:   mean {xval_metric['acc_mean']} stdev {xval_metric['acc_stdev']}")
+    logger.info(f"XVAL F1 MICRO:   mean {xval_metric['f1_micro_mean']} stdev {xval_metric['f1_micro_stdev']}")
+    logger.info(f"XVAL F1 MACRO:   mean {xval_metric['f1_macro_mean']} stdev {xval_metric['f1_macro_stdev']}")
+    logger.info(f"XVAL F1 OFFENSE: mean {xval_metric['f1_offense_mean']} stdev {xval_metric['f1_offense_stdev']}")
+    logger.info(f"XVAL F1 OTHER:   mean {xval_metric['f1_other_mean']} stdev {xval_metric['f1_other_stdev']}")
+    logger.info(f"XVAL MCC:        mean {xval_metric['mcc_mean']} stdev {xval_metric['mcc_stdev']}")
 
     # -----------------------------------------------------
     # Just for illustration, use the best model from the best xval val for evaluation on
@@ -233,6 +247,7 @@ def doc_classification_crossvalidation():
     model.connect_heads_with_processor(data_silo.processor.tasks, require_labels=True)
 
     result = evaluator_origtest.eval(model)
+    logger.info(f"TEST Accuracy:   {result[0]['acc']}")
     logger.info(f"TEST F1 MICRO:   {result[0]['f1_micro']}")
     logger.info(f"TEST F1 MACRO:   {result[0]['f1_macro']}")
     logger.info(f"TEST F1 OFFENSE: {result[0]['f1_offense']}")
