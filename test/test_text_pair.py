@@ -95,7 +95,7 @@ def test_text_pair_classification(caplog=None):
     result = model.inference_from_dicts(dicts=basic_texts)
 
     assert result[0]["predictions"][0]["label"] == "1"
-    assert np.isclose(result[0]["predictions"][0]["probability"], 0.3781, rtol=0.05)
+    assert np.isclose(result[0]["predictions"][0]["probability"], 0.39900774, rtol=0.05)
     model.close_multiprocessing_pool()
 
 
