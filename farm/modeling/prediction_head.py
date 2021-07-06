@@ -312,7 +312,7 @@ class TextClassificationHead(PredictionHead):
         self.generate_config()
 
     @classmethod
-    def load(cls, pretrained_model_name_or_path, revision=None):
+    def load(cls, pretrained_model_name_or_path, revision=None, **kwargs):
         """
         Load a prediction head from a saved FARM or transformers model. `pretrained_model_name_or_path`
         can be one of the following:
@@ -339,7 +339,7 @@ class TextClassificationHead(PredictionHead):
         else:
             # b) transformers style
             # load all weights from model
-            full_model = AutoModelForSequenceClassification.from_pretrained(pretrained_model_name_or_path, revision=revision)
+            full_model = AutoModelForSequenceClassification.from_pretrained(pretrained_model_name_or_path, revision=revision, **kwargs)
             # init empty head
             head = cls(layer_dims=[full_model.config.hidden_size, len(full_model.config.id2label)])
             # transfer weights for head from full model
@@ -581,7 +581,7 @@ class TokenClassificationHead(PredictionHead):
         self.generate_config()
 
     @classmethod
-    def load(cls, pretrained_model_name_or_path, revision=None):
+    def load(cls, pretrained_model_name_or_path, revision=None, **kwargs):
         """
         Load a prediction head from a saved FARM or transformers model. `pretrained_model_name_or_path`
         can be one of the following:
@@ -606,7 +606,7 @@ class TokenClassificationHead(PredictionHead):
         else:
             # b) transformers style
             # load all weights from model
-            full_model = AutoModelForTokenClassification.from_pretrained(pretrained_model_name_or_path, revision=revision)
+            full_model = AutoModelForTokenClassification.from_pretrained(pretrained_model_name_or_path, revision=revision, **kwargs)
             # init empty head
             head = cls(layer_dims=[full_model.config.hidden_size, len(full_model.config.label2id)])
             # transfer weights for head from full model
@@ -758,7 +758,7 @@ class BertLMHead(PredictionHead):
         self.bias = nn.Parameter(torch.zeros(vocab_size))
 
     @classmethod
-    def load(cls, pretrained_model_name_or_path, revision=None, n_added_tokens=0):
+    def load(cls, pretrained_model_name_or_path, revision=None, n_added_tokens=0, **kwargs):
         """
         Load a prediction head from a saved FARM or transformers model. `pretrained_model_name_or_path`
         can be one of the following:
@@ -790,7 +790,7 @@ class BertLMHead(PredictionHead):
             # b) pytorch-transformers style
             # load weights from bert model
             # (we might change this later to load directly from a state_dict to generalize for other language models)
-            bert_with_lm = BertForPreTraining.from_pretrained(pretrained_model_name_or_path, revision=revision)
+            bert_with_lm = BertForPreTraining.from_pretrained(pretrained_model_name_or_path, revision=revision, **kwargs)
 
             # init empty head
             vocab_size = bert_with_lm.config.vocab_size + n_added_tokens
@@ -867,7 +867,7 @@ class NextSentenceHead(TextClassificationHead):
      a pretrained language model that was saved in the Transformers style (all in one model).
     """
     @classmethod
-    def load(cls, pretrained_model_name_or_path):
+    def load(cls, pretrained_model_name_or_path, **kwargs):
         """
         Load a prediction head from a saved FARM or transformers model. `pretrained_model_name_or_path`
         can be one of the following:
@@ -892,7 +892,7 @@ class NextSentenceHead(TextClassificationHead):
             # b) pytorch-transformers style
             # load weights from bert model
             # (we might change this later to load directly from a state_dict to generalize for other language models)
-            bert_with_lm = BertForPreTraining.from_pretrained(pretrained_model_name_or_path)
+            bert_with_lm = BertForPreTraining.from_pretrained(pretrained_model_name_or_path, **kwargs)
 
             # init empty head
             head = cls(layer_dims=[bert_with_lm.config.hidden_size, 2], loss_ignore_index=-1, task_name="nextsentence")
@@ -991,7 +991,7 @@ class QuestionAnsweringHead(PredictionHead):
 
 
     @classmethod
-    def load(cls, pretrained_model_name_or_path, revision=None):
+    def load(cls, pretrained_model_name_or_path, revision=None, **kwargs):
         """
         Load a prediction head from a saved FARM or transformers model. `pretrained_model_name_or_path`
         can be one of the following:
@@ -1019,7 +1019,7 @@ class QuestionAnsweringHead(PredictionHead):
         else:
             # b) transformers style
             # load all weights from model
-            full_qa_model = AutoModelForQuestionAnswering.from_pretrained(pretrained_model_name_or_path, revision=revision)
+            full_qa_model = AutoModelForQuestionAnswering.from_pretrained(pretrained_model_name_or_path, revision=revision, **kwargs)
             # init empty head
             head = cls(layer_dims=[full_qa_model.config.hidden_size, 2], task_name="question_answering")
             # transfer weights for head from full model

@@ -516,7 +516,7 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
         return conv.Converter.convert_to_transformers(self)
 
     @classmethod
-    def convert_from_transformers(cls, model_name_or_path, device, revision=None, task_type=None, processor=None):
+    def convert_from_transformers(cls, model_name_or_path, device, revision=None, task_type=None, processor=None, **kwargs):
         """
         Load a (downstream) model from huggingface's transformers format. Use cases:
          - continue training in FARM (e.g. take a squad QA model and fine-tune on your own data)
@@ -545,7 +545,8 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
                                                         revision=revision,
                                                         device=device,
                                                         task_type=task_type,
-                                                        processor=processor)
+                                                        processor=processor,
+                                                        **kwargs)
 
 
     @classmethod
