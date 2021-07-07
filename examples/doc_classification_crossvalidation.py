@@ -125,39 +125,6 @@ def doc_classification_crossvalidation():
         logger.info( "Total number of samples: "
                     f"{len(silo_to_use.data['train'])+len(silo_to_use.data['dev'])+len(silo_to_use.data['test'])}")
 
-        # try to access all elements of all sets
-        trainset = silo_to_use.data["train"]
-        devset = silo_to_use.data["dev"]
-        testset = silo_to_use.data["test"]
-        i = 0
-        for el in trainset:
-            i += 1
-        logger.info(f"counted train: {i}")
-        i = 0
-        for el in devset:
-            i += 1
-        logger.info(f"counted dev: {i}")
-        i = 0
-        for el in testset:
-            i += 1
-        logger.info(f"counted test: {i}")
-
-        ltrain = silo_to_use.loaders["train"]
-        logger.info(f"Length of train loader: {len(ltrain)}")
-        ldev = silo_to_use.loaders["dev"]
-        ltest = silo_to_use.loaders["test"]
-        i = 0
-        for el in ltrain:
-            i += 1
-        logger.info(f"Counted train batches: {i}")
-        i = 0
-        for el in ldev:
-            i += 1
-        logger.info(f"Counted dev batches: {i}")
-        i = 0
-        for el in ltest:
-            i += 1
-        logger.info(f"Counted test batches: {i}")
         # Create an AdaptiveModel
         # a) which consists of a pretrained language model as a basis
         language_model = LanguageModel.load(lang_model)
