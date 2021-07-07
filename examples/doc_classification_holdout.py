@@ -3,6 +3,7 @@ import logging
 import numbers
 import json
 import statistics
+import mlflow
 from pathlib import Path
 from collections import defaultdict
 import torch
@@ -33,17 +34,16 @@ def doc_classification_holdout():
     # reduce verbosity from transformers library
     logging.getLogger('transformers').setLevel(logging.WARNING)
 
-    # ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
-    # for local logging instead:
-    ml_logger = MLFlowLogger(tracking_uri="logs")
-    # ml_logger.init_experiment(experiment_name="Public_FARM", run_name="DocClassification_ES_f1_1")
+    # local logging into directory "logs"
+    mlflogger = MLFlowLogger(tracking_uri="logs")
+    mlflogger.init_experiment(experiment_name="Example-docclass-xval", run_name="testrun1")
 
     ##########################
     ########## Settings
     ##########################
     holdout_splits = 5
     holdout_train_split = 0.8
-    holdout_stratified = True
+    holdout_stratification = True
 
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)
@@ -51,6 +51,11 @@ def doc_classification_holdout():
     batch_size = 32
     evaluate_every = 100
     lang_model = "bert-base-german-cased"
+    dev_split = 0.1
+    # For holdout the dev_stratification parameter must not be None: with None, the devset cannot be created
+    # using the default method of only splitting by the available chunks as initial train set for each fold
+    # is just a single chunk!
+    dev_stratification = True
     do_lower_case = False
     use_amp = None
 
@@ -92,6 +97,8 @@ def doc_classification_holdout():
                                             data_dir=Path("../data/germeval18"),
                                             label_list=label_list,
                                             metric=metric,
+                                            dev_split=dev_split,
+                                            dev_stratification=dev_stratification,
                                             label_column_name="coarse_label"
                                             )
 
@@ -102,14 +109,20 @@ def doc_classification_holdout():
 
     # Load one silo for each fold in our cross-validation
     silos = DataSiloForHoldout.make(data_silo,
+                                     sets=["train", "dev"],
                                      n_splits=holdout_splits,
                                      train_split=holdout_train_split,
-                                     stratified=holdout_stratified)
+                                     stratification=holdout_stratification)
 
     # the following steps should be run for each of the folds of the holdout evaluation, so we put them
     # into a function
     def train_on_split(silo_to_use, n_eval, save_dir):
         logger.info(f"############ Holdout: Evaluation {n_eval} of {holdout_splits} ############")
+        logger.info(f"Fold training   samples: {len(silo_to_use.data['train'])}")
+        logger.info(f"Fold dev        samples: {len(silo_to_use.data['dev'])}")
+        logger.info(f"Fold testing    samples: {len(silo_to_use.data['test'])}")
+        logger.info( "Total number of samples: "
+                    f"{len(silo_to_use.data['train'])+len(silo_to_use.data['dev'])+len(silo_to_use.data['test'])}")
         # Create an AdaptiveModel
         # a) which consists of a pretrained language model as a basis
         language_model = LanguageModel.load(lang_model)
@@ -174,6 +187,7 @@ def doc_classification_holdout():
     bestf1_offense = -1
     save_dir = Path("saved_models/bert-german-doc-tutorial-es")
     for num_fold, silo in enumerate(silos):
+        mlflow.start_run(run_name=f"split-{num_fold + 1}-of-{len(silos)}", nested=True)
         model = train_on_split(silo, num_fold, save_dir)
 
         # do eval on test set here (and not in Trainer),
@@ -193,7 +207,7 @@ def doc_classification_holdout():
         if f1_offense > bestf1_offense:
             bestf1_offense = f1_offense
             bestfold = num_fold
-
+        mlflow.end_run()
         # emtpy cache to avoid memory leak and cuda OOM across multiple folds
         model.cpu()
         torch.cuda.empty_cache()

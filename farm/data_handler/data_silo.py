@@ -9,16 +9,17 @@ from itertools import chain, groupby
 
 import numpy as np
 from sklearn.utils.class_weight import compute_class_weight
-from torch.utils.data import ConcatDataset, Dataset, Subset, IterableDataset
+from torch.utils.data import Dataset, Subset, IterableDataset
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data.sampler import RandomSampler, SequentialSampler
 import torch
-from sklearn.model_selection import StratifiedKFold, KFold
+from sklearn.model_selection import StratifiedKFold, KFold, ShuffleSplit, StratifiedShuffleSplit
 from tqdm import tqdm
 
 from farm.data_handler.dataloader import NamedDataLoader
 from farm.data_handler.processor import Processor, BertStyleLMProcessor
 from farm.data_handler.utils import grouper
+from farm.data_handler.dataset import ConcatTensorDataset
 from farm.modeling.tokenization import EmbeddingTokenizer
 from farm.utils import MLFlowLogger as MlLogger
 from farm.utils import log_ascii_workers, calc_chunksize
@@ -151,7 +152,6 @@ class DataSilo:
             max_processes=self.max_processes,
             max_chunksize=self.max_multiprocessing_chunksize,
         )
-
         with ExitStack() as stack:
             if self.max_processes > 1:  # use multiprocessing only when max_processes > 1
                 p = stack.enter_context(mp.Pool(processes=num_cpus_used))
@@ -191,7 +191,7 @@ class DataSilo:
             self.processor.log_problematic(problematic_ids_all)
             # _dataset_from_chunk can return a None in cases where downsampling has occurred
             datasets = [d for d in datasets if d]
-            concat_datasets = ConcatDataset(datasets)
+            concat_datasets = ConcatTensorDataset(datasets)
             return concat_datasets, tensor_names
 
     def _load_data(self, train_dicts=None, dev_dicts=None, test_dicts=None):
@@ -381,20 +381,61 @@ class DataSilo:
         }
 
     def _create_dev_from_train(self):
-        """ Split a dev set apart from the train dataset """
-        n_dev = int(self.processor.dev_split * len(self.data["train"]))
-        n_train = len(self.data["train"]) - n_dev
+        """
+        Split a dev set apart from the train dataset.
 
-        train_dataset, dev_dataset = self.random_split_ConcatDataset(self.data["train"], lengths=[n_train, n_dev])
-        self.data["train"] = train_dataset
-        if(len(dev_dataset) > 0):
-            self.data["dev"] = dev_dataset
+        The exact way how this is done depends on the dev_split and dev_stratification parameters/attributes
+        of the Processor used
+        """
+        # currently only the TextClassificationProcessor supports stratified dev sets, but this
+        # allows the silo to generically check if a processor supports this.
+        if hasattr(self.processor, "dev_stratification") and self.processor.dev_stratification is not None:
+            if self.processor.dev_stratification is True:
+                # to do a stratified split we need to get the labels
+                ytensors = [t[3][0] for t in self.data["train"]]
+                Y = torch.stack(ytensors)
+                from sklearn.model_selection import StratifiedShuffleSplit
+                splitter = StratifiedShuffleSplit(n_splits=1, test_size=self.processor.dev_split)
+                train_idxs, dev_idxs = next(splitter.split(list(range(len(self.data["train"]))), Y))
+                train_idx_set = set([i for i in train_idxs])  # DEBUG
+                dev_idx_set = set([i for i in dev_idxs])  # DEBUG
+                logger.info(f"Original train size: {len(self.data['train'])}")
+                logger.info(f"Created stratified train/dev split: {len(train_idx_set)}/s{len(dev_idx_set)}")
+                assert len(train_idx_set.intersection(dev_idx_set)) == 0  # DEBUG
+                # make this a single dataset concat dataset so it is compatible with what is expected in
+                # _calculate_statistics
+                new_train = ConcatTensorDataset([Subset(self.data["train"], train_idxs)])
+                self.data["dev"] = Subset(self.data["train"], dev_idxs)
+                self.data["train"] = new_train
+            elif self.processor.dev_stratification is False:
+                from sklearn.model_selection import ShuffleSplit
+                splitter = ShuffleSplit(n_splits=1, test_size=self.processor.dev_split)
+                train_idxs, dev_idxs = next(splitter.split(list(range(len(self.data["train"])))))
+                train_idx_set = set([i for i in train_idxs])  # DEBUG
+                dev_idx_set = set([i for i in dev_idxs])  # DEBUG
+                assert len(train_idx_set.intersection(dev_idx_set)) == 0  # DEBUG
+                logger.info(f"Created random train/dev split: {len(train_idx_set)}/{len(dev_idx_set)}")
+                new_train = ConcatTensorDataset([Subset(self.data["train"], train_idxs)])
+                self.data["dev"] = Subset(self.data["train"], dev_idxs)
+                self.data["train"] = new_train
+            elif callable(self.processor.dev_stratification):
+                self.data["train"], self.data["dev"] = \
+                    self.processor.dev_stratification(self.data["train"], dev_split=self.processor.dev_split)
+            else:
+                raise RuntimeError(f"Value for parameter dev_stratification not supported: {self.processor.dev_stratification}")
         else:
-            logger.warning("No dev set created. Please adjust the dev_split parameter.")
-
-        logger.info(
-            f"Took {len(dev_dataset)} samples out of train set to create dev set (dev split is roughly {self.processor.dev_split})"
-        )
+            n_dev = int(self.processor.dev_split * len(self.data["train"]))
+            n_train = len(self.data["train"]) - n_dev
+            train_dataset, dev_dataset = self.random_split_ConcatDataset(self.data["train"], lengths=[n_train, n_dev])
+            self.data["train"] = train_dataset
+            logger.info(f"!!!!!!!!!!!!! train: {len(train_dataset)}, dev: {len(dev_dataset)}")
+            if len(dev_dataset) > 0:
+                self.data["dev"] = dev_dataset
+            else:
+                logger.warning("No dev set created. Please adjust the dev_split parameter.")
+            logger.info(
+                f"Took {len(dev_dataset)} samples out of train set to create dev set (dev split is roughly {self.processor.dev_split})"
+            )
 
     def random_split_ConcatDataset(self, ds, lengths):
         """
@@ -420,8 +461,8 @@ class DataSilo:
         assert idx_dataset >= 1, "Dev_split ratio is too large, there is no data in train set. " \
                              f"Please lower dev_split = {self.processor.dev_split}"
 
-        train = ConcatDataset(ds.datasets[:idx_dataset])
-        test = ConcatDataset(ds.datasets[idx_dataset:])
+        train = ConcatTensorDataset(ds.datasets[:idx_dataset])
+        test = ConcatTensorDataset(ds.datasets[idx_dataset:])
         return train, test
 
     def _calculate_statistics(self):
@@ -461,6 +502,7 @@ class DataSilo:
         logger.info("Examples in train: {}".format(self.counts["train"]))
         logger.info("Examples in dev  : {}".format(self.counts["dev"]))
         logger.info("Examples in test : {}".format(self.counts["test"]))
+        logger.info("Total examples   : {}".format(self.counts["train"]+self.counts["dev"]+self.counts["test"]))
         logger.info("")
         if self.data["train"]:
             if "input_ids" in self.tensor_names:
@@ -776,7 +818,7 @@ class _StreamingDataSet(IterableDataset):
         return files
 
 
-class DataSiloForCrossVal:
+class DataSiloForCrossVal(DataSilo):
     """
     Perform cross validation or nested cross validation.
 
@@ -788,13 +830,16 @@ class DataSiloForCrossVal:
 
     def __init__(self, origsilo, trainset, devset, testset):
         self.tensor_names = origsilo.tensor_names
-        self.data = {"train": trainset, "dev": devset, "test": testset}
+        self.data = {"train": trainset, "test": testset}
         self.processor = origsilo.processor
         self.batch_size = origsilo.batch_size
-        # should not be necessary, xval makes no sense with huge data
-        # sampler_train = DistributedSampler(self.data["train"])
+        if devset is not None:
+            self.data["dev"] = devset
+        else:
+            self._create_dev_from_train()
+            devset = self.data["dev"]
+            trainset = self.data["train"]
         sampler_train = RandomSampler(trainset)
-
         self.data_loader_train = NamedDataLoader(
             dataset=trainset,
             sampler=sampler_train,
@@ -824,7 +869,7 @@ class DataSiloForCrossVal:
 
     @classmethod
     def make(cls, datasilo, sets=["train", "dev", "test"], n_splits=5, shuffle=True, random_state=None,
-             stratified=True, n_neg_answers_per_question=1, n_inner_splits=None):
+             stratification=True, n_neg_answers_per_question=1, n_inner_splits=None):
         """
         Create number of folds data-silo-like objects which can be used for training from the
         original data silo passed on.
@@ -839,9 +884,9 @@ class DataSiloForCrossVal:
         :type shuffle: bool
         :param random_state: random state for shuffling
         :type random_state: int
-        :param stratified: If class stratification should be done.
+        :param stratification: If class stratification should be done.
             It is never done with question answering.
-        :type stratified: bool
+        :type stratification: bool
         :param n_neg_answers_per_question: number of negative answers per question to include for training
         :type n_neg_answers_per_question: int
         :param n_inner_splits: Number of inner splits of a nested cross validation.
@@ -868,11 +913,11 @@ class DataSiloForCrossVal:
             raise NotImplementedError()
         elif n_inner_splits is None:
             return cls._make(
-                datasilo, sets, n_splits, shuffle, random_state, stratified
+                datasilo, sets, n_splits, shuffle, random_state, stratification
             )
         elif n_inner_splits is not None:
             return cls._make_nested(
-                datasilo, sets, n_splits, shuffle, random_state, stratified,
+                datasilo, sets, n_splits, shuffle, random_state, stratification,
                 n_inner_splits
             )
         else:
@@ -910,7 +955,7 @@ class DataSiloForCrossVal:
         for setname in sets:
             if datasilo.data[setname]:
                 sets_to_concat.extend(datasilo.data[setname])
-        all_data = ConcatDataset(sets_to_concat)
+        all_data = ConcatTensorDataset(sets_to_concat)
 
         documents = []
         keyfunc = lambda x: x[id_index][0]
@@ -967,7 +1012,7 @@ class DataSiloForCrossVal:
 
     @staticmethod
     def _make(datasilo, sets=["train", "dev", "test"], n_splits=5, shuffle=True,
-              random_state=None, stratified=True):
+              random_state=None, stratification=True):
         """
         Create number of folds data-silo-like objects which can be used for training from the
         original data silo passed on.
@@ -977,18 +1022,17 @@ class DataSiloForCrossVal:
         :param n_splits: number of folds to create
         :param shuffle: shuffle each class' samples before splitting
         :param random_state: random state for shuffling
-        :param stratified: if class stratification should be done
+        :param stratification: if class stratification should be done.
         """
         setstoconcat = [datasilo.data[setname] for setname in sets]
-        ds_all = ConcatDataset(setstoconcat)
+        ds_all = ConcatTensorDataset(setstoconcat)
         idxs = list(range(len(ds_all)))
-        dev_split = datasilo.processor.dev_split
-        if stratified:
+        if stratification:
             # get all the labels for stratification
             ytensors = [t[3][0] for t in ds_all]
             Y = torch.stack(ytensors)
             xval = StratifiedKFold(n_splits=n_splits, shuffle=shuffle, random_state=random_state)
-            xval_split = xval.split(idxs,Y)
+            xval_split = xval.split(idxs, Y)
         else:
             xval = KFold(n_splits=n_splits, shuffle=shuffle, random_state=random_state)
             xval_split = xval.split(idxs)
@@ -996,18 +1040,9 @@ class DataSiloForCrossVal:
         # divided into actual train and dev set
         silos = []
         for train_idx, test_idx in xval_split:
-            n_dev = int(dev_split * len(train_idx))
-            n_actual_train = len(train_idx) - n_dev
-            # TODO: this split into actual train and test set could/should also be stratified, for now
-            # we just do this by taking the first/last indices from the train set (which should be
-            # shuffled by default)
-            actual_train_idx = train_idx[:n_actual_train]
-            dev_idx = train_idx[n_actual_train:]
-            # create the actual datasets
-            ds_train = Subset(ds_all, actual_train_idx)
-            ds_dev = Subset(ds_all, dev_idx)
+            ds_train = Subset(ds_all, train_idx)
             ds_test = Subset(ds_all, test_idx)
-            silos.append(DataSiloForCrossVal(datasilo, ds_train, ds_dev, ds_test))
+            silos.append(DataSiloForCrossVal(datasilo, ds_train, None, ds_test))
         return silos
 
     @staticmethod
@@ -1045,15 +1080,15 @@ class DataSiloForCrossVal:
     @staticmethod
     def _make_nested(datasilo, sets=["train", "dev", "test"],
                      n_splits=5, shuffle=True, random_state=None,
-                     stratified=True, n_inner_splits=5):
+                     stratification=True, n_inner_splits=5):
         setstoconcat = [datasilo.data[setname] for setname in sets]
-        ds_all = ConcatDataset(setstoconcat)
+        ds_all = ConcatTensorDataset(setstoconcat)
         idxs = list(range(len(ds_all)))
 
         silos = []
 
         # outer cross validation where we split all data to test and rest
-        if stratified:
+        if stratification:
             # get all the labels for stratification
             ytensors = [t[3][0] for t in ds_all]
             y = torch.stack(ytensors)
@@ -1065,7 +1100,7 @@ class DataSiloForCrossVal:
         for idxs_rest, idxs_test in outer_split:
 
             # inner cross validation where we split rest data into train and dev
-            if stratified:
+            if stratification:
                 y_rest = y[idxs_rest]
                 inner_cv = StratifiedKFold(n_splits=n_inner_splits, shuffle=shuffle, random_state=random_state)
                 inner_split = inner_cv.split(idxs_rest, y_rest)
@@ -1082,4 +1117,140 @@ class DataSiloForCrossVal:
                 ds_dev = Subset(ds_all, idxs_dev)
                 ds_test = Subset(ds_all, idxs_test)
                 silos.append(DataSiloForCrossVal(datasilo, ds_train, ds_dev, ds_test))
+        return silos
+
+
+class DataSiloForHoldout(DataSilo):
+    """
+    Provide data silos for holdout evaluation.
+
+    For this, we first combine the
+    instances from all the sets or just some of the sets, then allow to create a different data silo
+    instance with a train/test split.
+    Calling DataSiloForHoldout.make() creates a list of holdout splits
+    """
+
+    def __init__(self, origsilo, trainset, devset, testset):
+        self.tensor_names = origsilo.tensor_names
+        self.data = {"train": trainset, "test": testset}
+        self.processor = origsilo.processor
+        self.batch_size = origsilo.batch_size
+        if devset is not None:
+            self.data["dev"] = devset
+        else:
+            self._create_dev_from_train()
+            devset = self.data["dev"]
+            trainset = self.data["train"]
+        sampler_train = RandomSampler(trainset)
+
+        self.data_loader_train = NamedDataLoader(
+            dataset=trainset,
+            sampler=sampler_train,
+            batch_size=self.batch_size,
+            tensor_names=self.tensor_names,
+        )
+        self.data_loader_dev = NamedDataLoader(
+            dataset=devset,
+            sampler=SequentialSampler(devset),
+            batch_size=self.batch_size,
+            tensor_names=self.tensor_names,
+        )
+        self.data_loader_test = NamedDataLoader(
+            dataset=testset,
+            sampler=SequentialSampler(testset),
+            batch_size=self.batch_size,
+            tensor_names=self.tensor_names,
+        )
+        self.loaders = {
+            "train": self.data_loader_train,
+            "dev": self.data_loader_dev,
+            "test": self.data_loader_test,
+        }
+
+    def get_data_loader(self, which):
+        return self.loaders[which]
+
+    @classmethod
+    def make(cls, datasilo, sets=["train", "dev", "test"],
+             n_splits=5, train_split=0.80,
+             random_state=None,
+             stratification=True,
+             ):
+        """
+        Create number of folds data-silo-like objects which can be used for training from the
+        original data silo passed on.
+
+        NOTE: does not support question answering.
+
+        :param datasilo: the data silo that contains the original data
+        :type datasilo: DataSilo
+        :param sets: which sets to use to create the xval folds (strings)
+        :type sets: list
+        :param n_splits: number of folds to create
+        :type n_splits: int
+        :param train_split: portion of all data to use for training, rest will be used for testing.
+            The `dev_split` portion of the training set as defined in the processor of the original
+            data silo is created from the training set portion, the dev set split is stratified if
+            the stratification parameter is True.
+        :type train_split: float
+        :param random_state: random state for shuffling, either an integer for repeatable randomness or
+            None to use whatever the current state is.
+        :type random_state: int
+        :param stratification: If class stratification should be done for the train/test and the train/dev splits.
+        :type stratification: bool
+        """
+        if "question_answering" in datasilo.processor.tasks:
+            raise NotImplementedError("Holdout evaluation not supported for question answering")
+        else:
+            return cls._make(
+                datasilo, sets, n_splits, train_split, random_state, stratification
+            )
+
+
+    @staticmethod
+    def _make(datasilo, sets=["train", "dev", "test"],
+              n_splits=5, train_split=0.80,
+              random_state=None, stratification=True):
+        """
+        Create number of folds data-silo-like objects which can be used for training from the
+        original data silo passed on.
+
+        :param datasilo: the data silo that contains the original data
+        :param sets: which sets to use to create the xval folds
+        :param n_splits: number of folds to create
+        :param train_split: portion of all data to use for training, rest is used for evaluation
+        :param random_state: random state for shuffling
+        :param stratification: True, False or a callable the returns a new train/test dataset pair from
+            the original train set and kwarg train_split.
+        """
+        setstoconcat = [datasilo.data[setname] for setname in sets]
+        ds_all = ConcatTensorDataset(setstoconcat)
+        idxs = list(range(len(ds_all)))
+        dev_split = datasilo.processor.dev_split
+        Y = None
+        silos = []
+        if callable(stratification):
+            for i in range(n_splits):
+                ds_train, ds_test = stratification(ds_all, train_split=train_split)
+                silos.append(DataSiloForHoldout(datasilo, ds_train, None, ds_test))
+            return silos
+        elif stratification:
+            ytensors = [t[3][0] for t in ds_all]
+            Y = torch.stack(ytensors)
+            eval = StratifiedShuffleSplit(n_splits=n_splits,
+                                          train_size=train_split,
+                                          random_state=random_state)
+            eval_split = eval.split(idxs, Y)
+        else:
+            eval = ShuffleSplit(n_splits=n_splits,
+                                train_size=train_split,
+                                random_state=random_state)
+            eval_split = eval.split(idxs)
+        # for each fold create a DataSilo4Xval instance, where the training set is further
+        # divided into actual train and dev set
+        for train_idx, test_idx in eval_split:
+            ds_train = Subset(ds_all, train_idx)
+            ds_test = Subset(ds_all, test_idx)
+            silo = DataSiloForHoldout(datasilo, ds_train, None, ds_test)
+            silos.append(silo)
         return silos

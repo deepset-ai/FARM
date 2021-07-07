@@ -2,6 +2,7 @@
 import logging
 import numbers
 import json
+import mlflow
 import statistics
 from pathlib import Path
 from collections import defaultdict
@@ -42,13 +43,18 @@ def doc_classification_crossvalidation():
     ########## Settings
     ##########################
     xval_folds = 5
-    xval_stratified = True
+    xval_stratification = True
 
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)
     n_epochs = 20
     batch_size = 32
     evaluate_every = 100
+    dev_split = 0.1
+    # For xval the dev_stratification parameter must not be None: with None, the devset cannot be created
+    # using the default method of only splitting by the available chunks as initial train set for each fold
+    # is just a single chunk!
+    dev_stratification = True
     lang_model = "bert-base-german-cased"
     do_lower_case = False
     use_amp = None
@@ -93,6 +99,8 @@ def doc_classification_crossvalidation():
                                             data_dir=Path("../data/germeval18"),
                                             label_list=label_list,
                                             metric=metric,
+                                            dev_split=dev_split,
+                                            dev_stratification=dev_stratification,
                                             label_column_name="coarse_label"
                                             )
 
@@ -102,12 +110,54 @@ def doc_classification_crossvalidation():
         batch_size=batch_size)
 
     # Load one silo for each fold in our cross-validation
-    silos = DataSiloForCrossVal.make(data_silo, n_splits=xval_folds)
+    silos = DataSiloForCrossVal.make(data_silo,
+                                     sets=["train", "dev"],
+                                     n_splits=xval_folds,
+                                     stratification=xval_stratification)
 
     # the following steps should be run for each of the folds of the cross validation, so we put them
     # into a function
     def train_on_split(silo_to_use, n_fold, save_dir):
-        logger.info(f"############ Crossvalidation: Fold {n_fold} ############")
+        logger.info(f"############ Crossvalidation: Fold {n_fold} of {xval_folds} ############")
+        logger.info(f"Fold training   samples: {len(silo_to_use.data['train'])}")
+        logger.info(f"Fold dev        samples: {len(silo_to_use.data['dev'])}")
+        logger.info(f"Fold testing    samples: {len(silo_to_use.data['test'])}")
+        logger.info( "Total number of samples: "
+                    f"{len(silo_to_use.data['train'])+len(silo_to_use.data['dev'])+len(silo_to_use.data['test'])}")
+
+        # try to access all elements of all sets
+        trainset = silo_to_use.data["train"]
+        devset = silo_to_use.data["dev"]
+        testset = silo_to_use.data["test"]
+        i = 0
+        for el in trainset:
+            i += 1
+        logger.info(f"counted train: {i}")
+        i = 0
+        for el in devset:
+            i += 1
+        logger.info(f"counted dev: {i}")
+        i = 0
+        for el in testset:
+            i += 1
+        logger.info(f"counted test: {i}")
+
+        ltrain = silo_to_use.loaders["train"]
+        logger.info(f"Length of train loader: {len(ltrain)}")
+        ldev = silo_to_use.loaders["dev"]
+        ltest = silo_to_use.loaders["test"]
+        i = 0
+        for el in ltrain:
+            i += 1
+        logger.info(f"Counted train batches: {i}")
+        i = 0
+        for el in ldev:
+            i += 1
+        logger.info(f"Counted dev batches: {i}")
+        i = 0
+        for el in ltest:
+            i += 1
+        logger.info(f"Counted test batches: {i}")
         # Create an AdaptiveModel
         # a) which consists of a pretrained language model as a basis
         language_model = LanguageModel.load(lang_model)
@@ -172,6 +222,7 @@ def doc_classification_crossvalidation():
     bestf1_offense = -1
     save_dir = Path("saved_models/bert-german-doc-tutorial-es")
     for num_fold, silo in enumerate(silos):
+        mlflow.start_run(run_name=f"fold-{num_fold + 1}-of-{len(silos)}", nested=True)
         model = train_on_split(silo, num_fold, save_dir)
 
         # do eval on test set here (and not in Trainer),
@@ -191,7 +242,7 @@ def doc_classification_crossvalidation():
         if f1_offense > bestf1_offense:
             bestf1_offense = f1_offense
             bestfold = num_fold
-
+        mlflow.end_run()
         # emtpy cache to avoid memory leak and cuda OOM across multiple folds
         model.cpu()
         torch.cuda.empty_cache()
