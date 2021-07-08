@@ -2,13 +2,13 @@
 import logging
 import numbers
 import json
-import mlflow
 import statistics
+import mlflow
 from pathlib import Path
 from collections import defaultdict
 import torch
 
-from farm.data_handler.data_silo import DataSilo, DataSiloForCrossVal
+from farm.data_handler.data_silo import DataSilo, DataSiloForHoldout
 from farm.data_handler.processor import TextClassificationProcessor
 from farm.modeling.optimization import initialize_optimizer
 from farm.modeling.adaptive_model import AdaptiveModel
@@ -22,7 +22,7 @@ from sklearn.metrics import matthews_corrcoef, f1_score
 from farm.evaluation.metrics import simple_accuracy, register_metrics
 
 
-def doc_classification_crossvalidation():
+def doc_classification_holdout():
     ##########################
     ########## Logging
     ##########################
@@ -34,28 +34,28 @@ def doc_classification_crossvalidation():
     # reduce verbosity from transformers library
     logging.getLogger('transformers').setLevel(logging.WARNING)
 
-    # ml_logger = MLFlowLogger(tracking_uri="https://public-mlflow.deepset.ai/")
-    # for local logging instead:
-    ml_logger = MLFlowLogger(tracking_uri="logs")
-    # ml_logger.init_experiment(experiment_name="Public_FARM", run_name="DocClassification_ES_f1_1")
+    # local logging into directory "logs"
+    mlflogger = MLFlowLogger(tracking_uri="logs")
+    mlflogger.init_experiment(experiment_name="Example-docclass-xval", run_name="testrun1")
 
     ##########################
     ########## Settings
     ##########################
-    xval_folds = 5
-    xval_stratification = True
+    holdout_splits = 5
+    holdout_train_split = 0.8
+    holdout_stratification = True
 
     set_all_seeds(seed=42)
     device, n_gpu = initialize_device_settings(use_cuda=True)
     n_epochs = 20
     batch_size = 32
     evaluate_every = 100
+    lang_model = "bert-base-german-cased"
     dev_split = 0.1
-    # For xval the dev_stratification parameter must not be None: with None, the devset cannot be created
+    # For holdout the dev_stratification parameter must not be None: with None, the devset cannot be created
     # using the default method of only splitting by the available chunks as initial train set for each fold
     # is just a single chunk!
     dev_stratification = True
-    lang_model = "bert-base-german-cased"
     do_lower_case = False
     use_amp = None
 
@@ -68,8 +68,6 @@ def doc_classification_crossvalidation():
     # metric defined as a function from (preds, labels) to a dict that contains all the actual
     # metrics values. The function must get registered under a string name and the string name must
     # be used.
-    # For xval, we also store the actual predictions and labels in each result so we can
-    # calculate overall metrics over all folds later
     def mymetrics(preds, labels):
         acc = simple_accuracy(preds, labels).get("acc")
         f1other = f1_score(y_true=labels, y_pred=preds, pos_label="OTHER")
@@ -110,21 +108,21 @@ def doc_classification_crossvalidation():
         batch_size=batch_size)
 
     # Load one silo for each fold in our cross-validation
-    silos = DataSiloForCrossVal.make(data_silo,
+    silos = DataSiloForHoldout.make(data_silo,
                                      sets=["train", "dev"],
-                                     n_splits=xval_folds,
-                                     stratification=xval_stratification)
+                                     n_splits=holdout_splits,
+                                     train_split=holdout_train_split,
+                                     stratification=holdout_stratification)
 
-    # the following steps should be run for each of the folds of the cross validation, so we put them
+    # the following steps should be run for each of the folds of the holdout evaluation, so we put them
     # into a function
-    def train_on_split(silo_to_use, n_fold, save_dir):
-        logger.info(f"############ Crossvalidation: Fold {n_fold} of {xval_folds} ############")
+    def train_on_split(silo_to_use, n_eval, save_dir):
+        logger.info(f"############ Holdout: Evaluation {n_eval} of {holdout_splits} ############")
         logger.info(f"Fold training   samples: {len(silo_to_use.data['train'])}")
         logger.info(f"Fold dev        samples: {len(silo_to_use.data['dev'])}")
         logger.info(f"Fold testing    samples: {len(silo_to_use.data['test'])}")
         logger.info( "Total number of samples: "
                     f"{len(silo_to_use.data['train'])+len(silo_to_use.data['dev'])+len(silo_to_use.data['test'])}")
-
         # Create an AdaptiveModel
         # a) which consists of a pretrained language model as a basis
         language_model = LanguageModel.load(lang_model)
@@ -156,7 +154,7 @@ def doc_classification_crossvalidation():
         # according to some metric and stop training when no improvement is happening for some iterations.
         # NOTE: Using a different save directory for each fold, allows us afterwards to use the
         # nfolds best models in an ensemble!
-        save_dir = Path(str(save_dir) + f"-{n_fold}")
+        save_dir = Path(str(save_dir) + f"-{n_eval}")
         earlystopping = EarlyStopping(
             metric="f1_offense", mode="max",   # use the metric from our own metrics function instead of loss
             save_dir=save_dir,  # where to save the best model
@@ -189,7 +187,7 @@ def doc_classification_crossvalidation():
     bestf1_offense = -1
     save_dir = Path("saved_models/bert-german-doc-tutorial-es")
     for num_fold, silo in enumerate(silos):
-        mlflow.start_run(run_name=f"fold-{num_fold + 1}-of-{len(silos)}", nested=True)
+        mlflow.start_run(run_name=f"split-{num_fold + 1}-of-{len(silos)}", nested=True)
         model = train_on_split(silo, num_fold, save_dir)
 
         # do eval on test set here (and not in Trainer),
@@ -215,7 +213,7 @@ def doc_classification_crossvalidation():
         torch.cuda.empty_cache()
 
     # Save the per-fold results to json for a separate, more detailed analysis
-    with open("doc_classification_xval.results.json", "wt") as fp:
+    with open("doc_classification_holdout.results.json", "wt") as fp:
         json.dump(allresults, fp)
 
     # log the best fold metric and fold
@@ -225,29 +223,29 @@ def doc_classification_crossvalidation():
     # information in each of the per-fold results
 
     # First create a dict where for each metric, we have a list of values from each fold
-    xval_metric_lists_head0 = defaultdict(list)
+    eval_metric_lists_head0 = defaultdict(list)
     for results in allresults:
         head0results = results[0]
         for name in head0results.keys():
             if name not in ["preds", "labels"] and not name.startswith("_") and \
                     isinstance(head0results[name], numbers.Number):
-                xval_metric_lists_head0[name].append(head0results[name])
+                eval_metric_lists_head0[name].append(head0results[name])
     # Now calculate the mean and stdev for each metric, also copy over the task name
-    xval_metric = {}
-    xval_metric["task_name"] = allresults[0][0].get("task_name", "UNKNOWN TASKNAME")
-    for name in xval_metric_lists_head0.keys():
-        values = xval_metric_lists_head0[name]
+    eval_metric = {}
+    eval_metric["task_name"] = allresults[0][0].get("task_name", "UNKNOWN TASKNAME")
+    for name in eval_metric_lists_head0.keys():
+        values = eval_metric_lists_head0[name]
         vmean = statistics.mean(values)
         vstdev = statistics.stdev(values)
-        xval_metric[name+"_mean"] = vmean
-        xval_metric[name+"_stdev"] = vstdev
+        eval_metric[name+"_mean"] = vmean
+        eval_metric[name+"_stdev"] = vstdev
 
-    logger.info(f"XVAL Accuracy:   mean {xval_metric['acc_mean']} stdev {xval_metric['acc_stdev']}")
-    logger.info(f"XVAL F1 MICRO:   mean {xval_metric['f1_micro_mean']} stdev {xval_metric['f1_micro_stdev']}")
-    logger.info(f"XVAL F1 MACRO:   mean {xval_metric['f1_macro_mean']} stdev {xval_metric['f1_macro_stdev']}")
-    logger.info(f"XVAL F1 OFFENSE: mean {xval_metric['f1_offense_mean']} stdev {xval_metric['f1_offense_stdev']}")
-    logger.info(f"XVAL F1 OTHER:   mean {xval_metric['f1_other_mean']} stdev {xval_metric['f1_other_stdev']}")
-    logger.info(f"XVAL MCC:        mean {xval_metric['mcc_mean']} stdev {xval_metric['mcc_stdev']}")
+    logger.info(f"HOLDOUT Accuracy:   mean {eval_metric['acc_mean']} stdev {eval_metric['acc_stdev']}")
+    logger.info(f"HOLDOUT F1 MICRO:   mean {eval_metric['f1_micro_mean']} stdev {eval_metric['f1_micro_stdev']}")
+    logger.info(f"HOLDOUT F1 MACRO:   mean {eval_metric['f1_macro_mean']} stdev {eval_metric['f1_macro_stdev']}")
+    logger.info(f"HOLDOUT F1 OFFENSE: mean {eval_metric['f1_offense_mean']} stdev {eval_metric['f1_offense_stdev']}")
+    logger.info(f"HOLDOUT F1 OTHER:   mean {eval_metric['f1_other_mean']} stdev {eval_metric['f1_other_stdev']}")
+    logger.info(f"HOLDOUT MCC:        mean {eval_metric['mcc_mean']} stdev {eval_metric['mcc_stdev']}")
 
     # -----------------------------------------------------
     # Just for illustration, use the best model from the best xval val for evaluation on
@@ -274,6 +272,6 @@ def doc_classification_crossvalidation():
 
 
 if __name__ == "__main__":
-    doc_classification_crossvalidation()
+    doc_classification_holdout()
 
 # fmt: on

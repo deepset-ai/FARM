@@ -507,6 +507,7 @@ class TextClassificationProcessor(Processor):
         dev_filename=None,
         test_filename="test.tsv",
         dev_split=0.1,
+        dev_stratification=False,
         delimiter="\t",
         quote_char="'",
         skiprows=None,
@@ -543,6 +544,8 @@ class TextClassificationProcessor(Processor):
         :type test_filename: str
         :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
         :type dev_split: float
+        :param dev_stratification: if True, create a class-stratified split for the dev set.
+        :type dev_stratification: bool
         :param delimiter: Separator used in the input tsv / csv file
         :type delimiter: str
         :param quote_char: Character used for quoting strings in the input tsv/ csv file
@@ -571,6 +574,7 @@ class TextClassificationProcessor(Processor):
         self.skiprows = skiprows
         self.header = header
         self.max_samples = max_samples
+        self.dev_stratification = dev_stratification
         logger.warning(f"Currently no support in Processor for returning problematic ids")
 
         super(TextClassificationProcessor, self).__init__(
@@ -795,7 +799,8 @@ class RegressionProcessor(TextClassificationProcessor):
         :type dev_filename: str or None
         :param test_filename: None
         :type test_filename: str
-        :param dev_split: The proportion of the train set that will sliced. Only works if dev_filename is set to None
+        :param dev_split: The proportion of the train set that will sliced. No devset is created if this is set to 0.0
+            Only used if dev_filename is set to None
         :type dev_split: float
         :param delimiter: Separator used in the input tsv / csv file
         :type delimiter: str

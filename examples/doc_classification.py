@@ -31,6 +31,9 @@ def doc_classifcation():
     evaluate_every = 100
     lang_model = "bert-base-german-cased"
     do_lower_case = False
+    dev_split = 0.1
+    dev_stratification = True
+    max_processes = 1    # 128 is default
     # or a local path:
     # lang_model = Path("../saved_models/farm-bert-base-cased")
     use_amp = None
@@ -52,6 +55,8 @@ def doc_classifcation():
                                             data_dir=Path("../data/germeval18"),
                                             label_list=label_list,
                                             metric=metric,
+                                            dev_split=dev_split,
+                                            dev_stratification=dev_stratification,
                                             label_column_name="coarse_label"
                                             )
 
@@ -59,6 +64,7 @@ def doc_classifcation():
     #    few descriptive statistics of our datasets
     data_silo = DataSilo(
         processor=processor,
+        max_processes=max_processes,
         batch_size=batch_size)
 
     # 4. Create an AdaptiveModel

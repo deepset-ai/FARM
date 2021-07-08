@@ -145,3 +145,9 @@ mlruns/
 *cache*
 
 sandbox/
+
+
+# files created by example scripts
+examples/doc_classification_holdout.results.json
+examples/doc_classification_xval.results.json
+
