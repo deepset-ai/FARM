@@ -1100,15 +1100,15 @@ class QuestionAnsweringHead(PredictionHead):
 
         nll_criterion = CrossEntropyLoss()
 
-        optimizer_start = optim.LBFGS([self.temperature_for_confidence], lr=0.01, max_iter=50)
+        optimizer = optim.LBFGS([self.temperature_for_confidence], lr=0.01, max_iter=50)
 
-        #TODO use end_position and end_logits in optimizations step too
-        def eval_start():
-            loss = nll_criterion(self.temperature_scale(start_logits), start_position.to(device=start_logits.device))
+        def eval_start_end_logits():
+            loss = nll_criterion(self.temperature_scale(start_logits), start_position.to(device=start_logits.device))+\
+                   nll_criterion(self.temperature_scale(end_logits), end_position.to(device=end_logits.device))
             loss.backward()
             return loss
 
-        optimizer_start.step(eval_start)
+        optimizer.step(eval_start_end_logits)
 
 
     def logits_to_preds(self, logits, span_mask, start_of_word,
@@ -1196,8 +1196,7 @@ class QuestionAnsweringHead(PredictionHead):
         end_idx_candidates = set()
 
         start_matrix_softmax_start = torch.softmax(start_matrix[:, 0], dim=-1)
-        #TODO select correct part of end_matrix
-        end_matrix_softmax_end = torch.softmax(end_matrix[:, 0], dim=-1)
+        end_matrix_softmax_end = torch.softmax(end_matrix[0, :], dim=-1)
         # Iterate over all candidates and break when we have all our n_best candidates
         for candidate_idx in range(n_candidates):
             if len(top_candidates) == self.n_best_per_sample:
