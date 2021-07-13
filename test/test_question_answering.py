@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 import pytest
 from math import isclose
+import numpy as np
 
 from farm.data_handler.processor import SquadProcessor
 from farm.modeling.adaptive_model import AdaptiveModel
@@ -219,7 +220,19 @@ def test_range_duplicate_answer_filtering(bert_base_squad2):
     assert all(distance > bert_base_squad2.model.prediction_heads[0].duplicate_filtering for distance in distances_answer_ends)
 
 
-if(__name__=="__main__"):
+def test_qa_confidence():
+    inferencer = QAInferencer.load("deepset/roberta-base-squad2", task_type="question_answering", batch_size=40, gpu=True)
+    QA_input = [
+        {
+            "questions": ["Who counted the game among the best ever made?"],
+            "text": "Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created."
+        }]
+    result = inferencer.inference_from_dicts(dicts=QA_input, return_json=False)[0]
+    assert np.isclose(result.prediction[0].confidence, 0.990427553653717)
+    assert result.prediction[0].answer == "GameTrailers"
+
+
+if __name__ == "__main__":
     test_training()
     test_save_load()
     test_inference_different_inputs()
@@ -227,3 +240,4 @@ if(__name__=="__main__"):
     test_duplicate_answer_filtering()
     test_no_duplicate_answer_filtering()
     test_range_duplicate_answer_filtering()
+    test_qa_confidence()
