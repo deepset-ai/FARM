@@ -428,7 +428,6 @@ class DataSilo:
             n_train = len(self.data["train"]) - n_dev
             train_dataset, dev_dataset = self.random_split_ConcatDataset(self.data["train"], lengths=[n_train, n_dev])
             self.data["train"] = train_dataset
-            logger.info(f"!!!!!!!!!!!!! train: {len(train_dataset)}, dev: {len(dev_dataset)}")
             if len(dev_dataset) > 0:
                 self.data["dev"] = dev_dataset
             else:
