@@ -454,11 +454,13 @@ class BiAdaptiveModel(nn.Module, BaseBiAdaptiveModel):
 
         if self.prediction_heads[0].model_type == "text_similarity":
             # init model
-            if "dpr" in self.language_model1.model.config.model_type:
+            if "dpr" in self.language_model1.model.config.model_type or \
+                    self.language_model1.model.config.name == "DPRQuestionEncoder":
                 transformers_model1 = DPRQuestionEncoder(config=self.language_model1.model.config)
             else:
                 transformers_model1 = AutoModel.from_config(config=self.language_model1.model.config)
-            if "dpr" in self.language_model2.model.config.model_type:
+            if "dpr" in self.language_model2.model.config.model_type or \
+                    self.language_model2.model.config.name == "DPRContextEncoder":
                 transformers_model2 = DPRContextEncoder(config=self.language_model2.model.config)
             else:
                 transformers_model2 = AutoModel.from_config(config=self.language_model2.model.config)
