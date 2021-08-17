@@ -941,6 +941,7 @@ class QuestionAnsweringHead(PredictionHead):
                  n_best_per_sample=None,
                  duplicate_filtering=-1,
                  temperature_for_confidence=1.0,
+                 use_confidence_scores_for_ranking=False,
                  **kwargs):
         """
         :param layer_dims: dimensions of Feed Forward block, e.g. [768,2], for adjusting to BERT embedding. Output should be always 2
@@ -988,6 +989,7 @@ class QuestionAnsweringHead(PredictionHead):
         self.duplicate_filtering = duplicate_filtering
         self.generate_config()
         self.temperature_for_confidence = nn.Parameter(torch.ones(1) * temperature_for_confidence)
+        self.use_confidence_scores_for_ranking = use_confidence_scores_for_ranking
 
 
     @classmethod
@@ -1472,7 +1474,7 @@ class QuestionAnsweringHead(PredictionHead):
 
         # Add no answer to positive answers, sort the order and return the n_best
         n_preds = [no_answer_pred] + pos_answer_dedup
-        n_preds_sorted = sorted(n_preds, key=lambda x: x.score, reverse=True)
+        n_preds_sorted = sorted(n_preds, key=lambda x: x.confidence if self.use_confidence_scores_for_ranking else x.score, reverse=True)
         n_preds_reduced = n_preds_sorted[:self.n_best]
         return n_preds_reduced, no_ans_gap
 
