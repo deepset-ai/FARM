@@ -58,6 +58,24 @@ def span_inference_result(bert_base_squad2, caplog=None):
     return result
 
 
+def test_span_inference_result_ranking_by_confidence(bert_base_squad2, caplog=None):
+    if caplog:
+        caplog.set_level(logging.CRITICAL)
+    obj_input = [QAInput(doc_text="Twilight Princess was released to universal critical acclaim and commercial success. It received perfect scores from major publications such as 1UP.com, Computer and Video Games, Electronic Gaming Monthly, Game Informer, GamesRadar, and GameSpy. On the review aggregators GameRankings and Metacritic, Twilight Princess has average scores of 95% and 95 for the Wii version and scores of 95% and 96 for the GameCube version. GameTrailers in their review called it one of the greatest games ever created.",
+                         questions=Question("Who counted the game among the best ever made?", uid="best_id_ever"))]
+    result = bert_base_squad2.inference_from_objects(obj_input, return_json=False)[0]
+
+    # by default, result is sorted by score and not by confidence
+    assert all(result.prediction[i].score >= result.prediction[i + 1].score for i in range(len(result.prediction) - 1))
+    assert not all(result.prediction[i].confidence >= result.prediction[i + 1].confidence for i in range(len(result.prediction) - 1))
+
+    # ranking can be adjusted so that result is sorted by confidence
+    bert_base_squad2.model.prediction_heads[0].use_confidence_scores_for_ranking = True
+    result_ranked_by_confidence = bert_base_squad2.inference_from_objects(obj_input, return_json=False)[0]
+    assert all(result_ranked_by_confidence.prediction[i].confidence >= result_ranked_by_confidence.prediction[i + 1].confidence for i in range(len(result_ranked_by_confidence.prediction) - 1))
+    assert not all(result_ranked_by_confidence.prediction[i].score >= result_ranked_by_confidence.prediction[i + 1].score for i in range(len(result_ranked_by_confidence.prediction) - 1))
+
+
 @pytest.fixture()
 def no_answer_inference_result(bert_base_squad2, caplog=None):
     if caplog:
