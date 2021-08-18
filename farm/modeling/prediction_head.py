@@ -931,6 +931,16 @@ class FeedForwardBlock(nn.Module):
 class QuestionAnsweringHead(PredictionHead):
     """
     A question answering head predicts the start and end of the answer on token level.
+
+    In addition, it gives a score for the prediction so that multiple answers can be ranked.
+    There are three different kinds of scores available:
+    1) (standard) score: the sum of the logits of the start and end index. This score is unbounded because the logits are unbounded.
+    It is the default for ranking answers.
+    2) confidence score: also based on the logits of the start and end index but scales them to the interval 0 to 1 and incorporates no_answer.
+    It can be used for ranking by setting use_confidence_scores_for_ranking to True
+    3) calibrated confidence score: same as 2) but divides the logits by a learned temperature_for_confidence parameter
+    so that the confidence scores are closer to the model's achieved accuracy. It can be used for ranking by setting
+    use_confidence_scores_for_ranking to True and temperature_for_confidence!=1.0. See examples/question_answering_confidence.py for more details.
     """
 
     def __init__(self, layer_dims=[768,2],
@@ -964,7 +974,7 @@ class QuestionAnsweringHead(PredictionHead):
         :type duplicate_filtering: int
         :param temperature_for_confidence: The divisor that is used to scale logits to calibrate confidence scores
         :type temperature_for_confidence: float
-        :param use_confidence_scores_for_ranking: Whether to sort answers by confidence score (normalized between 0 and 1) or by standard score (unbounded)
+        :param use_confidence_scores_for_ranking: Whether to sort answers by confidence score (normalized between 0 and 1) or by standard score (unbounded)(default).
         :type use_confidence_scores_for_ranking: bool
         """
         super(QuestionAnsweringHead, self).__init__()
