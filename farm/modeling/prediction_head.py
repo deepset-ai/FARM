@@ -964,6 +964,8 @@ class QuestionAnsweringHead(PredictionHead):
         :type duplicate_filtering: int
         :param temperature_for_confidence: The divisor that is used to scale logits to calibrate confidence scores
         :type temperature_for_confidence: float
+        :param use_confidence_scores_for_ranking: Whether to sort answers by confidence score (normalized between 0 and 1) or by standard score (unbounded)
+        :type use_confidence_scores_for_ranking: bool
         """
         super(QuestionAnsweringHead, self).__init__()
         if len(kwargs) > 0:
