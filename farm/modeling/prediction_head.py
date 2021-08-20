@@ -705,7 +705,28 @@ class TokenClassificationHead(PredictionHead):
         for preds_seq, probs_seq, sample, spans_seq in zip(
             preds, probs, samples, spans
         ):
-            tags, spans_seq, tag_probs = convert_iob_to_simple_tags(preds_seq, spans_seq, probs_seq)
+
+            # If user is working with correct IOB2 format, convert each B-I group to single label and remove any O
+            if any(tag.startswith(("I-", "B-")) for tag in preds_seq):
+                tags, spans_seq, tag_probs = convert_iob_to_simple_tags(preds_seq, spans_seq, probs_seq)
+
+                # TODO: Now we know its IOB but how do we know that it is IOB2 and not IOB1?
+                # It would be better to implement some check or parameter for 'ner_format'
+
+            # If user uses "O" but no "B-" or "I-" we assume that "O" means outside of any entity as shown in the examples
+            elif any(tag == "O" for tag in preds_seq):
+                logger.warning("Your token labels include 'O' which will be ignored when returing inference results!")
+                o_indices = [i for i, tag in enumerate(preds_seq) if tag == "O"] # get every index where tag == "O"
+                tags = [tag for i, tag in enumerate(preds_seq) if i not in o_indices] # only keep not O tags
+                spans_seq = [span for i, span in enumerate(spans_seq) if i not in o_indices] # remove corresponding spans
+                tag_probs = [probability for i, probability in enumerate(probs_seq) if i not in o_indices] # remove corresponsing probabilities
+            else:
+                logger.warning("""The token labels you are using are not IOB2 formatted. 
+                                In that case farm will format prediction results for every input token.
+                                Use 'O' as a label for tokens that are outside of any entity to ignore them.""")
+                tags, tag_probs = (preds_seq, probs_seq)
+
+
             seq_res = []
             # TODO: Though we filter out tags and spans for non-entity words,
             # TODO: we do not yet filter out probs of non-entity words. This needs to be implemented still
