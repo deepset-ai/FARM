@@ -621,7 +621,7 @@ class AdaptiveModel(nn.Module, BaseAdaptiveModel):
                 hidden_size=config.hidden_size
             )
             optimized_model.convert_model_float32_to_float16()
-            optimized_model.save_model_to_file("model.onnx")
+            optimized_model.save_model_to_file(str(output_path/"model.onnx"))
 
         if quantize:
             quantize_model(output_path/"model.onnx")
