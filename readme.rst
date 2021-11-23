@@ -44,6 +44,12 @@
 	:target: https://twitter.com/intent/follow?screen_name=deepset_ai
 	:alt: Twitter
 
+
+..
+
+    IMPORTANT: We migrated the core modeling parts of FARM into `Haystack <https://github.com/deepset-ai/haystack/>`_. All active development is happening there and this repo is not actively maintained anymore! Go over there to ask questions & create issues!
+..
+
 What is it?
 ############
 FARM makes **Transfer Learning** with BERT & Co **simple, fast and enterprise-ready**.
@@ -63,7 +69,7 @@ With FARM you can build **fast proof-of-concepts** for tasks like text classific
 - `FAQ <https://github.com/deepset-ai/FARM#faq>`_
 - `Upcoming features <https://github.com/deepset-ai/FARM#upcoming-features>`_
 
-
+    
 Core features
 ##############
 - **Easy fine-tuning of language models** to your task and domain language
@@ -105,8 +111,6 @@ Core features
 
 
 \* including CamemBERT and UmBERTo
-
-****NEW**** Interested in doing Question Answering at scale? Checkout `Haystack <https://github.com/deepset-ai/haystack>`_!
 
 Resources
 ##########
