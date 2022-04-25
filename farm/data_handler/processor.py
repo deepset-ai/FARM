@@ -825,11 +825,6 @@ class RegressionProcessor(TextClassificationProcessor):
         :type kwargs: object
         """
 
-        # Custom processor attributes
-        self.delimiter = delimiter
-        self.quote_char = quote_char
-        self.skiprows = skiprows
-
         super(RegressionProcessor, self).__init__(
             tokenizer=tokenizer,
             max_seq_len=max_seq_len,
@@ -838,7 +833,10 @@ class RegressionProcessor(TextClassificationProcessor):
             test_filename=test_filename,
             dev_split=dev_split,
             data_dir=data_dir,
-            proxies=proxies
+            proxies=proxies,
+            delimiter=delimiter,
+            quote_char=quote_char,
+            skiprows=skiprows,
         )
 
         # Note that label_list is being hijacked to store the scaling mean and scale
