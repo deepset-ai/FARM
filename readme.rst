@@ -125,10 +125,6 @@ Resources
 - Tutorial 3 (How to train and showcase your own QA model): `Colab 3 <https://colab.research.google.com/drive/1tqOJyMw3L5I3eXHLO846eq1fA7O9U2s8>`_
 - Example scripts for each task: `FARM/examples/ <https://github.com/deepset-ai/FARM/tree/master/examples>`_
 
-**Demo**
-
-Checkout https://demos.deepset.ai to play around with some models
-
 **More**
 
 - `Intro to Transfer Learning (Blog) <https://medium.com/voice-tech-podcast/https-medium-com-deepset-ai-transfer-learning-entering-a-new-era-in-nlp-db523d9e667b>`_
