@@ -24,7 +24,7 @@ sentence-transformers
 # accessing dictionary elements with dot notation
 dotmap
 # for inference-rest-apis
-Werkzeug==0.16.1
+Werkzeug==3.0.1
 flask
 flask-restplus
 flask-cors
