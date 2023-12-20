@@ -18,7 +18,7 @@ sklearn
 seqeval
 mlflow<=1.13.1
 # huggingface repository
-transformers==4.7.0
+transformers==4.36.0
 #sentence transformers
 sentence-transformers
 # accessing dictionary elements with dot notation
